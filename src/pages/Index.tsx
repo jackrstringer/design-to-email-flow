@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Header } from '@/components/Header';
+import { HeroSection } from '@/components/HeroSection';
 import { UploadZone } from '@/components/UploadZone';
 import { DesignPreview } from '@/components/DesignPreview';
 import { BlockEditor } from '@/components/BlockEditor';
@@ -71,9 +72,16 @@ const Index = () => {
     <div className="min-h-screen flex flex-col bg-background">
       <Header onOpenSettings={() => setShowSetup(true)} />
       
+      {!uploadedImage && (
+        <HeroSection 
+          title="New Campaign" 
+          subtitle="Upload your email design and convert it to production-ready HTML"
+        />
+      )}
+      
       <main className="flex-1 flex flex-col p-6">
         {!uploadedImage ? (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center -mt-8">
             <UploadZone onFileUpload={handleFileUpload} isLoading={isAnalyzingEmail} />
           </div>
         ) : (

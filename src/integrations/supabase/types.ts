@@ -68,6 +68,56 @@ export type Database = {
         }
         Relationships: []
       }
+      campaigns: {
+        Row: {
+          blocks: Json | null
+          brand_id: string
+          created_at: string
+          generated_html: string | null
+          id: string
+          klaviyo_template_id: string | null
+          name: string
+          original_image_url: string | null
+          status: string
+          thumbnail_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          blocks?: Json | null
+          brand_id: string
+          created_at?: string
+          generated_html?: string | null
+          id?: string
+          klaviyo_template_id?: string | null
+          name: string
+          original_image_url?: string | null
+          status?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          blocks?: Json | null
+          brand_id?: string
+          created_at?: string
+          generated_html?: string | null
+          id?: string
+          klaviyo_template_id?: string | null
+          name?: string
+          original_image_url?: string | null
+          status?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

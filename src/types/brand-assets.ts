@@ -48,6 +48,21 @@ export interface Brand {
   updatedAt: string;
 }
 
+// Database campaign type
+export interface Campaign {
+  id: string;
+  brandId: string;
+  name: string;
+  originalImageUrl?: string;
+  generatedHtml?: string;
+  thumbnailUrl?: string;
+  blocks: any[];
+  status: 'draft' | 'completed' | 'pushed_to_klaviyo';
+  klaviyoTemplateId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const SOCIAL_PLATFORMS = [
   { id: 'facebook', label: 'Facebook', placeholder: 'https://facebook.com/yourpage' },
   { id: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/yourhandle' },
