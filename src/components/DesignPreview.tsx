@@ -61,12 +61,12 @@ export const DesignPreview = ({
         </div>
       </div>
       
-      <div ref={containerRef} className="relative inline-block">
+      <div ref={containerRef} className="relative inline-block leading-[0]">
         <img
           ref={imageRef}
           src={imageUrl}
           alt="Uploaded email design"
-          className="max-w-full h-auto rounded-lg shadow-sm"
+          className="max-w-full h-auto block"
           onLoad={updateDimensions}
         />
         
