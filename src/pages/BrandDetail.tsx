@@ -70,6 +70,7 @@ export default function BrandDetail() {
         accentColor: brandData.accent_color || undefined,
         socialLinks: parseSocialLinks(brandData.social_links),
         allLinks: parseAllLinks(brandData.all_links),
+        footerConfigured: brandData.footer_configured || false,
         createdAt: brandData.created_at,
         updatedAt: brandData.updated_at,
       };

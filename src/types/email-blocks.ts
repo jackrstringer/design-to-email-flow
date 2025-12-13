@@ -10,10 +10,13 @@ export interface EmailBlock {
   };
   suggestedLink?: string;
   altText?: string;
+  isFooter?: boolean;
 }
 
 export interface AnalysisResult {
   blocks: EmailBlock[];
   originalWidth: number;
   originalHeight: number;
+  hasFooter?: boolean;
+  footerStartIndex?: number;
 }

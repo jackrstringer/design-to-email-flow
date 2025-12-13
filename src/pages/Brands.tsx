@@ -53,6 +53,7 @@ export default function Brands() {
         accentColor: b.accent_color || undefined,
         socialLinks: parseSocialLinks(b.social_links),
         allLinks: parseAllLinks(b.all_links),
+        footerConfigured: b.footer_configured || false,
         createdAt: b.created_at,
         updatedAt: b.updated_at,
       }));
