@@ -5,6 +5,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to create SHA-1 hash
+async function sha1(message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -34,32 +43,21 @@ serve(async (req) => {
       );
     }
 
-    // Generate signature for signed upload
+    // Generate timestamp
     const timestamp = Math.round(Date.now() / 1000);
     const folderPath = folder || 'email-converter';
     
-    // Build params object for signature - must be sorted alphabetically
-    const params: Record<string, string> = {
-      folder: folderPath,
-      timestamp: timestamp.toString(),
-    };
-
-    // Sort keys alphabetically and create signature string
-    const sortedKeys = Object.keys(params).sort();
-    const paramsString = sortedKeys.map(key => `${key}=${params[key]}`).join('&');
-    const signatureString = paramsString + apiSecret;
+    // Build signature string - Cloudinary requires params to be sorted alphabetically
+    // Format: param1=value1&param2=value2...{api_secret}
+    const signatureString = `folder=${folderPath}&timestamp=${timestamp}${apiSecret}`;
     
-    console.log('Signature params:', paramsString);
+    console.log('Generating signature for folder:', folderPath, 'timestamp:', timestamp);
 
-    const encoder = new TextEncoder();
-    const data = encoder.encode(signatureString);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
+    const signature = await sha1(signatureString);
+    
     console.log('Uploading to Cloudinary folder:', folderPath);
 
-    // Upload to Cloudinary
+    // Upload to Cloudinary using base64 data URL directly
     const formData = new FormData();
     formData.append('file', imageData);
     formData.append('api_key', apiKey);
