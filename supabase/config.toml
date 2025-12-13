@@ -1,0 +1,4 @@
+project_id = "esrimjavbjdtecszxudc"
+
+[functions.analyze-email-design]
+verify_jwt = false
