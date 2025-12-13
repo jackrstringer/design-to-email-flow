@@ -220,6 +220,7 @@ export function useBrandAssets() {
         accentColor: assets.accentColor,
         socialLinks: assets.socialLinks,
         allLinks: assets.allLinks,
+        footerConfigured: false,
       });
       
       if (newBrand) {

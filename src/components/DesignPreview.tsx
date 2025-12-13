@@ -43,13 +43,23 @@ export const DesignPreview = ({
     return () => observer.disconnect();
   }, []);
 
+  const imageCount = blocks.filter(b => b.type === 'image').length;
+  const codeCount = blocks.filter(b => b.type === 'code').length;
+
   return (
     <div className="flex-1 bg-muted/30 rounded-xl p-4 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-medium text-foreground">Original Design</h2>
-        <span className="text-xs text-muted-foreground">
-          {blocks.length} blocks detected
-        </span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-red-500"></span>
+            Image ({imageCount})
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-blue-500"></span>
+            Code ({codeCount})
+          </span>
+        </div>
       </div>
       
       <div ref={containerRef} className="relative inline-block">

@@ -11,23 +11,6 @@ interface BlockOverlayProps {
   originalHeight: number;
 }
 
-const blockColors: Record<string, string> = {
-  header: 'bg-blue-500/20 border-blue-500 hover:bg-blue-500/30',
-  hero: 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30',
-  product: 'bg-green-500/20 border-green-500 hover:bg-green-500/30',
-  cta: 'bg-orange-500/20 border-orange-500 hover:bg-orange-500/30',
-  footer: 'bg-gray-500/20 border-gray-500 hover:bg-gray-500/30',
-  default: 'bg-primary/20 border-primary hover:bg-primary/30',
-};
-
-const getBlockColor = (blockName: string) => {
-  const lowerName = blockName.toLowerCase();
-  for (const [key, value] of Object.entries(blockColors)) {
-    if (lowerName.includes(key)) return value;
-  }
-  return blockColors.default;
-};
-
 export const BlockOverlay = ({
   blocks,
   selectedBlockId,
@@ -44,31 +27,56 @@ export const BlockOverlay = ({
     <div className="absolute inset-0 pointer-events-none">
       {blocks.map((block) => {
         const isSelected = selectedBlockId === block.id;
-        const colorClass = getBlockColor(block.name);
+        const isImage = block.type === 'image';
+        const isFooter = (block as any).isFooter;
+        
+        // Color based on type: RED for image, BLUE for code, PURPLE for footer
+        const colorClasses = isFooter
+          ? 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30'
+          : isImage
+            ? 'bg-red-500/20 border-red-500 hover:bg-red-500/30'
+            : 'bg-blue-500/20 border-blue-500 hover:bg-blue-500/30';
+        
+        const selectedClasses = isFooter
+          ? 'ring-2 ring-offset-2 ring-purple-500 border-purple-500 bg-purple-500/25'
+          : isImage
+            ? 'ring-2 ring-offset-2 ring-red-500 border-red-500 bg-red-500/25'
+            : 'ring-2 ring-offset-2 ring-blue-500 border-blue-500 bg-blue-500/25';
+
+        const labelBg = isFooter
+          ? 'bg-purple-600'
+          : isImage
+            ? 'bg-red-600'
+            : 'bg-blue-600';
+
+        const scaledHeight = block.bounds.height * scaleY;
+        const labelPosition = scaledHeight > 40 ? 'top-2 left-2' : '-top-6 left-0';
         
         return (
           <div
             key={block.id}
             onClick={() => onBlockSelect(block.id)}
             className={cn(
-              'absolute border-2 rounded transition-all duration-150 pointer-events-auto cursor-pointer',
-              colorClass,
-              isSelected && 'ring-2 ring-offset-2 ring-primary border-primary bg-primary/25'
+              'absolute border-2 transition-all duration-150 pointer-events-auto cursor-pointer',
+              colorClasses,
+              isSelected && selectedClasses
             )}
             style={{
               left: block.bounds.x * scaleX,
               top: block.bounds.y * scaleY,
               width: block.bounds.width * scaleX,
-              height: block.bounds.height * scaleY,
+              height: scaledHeight,
             }}
           >
             <div className={cn(
-              'absolute left-0 px-2 py-0.5 text-xs font-medium rounded',
-              'bg-foreground text-background whitespace-nowrap z-10',
-              // Position label at bottom-left inside the block
-              'bottom-1 left-1'
+              'absolute px-2 py-0.5 text-xs font-medium rounded text-white whitespace-nowrap z-10',
+              labelBg,
+              labelPosition
             )}>
-              {block.name} • {block.type === 'code' ? 'Code' : 'Image'}
+              {block.name}
+              <span className="ml-1.5 opacity-75">
+                {isFooter ? '• Footer' : isImage ? '• Image' : '• Code'}
+              </span>
             </div>
           </div>
         );

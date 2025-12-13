@@ -8,6 +8,23 @@ export interface LogoAsset {
   publicId: string;
 }
 
+// Social icon variants for footer
+export interface SocialIconAsset {
+  platform: 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'youtube' | 'tiktok';
+  whiteUrl?: string;
+  whitePublicId?: string;
+  blackUrl?: string;
+  blackPublicId?: string;
+}
+
+// Footer assets stored per brand
+export interface FooterAssets {
+  logoUrl?: string;
+  logoPublicId?: string;
+  socialIcons: SocialIconAsset[];
+  html?: string;
+}
+
 export interface BrandAssets {
   websiteUrl?: string;
   darkLogo?: LogoAsset;  // For light backgrounds
@@ -44,6 +61,12 @@ export interface Brand {
   accentColor?: string;
   socialLinks: SocialLink[];
   allLinks: string[];
+  // Footer fields
+  footerHtml?: string;
+  footerLogoUrl?: string;
+  footerLogoPublicId?: string;
+  socialIcons?: SocialIconAsset[];
+  footerConfigured: boolean;
   createdAt: string;
   updatedAt: string;
 }

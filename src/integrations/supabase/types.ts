@@ -22,12 +22,17 @@ export type Database = {
           dark_logo_public_id: string | null
           dark_logo_url: string | null
           domain: string
+          footer_configured: boolean | null
+          footer_html: string | null
+          footer_logo_public_id: string | null
+          footer_logo_url: string | null
           id: string
           light_logo_public_id: string | null
           light_logo_url: string | null
           name: string
           primary_color: string
           secondary_color: string
+          social_icons: Json | null
           social_links: Json
           updated_at: string
           website_url: string | null
@@ -39,12 +44,17 @@ export type Database = {
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
           domain: string
+          footer_configured?: boolean | null
+          footer_html?: string | null
+          footer_logo_public_id?: string | null
+          footer_logo_url?: string | null
           id?: string
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           name: string
           primary_color?: string
           secondary_color?: string
+          social_icons?: Json | null
           social_links?: Json
           updated_at?: string
           website_url?: string | null
@@ -56,12 +66,17 @@ export type Database = {
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
           domain?: string
+          footer_configured?: boolean | null
+          footer_html?: string | null
+          footer_logo_public_id?: string | null
+          footer_logo_url?: string | null
           id?: string
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           name?: string
           primary_color?: string
           secondary_color?: string
+          social_icons?: Json | null
           social_links?: Json
           updated_at?: string
           website_url?: string | null

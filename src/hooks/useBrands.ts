@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import type { Brand, SocialLink } from '@/types/brand-assets';
+import type { Brand, SocialLink, SocialIconAsset } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
 
 // Helper to extract domain from URL
@@ -22,6 +22,11 @@ function parseSocialLinks(json: Json | null): SocialLink[] {
 function parseAllLinks(json: Json | null): string[] {
   if (!json || !Array.isArray(json)) return [];
   return json as unknown as string[];
+}
+
+function parseSocialIcons(json: Json | null): SocialIconAsset[] {
+  if (!json || !Array.isArray(json)) return [];
+  return json as unknown as SocialIconAsset[];
 }
 
 export function useBrands() {
@@ -56,6 +61,11 @@ export function useBrands() {
         accentColor: data.accent_color || undefined,
         socialLinks: parseSocialLinks(data.social_links),
         allLinks: parseAllLinks(data.all_links),
+        footerHtml: data.footer_html || undefined,
+        footerLogoUrl: data.footer_logo_url || undefined,
+        footerLogoPublicId: data.footer_logo_public_id || undefined,
+        socialIcons: parseSocialIcons(data.social_icons),
+        footerConfigured: data.footer_configured || false,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -105,6 +115,11 @@ export function useBrands() {
         accentColor: data.accent_color || undefined,
         socialLinks: parseSocialLinks(data.social_links),
         allLinks: parseAllLinks(data.all_links),
+        footerHtml: data.footer_html || undefined,
+        footerLogoUrl: data.footer_logo_url || undefined,
+        footerLogoPublicId: data.footer_logo_public_id || undefined,
+        socialIcons: parseSocialIcons(data.social_icons),
+        footerConfigured: data.footer_configured || false,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -156,6 +171,11 @@ export function useBrands() {
         accentColor: data.accent_color || undefined,
         socialLinks: parseSocialLinks(data.social_links),
         allLinks: parseAllLinks(data.all_links),
+        footerHtml: data.footer_html || undefined,
+        footerLogoUrl: data.footer_logo_url || undefined,
+        footerLogoPublicId: data.footer_logo_public_id || undefined,
+        socialIcons: parseSocialIcons(data.social_icons),
+        footerConfigured: data.footer_configured || false,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
