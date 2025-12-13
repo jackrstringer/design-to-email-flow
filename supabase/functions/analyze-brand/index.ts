@@ -209,49 +209,17 @@ serve(async (req) => {
     console.log('Extracted colors:', colors);
     console.log('Found social links:', socialLinks);
 
-    // Process logo if found
+    // Process logo if found (use Firecrawl URL directly for now)
     let darkLogo = null;
     let lightLogo = null;
     const logoUrl = branding.images?.logo || branding.logo;
 
     if (logoUrl) {
-      console.log('Found logo URL:', logoUrl);
-
-      // Fetch and try to upload original logo
-      const logoBase64 = await fetchImageAsBase64(logoUrl);
-      
-      if (logoBase64) {
-        console.log('Uploading logo to Cloudinary...');
-        const uploadedLogo = await uploadToCloudinary(logoBase64, 'brand-assets');
-
-        if (uploadedLogo) {
-          console.log('Logo uploaded:', uploadedLogo.url);
-          
-          // Use uploaded asset as dark logo
-          darkLogo = uploadedLogo;
-          
-          // Generate inverted version URL using Cloudinary transformation
-          const invertedUrl = generateInvertedLogoUrl(uploadedLogo.url);
-          lightLogo = {
-            url: invertedUrl,
-            publicId: uploadedLogo.publicId + '_inverted',
-          };
-          
-          console.log('Light logo (inverted) URL:', invertedUrl);
-        } else {
-          console.log('Cloudinary upload failed, falling back to original logo URL');
-          darkLogo = {
-            url: logoUrl,
-            publicId: 'external',
-          };
-        }
-      } else {
-        console.log('Failed to fetch logo image, using original URL directly');
-        darkLogo = {
-          url: logoUrl,
-          publicId: 'external',
-        };
-      }
+      console.log('Using Firecrawl-discovered logo URL:', logoUrl);
+      darkLogo = {
+        url: logoUrl,
+        publicId: 'external',
+      };
     } else {
       console.log('No logo found in branding data');
     }
