@@ -23,6 +23,7 @@ const Index = () => {
     removeLogo,
     updateSocialLinks,
     updateColors,
+    saveBrand,
     hasCompletedSetup,
   } = useBrandAssets();
 
@@ -30,6 +31,21 @@ const Index = () => {
     setUploadedImage(dataUrl);
     setSelectedBlockId(null);
     await analyzeDesign(dataUrl);
+  };
+
+  const handleSetupComplete = async () => {
+    // Extract brand name from website URL or use domain
+    if (assets.websiteUrl) {
+      try {
+        const url = new URL(assets.websiteUrl.startsWith('http') ? assets.websiteUrl : `https://${assets.websiteUrl}`);
+        const domain = url.hostname.replace('www.', '');
+        const brandName = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+        await saveBrand(brandName);
+      } catch {
+        // Fallback: just close setup without saving
+      }
+    }
+    setShowSetup(false);
   };
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
@@ -46,7 +62,7 @@ const Index = () => {
         onRemoveLogo={removeLogo}
         onUpdateSocialLinks={updateSocialLinks}
         onUpdateColors={updateColors}
-        onComplete={() => setShowSetup(false)}
+        onComplete={handleSetupComplete}
       />
     );
   }

@@ -14,7 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      brands: {
+        Row: {
+          accent_color: string | null
+          all_links: Json
+          created_at: string
+          dark_logo_public_id: string | null
+          dark_logo_url: string | null
+          domain: string
+          id: string
+          light_logo_public_id: string | null
+          light_logo_url: string | null
+          name: string
+          primary_color: string
+          secondary_color: string
+          social_links: Json
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          all_links?: Json
+          created_at?: string
+          dark_logo_public_id?: string | null
+          dark_logo_url?: string | null
+          domain: string
+          id?: string
+          light_logo_public_id?: string | null
+          light_logo_url?: string | null
+          name: string
+          primary_color?: string
+          secondary_color?: string
+          social_links?: Json
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          all_links?: Json
+          created_at?: string
+          dark_logo_public_id?: string | null
+          dark_logo_url?: string | null
+          domain?: string
+          id?: string
+          light_logo_public_id?: string | null
+          light_logo_url?: string | null
+          name?: string
+          primary_color?: string
+          secondary_color?: string
+          social_links?: Json
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

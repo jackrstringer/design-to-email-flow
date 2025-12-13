@@ -13,6 +13,7 @@ export interface BrandAssets {
   darkLogo?: LogoAsset;  // For light backgrounds
   lightLogo?: LogoAsset; // For dark backgrounds
   socialLinks: SocialLink[];
+  allLinks: string[];    // All links from the brand's website for linking
   primaryColor: string;
   secondaryColor: string;
   accentColor?: string;
@@ -25,9 +26,26 @@ export interface BrandAnalysisResult {
     accent?: string;
   };
   socialLinks: SocialLink[];
-  darkLogo?: LogoAsset;
-  lightLogo?: LogoAsset;
-  logoUrl?: string;
+  allLinks: string[];
+}
+
+// Database brand type
+export interface Brand {
+  id: string;
+  name: string;
+  domain: string;
+  websiteUrl?: string;
+  darkLogoUrl?: string;
+  darkLogoPublicId?: string;
+  lightLogoUrl?: string;
+  lightLogoPublicId?: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor?: string;
+  socialLinks: SocialLink[];
+  allLinks: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const SOCIAL_PLATFORMS = [
@@ -41,6 +59,7 @@ export const SOCIAL_PLATFORMS = [
 
 export const DEFAULT_BRAND_ASSETS: BrandAssets = {
   socialLinks: [],
+  allLinks: [],
   primaryColor: '#3b82f6',
   secondaryColor: '#64748b',
 };

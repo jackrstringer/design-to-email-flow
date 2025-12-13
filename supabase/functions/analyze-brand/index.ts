@@ -14,113 +14,6 @@ const SOCIAL_DOMAINS = [
   { pattern: /tiktok\.com/i, platform: 'tiktok' },
 ];
 
-async function uploadToCloudinary(imageData: string, folder: string): Promise<{ url: string; publicId: string } | null> {
-  try {
-    const cloudName = Deno.env.get('CLOUDINARY_CLOUD_NAME');
-    const apiKey = Deno.env.get('CLOUDINARY_API_KEY');
-    const apiSecret = Deno.env.get('CLOUDINARY_API_SECRET');
-
-    if (!cloudName || !apiKey || !apiSecret) {
-      console.error('Cloudinary credentials not configured');
-      return null;
-    }
-
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    
-    // Build params object and sort alphabetically for signature
-    const params: Record<string, string> = {
-      folder: folder,
-      timestamp: timestamp,
-    };
-    
-    // Create signature string: sorted params joined with & then append secret
-    const sortedKeys = Object.keys(params).sort();
-    const signatureString = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
-    
-    console.log('Signature string (without secret):', sortedKeys.map(key => `${key}=${params[key]}`).join('&'));
-    
-    const encoder = new TextEncoder();
-    const data = encoder.encode(signatureString);
-    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    const formData = new FormData();
-    formData.append('file', imageData);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp);
-    formData.append('signature', signature);
-    formData.append('folder', folder);
-
-    console.log('Uploading to Cloudinary with timestamp:', timestamp);
-
-    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    const result = await response.json();
-    
-    if (!response.ok) {
-      console.error('Cloudinary upload error:', result);
-      return null;
-    }
-
-    console.log('Cloudinary upload success, public_id:', result.public_id);
-
-    return {
-      url: result.secure_url,
-      publicId: result.public_id,
-    };
-  } catch (error) {
-    console.error('Error uploading to Cloudinary:', error);
-    return null;
-  }
-}
-
-function generateInvertedLogoUrl(originalUrl: string): string {
-  // Cloudinary URL format: https://res.cloudinary.com/{cloud}/image/upload/{transformations}/{public_id}
-  // Insert e_negate transformation to invert colors
-  const uploadIndex = originalUrl.indexOf('/upload/');
-  if (uploadIndex === -1) return originalUrl;
-  
-  const beforeUpload = originalUrl.substring(0, uploadIndex + 8); // includes '/upload/'
-  const afterUpload = originalUrl.substring(uploadIndex + 8);
-  
-  // Use e_negate for color inversion - works great for solid logos
-  return `${beforeUpload}e_negate/${afterUpload}`;
-}
-
-async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
-  try {
-    console.log('Fetching image from:', imageUrl);
-    const response = await fetch(imageUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; BrandAnalyzer/1.0)',
-      },
-    });
-    if (!response.ok) {
-      console.error('Failed to fetch image:', response.status, response.statusText);
-      return null;
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    let binary = '';
-    for (let i = 0; i < uint8Array.length; i++) {
-      binary += String.fromCharCode(uint8Array[i]);
-    }
-    const base64 = btoa(binary);
-    
-    const contentType = response.headers.get('content-type') || 'image/png';
-    console.log('Image fetched successfully, content-type:', contentType, 'size:', uint8Array.length);
-    return `data:${contentType};base64,${base64}`;
-  } catch (error) {
-    console.error('Error fetching image:', error);
-    return null;
-  }
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -193,10 +86,17 @@ serve(async (req) => {
     const socialLinks: Array<{ platform: string; url: string }> = [];
     const foundPlatforms = new Set<string>();
 
+    // Store all links for future linking purposes
+    const allLinks: string[] = [];
+
     for (const link of links) {
       const url = typeof link === 'string' ? link : link.url || link.href;
       if (!url) continue;
 
+      // Add to allLinks
+      allLinks.push(url);
+
+      // Check for social links
       for (const { pattern, platform } of SOCIAL_DOMAINS) {
         if (pattern.test(url) && !foundPlatforms.has(platform)) {
           foundPlatforms.add(platform);
@@ -208,28 +108,14 @@ serve(async (req) => {
 
     console.log('Extracted colors:', colors);
     console.log('Found social links:', socialLinks);
+    console.log('Total links found:', allLinks.length);
 
-    // Process logo if found (use Firecrawl URL directly for now)
-    let darkLogo = null;
-    let lightLogo = null;
-    const logoUrl = branding.images?.logo || branding.logo;
-
-    if (logoUrl) {
-      console.log('Using Firecrawl-discovered logo URL:', logoUrl);
-      darkLogo = {
-        url: logoUrl,
-        publicId: 'external',
-      };
-    } else {
-      console.log('No logo found in branding data');
-    }
-
+    // Note: We no longer auto-discover logos - users must upload manually
     const result = {
       success: true,
       colors,
       socialLinks,
-      darkLogo,
-      lightLogo,
+      allLinks,
     };
 
     console.log('Brand analysis complete');
