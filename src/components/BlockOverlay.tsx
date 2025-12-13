@@ -33,7 +33,13 @@ export const BlockOverlay = ({
   });
 
   return (
-    <div className="absolute inset-0 pointer-events-none">
+    <div 
+      className="absolute top-0 left-0 pointer-events-none"
+      style={{ 
+        width: containerWidth,
+        height: containerHeight 
+      }}
+    >
       {blocks.map((block) => {
         const isSelected = selectedBlockId === block.id;
         const isImage = block.type === 'image';
