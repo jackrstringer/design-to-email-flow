@@ -3,14 +3,29 @@ export interface SocialLink {
   url: string;
 }
 
+export interface LogoAsset {
+  url: string;
+  publicId: string;
+}
+
 export interface BrandAssets {
-  logo?: {
-    url: string;
-    publicId: string;
-  };
+  websiteUrl?: string;
+  darkLogo?: LogoAsset;  // For light backgrounds
+  lightLogo?: LogoAsset; // For dark backgrounds
   socialLinks: SocialLink[];
   primaryColor: string;
   secondaryColor: string;
+  accentColor?: string;
+}
+
+export interface BrandAnalysisResult {
+  colors: {
+    primary: string;
+    secondary: string;
+    accent?: string;
+  };
+  socialLinks: SocialLink[];
+  logoUrl?: string;
 }
 
 export const SOCIAL_PLATFORMS = [

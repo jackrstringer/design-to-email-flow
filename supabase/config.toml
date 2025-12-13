@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.upload-to-cloudinary]
 verify_jwt = false
+
+[functions.analyze-brand]
+verify_jwt = false
