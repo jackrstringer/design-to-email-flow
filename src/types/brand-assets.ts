@@ -25,6 +25,8 @@ export interface BrandAnalysisResult {
     accent?: string;
   };
   socialLinks: SocialLink[];
+  darkLogo?: LogoAsset;
+  lightLogo?: LogoAsset;
   logoUrl?: string;
 }
 
