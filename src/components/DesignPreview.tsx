@@ -25,9 +25,13 @@ export const DesignPreview = ({
 
   const updateDimensions = () => {
     requestAnimationFrame(() => {
-      if (imageRef.current) {
-        console.log('natural:', imageRef.current.naturalWidth, 'x', imageRef.current.naturalHeight);
-        console.log('client:', imageRef.current.clientWidth, 'x', imageRef.current.clientHeight);
+      if (imageRef.current && containerRef.current) {
+        console.log('=== DIMENSION DEBUG ===');
+        console.log('Image natural:', imageRef.current.naturalWidth, 'x', imageRef.current.naturalHeight);
+        console.log('Image client:', imageRef.current.clientWidth, 'x', imageRef.current.clientHeight);
+        console.log('Image getBoundingClientRect:', imageRef.current.getBoundingClientRect());
+        console.log('Container client:', containerRef.current.clientWidth, 'x', containerRef.current.clientHeight);
+        console.log('Container getBoundingClientRect:', containerRef.current.getBoundingClientRect());
         setDimensions({
           width: imageRef.current.clientWidth,
           height: imageRef.current.clientHeight,
