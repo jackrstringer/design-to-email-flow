@@ -26,11 +26,11 @@ export const DesignPreview = ({
   const updateDimensions = () => {
     requestAnimationFrame(() => {
       if (imageRef.current) {
-        const rect = imageRef.current.getBoundingClientRect();
-        console.log('Image dimensions - rect:', rect.width, rect.height, 'original:', originalWidth, originalHeight);
+        console.log('natural:', imageRef.current.naturalWidth, 'x', imageRef.current.naturalHeight);
+        console.log('client:', imageRef.current.clientWidth, 'x', imageRef.current.clientHeight);
         setDimensions({
-          width: rect.width,
-          height: rect.height,
+          width: imageRef.current.clientWidth,
+          height: imageRef.current.clientHeight,
         });
       }
     });
