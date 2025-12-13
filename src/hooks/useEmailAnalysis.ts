@@ -12,7 +12,7 @@ export const useEmailAnalysis = () => {
     setIsAnalyzing(true);
     
     try {
-      // Get image dimensions
+      // Get image dimensions using naturalWidth/naturalHeight for accurate pixel dimensions
       const img = new window.Image();
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
@@ -20,8 +20,13 @@ export const useEmailAnalysis = () => {
         img.src = imageDataUrl;
       });
       
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+      
+      console.log('Sending image dimensions to AI:', width, height);
+      
       const { data, error } = await supabase.functions.invoke('analyze-email-design', {
-        body: { imageDataUrl, width: img.width, height: img.height },
+        body: { imageDataUrl, width, height },
       });
 
       if (error) {
