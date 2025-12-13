@@ -111,8 +111,8 @@ export function useBrandAssets() {
     setAssets(prev => ({ ...prev, websiteUrl }));
   }, []);
 
-  // Require both logos for complete setup
-  const hasCompletedSetup = Boolean(assets.darkLogo && assets.lightLogo);
+  // Only require at least one logo for complete setup
+  const hasCompletedSetup = Boolean(assets.darkLogo || assets.lightLogo);
 
   return {
     assets,

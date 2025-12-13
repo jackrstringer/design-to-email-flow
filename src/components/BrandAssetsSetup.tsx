@@ -113,7 +113,8 @@ export function BrandAssetsSetup({
     onComplete();
   };
 
-  const canComplete = Boolean(assets.darkLogo && assets.lightLogo);
+  // Can complete if we have at least one logo (from analysis or manual upload)
+  const hasLogo = Boolean(assets.darkLogo || assets.lightLogo);
   const hiddenPlatforms = SOCIAL_PLATFORMS.filter(p => !visiblePlatforms.includes(p.id));
 
   return (
@@ -167,12 +168,14 @@ export function BrandAssetsSetup({
           </CardContent>
         </Card>
 
-        {/* Logo Upload */}
+        {/* Logo Upload - Only show if no logos found from analysis */}
         <Card>
           <CardHeader>
             <CardTitle>Logo Variants</CardTitle>
             <CardDescription>
-              Upload both logo versions for different email backgrounds (PNG only)
+              {assets.darkLogo 
+                ? 'Logos discovered from your website. You can replace them if needed.'
+                : 'Upload logo versions for different email backgrounds (PNG only)'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -383,9 +386,9 @@ export function BrandAssetsSetup({
           className="w-full"
           size="lg"
           onClick={handleComplete}
-          disabled={!canComplete}
+          disabled={!hasLogo}
         >
-          {canComplete ? 'Complete Setup' : 'Upload Both Logos to Continue'}
+          {hasLogo ? 'Complete Setup' : 'Analyze Website or Upload Logo to Continue'}
         </Button>
       </div>
     </div>
