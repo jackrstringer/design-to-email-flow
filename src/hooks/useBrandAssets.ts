@@ -26,7 +26,7 @@ export function useBrandAssets() {
 
       if (error) throw error;
 
-      // Update assets with discovered data
+      // Update assets with discovered data including logos
       setAssets(prev => ({
         ...prev,
         websiteUrl,
@@ -34,9 +34,17 @@ export function useBrandAssets() {
         secondaryColor: data.colors?.secondary || prev.secondaryColor,
         accentColor: data.colors?.accent,
         socialLinks: data.socialLinks || prev.socialLinks,
+        darkLogo: data.darkLogo || prev.darkLogo,
+        lightLogo: data.lightLogo || prev.lightLogo,
       }));
 
-      toast.success('Brand analysis complete!');
+      const logoMessage = data.darkLogo && data.lightLogo 
+        ? 'Brand analysis complete with logos!'
+        : data.darkLogo 
+          ? 'Brand analysis complete! Light logo variant could not be generated.'
+          : 'Brand analysis complete! No logo found - please upload manually.';
+      
+      toast.success(logoMessage);
       return data as BrandAnalysisResult;
     } catch (error) {
       console.error('Brand analysis failed:', error);
