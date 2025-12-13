@@ -24,14 +24,16 @@ export const DesignPreview = ({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const updateDimensions = () => {
-    if (imageRef.current) {
-      const { clientWidth, clientHeight } = imageRef.current;
-      console.log('Image dimensions - client:', clientWidth, clientHeight, 'original:', originalWidth, originalHeight);
-      setDimensions({
-        width: clientWidth,
-        height: clientHeight,
-      });
-    }
+    requestAnimationFrame(() => {
+      if (imageRef.current) {
+        const rect = imageRef.current.getBoundingClientRect();
+        console.log('Image dimensions - rect:', rect.width, rect.height, 'original:', originalWidth, originalHeight);
+        setDimensions({
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+    });
   };
 
   useEffect(() => {
