@@ -215,7 +215,7 @@ const Index = () => {
             <UploadZone onFileUpload={handleFileUpload} isLoading={isProcessing} />
           </div>
         ) : (
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 flex flex-col gap-4 max-w-4xl mx-auto w-full">
             {isProcessing ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
