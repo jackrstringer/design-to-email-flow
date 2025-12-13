@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Email HTML Converter - Clean & Minimal Design System */
+/* Sendr - Firecrawl-inspired Design System */
 
 @layer base {
   :root {
@@ -17,7 +17,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 10%;
 
-    --primary: 220 90% 56%;
+    --primary: 24 95% 53%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 14% 96%;
@@ -26,7 +26,7 @@
     --muted: 220 14% 96%;
     --muted-foreground: 220 10% 46%;
 
-    --accent: 220 90% 56%;
+    --accent: 24 95% 53%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
@@ -34,7 +34,7 @@
 
     --border: 220 14% 90%;
     --input: 220 14% 90%;
-    --ring: 220 90% 56%;
+    --ring: 24 95% 53%;
 
     --radius: 0.75rem;
 
@@ -43,12 +43,16 @@
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-primary: 24 95% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 24 95% 96%;
+    --sidebar-accent-foreground: 24 95% 30%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 220 90% 56%;
+    --sidebar-ring: 24 95% 53%;
+
+    /* Custom Sendr tokens */
+    --hero-gradient-start: 24 95% 53%;
+    --hero-gradient-end: 24 85% 45%;
   }
 
   .dark {
@@ -61,7 +65,7 @@
     --popover: 220 20% 9%;
     --popover-foreground: 220 14% 96%;
 
-    --primary: 220 90% 60%;
+    --primary: 24 95% 55%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 20% 14%;
@@ -70,7 +74,7 @@
     --muted: 220 20% 14%;
     --muted-foreground: 220 10% 60%;
 
-    --accent: 220 90% 60%;
+    --accent: 24 95% 55%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62% 30%;
@@ -78,19 +82,22 @@
 
     --border: 220 20% 18%;
     --input: 220 20% 18%;
-    --ring: 220 90% 60%;
+    --ring: 24 95% 55%;
 
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
 
     --sidebar-background: 220 20% 8%;
     --sidebar-foreground: 220 14% 96%;
-    --sidebar-primary: 220 90% 60%;
+    --sidebar-primary: 24 95% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 20% 12%;
-    --sidebar-accent-foreground: 220 14% 96%;
+    --sidebar-accent: 24 95% 15%;
+    --sidebar-accent-foreground: 24 95% 80%;
     --sidebar-border: 220 20% 16%;
-    --sidebar-ring: 220 90% 60%;
+    --sidebar-ring: 24 95% 55%;
+
+    --hero-gradient-start: 24 95% 45%;
+    --hero-gradient-end: 24 85% 35%;
   }
 }
 
@@ -108,5 +115,13 @@
 @layer utilities {
   .drop-zone-active {
     @apply border-primary bg-primary/5;
+  }
+
+  .hero-gradient {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--hero-gradient-start)) 0%,
+      hsl(var(--hero-gradient-end)) 100%
+    );
   }
 }
