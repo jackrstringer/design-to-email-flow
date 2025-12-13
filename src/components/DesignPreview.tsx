@@ -20,26 +20,25 @@ export const DesignPreview = ({
   originalHeight,
 }: DesignPreviewProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        const img = containerRef.current.querySelector('img');
-        if (img) {
-          setDimensions({
-            width: img.clientWidth,
-            height: img.clientHeight,
-          });
-        }
-      }
-    };
+  const updateDimensions = () => {
+    if (imageRef.current) {
+      const { clientWidth, clientHeight } = imageRef.current;
+      console.log('Image dimensions - client:', clientWidth, clientHeight, 'original:', originalWidth, originalHeight);
+      setDimensions({
+        width: clientWidth,
+        height: clientHeight,
+      });
+    }
+  };
 
+  useEffect(() => {
     const observer = new ResizeObserver(updateDimensions);
     if (containerRef.current) {
       observer.observe(containerRef.current);
     }
-
     return () => observer.disconnect();
   }, []);
 
@@ -64,23 +63,14 @@ export const DesignPreview = ({
       
       <div ref={containerRef} className="relative inline-block">
         <img
+          ref={imageRef}
           src={imageUrl}
           alt="Uploaded email design"
           className="max-w-full h-auto rounded-lg shadow-sm"
-          onLoad={() => {
-            if (containerRef.current) {
-              const img = containerRef.current.querySelector('img');
-              if (img) {
-                setDimensions({
-                  width: img.clientWidth,
-                  height: img.clientHeight,
-                });
-              }
-            }
-          }}
+          onLoad={updateDimensions}
         />
         
-        {dimensions.width > 0 && (
+        {dimensions.width > 0 && dimensions.height > 0 && (
           <BlockOverlay
             blocks={blocks}
             selectedBlockId={selectedBlockId}

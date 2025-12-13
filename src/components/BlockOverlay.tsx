@@ -20,8 +20,17 @@ export const BlockOverlay = ({
   originalWidth,
   originalHeight,
 }: BlockOverlayProps) => {
-  const scaleX = containerWidth / originalWidth;
-  const scaleY = containerHeight / originalHeight;
+  // Use a single scale factor based on width to maintain aspect ratio
+  // This ensures blocks scale proportionally with the displayed image
+  const scale = containerWidth / originalWidth;
+  
+  console.log('BlockOverlay scaling:', {
+    containerWidth,
+    containerHeight,
+    originalWidth,
+    originalHeight,
+    scale,
+  });
 
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -49,7 +58,11 @@ export const BlockOverlay = ({
             ? 'bg-red-600'
             : 'bg-blue-600';
 
-        const scaledHeight = block.bounds.height * scaleY;
+        const scaledHeight = block.bounds.height * scale;
+        const scaledTop = block.bounds.y * scale;
+        const scaledLeft = block.bounds.x * scale;
+        const scaledWidth = block.bounds.width * scale;
+        
         const labelPosition = scaledHeight > 40 ? 'top-2 left-2' : '-top-6 left-0';
         
         return (
@@ -62,9 +75,9 @@ export const BlockOverlay = ({
               isSelected && selectedClasses
             )}
             style={{
-              left: block.bounds.x * scaleX,
-              top: block.bounds.y * scaleY,
-              width: block.bounds.width * scaleX,
+              left: scaledLeft,
+              top: scaledTop,
+              width: scaledWidth,
               height: scaledHeight,
             }}
           >
