@@ -5,30 +5,41 @@ import { UploadZone } from '@/components/UploadZone';
 import { DesignPreview } from '@/components/DesignPreview';
 import { BlockEditor } from '@/components/BlockEditor';
 import { BrandAssetsSetup } from '@/components/BrandAssetsSetup';
-import { BrandSelectionModal } from '@/components/BrandSelectionModal';
-import { NewBrandSetupModal } from '@/components/NewBrandSetupModal';
+import { BrandSetupModal } from '@/components/BrandSetupModal';
 import { FooterSetupModal } from '@/components/FooterSetupModal';
-import { useEmailAnalysis } from '@/hooks/useEmailAnalysis';
+import { useEmailAnalysis, DetectedBrand } from '@/hooks/useEmailAnalysis';
 import { useBrandAssets } from '@/hooks/useBrandAssets';
+import { useBrands } from '@/hooks/useBrands';
+import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
-import type { Brand } from '@/types/brand-assets';
+import { toast } from 'sonner';
+import type { Brand, SocialLink } from '@/types/brand-assets';
+
+interface ScrapedBrandData {
+  url: string;
+  name: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  socialLinks?: SocialLink[];
+  allLinks?: string[];
+}
 
 const Index = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   
-  // Brand selection flow state
-  const [pendingUpload, setPendingUpload] = useState<{ file: File; dataUrl: string } | null>(null);
-  const [showBrandSelection, setShowBrandSelection] = useState(false);
-  const [showNewBrandSetup, setShowNewBrandSetup] = useState(false);
-  const [newBrandWebsiteUrl, setNewBrandWebsiteUrl] = useState('');
+  // Brand flow state
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  const [showBrandSetup, setShowBrandSetup] = useState(false);
+  const [scrapedBrandData, setScrapedBrandData] = useState<ScrapedBrandData | null>(null);
+  const [isScraping, setIsScraping] = useState(false);
   
   // Footer setup flow state
   const [showFooterSetup, setShowFooterSetup] = useState(false);
   
-  const { isAnalyzing: isAnalyzingEmail, blocks, originalDimensions, analyzeDesign, updateBlock } = useEmailAnalysis();
+  const { isAnalyzing: isAnalyzingEmail, blocks, originalDimensions, detectedBrand, analyzeDesign, updateBlock } = useEmailAnalysis();
+  const { findBrandByDomain } = useBrands();
   const {
     assets,
     isUploading,
@@ -42,59 +53,101 @@ const Index = () => {
     hasCompletedSetup,
   } = useBrandAssets();
 
-  // When file is uploaded, show brand selection modal
-  const handleFileUpload = (file: File, dataUrl: string) => {
-    setPendingUpload({ file, dataUrl });
-    setShowBrandSelection(true);
-  };
-
-  // Handle selecting an existing brand
-  const handleSelectExistingBrand = async (brand: Brand) => {
-    setSelectedBrand(brand);
-    setShowBrandSelection(false);
+  // Smart upload handler - analyzes design, detects brand, scrapes if needed
+  const handleFileUpload = async (file: File, dataUrl: string) => {
+    setUploadedImage(dataUrl);
     
-    // Check if footer needs setup (first campaign for this brand)
-    if (!brand.footerConfigured) {
-      // We'll show footer setup after analysis if footer block is detected
-    }
-    
-    // Proceed with analysis
-    if (pendingUpload) {
-      setUploadedImage(pendingUpload.dataUrl);
-      await analyzeDesign(pendingUpload.dataUrl);
-      setPendingUpload(null);
-    }
-  };
-
-  // Handle creating a new brand
-  const handleCreateNewBrand = (websiteUrl: string) => {
-    setNewBrandWebsiteUrl(websiteUrl);
-    setShowBrandSelection(false);
-    setShowNewBrandSetup(true);
-  };
-
-  // Handle new brand setup complete
-  const handleNewBrandComplete = async (brand: Brand) => {
-    setSelectedBrand(brand);
-    setShowNewBrandSetup(false);
-    
-    // Proceed with analysis
-    if (pendingUpload) {
-      setUploadedImage(pendingUpload.dataUrl);
-      await analyzeDesign(pendingUpload.dataUrl);
-      setPendingUpload(null);
-    }
-  };
-
-  // Check for footer block after analysis completes
-  useEffect(() => {
-    if (blocks.length > 0 && selectedBrand && !selectedBrand.footerConfigured) {
-      const hasFooterBlock = blocks.some((b) => (b as any).isFooter);
-      if (hasFooterBlock) {
-        setShowFooterSetup(true);
+    try {
+      // Step 1: Analyze the design (includes brand detection)
+      const result = await analyzeDesign(dataUrl);
+      
+      if (!result.detectedBrand?.url) {
+        toast.error('Could not detect brand from email. Please try again.');
+        return;
       }
+
+      // Step 2: Check if brand exists in database
+      const existingBrand = await findBrandByDomain(result.detectedBrand.url);
+      
+      if (existingBrand) {
+        // Use existing brand
+        setSelectedBrand(existingBrand);
+        toast.success(`Using existing brand: ${existingBrand.name}`);
+        
+        // Check if footer setup needed
+        if (!existingBrand.footerConfigured) {
+          const hasFooterBlock = result.blocks.some((b: any) => b.isFooter);
+          if (hasFooterBlock) {
+            setShowFooterSetup(true);
+          }
+        }
+      } else {
+        // New brand - scrape website for details
+        await scrapeBrandWebsite(result.detectedBrand);
+      }
+    } catch (error) {
+      console.error('Upload flow error:', error);
+      toast.error('Failed to process design');
     }
-  }, [blocks, selectedBrand]);
+  };
+
+  // Scrape brand website using Firecrawl
+  const scrapeBrandWebsite = async (detected: DetectedBrand) => {
+    setIsScraping(true);
+    
+    try {
+      const websiteUrl = detected.url.startsWith('http') ? detected.url : `https://${detected.url}`;
+      
+      // Call the analyze-brand edge function
+      const { data, error } = await supabase.functions.invoke('analyze-brand', {
+        body: { websiteUrl }
+      });
+
+      const scraped: ScrapedBrandData = {
+        url: detected.url,
+        name: detected.name || detected.url.split('.')[0].charAt(0).toUpperCase() + detected.url.split('.')[0].slice(1),
+        primaryColor: data?.colors?.primary || '#3b82f6',
+        secondaryColor: data?.colors?.secondary || '#64748b',
+        socialLinks: data?.socialLinks || [],
+        allLinks: data?.allLinks || [],
+      };
+
+      setScrapedBrandData(scraped);
+      setShowBrandSetup(true);
+      
+      if (error) {
+        console.warn('Brand scrape partial failure:', error);
+        toast.info('Detected brand, please complete setup');
+      } else {
+        toast.success('Brand info scraped! Please upload logos.');
+      }
+    } catch (error) {
+      console.error('Brand scrape error:', error);
+      
+      // Still show modal with basic info
+      setScrapedBrandData({
+        url: detected.url,
+        name: detected.name || detected.url.split('.')[0],
+      });
+      setShowBrandSetup(true);
+      toast.info('Please complete brand setup');
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  // Handle brand setup complete
+  const handleBrandSetupComplete = (brand: Brand) => {
+    setSelectedBrand(brand);
+    setShowBrandSetup(false);
+    setScrapedBrandData(null);
+    
+    // Check for footer setup
+    const hasFooterBlock = blocks.some((b: any) => b.isFooter);
+    if (hasFooterBlock && !brand.footerConfigured) {
+      setShowFooterSetup(true);
+    }
+  };
 
   // Handle footer setup complete
   const handleFooterSetupComplete = async (footerAssets: {
@@ -102,7 +155,6 @@ const Index = () => {
     footerLogoPublicId?: string;
     socialIcons: any[];
   }) => {
-    // In a real implementation, we'd save this to the brand
     console.log('Footer assets saved:', footerAssets);
     setShowFooterSetup(false);
   };
@@ -121,19 +173,13 @@ const Index = () => {
     setShowSetup(false);
   };
 
-  const handleCancelBrandSelection = () => {
-    setShowBrandSelection(false);
-    setPendingUpload(null);
-  };
-
-  const handleCancelNewBrandSetup = () => {
-    setShowNewBrandSetup(false);
-    setNewBrandWebsiteUrl('');
-    // Go back to brand selection
-    setShowBrandSelection(true);
+  const handleCancelBrandSetup = () => {
+    setShowBrandSetup(false);
+    setScrapedBrandData(null);
   };
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
+  const isProcessing = isAnalyzingEmail || isScraping;
 
   // Show setup screen if not completed or manually triggered
   if (!hasCompletedSetup || showSetup) {
@@ -166,14 +212,16 @@ const Index = () => {
       <main className="flex-1 flex flex-col p-6">
         {!uploadedImage ? (
           <div className="flex-1 flex items-center justify-center -mt-8">
-            <UploadZone onFileUpload={handleFileUpload} isLoading={isAnalyzingEmail} />
+            <UploadZone onFileUpload={handleFileUpload} isLoading={isProcessing} />
           </div>
         ) : (
           <div className="flex-1 flex flex-col gap-4">
-            {isAnalyzingEmail ? (
+            {isProcessing ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Analyzing your design with AI...</p>
+                <p className="text-sm text-muted-foreground">
+                  {isScraping ? 'Scraping brand website...' : 'Analyzing your design with AI...'}
+                </p>
               </div>
             ) : (
               <DesignPreview
@@ -193,20 +241,12 @@ const Index = () => {
         <BlockEditor block={selectedBlock} onUpdate={updateBlock} />
       )}
 
-      {/* Brand Selection Modal */}
-      <BrandSelectionModal
-        open={showBrandSelection}
-        onSelectExistingBrand={handleSelectExistingBrand}
-        onCreateNewBrand={handleCreateNewBrand}
-        onClose={handleCancelBrandSelection}
-      />
-
-      {/* New Brand Setup Modal */}
-      <NewBrandSetupModal
-        open={showNewBrandSetup}
-        websiteUrl={newBrandWebsiteUrl}
-        onComplete={handleNewBrandComplete}
-        onClose={handleCancelNewBrandSetup}
+      {/* Brand Setup Modal - shown for new brands after AI detection + scraping */}
+      <BrandSetupModal
+        open={showBrandSetup}
+        scrapedData={scrapedBrandData}
+        onComplete={handleBrandSetupComplete}
+        onClose={handleCancelBrandSetup}
       />
 
       {/* Footer Setup Modal */}
