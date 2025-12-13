@@ -1,32 +1,91 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BrandAssets, DEFAULT_BRAND_ASSETS, SocialLink, BrandAnalysisResult } from '@/types/brand-assets';
+import { BrandAssets, DEFAULT_BRAND_ASSETS, SocialLink, BrandAnalysisResult, Brand } from '@/types/brand-assets';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useBrands, extractDomain } from './useBrands';
 
 const STORAGE_KEY = 'brand-assets';
+const CURRENT_BRAND_KEY = 'current-brand-id';
 
 export function useBrandAssets() {
   const [assets, setAssets] = useState<BrandAssets>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : DEFAULT_BRAND_ASSETS;
   });
+  const [currentBrand, setCurrentBrand] = useState<Brand | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
+  const { findBrandByDomain, createBrand, updateBrand } = useBrands();
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(assets));
   }, [assets]);
 
+  // Load current brand from localStorage on mount
+  useEffect(() => {
+    const loadCurrentBrand = async () => {
+      const brandId = localStorage.getItem(CURRENT_BRAND_KEY);
+      if (brandId && assets.websiteUrl) {
+        const brand = await findBrandByDomain(assets.websiteUrl);
+        if (brand) {
+          setCurrentBrand(brand);
+        }
+      }
+    };
+    loadCurrentBrand();
+  }, []);
+
   const analyzeBrand = useCallback(async (websiteUrl: string): Promise<BrandAnalysisResult | null> => {
     setIsAnalyzing(true);
     try {
+      // First check if we already have this brand
+      const domain = extractDomain(websiteUrl);
+      const existingBrand = await findBrandByDomain(domain);
+      
+      if (existingBrand) {
+        // Load existing brand data
+        setCurrentBrand(existingBrand);
+        localStorage.setItem(CURRENT_BRAND_KEY, existingBrand.id);
+        
+        setAssets(prev => ({
+          ...prev,
+          websiteUrl: existingBrand.websiteUrl || websiteUrl,
+          primaryColor: existingBrand.primaryColor,
+          secondaryColor: existingBrand.secondaryColor,
+          accentColor: existingBrand.accentColor,
+          socialLinks: existingBrand.socialLinks,
+          allLinks: existingBrand.allLinks,
+          darkLogo: existingBrand.darkLogoUrl ? {
+            url: existingBrand.darkLogoUrl,
+            publicId: existingBrand.darkLogoPublicId || 'stored',
+          } : undefined,
+          lightLogo: existingBrand.lightLogoUrl ? {
+            url: existingBrand.lightLogoUrl,
+            publicId: existingBrand.lightLogoPublicId || 'stored',
+          } : undefined,
+        }));
+
+        toast.success('Loaded existing brand data!');
+        return {
+          colors: {
+            primary: existingBrand.primaryColor,
+            secondary: existingBrand.secondaryColor,
+            accent: existingBrand.accentColor,
+          },
+          socialLinks: existingBrand.socialLinks,
+          allLinks: existingBrand.allLinks,
+        };
+      }
+
+      // Analyze new brand with Firecrawl
       const { data, error } = await supabase.functions.invoke('analyze-brand', {
         body: { websiteUrl }
       });
 
       if (error) throw error;
 
-      // Update assets with discovered data including logos
+      // Update assets with discovered data (no logos from API anymore)
       setAssets(prev => ({
         ...prev,
         websiteUrl,
@@ -34,17 +93,10 @@ export function useBrandAssets() {
         secondaryColor: data.colors?.secondary || prev.secondaryColor,
         accentColor: data.colors?.accent,
         socialLinks: data.socialLinks || prev.socialLinks,
-        darkLogo: data.darkLogo || prev.darkLogo,
-        lightLogo: data.lightLogo || prev.lightLogo,
+        allLinks: data.allLinks || [],
       }));
 
-      const logoMessage = data.darkLogo && data.lightLogo 
-        ? 'Brand analysis complete with logos!'
-        : data.darkLogo 
-          ? 'Brand analysis complete! Light logo variant could not be generated.'
-          : 'Brand analysis complete! No logo found - please upload manually.';
-      
-      toast.success(logoMessage);
+      toast.success('Brand analysis complete! Please upload your logos.');
       return data as BrandAnalysisResult;
     } catch (error) {
       console.error('Brand analysis failed:', error);
@@ -53,7 +105,7 @@ export function useBrandAssets() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, []);
+  }, [findBrandByDomain]);
 
   const uploadLogo = useCallback(async (file: File, type: 'dark' | 'light') => {
     setIsUploading(true);
@@ -85,6 +137,14 @@ export function useBrandAssets() {
         }
       }));
 
+      // Update brand in database if we have a current brand
+      if (currentBrand) {
+        const updateData = type === 'dark' 
+          ? { darkLogoUrl: data.url, darkLogoPublicId: data.publicId }
+          : { lightLogoUrl: data.url, lightLogoPublicId: data.publicId };
+        await updateBrand(currentBrand.id, updateData);
+      }
+
       toast.success(`${type === 'dark' ? 'Dark' : 'Light'} logo uploaded successfully`);
     } catch (error) {
       console.error('Logo upload failed:', error);
@@ -92,7 +152,7 @@ export function useBrandAssets() {
     } finally {
       setIsUploading(false);
     }
-  }, []);
+  }, [currentBrand, updateBrand]);
 
   const removeLogo = useCallback((type: 'dark' | 'light') => {
     const logoKey = type === 'dark' ? 'darkLogo' : 'lightLogo';
@@ -111,11 +171,74 @@ export function useBrandAssets() {
     setAssets(prev => ({ ...prev, websiteUrl }));
   }, []);
 
-  // Only require at least one logo for complete setup
-  const hasCompletedSetup = Boolean(assets.darkLogo || assets.lightLogo);
+  // Save brand to database when setup is complete
+  const saveBrand = useCallback(async (name: string) => {
+    if (!assets.websiteUrl) {
+      toast.error('Please enter a website URL first');
+      return null;
+    }
+
+    const domain = extractDomain(assets.websiteUrl);
+    
+    // Check if brand already exists
+    const existingBrand = await findBrandByDomain(domain);
+    
+    if (existingBrand) {
+      // Update existing brand
+      const updated = await updateBrand(existingBrand.id, {
+        name,
+        websiteUrl: assets.websiteUrl,
+        darkLogoUrl: assets.darkLogo?.url,
+        darkLogoPublicId: assets.darkLogo?.publicId,
+        lightLogoUrl: assets.lightLogo?.url,
+        lightLogoPublicId: assets.lightLogo?.publicId,
+        primaryColor: assets.primaryColor,
+        secondaryColor: assets.secondaryColor,
+        accentColor: assets.accentColor,
+        socialLinks: assets.socialLinks,
+        allLinks: assets.allLinks,
+      });
+      
+      if (updated) {
+        setCurrentBrand(updated);
+        localStorage.setItem(CURRENT_BRAND_KEY, updated.id);
+        toast.success('Brand updated!');
+        return updated;
+      }
+    } else {
+      // Create new brand
+      const newBrand = await createBrand({
+        name,
+        domain,
+        websiteUrl: assets.websiteUrl,
+        darkLogoUrl: assets.darkLogo?.url,
+        darkLogoPublicId: assets.darkLogo?.publicId,
+        lightLogoUrl: assets.lightLogo?.url,
+        lightLogoPublicId: assets.lightLogo?.publicId,
+        primaryColor: assets.primaryColor,
+        secondaryColor: assets.secondaryColor,
+        accentColor: assets.accentColor,
+        socialLinks: assets.socialLinks,
+        allLinks: assets.allLinks,
+      });
+      
+      if (newBrand) {
+        setCurrentBrand(newBrand);
+        localStorage.setItem(CURRENT_BRAND_KEY, newBrand.id);
+        toast.success('Brand saved!');
+        return newBrand;
+      }
+    }
+    
+    return null;
+  }, [assets, findBrandByDomain, createBrand, updateBrand]);
+
+  // Require BOTH logos for complete setup
+  const hasCompletedSetup = Boolean(assets.darkLogo && assets.lightLogo);
 
   return {
     assets,
+    currentBrand,
     isUploading,
     isAnalyzing,
     analyzeBrand,
@@ -124,6 +247,7 @@ export function useBrandAssets() {
     updateSocialLinks,
     updateColors,
     updateWebsiteUrl,
+    saveBrand,
     hasCompletedSetup,
   };
 }
