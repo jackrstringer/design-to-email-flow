@@ -13,10 +13,12 @@ const Index = () => {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   
-  const { isAnalyzing, blocks, originalDimensions, analyzeDesign, updateBlock } = useEmailAnalysis();
+  const { isAnalyzing: isAnalyzingEmail, blocks, originalDimensions, analyzeDesign, updateBlock } = useEmailAnalysis();
   const {
     assets,
     isUploading,
+    isAnalyzing: isAnalyzingBrand,
+    analyzeBrand,
     uploadLogo,
     removeLogo,
     updateSocialLinks,
@@ -38,6 +40,8 @@ const Index = () => {
       <BrandAssetsSetup
         assets={assets}
         isUploading={isUploading}
+        isAnalyzing={isAnalyzingBrand}
+        onAnalyzeBrand={analyzeBrand}
         onUploadLogo={uploadLogo}
         onRemoveLogo={removeLogo}
         onUpdateSocialLinks={updateSocialLinks}
@@ -54,11 +58,11 @@ const Index = () => {
       <main className="flex-1 flex flex-col p-6">
         {!uploadedImage ? (
           <div className="flex-1 flex items-center justify-center">
-            <UploadZone onFileUpload={handleFileUpload} isLoading={isAnalyzing} />
+            <UploadZone onFileUpload={handleFileUpload} isLoading={isAnalyzingEmail} />
           </div>
         ) : (
           <div className="flex-1 flex flex-col gap-4">
-            {isAnalyzing ? (
+            {isAnalyzingEmail ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <p className="text-sm text-muted-foreground">Analyzing your design with AI...</p>
