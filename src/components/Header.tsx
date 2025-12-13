@@ -1,7 +1,11 @@
 import { Button } from '@/components/ui/button';
-import { Mail } from 'lucide-react';
+import { Mail, Settings } from 'lucide-react';
 
-export const Header = () => {
+interface HeaderProps {
+  onOpenSettings?: () => void;
+}
+
+export const Header = ({ onOpenSettings }: HeaderProps) => {
   return (
     <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
       <div className="flex items-center gap-2">
@@ -11,9 +15,16 @@ export const Header = () => {
         <span className="text-lg font-semibold text-foreground">Email Converter</span>
       </div>
       
-      <Button variant="outline" size="sm" disabled>
-        Connect Klaviyo
-      </Button>
+      <div className="flex items-center gap-2">
+        {onOpenSettings && (
+          <Button variant="ghost" size="icon" onClick={onOpenSettings}>
+            <Settings className="w-4 h-4" />
+          </Button>
+        )}
+        <Button variant="outline" size="sm" disabled>
+          Connect Klaviyo
+        </Button>
+      </div>
     </header>
   );
 };
