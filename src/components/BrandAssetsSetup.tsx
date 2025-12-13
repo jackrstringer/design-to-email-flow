@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BrandAssets, SocialLink, SOCIAL_PLATFORMS } from '@/types/brand-assets';
 import { Upload, X, Globe, Search, Loader2, Plus, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface BrandAssetsSetupProps {
   assets: BrandAssets;
@@ -16,6 +17,101 @@ interface BrandAssetsSetupProps {
   onUpdateSocialLinks: (links: SocialLink[]) => void;
   onUpdateColors: (primary: string, secondary: string, accent?: string) => void;
   onComplete: () => void;
+}
+
+interface LogoDropZoneProps {
+  type: 'dark' | 'light';
+  logo?: { url: string; publicId: string };
+  isUploading: boolean;
+  onUpload: (file: File, type: 'dark' | 'light') => Promise<void>;
+  onRemove: (type: 'dark' | 'light') => void;
+}
+
+function LogoDropZone({ type, logo, isUploading, onUpload, onRemove }: LogoDropZoneProps) {
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setIsDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setIsDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type === 'image/png') {
+        onUpload(file, type);
+      }
+    }
+  }, [onUpload, type]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'image/png') {
+      onUpload(file, type);
+    }
+  };
+
+  const isDark = type === 'dark';
+
+  return (
+    <div className="space-y-2">
+      <Label>{isDark ? 'Dark Logo (for light backgrounds)' : 'Light Logo (for dark backgrounds)'}</Label>
+      <div
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+        className={cn(
+          'border-2 border-dashed rounded-lg p-4 min-h-[120px] flex items-center justify-center transition-colors',
+          isDark ? 'bg-white' : 'bg-zinc-900',
+          isDragActive && 'border-primary bg-primary/5',
+          isUploading && 'opacity-50 pointer-events-none'
+        )}
+      >
+        {logo ? (
+          <div className="relative w-full">
+            <img
+              src={logo.url}
+              alt={`${type} logo`}
+              className="max-h-24 mx-auto object-contain"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
+              onClick={() => onRemove(type)}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center gap-2 cursor-pointer w-full h-full">
+            <Upload className={cn('w-8 h-8', isDark ? 'text-muted-foreground' : 'text-zinc-500')} />
+            <span className={cn('text-sm text-center', isDark ? 'text-muted-foreground' : 'text-zinc-500')}>
+              {isDragActive ? 'Drop logo here' : `Drag & drop or click to upload`}
+            </span>
+            <input
+              type="file"
+              accept="image/png"
+              className="hidden"
+              onChange={handleFileSelect}
+              disabled={isUploading}
+            />
+          </label>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function BrandAssetsSetup({
@@ -64,13 +160,6 @@ export function BrandAssetsSetup({
         setSocialUrls(newSocialUrls);
         setVisiblePlatforms(newPlatforms);
       }
-    }
-  };
-
-  const handleFileSelect = (type: 'dark' | 'light') => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type === 'image/png') {
-      onUploadLogo(file, type);
     }
   };
 
@@ -168,7 +257,7 @@ export function BrandAssetsSetup({
           </CardContent>
         </Card>
 
-        {/* Logo Upload - Always show both boxes */}
+        {/* Logo Upload - Always show both boxes with drag & drop */}
         <Card>
           <CardHeader>
             <CardTitle>Logo Variants</CardTitle>
@@ -178,77 +267,20 @@ export function BrandAssetsSetup({
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              {/* Dark Logo (for light backgrounds) */}
-              <div className="space-y-2">
-                <Label>Dark Logo (for light backgrounds)</Label>
-                <div className="border-2 border-dashed rounded-lg p-4 bg-white min-h-[120px] flex items-center justify-center">
-                  {assets.darkLogo ? (
-                    <div className="relative w-full">
-                      <img
-                        src={assets.darkLogo.url}
-                        alt="Dark logo"
-                        className="max-h-24 mx-auto object-contain"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
-                        onClick={() => onRemoveLogo('dark')}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center gap-2 cursor-pointer">
-                      <Upload className="w-8 h-8 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Upload dark logo</span>
-                      <input
-                        type="file"
-                        accept="image/png"
-                        className="hidden"
-                        onChange={handleFileSelect('dark')}
-                        disabled={isUploading}
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              {/* Light Logo (for dark backgrounds) */}
-              <div className="space-y-2">
-                <Label>Light Logo (for dark backgrounds)</Label>
-                <div className="border-2 border-dashed rounded-lg p-4 bg-zinc-900 min-h-[120px] flex items-center justify-center">
-                  {assets.lightLogo ? (
-                    <div className="relative w-full">
-                      <img
-                        src={assets.lightLogo.url}
-                        alt="Light logo"
-                        className="max-h-24 mx-auto object-contain"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
-                        onClick={() => onRemoveLogo('light')}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center gap-2 cursor-pointer">
-                      <Upload className="w-8 h-8 text-zinc-500" />
-                      <span className="text-sm text-zinc-500">Upload light logo</span>
-                      <input
-                        type="file"
-                        accept="image/png"
-                        className="hidden"
-                        onChange={handleFileSelect('light')}
-                        disabled={isUploading}
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
+              <LogoDropZone
+                type="dark"
+                logo={assets.darkLogo}
+                isUploading={isUploading}
+                onUpload={onUploadLogo}
+                onRemove={onRemoveLogo}
+              />
+              <LogoDropZone
+                type="light"
+                logo={assets.lightLogo}
+                isUploading={isUploading}
+                onUpload={onUploadLogo}
+                onRemove={onRemoveLogo}
+              />
             </div>
             {isUploading && (
               <div className="flex items-center justify-center gap-2 mt-4 text-sm text-muted-foreground">

@@ -38,8 +38,19 @@ serve(async (req) => {
     const timestamp = Math.round(Date.now() / 1000);
     const folderPath = folder || 'email-converter';
     
-    // Create signature string
-    const signatureString = `folder=${folderPath}&timestamp=${timestamp}${apiSecret}`;
+    // Build params object for signature - must be sorted alphabetically
+    const params: Record<string, string> = {
+      folder: folderPath,
+      timestamp: timestamp.toString(),
+    };
+
+    // Sort keys alphabetically and create signature string
+    const sortedKeys = Object.keys(params).sort();
+    const paramsString = sortedKeys.map(key => `${key}=${params[key]}`).join('&');
+    const signatureString = paramsString + apiSecret;
+    
+    console.log('Signature params:', paramsString);
+
     const encoder = new TextEncoder();
     const data = encoder.encode(signatureString);
     const hashBuffer = await crypto.subtle.digest('SHA-1', data);
