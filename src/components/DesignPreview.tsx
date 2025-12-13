@@ -48,6 +48,13 @@ export const DesignPreview = ({
     return () => observer.disconnect();
   }, []);
 
+  // Handle cached images that are already loaded
+  useEffect(() => {
+    if (imageRef.current?.complete) {
+      updateDimensions();
+    }
+  }, [imageUrl]);
+
   const imageCount = blocks.filter(b => b.type === 'image').length;
   const codeCount = blocks.filter(b => b.type === 'code').length;
 
