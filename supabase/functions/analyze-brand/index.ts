@@ -217,7 +217,7 @@ serve(async (req) => {
     if (logoUrl) {
       console.log('Found logo URL:', logoUrl);
 
-      // Fetch and upload original logo
+      // Fetch and try to upload original logo
       const logoBase64 = await fetchImageAsBase64(logoUrl);
       
       if (logoBase64) {
@@ -227,7 +227,7 @@ serve(async (req) => {
         if (uploadedLogo) {
           console.log('Logo uploaded:', uploadedLogo.url);
           
-          // Use original as dark logo
+          // Use uploaded asset as dark logo
           darkLogo = uploadedLogo;
           
           // Generate inverted version URL using Cloudinary transformation
@@ -238,9 +238,19 @@ serve(async (req) => {
           };
           
           console.log('Light logo (inverted) URL:', invertedUrl);
+        } else {
+          console.log('Cloudinary upload failed, falling back to original logo URL');
+          darkLogo = {
+            url: logoUrl,
+            publicId: 'external',
+          };
         }
       } else {
-        console.log('Failed to fetch logo image');
+        console.log('Failed to fetch logo image, using original URL directly');
+        darkLogo = {
+          url: logoUrl,
+          publicId: 'external',
+        };
       }
     } else {
       console.log('No logo found in branding data');

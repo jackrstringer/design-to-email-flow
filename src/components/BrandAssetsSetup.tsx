@@ -168,98 +168,98 @@ export function BrandAssetsSetup({
           </CardContent>
         </Card>
 
-        {/* Logo Upload - Only show if no logos found from analysis */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Logo Variants</CardTitle>
-            <CardDescription>
-              {assets.darkLogo 
-                ? 'Logos discovered from your website. You can replace them if needed.'
-                : 'Upload logo versions for different email backgrounds (PNG only)'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {/* Dark Logo (for light backgrounds) */}
-              <div className="space-y-2">
-                <Label>Dark Logo (for light backgrounds)</Label>
-                <div className="border-2 border-dashed rounded-lg p-4 bg-white min-h-[120px] flex items-center justify-center">
-                  {assets.darkLogo ? (
-                    <div className="relative w-full">
-                      <img
-                        src={assets.darkLogo.url}
-                        alt="Dark logo"
-                        className="max-h-24 mx-auto object-contain"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
-                        onClick={() => onRemoveLogo('dark')}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center gap-2 cursor-pointer">
-                      <Upload className="w-8 h-8 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Upload dark logo</span>
-                      <input
-                        type="file"
-                        accept="image/png"
-                        className="hidden"
-                        onChange={handleFileSelect('dark')}
-                        disabled={isUploading}
-                      />
-                    </label>
-                  )}
+        {/* Logo Upload / Management */}
+        {!(assets.darkLogo || assets.lightLogo) ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logo Variants</CardTitle>
+              <CardDescription>
+                Upload logo versions for different email backgrounds (PNG only)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                {/* Dark Logo (for light backgrounds) */}
+                <div className="space-y-2">
+                  <Label>Dark Logo (for light backgrounds)</Label>
+                  <div className="border-2 border-dashed rounded-lg p-4 bg-white min-h-[120px] flex items-center justify-center">
+                    {assets.darkLogo ? (
+                      <div className="relative w-full">
+                        <img
+                          src={assets.darkLogo.url}
+                          alt="Dark logo"
+                          className="max-h-24 mx-auto object-contain"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
+                          onClick={() => onRemoveLogo('dark')}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center gap-2 cursor-pointer">
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Upload dark logo</span>
+                        <input
+                          type="file"
+                          accept="image/png"
+                          className="hidden"
+                          onChange={handleFileSelect('dark')}
+                          disabled={isUploading}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Light Logo (for dark backgrounds) */}
-              <div className="space-y-2">
-                <Label>Light Logo (for dark backgrounds)</Label>
-                <div className="border-2 border-dashed rounded-lg p-4 bg-zinc-900 min-h-[120px] flex items-center justify-center">
-                  {assets.lightLogo ? (
-                    <div className="relative w-full">
-                      <img
-                        src={assets.lightLogo.url}
-                        alt="Light logo"
-                        className="max-h-24 mx-auto object-contain"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
-                        onClick={() => onRemoveLogo('light')}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center gap-2 cursor-pointer">
-                      <Upload className="w-8 h-8 text-zinc-500" />
-                      <span className="text-sm text-zinc-500">Upload light logo</span>
-                      <input
-                        type="file"
-                        accept="image/png"
-                        className="hidden"
-                        onChange={handleFileSelect('light')}
-                        disabled={isUploading}
-                      />
-                    </label>
-                  )}
+                {/* Light Logo (for dark backgrounds) */}
+                <div className="space-y-2">
+                  <Label>Light Logo (for dark backgrounds)</Label>
+                  <div className="border-2 border-dashed rounded-lg p-4 bg-zinc-900 min-h-[120px] flex items-center justify-center">
+                    {assets.lightLogo ? (
+                      <div className="relative w-full">
+                        <img
+                          src={assets.lightLogo.url}
+                          alt="Light logo"
+                          className="max-h-24 mx-auto object-contain"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-destructive text-destructive-foreground"
+                          onClick={() => onRemoveLogo('light')}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center gap-2 cursor-pointer">
+                        <Upload className="w-8 h-8 text-zinc-500" />
+                        <span className="text-sm text-zinc-500">Upload light logo</span>
+                        <input
+                          type="file"
+                          accept="image/png"
+                          className="hidden"
+                          onChange={handleFileSelect('light')}
+                          disabled={isUploading}
+                        />
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            {isUploading && (
-              <div className="flex items-center justify-center gap-2 mt-4 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading...
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              {isUploading && (
+                <div className="flex items-center justify-center gap-2 mt-4 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Social Links */}
         <Card>
