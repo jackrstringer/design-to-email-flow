@@ -25,9 +25,17 @@ serve(async (req) => {
 
     console.log(`Analyzing image: ${width}x${height}, isFirstCampaign: ${isFirstCampaign}`);
 
-    const systemPrompt = `You are an expert email template analyst. Your job is to segment an email design into HORIZONTAL FULL-WIDTH SECTIONS for HTML email production.
+const systemPrompt = `You are an expert email template analyst. Your job is to:
+1. Segment an email design into HORIZONTAL FULL-WIDTH SECTIONS for HTML email production
+2. IDENTIFY THE BRAND from the email (website URL and brand name)
 
-## CRITICAL RULES:
+## BRAND DETECTION (CRITICAL):
+- Look for the brand's website URL in the footer, header, or any visible links
+- Look for the company/brand name (usually in header logo area or footer)
+- Extract the PRIMARY domain (e.g., "flightsmedia.co" not "instagram.com/flightsmedia")
+- If you see social media links, those are NOT the brand URL - look for the actual website
+
+## BLOCK DETECTION RULES:
 
 ### Block Types (ONLY TWO TYPES):
 1. **"image"** (will be shown in RED) - Use for:
@@ -64,6 +72,10 @@ ${isFirstCampaign ? `- IMPORTANT: This is the FIRST campaign for this brand. Ide
 ## Output Format:
 Return ONLY valid JSON with this structure:
 {
+  "detectedBrand": {
+    "url": "example.com",
+    "name": "Example Company"
+  },
   "blocks": [
     {
       "id": "header-logo",
@@ -95,14 +107,16 @@ IMPORTANT: Return ONLY the JSON object. No markdown, no explanations, no code bl
               {
                 type: 'text',
                 text: `Analyze this email design (${width}x${height} pixels). 
-                
-Identify FULL-WIDTH HORIZONTAL SECTIONS only. 
+
+FIRST: Identify the BRAND - look for the website URL and company name in the email (footer, header, links).
+
+THEN: Identify FULL-WIDTH HORIZONTAL SECTIONS only.
 
 Remember:
 - RED (image) = photos, graphics, text-over-images
 - BLUE (code) = solid color backgrounds, simple text/buttons
 
-Return the blocks as JSON with pixel coordinates.`,
+Return both the detected brand info AND blocks as JSON.`,
               },
               {
                 type: 'image_url',
@@ -152,8 +166,14 @@ Return the blocks as JSON with pixel coordinates.`,
 
     const parsed = JSON.parse(jsonStr);
     
+    // Extract detected brand info
+    const detectedBrand = parsed.detectedBrand || null;
+    if (detectedBrand) {
+      console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
+    }
+
     // Validate and normalize blocks
-    const blocks = parsed.blocks
+    const blocks = (parsed.blocks || [])
       .map((block: any, index: number) => ({
         id: block.id || `block-${index}`,
         name: block.name || `Block ${index + 1}`,
@@ -182,6 +202,7 @@ Return the blocks as JSON with pixel coordinates.`,
       footerStartIndex: footerBlocks.length > 0 
         ? blocks.findIndex((b: any) => b.isFooter) 
         : -1,
+      detectedBrand,
     };
 
     console.log(`Successfully analyzed design: ${blocks.length} blocks found, ${footerBlocks.length} footer blocks`);

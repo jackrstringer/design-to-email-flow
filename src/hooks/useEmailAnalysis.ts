@@ -3,12 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import type { EmailBlock, AnalysisResult } from '@/types/email-blocks';
 import { toast } from 'sonner';
 
+export interface DetectedBrand {
+  url: string;
+  name: string;
+}
+
+export interface AnalysisResultWithBrand extends AnalysisResult {
+  detectedBrand: DetectedBrand | null;
+}
+
 export const useEmailAnalysis = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [blocks, setBlocks] = useState<EmailBlock[]>([]);
   const [originalDimensions, setOriginalDimensions] = useState({ width: 0, height: 0 });
+  const [detectedBrand, setDetectedBrand] = useState<DetectedBrand | null>(null);
 
-  const analyzeDesign = useCallback(async (imageDataUrl: string) => {
+  const analyzeDesign = useCallback(async (imageDataUrl: string): Promise<AnalysisResultWithBrand> => {
     setIsAnalyzing(true);
     
     try {
@@ -34,11 +44,16 @@ export const useEmailAnalysis = () => {
         throw new Error(error.message || 'Failed to analyze design');
       }
 
-      const result = data as AnalysisResult;
+      const result = data as AnalysisResultWithBrand;
       setBlocks(result.blocks);
       setOriginalDimensions({ width: result.originalWidth, height: result.originalHeight });
+      setDetectedBrand(result.detectedBrand);
       
-      toast.success(`Detected ${result.blocks.length} blocks`);
+      if (result.detectedBrand) {
+        toast.success(`Detected ${result.blocks.length} blocks from ${result.detectedBrand.name}`);
+      } else {
+        toast.success(`Detected ${result.blocks.length} blocks`);
+      }
       return result;
     } catch (err) {
       console.error('Error analyzing design:', err);
@@ -61,6 +76,7 @@ export const useEmailAnalysis = () => {
     isAnalyzing,
     blocks,
     originalDimensions,
+    detectedBrand,
     analyzeDesign,
     updateBlock,
   };
