@@ -1,4 +1,10 @@
 project_id = "esrimjavbjdtecszxudc"
 
+[api]
+enabled = true
+
 [functions.analyze-email-design]
+verify_jwt = false
+
+[functions.upload-to-cloudinary]
 verify_jwt = false

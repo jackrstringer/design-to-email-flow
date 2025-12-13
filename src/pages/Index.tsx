@@ -3,14 +3,26 @@ import { Header } from '@/components/Header';
 import { UploadZone } from '@/components/UploadZone';
 import { DesignPreview } from '@/components/DesignPreview';
 import { BlockEditor } from '@/components/BlockEditor';
+import { BrandAssetsSetup } from '@/components/BrandAssetsSetup';
 import { useEmailAnalysis } from '@/hooks/useEmailAnalysis';
+import { useBrandAssets } from '@/hooks/useBrandAssets';
 import { Loader2 } from 'lucide-react';
 
 const Index = () => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
   
   const { isAnalyzing, blocks, originalDimensions, analyzeDesign, updateBlock } = useEmailAnalysis();
+  const {
+    assets,
+    isUploading,
+    uploadLogo,
+    removeLogo,
+    updateSocialLinks,
+    updateColors,
+    hasCompletedSetup,
+  } = useBrandAssets();
 
   const handleFileUpload = async (file: File, dataUrl: string) => {
     setUploadedImage(dataUrl);
@@ -20,9 +32,24 @@ const Index = () => {
 
   const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
 
+  // Show setup screen if not completed or manually triggered
+  if (!hasCompletedSetup || showSetup) {
+    return (
+      <BrandAssetsSetup
+        assets={assets}
+        isUploading={isUploading}
+        onUploadLogo={uploadLogo}
+        onRemoveLogo={removeLogo}
+        onUpdateSocialLinks={updateSocialLinks}
+        onUpdateColors={updateColors}
+        onComplete={() => setShowSetup(false)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Header />
+      <Header onOpenSettings={() => setShowSetup(true)} />
       
       <main className="flex-1 flex flex-col p-6">
         {!uploadedImage ? (
