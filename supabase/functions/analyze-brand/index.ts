@@ -25,11 +25,22 @@ async function uploadToCloudinary(imageData: string, folder: string): Promise<{ 
       return null;
     }
 
-    const timestamp = Math.floor(Date.now() / 1000);
-    const paramsToSign = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    
+    // Build params object and sort alphabetically for signature
+    const params: Record<string, string> = {
+      folder: folder,
+      timestamp: timestamp,
+    };
+    
+    // Create signature string: sorted params joined with & then append secret
+    const sortedKeys = Object.keys(params).sort();
+    const signatureString = sortedKeys.map(key => `${key}=${params[key]}`).join('&') + apiSecret;
+    
+    console.log('Signature string (without secret):', sortedKeys.map(key => `${key}=${params[key]}`).join('&'));
     
     const encoder = new TextEncoder();
-    const data = encoder.encode(paramsToSign);
+    const data = encoder.encode(signatureString);
     const hashBuffer = await crypto.subtle.digest('SHA-1', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -37,9 +48,11 @@ async function uploadToCloudinary(imageData: string, folder: string): Promise<{ 
     const formData = new FormData();
     formData.append('file', imageData);
     formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp.toString());
+    formData.append('timestamp', timestamp);
     formData.append('signature', signature);
     formData.append('folder', folder);
+
+    console.log('Uploading to Cloudinary with timestamp:', timestamp);
 
     const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
       method: 'POST',
@@ -53,6 +66,8 @@ async function uploadToCloudinary(imageData: string, folder: string): Promise<{ 
       return null;
     }
 
+    console.log('Cloudinary upload success, public_id:', result.public_id);
+
     return {
       url: result.secure_url,
       publicId: result.public_id,
@@ -63,10 +78,31 @@ async function uploadToCloudinary(imageData: string, folder: string): Promise<{ 
   }
 }
 
+function generateInvertedLogoUrl(originalUrl: string): string {
+  // Cloudinary URL format: https://res.cloudinary.com/{cloud}/image/upload/{transformations}/{public_id}
+  // Insert e_negate transformation to invert colors
+  const uploadIndex = originalUrl.indexOf('/upload/');
+  if (uploadIndex === -1) return originalUrl;
+  
+  const beforeUpload = originalUrl.substring(0, uploadIndex + 8); // includes '/upload/'
+  const afterUpload = originalUrl.substring(uploadIndex + 8);
+  
+  // Use e_negate for color inversion - works great for solid logos
+  return `${beforeUpload}e_negate/${afterUpload}`;
+}
+
 async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
   try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) return null;
+    console.log('Fetching image from:', imageUrl);
+    const response = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; BrandAnalyzer/1.0)',
+      },
+    });
+    if (!response.ok) {
+      console.error('Failed to fetch image:', response.status, response.statusText);
+      return null;
+    }
     
     const arrayBuffer = await response.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
@@ -77,70 +113,10 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
     const base64 = btoa(binary);
     
     const contentType = response.headers.get('content-type') || 'image/png';
+    console.log('Image fetched successfully, content-type:', contentType, 'size:', uint8Array.length);
     return `data:${contentType};base64,${base64}`;
   } catch (error) {
     console.error('Error fetching image:', error);
-    return null;
-  }
-}
-
-async function generateLogoVariant(logoBase64: string): Promise<string | null> {
-  try {
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-    if (!lovableApiKey) {
-      console.error('LOVABLE_API_KEY not configured');
-      return null;
-    }
-
-    console.log('Generating light logo variant with AI...');
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Create a white/light colored version of this logo suitable for use on dark backgrounds. Keep the exact same shape and design, but make the main colors white or very light gray. Preserve transparency if present. Output only the modified logo image.'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: logoBase64
-                }
-              }
-            ]
-          }
-        ],
-        modalities: ['image', 'text']
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI generation error:', response.status, errorText);
-      return null;
-    }
-
-    const data = await response.json();
-    const generatedImage = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    
-    if (!generatedImage) {
-      console.error('No image in AI response');
-      return null;
-    }
-
-    console.log('Light logo variant generated successfully');
-    return generatedImage;
-  } catch (error) {
-    console.error('Error generating logo variant:', error);
     return null;
   }
 }
@@ -201,6 +177,7 @@ serve(async (req) => {
     }
 
     console.log('Firecrawl response received');
+    console.log('Branding data:', JSON.stringify(firecrawlData.data?.branding || firecrawlData.branding, null, 2));
 
     const branding = firecrawlData.data?.branding || firecrawlData.branding || {};
     const links = firecrawlData.data?.links || firecrawlData.links || [];
@@ -240,29 +217,33 @@ serve(async (req) => {
     if (logoUrl) {
       console.log('Found logo URL:', logoUrl);
 
-      // Fetch and upload original logo as dark logo
+      // Fetch and upload original logo
       const logoBase64 = await fetchImageAsBase64(logoUrl);
       
       if (logoBase64) {
-        console.log('Uploading original logo to Cloudinary...');
-        darkLogo = await uploadToCloudinary(logoBase64, 'brand-assets');
+        console.log('Uploading logo to Cloudinary...');
+        const uploadedLogo = await uploadToCloudinary(logoBase64, 'brand-assets');
 
-        if (darkLogo) {
-          console.log('Dark logo uploaded:', darkLogo.url);
-
-          // Generate light variant using AI
-          const lightLogoBase64 = await generateLogoVariant(logoBase64);
+        if (uploadedLogo) {
+          console.log('Logo uploaded:', uploadedLogo.url);
           
-          if (lightLogoBase64) {
-            console.log('Uploading light logo variant to Cloudinary...');
-            lightLogo = await uploadToCloudinary(lightLogoBase64, 'brand-assets');
-            
-            if (lightLogo) {
-              console.log('Light logo uploaded:', lightLogo.url);
-            }
-          }
+          // Use original as dark logo
+          darkLogo = uploadedLogo;
+          
+          // Generate inverted version URL using Cloudinary transformation
+          const invertedUrl = generateInvertedLogoUrl(uploadedLogo.url);
+          lightLogo = {
+            url: invertedUrl,
+            publicId: uploadedLogo.publicId + '_inverted',
+          };
+          
+          console.log('Light logo (inverted) URL:', invertedUrl);
         }
+      } else {
+        console.log('Failed to fetch logo image');
       }
+    } else {
+      console.log('No logo found in branding data');
     }
 
     const result = {
