@@ -63,8 +63,10 @@ export const BlockOverlay = ({
             }}
           >
             <div className={cn(
-              'absolute -top-6 left-0 px-2 py-0.5 text-xs font-medium rounded-t',
-              'bg-foreground text-background whitespace-nowrap'
+              'absolute left-0 px-2 py-0.5 text-xs font-medium rounded',
+              'bg-foreground text-background whitespace-nowrap z-10',
+              // Position label at bottom-left inside the block
+              'bottom-1 left-1'
             )}>
               {block.name} • {block.type === 'code' ? 'Code' : 'Image'}
             </div>
