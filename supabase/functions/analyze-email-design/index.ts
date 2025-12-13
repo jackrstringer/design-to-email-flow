@@ -38,23 +38,30 @@ const systemPrompt = `You are an expert email template analyst. Your job is to:
 ## BLOCK DETECTION RULES:
 
 ### Block Types (ONLY TWO TYPES):
+
+**CRITICAL: BE VERY CONSERVATIVE! When in doubt, use "image" - image slices are reliable and safe.**
+
 1. **"image"** (will be shown in RED) - Use for:
    - Sections with PHOTOGRAPHY or complex graphics
    - Sections with TEXT OVERLAID on images/photos
-   - Any section that would be difficult to recreate with HTML/CSS
+   - ANY section with decorative elements (lines, borders, shapes, icons)
    - Hero banners with background images
    - Product photos
    - Complex illustrated graphics
    - Logo areas (headers, footers)
+   - Sections with custom fonts or stylized typography
+   - Sections with gradients or textures
+   - Sections with visual timelines, progress indicators, or step graphics
+   - Sections with numbered steps that have visual design elements
+   - ANY section that is NOT a plain solid-color background with basic text
    
-2. **"code"** (will be shown in BLUE) - Use for:
-   - Sections with SOLID COLOR backgrounds only
-   - Simple text paragraphs
-   - Buttons/CTAs on solid backgrounds
-   - Lists or bullet points
-   - Simple navigation text links
-   - Copyright text
-   - Sections that can be easily coded with HTML tables
+2. **"code"** (will be shown in BLUE) - Use ONLY for:
+   - Sections with PLAIN SOLID COLOR backgrounds (no gradients, no decorations)
+   - Simple text paragraphs with NO decorative elements
+   - Simple buttons on solid backgrounds with NO icons
+   - Plain text navigation links
+   - Plain copyright text
+   - ONLY use this if you are 100% certain it can be recreated with basic HTML tables and inline CSS
 
 ### Section Detection Rules:
 - ALWAYS detect FULL-WIDTH HORIZONTAL sections spanning the entire email width
