@@ -3,43 +3,38 @@ import type { EmailBlock } from '@/types/email-blocks';
 
 interface BlockOverlayProps {
   blocks: EmailBlock[];
-  selectedBlockId: string | null;
-  onBlockSelect: (blockId: string) => void;
+  scale: number; // rendered_size / analyzed_size
   containerWidth: number;
   containerHeight: number;
-  originalWidth: number;
-  originalHeight: number;
+  selectedBlockId: string | null;
+  onBlockSelect: (blockId: string) => void;
 }
 
 export const BlockOverlay = ({
   blocks,
-  selectedBlockId,
-  onBlockSelect,
+  scale,
   containerWidth,
   containerHeight,
-  originalWidth,
-  originalHeight,
+  selectedBlockId,
+  onBlockSelect,
 }: BlockOverlayProps) => {
-  // Use a single scale factor based on width to maintain aspect ratio
-  // This ensures blocks scale proportionally with the displayed image
-  const scale = containerWidth / originalWidth;
   
-  // Block bounds diagnostic
-  console.log('=== BLOCK BOUNDS DEBUG ===');
-  console.log('Image height:', originalHeight);
+  console.log('=== OVERLAY ===');
+  console.log('Scale:', scale);
+  console.log('Container:', containerWidth, '×', containerHeight);
+  
   blocks.forEach(b => {
-    console.log(`${b.name}: y=${b.bounds.y}, height=${b.bounds.height}, bottom=${b.bounds.y + b.bounds.height}`);
+    const scaledY = b.bounds.y * scale;
+    const scaledH = b.bounds.height * scale;
+    console.log(`${b.name}: y=${b.bounds.y}→${scaledY.toFixed(0)}, h=${b.bounds.height}→${scaledH.toFixed(0)}`);
   });
-  const maxBottom = Math.max(...blocks.map(b => b.bounds.y + b.bounds.height));
-  console.log('Max block bottom:', maxBottom);
-  console.log('Coverage:', ((maxBottom / originalHeight) * 100).toFixed(1) + '%');
 
   return (
-    <div 
+    <div
       className="absolute top-0 left-0 pointer-events-none"
-      style={{ 
+      style={{
         width: containerWidth,
-        height: containerHeight 
+        height: containerHeight,
       }}
     >
       {blocks.map((block) => {
@@ -47,7 +42,12 @@ export const BlockOverlay = ({
         const isImage = block.type === 'image';
         const isFooter = (block as any).isFooter;
         
-        // Color based on type: RED for image, BLUE for code, PURPLE for footer
+        // Scale ALL coordinates by the same factor
+        const left = block.bounds.x * scale;
+        const top = block.bounds.y * scale;
+        const width = block.bounds.width * scale;
+        const height = block.bounds.height * scale;
+        
         const colorClasses = isFooter
           ? 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30'
           : isImage
@@ -60,18 +60,8 @@ export const BlockOverlay = ({
             ? 'ring-2 ring-offset-2 ring-red-500 border-red-500 bg-red-500/25'
             : 'ring-2 ring-offset-2 ring-blue-500 border-blue-500 bg-blue-500/25';
 
-        const labelBg = isFooter
-          ? 'bg-purple-600'
-          : isImage
-            ? 'bg-red-600'
-            : 'bg-blue-600';
-
-        const scaledHeight = block.bounds.height * scale;
-        const scaledTop = block.bounds.y * scale;
-        const scaledLeft = block.bounds.x * scale;
-        const scaledWidth = block.bounds.width * scale;
-        
-        const labelPosition = scaledHeight > 40 ? 'top-2 left-2' : '-top-6 left-0';
+        const labelBg = isFooter ? 'bg-purple-600' : isImage ? 'bg-red-600' : 'bg-blue-600';
+        const labelPosition = height > 40 ? 'top-2 left-2' : '-top-6 left-0';
         
         return (
           <div
@@ -83,10 +73,10 @@ export const BlockOverlay = ({
               isSelected && selectedClasses
             )}
             style={{
-              left: scaledLeft,
-              top: scaledTop,
-              width: scaledWidth,
-              height: scaledHeight,
+              left: `${left}px`,
+              top: `${top}px`,
+              width: `${width}px`,
+              height: `${height}px`,
             }}
           >
             <div className={cn(
