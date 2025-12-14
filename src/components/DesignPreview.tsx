@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { BlockOverlay } from './BlockOverlay';
 import type { EmailBlock } from '@/types/email-blocks';
 
@@ -24,33 +24,36 @@ export const DesignPreview = ({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const updateDimensions = () => {
+    // Double RAF ensures layout is complete before measuring
     requestAnimationFrame(() => {
-      if (imageRef.current && containerRef.current) {
-        console.log('=== DIMENSION DEBUG ===');
-        console.log('Image natural:', imageRef.current.naturalWidth, 'x', imageRef.current.naturalHeight);
-        console.log('Image client:', imageRef.current.clientWidth, 'x', imageRef.current.clientHeight);
-        console.log('Image getBoundingClientRect:', imageRef.current.getBoundingClientRect());
-        console.log('Container client:', containerRef.current.clientWidth, 'x', containerRef.current.clientHeight);
-        console.log('Container getBoundingClientRect:', containerRef.current.getBoundingClientRect());
-        setDimensions({
-          width: imageRef.current.clientWidth,
-          height: imageRef.current.clientHeight,
-        });
-      }
+      requestAnimationFrame(() => {
+        if (imageRef.current) {
+          console.log('=== DIMENSION DEBUG ===');
+          console.log('Image natural:', imageRef.current.naturalWidth, 'x', imageRef.current.naturalHeight);
+          console.log('Image client:', imageRef.current.clientWidth, 'x', imageRef.current.clientHeight);
+          console.log('Scale:', imageRef.current.clientWidth / imageRef.current.naturalWidth);
+          setDimensions({
+            width: imageRef.current.clientWidth,
+            height: imageRef.current.clientHeight,
+          });
+        }
+      });
     });
   };
 
+  // Observe the image directly for resize changes
   useEffect(() => {
-    const observer = new ResizeObserver(updateDimensions);
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    const img = imageRef.current;
+    if (!img) return;
+
+    const observer = new ResizeObserver(() => updateDimensions());
+    observer.observe(img);
     return () => observer.disconnect();
   }, []);
 
-  // Handle cached images that are already loaded
-  useEffect(() => {
-    if (imageRef.current?.complete) {
+  // Handle cached images - useLayoutEffect prevents flash
+  useLayoutEffect(() => {
+    if (imageRef.current?.complete && imageRef.current?.naturalWidth > 0) {
       updateDimensions();
     }
   }, [imageUrl]);
