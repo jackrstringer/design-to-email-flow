@@ -148,79 +148,49 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
     }
 
     // ============================================
-    // VALIDATE AND NORMALIZE BLOCKS
+    // VALIDATE AND NORMALIZE BLOCKS (SIMPLE VERSION)
+    // - Trust AI coordinates as-is
+    // - Only clamp to image bounds
+    // - Do NOT rescale or force coverage/contiguity
     // ============================================
     const rawBlocks = parsed.blocks || [];
-    
-    // Calculate coverage
-    let maxBottom = 0;
-    for (const block of rawBlocks) {
-      const bottom = (block.bounds?.y ?? 0) + (block.bounds?.height ?? 0);
-      if (bottom > maxBottom) maxBottom = bottom;
-    }
-    
-    const coverage = maxBottom / height;
-    console.log(`AI Coverage: ${(coverage * 100).toFixed(1)}% (max bottom: ${maxBottom} of ${height})`);
-    
-    // ============================================
-    // SCALE COORDINATES IF AI ANALYZED RESIZED IMAGE
-    // If AI's max bottom is significantly less than our height,
-    // the AI analyzed a smaller version of the image
-    // ============================================
-    let scaleY = 1.0;
-    if (maxBottom > 0 && maxBottom < height * 0.95) {
-      // AI analyzed a smaller image - scale up
-      scaleY = height / maxBottom;
-      console.log(`SCALING: AI analyzed smaller image. Scale factor: ${scaleY.toFixed(3)}`);
-    } else if (maxBottom > height * 1.05) {
-      // AI exceeded bounds - scale down
-      scaleY = height / maxBottom;
-      console.log(`CLAMPING: AI exceeded bounds. Scale factor: ${scaleY.toFixed(3)}`);
-    }
 
     const blocks = rawBlocks
       .map((block: any, index: number) => {
-        const rawY = block.bounds?.y ?? 0;
-        const rawHeight = block.bounds?.height ?? 50;
-        
-        // Apply scale
-        let y = Math.round(rawY * scaleY);
-        let h = Math.round(rawHeight * scaleY);
-        
-        // Clamp to image bounds
-        y = Math.max(0, Math.min(y, height - 20));
-        h = Math.max(20, Math.min(h, height - y));
+        const rawX = typeof block.bounds?.x === 'number' ? block.bounds.x : 0;
+        const rawY = typeof block.bounds?.y === 'number' ? block.bounds.y : 0;
+        const rawWidth = typeof block.bounds?.width === 'number' ? block.bounds.width : width;
+        const rawHeight = typeof block.bounds?.height === 'number' ? block.bounds.height : 50;
 
-        const isFooterCandidate = Boolean(block.isFooter);
-        const startFrac = y / height;
-        const heightFrac = h / height;
-        
-        // Footer must start in bottom 40% and not span more than 50%
-        const saneFooter = isFooterCandidate && startFrac > 0.6 && heightFrac < 0.5;
+        // Clamp into image space without changing relative geometry
+        const x = Math.max(0, Math.min(rawX, width));
+        const y = Math.max(0, Math.min(rawY, height));
+        const w = Math.max(1, Math.min(rawWidth, width - x));
+        const h = Math.max(10, Math.min(rawHeight, height - y));
 
         return {
           id: block.id || `block-${index}`,
           name: block.name || `Block ${index + 1}`,
           type: block.type === 'image' ? 'image' : 'code',
           bounds: {
-            x: 0,
+            x,
             y,
-            width,
+            width: w,
             height: h,
           },
           suggestedLink: block.suggestedLink || '',
           altText: block.altText || '',
-          isFooter: saneFooter,
+          isFooter: Boolean(block.isFooter),
         };
       })
       .sort((a: any, b: any) => a.bounds.y - b.bounds.y);
 
-    // Log final blocks
+    // Log final blocks for debugging
     console.log('Final blocks:');
     blocks.forEach((b: any) => {
       console.log(`  ${b.name}: y=${b.bounds.y}, h=${b.bounds.height}, bottom=${b.bounds.y + b.bounds.height}`);
     });
-    
+
     const finalMaxBottom = Math.max(...blocks.map((b: any) => b.bounds.y + b.bounds.height));
     console.log(`Final coverage: ${((finalMaxBottom / height) * 100).toFixed(1)}%`);
 
