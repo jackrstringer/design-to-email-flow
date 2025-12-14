@@ -76,9 +76,15 @@ ${isFirstCampaign ? `- IMPORTANT: This is the FIRST campaign for this brand. Ide
 - Footer typically includes: brand logo, navigation links, social media icons, copyright text
 - The footer usually starts after the main content and extends to the bottom` : '- Footer detection not needed for this analysis'}
 
+## CRITICAL - OBSERVED DIMENSIONS:
+The image may have been resized before you see it. You MUST report the ACTUAL dimensions of the image you are analyzing.
+Look at the image and determine its TRUE width and height in pixels as you observe it.
+
 ## Output Format:
 Return ONLY valid JSON with this structure:
 {
+  "observedWidth": <the actual width in pixels of the image you see>,
+  "observedHeight": <the actual height in pixels of the image you see>,
   "detectedBrand": {
     "url": "example.com",
     "name": "Example Company"
@@ -88,7 +94,7 @@ Return ONLY valid JSON with this structure:
       "id": "header-logo",
       "name": "Header Logo",
       "type": "image",
-      "bounds": { "x": 0, "y": 0, "width": ${width}, "height": 100 },
+      "bounds": { "x": 0, "y": 0, "width": <observed width>, "height": 100 },
       "suggestedLink": "https://brand.com",
       "altText": "Brand logo",
       "isFooter": false
@@ -96,7 +102,10 @@ Return ONLY valid JSON with this structure:
   ]
 }
 
-IMPORTANT: Return ONLY the JSON object. No markdown, no explanations, no code blocks.`;
+IMPORTANT: 
+- The "observedWidth" and "observedHeight" should be the dimensions of the image AS YOU SEE IT
+- All block bounds should use coordinates relative to the image you observe
+- Return ONLY the JSON object. No markdown, no explanations, no code blocks.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -179,17 +188,28 @@ Return both the detected brand info AND blocks as JSON.`,
       console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
     }
 
-    // Validate and normalize blocks
+    // Get observed dimensions from AI response (what Gemini actually analyzed)
+    const observedWidth = parsed.observedWidth || width;
+    const observedHeight = parsed.observedHeight || height;
+    
+    // Calculate scale factors to map from observed dimensions to original dimensions
+    const scaleX = width / observedWidth;
+    const scaleY = height / observedHeight;
+    
+    console.log(`Image scaling: observed ${observedWidth}x${observedHeight} → original ${width}x${height}`);
+    console.log(`Scale factors: X=${scaleX.toFixed(3)}, Y=${scaleY.toFixed(3)}`);
+
+    // Validate, normalize, and SCALE blocks to original dimensions
     const blocks = (parsed.blocks || [])
       .map((block: any, index: number) => ({
         id: block.id || `block-${index}`,
         name: block.name || `Block ${index + 1}`,
         type: block.type === 'image' ? 'image' : 'code',
         bounds: {
-          x: Math.max(0, Math.round(block.bounds?.x || 0)),
-          y: Math.max(0, Math.round(block.bounds?.y || 0)),
-          width: Math.min(width, Math.round(block.bounds?.width || width)),
-          height: Math.max(20, Math.round(block.bounds?.height || 50)),
+          x: Math.max(0, Math.round((block.bounds?.x || 0) * scaleX)),
+          y: Math.max(0, Math.round((block.bounds?.y || 0) * scaleY)),
+          width: Math.min(width, Math.round((block.bounds?.width || observedWidth) * scaleX)),
+          height: Math.max(20, Math.round((block.bounds?.height || 50) * scaleY)),
         },
         suggestedLink: block.suggestedLink || '',
         altText: block.altText || '',
