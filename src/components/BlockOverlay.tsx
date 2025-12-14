@@ -37,23 +37,51 @@ export const BlockOverlay = ({
         height: containerHeight,
       }}
     >
+      {/* Debug horizontal lines at block boundaries */}
+      {blocks.map((block) => {
+        const top = block.bounds.y * scale;
+        const bottom = (block.bounds.y + block.bounds.height) * scale;
+        return (
+          <>
+            <div
+              key={`${block.id}-top-line`}
+              className="absolute left-0 right-0 border-t border-dashed border-yellow-400/70 pointer-events-none"
+              style={{ top }}
+            >
+              <span className="absolute left-1 -top-3 text-[9px] bg-black/70 text-white px-1 rounded">
+                y={Math.round(block.bounds.y)}
+              </span>
+            </div>
+            <div
+              key={`${block.id}-bottom-line`}
+              className="absolute left-0 right-0 border-t border-dashed border-yellow-400/40 pointer-events-none"
+              style={{ top: bottom }}
+            >
+              <span className="absolute left-1 -top-3 text-[9px] bg-black/50 text-white px-1 rounded">
+                bottom={Math.round(block.bounds.y + block.bounds.height)}
+              </span>
+            </div>
+          </>
+        );
+      })}
+
       {blocks.map((block) => {
         const isSelected = selectedBlockId === block.id;
         const isImage = block.type === 'image';
         const isFooter = (block as any).isFooter;
-        
+
         // Scale ALL coordinates by the same factor
         const left = block.bounds.x * scale;
         const top = block.bounds.y * scale;
         const width = block.bounds.width * scale;
         const height = block.bounds.height * scale;
-        
+
         const colorClasses = isFooter
           ? 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30'
           : isImage
             ? 'bg-red-500/20 border-red-500 hover:bg-red-500/30'
             : 'bg-blue-500/20 border-blue-500 hover:bg-blue-500/30';
-        
+
         const selectedClasses = isFooter
           ? 'ring-2 ring-offset-2 ring-purple-500 border-purple-500 bg-purple-500/25'
           : isImage
@@ -61,9 +89,8 @@ export const BlockOverlay = ({
             : 'ring-2 ring-offset-2 ring-blue-500 border-blue-500 bg-blue-500/25';
 
         const labelBg = isFooter ? 'bg-purple-600' : isImage ? 'bg-red-600' : 'bg-blue-600';
-        // Always position label inside the block to prevent escaping container
         const labelPosition = 'top-1 left-1';
-        
+
         return (
           <div
             key={block.id}
@@ -80,11 +107,13 @@ export const BlockOverlay = ({
               height: `${height}px`,
             }}
           >
-            <div className={cn(
-              'absolute px-2 py-0.5 text-xs font-medium rounded text-white whitespace-nowrap z-10',
-              labelBg,
-              labelPosition
-            )}>
+            <div
+              className={cn(
+                'absolute px-2 py-0.5 text-xs font-medium rounded text-white whitespace-nowrap z-10',
+                labelBg,
+                labelPosition
+              )}
+            >
               {block.name}
               <span className="ml-1.5 opacity-75">
                 {isFooter ? '• Footer' : isImage ? '• Image' : '• Code'}
