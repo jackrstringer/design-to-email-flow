@@ -32,40 +32,17 @@ serve(async (req) => {
     const mediaType = dataUrlMatch[1];
     const base64Data = dataUrlMatch[2];
 
-    const systemPrompt = `You are an expert email template analyst.
+    const userPrompt = `Break this email down by section/element. The footer can be multiple elements (logo, nav, socials, disclaimer).
 
-## YOUR TASK
-Break down this email into horizontal sections/elements from top to bottom.
-For each section, identify where it starts and ends as a PERCENTAGE (0-100) of the total height.
-0 = very top of the email, 100 = very bottom.
+For each section, identify at which point (0-100, where 100 is the bottom) on the y axis it starts and ends.
 
-## SECTION TYPES
-- "image": Photos, graphics, text overlaid on images, logos, icons, complex visual elements, gradients
-- "code": Plain solid color backgrounds with simple text/buttons that can be recreated in HTML
+Also identify:
+- The brand name and URL
+- Whether each section is "image" (photos, graphics, complex visuals) or "code" (plain solid backgrounds with text/buttons)
+${isFirstCampaign ? '- Mark footer sections with isFooter: true' : ''}
 
-BE CONSERVATIVE: When in doubt, use "image". It's safer for email rendering.
-
-## BRAND DETECTION
-Look for the brand's website URL and company name (usually in header or footer).
-
-## FOOTER DETECTION
-${isFirstCampaign ? `Mark footer sections with "isFooter": true. Footer typically includes logo, nav links, social icons, legal/disclaimer text.` : 'Footer detection not needed.'}
-
-## OUTPUT FORMAT
-Return ONLY valid JSON (no markdown):
-{
-  "detectedBrand": { "url": "example.com", "name": "Example" },
-  "blocks": [
-    { "id": "header_logo", "name": "Header Logo", "type": "image", "yStart": 0, "yEnd": 5, "altText": "", "isFooter": false },
-    { "id": "headline", "name": "Headline", "type": "image", "yStart": 5, "yEnd": 14, "altText": "", "isFooter": false }
-  ]
-}
-
-RULES:
-- First block must start at yStart: 0
-- Last block must end at yEnd: 100
-- Blocks must be contiguous (no gaps)
-- yStart and yEnd are percentages (0-100)`;
+Return JSON only:
+{"detectedBrand":{"url":"","name":""},"blocks":[{"id":"","name":"","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -77,7 +54,6 @@ RULES:
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
-        system: systemPrompt,
         messages: [
           {
             role: 'user',
@@ -92,7 +68,7 @@ RULES:
               },
               {
                 type: 'text',
-                text: `Break down this email into sections. For each section, give yStart and yEnd as percentages (0-100). Return JSON only.`,
+                text: userPrompt,
               },
             ],
           },
