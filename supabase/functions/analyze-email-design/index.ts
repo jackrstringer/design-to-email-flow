@@ -32,52 +32,40 @@ serve(async (req) => {
     const mediaType = dataUrlMatch[1];
     const base64Data = dataUrlMatch[2];
 
-    const systemPrompt = `You are an expert email template analyst with PRECISE pixel-level accuracy.
-
-## IMAGE DIMENSIONS
-The image is EXACTLY ${width} pixels wide and ${height} pixels tall.
-Coordinate system: (0,0) is TOP-LEFT. X increases RIGHT. Y increases DOWN.
+    const systemPrompt = `You are an expert email template analyst.
 
 ## YOUR TASK
-Identify all distinct HORIZONTAL FULL-WIDTH SECTIONS from TOP to BOTTOM.
+Break down this email into horizontal sections/elements from top to bottom.
+For each section, identify where it starts and ends as a PERCENTAGE (0-100) of the total height.
+0 = very top of the email, 100 = very bottom.
 
-## CRITICAL REQUIREMENTS - READ CAREFULLY
-1. FIRST block MUST start at y=0
-2. LAST block MUST end at y=${height}
-3. Blocks must NOT overlap and must be CONTIGUOUS (no gaps)
-4. Each block spans full width: x=0, width=${width}
-5. Measure PRECISELY where visual content changes - look at actual pixel boundaries
-
-## BLOCK TYPE RULES
+## SECTION TYPES
 - "image": Photos, graphics, text overlaid on images, logos, icons, complex visual elements, gradients
-- "code": ONLY plain solid color backgrounds with simple text/buttons that can be recreated in HTML
+- "code": Plain solid color backgrounds with simple text/buttons that can be recreated in HTML
 
 BE CONSERVATIVE: When in doubt, use "image". It's safer for email rendering.
 
 ## BRAND DETECTION
-Look for brand's website URL and company name (usually in header or footer).
+Look for the brand's website URL and company name (usually in header or footer).
 
 ## FOOTER DETECTION
-${isFirstCampaign ? `Mark footer sections with "isFooter": true. Footer typically includes logo, nav links, social icons, legal text.` : 'Footer detection not needed.'}
+${isFirstCampaign ? `Mark footer sections with "isFooter": true. Footer typically includes logo, nav links, social icons, legal/disclaimer text.` : 'Footer detection not needed.'}
 
 ## OUTPUT FORMAT
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown):
 {
-  "detectedBrand": { "url": "example.com", "name": "Example Company" },
+  "detectedBrand": { "url": "example.com", "name": "Example" },
   "blocks": [
-    {
-      "id": "unique_id",
-      "name": "Descriptive Name",
-      "type": "image",
-      "bounds": { "x": 0, "y": 0, "width": ${width}, "height": 100 },
-      "suggestedLink": "",
-      "altText": "",
-      "isFooter": false
-    }
+    { "id": "header_logo", "name": "Header Logo", "type": "image", "yStart": 0, "yEnd": 5, "altText": "", "isFooter": false },
+    { "id": "headline", "name": "Headline", "type": "image", "yStart": 5, "yEnd": 14, "altText": "", "isFooter": false }
   ]
 }
 
-VALIDATION: Sum of all block heights MUST equal ${height}. Count pixels carefully.`;
+RULES:
+- First block must start at yStart: 0
+- Last block must end at yEnd: 100
+- Blocks must be contiguous (no gaps)
+- yStart and yEnd are percentages (0-100)`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -104,7 +92,7 @@ VALIDATION: Sum of all block heights MUST equal ${height}. Count pixels carefull
               },
               {
                 type: 'text',
-                text: `Analyze this ${width}×${height} pixel email design. Identify ALL sections from y=0 to y=${height}. Be PRECISE with pixel measurements. Return JSON only.`,
+                text: `Break down this email into sections. For each section, give yStart and yEnd as percentages (0-100). Return JSON only.`,
               },
             ],
           },
@@ -155,27 +143,28 @@ VALIDATION: Sum of all block heights MUST equal ${height}. Count pixels carefull
       console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
     }
 
-    // Validate and normalize blocks
+    // Convert percentage-based blocks to pixel coordinates
     const rawBlocks = parsed.blocks || [];
 
     const blocks = rawBlocks
       .map((block: any, index: number) => {
-        const rawX = typeof block.bounds?.x === 'number' ? block.bounds.x : 0;
-        const rawY = typeof block.bounds?.y === 'number' ? block.bounds.y : 0;
-        const rawWidth = typeof block.bounds?.width === 'number' ? block.bounds.width : width;
-        const rawHeight = typeof block.bounds?.height === 'number' ? block.bounds.height : 50;
-
-        // Clamp into image space
-        const x = Math.max(0, Math.min(rawX, width));
-        const y = Math.max(0, Math.min(rawY, height));
-        const w = Math.max(1, Math.min(rawWidth, width - x));
-        const h = Math.max(10, Math.min(rawHeight, height - y));
+        const yStartPct = typeof block.yStart === 'number' ? block.yStart : 0;
+        const yEndPct = typeof block.yEnd === 'number' ? block.yEnd : 100;
+        
+        // Convert percentages to pixels
+        const y = Math.round((yStartPct / 100) * height);
+        const h = Math.round(((yEndPct - yStartPct) / 100) * height);
 
         return {
           id: block.id || `block-${index}`,
           name: block.name || `Block ${index + 1}`,
           type: block.type === 'image' ? 'image' : 'code',
-          bounds: { x, y, width: w, height: h },
+          bounds: { 
+            x: 0, 
+            y: Math.max(0, y), 
+            width: width, 
+            height: Math.max(10, h) 
+          },
           suggestedLink: block.suggestedLink || '',
           altText: block.altText || '',
           isFooter: Boolean(block.isFooter),
