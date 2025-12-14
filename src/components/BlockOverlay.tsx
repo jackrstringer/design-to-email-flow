@@ -24,13 +24,15 @@ export const BlockOverlay = ({
   // This ensures blocks scale proportionally with the displayed image
   const scale = containerWidth / originalWidth;
   
-  console.log('BlockOverlay scaling:', {
-    containerWidth,
-    containerHeight,
-    originalWidth,
-    originalHeight,
-    scale,
+  // Block bounds diagnostic
+  console.log('=== BLOCK BOUNDS DEBUG ===');
+  console.log('Image height:', originalHeight);
+  blocks.forEach(b => {
+    console.log(`${b.name}: y=${b.bounds.y}, height=${b.bounds.height}, bottom=${b.bounds.y + b.bounds.height}`);
   });
+  const maxBottom = Math.max(...blocks.map(b => b.bounds.y + b.bounds.height));
+  console.log('Max block bottom:', maxBottom);
+  console.log('Coverage:', ((maxBottom / originalHeight) * 100).toFixed(1) + '%');
 
   return (
     <div 
