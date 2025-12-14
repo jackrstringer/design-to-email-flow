@@ -61,7 +61,8 @@ export const BlockOverlay = ({
             : 'ring-2 ring-offset-2 ring-blue-500 border-blue-500 bg-blue-500/25';
 
         const labelBg = isFooter ? 'bg-purple-600' : isImage ? 'bg-red-600' : 'bg-blue-600';
-        const labelPosition = height > 40 ? 'top-2 left-2' : '-top-6 left-0';
+        // Always position label inside the block to prevent escaping container
+        const labelPosition = 'top-1 left-1';
         
         return (
           <div
