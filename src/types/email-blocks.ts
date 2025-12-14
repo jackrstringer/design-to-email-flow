@@ -15,8 +15,8 @@ export interface EmailBlock {
 
 export interface AnalysisResult {
   blocks: EmailBlock[];
-  originalWidth: number;
-  originalHeight: number;
+  analyzedWidth: number;
+  analyzedHeight: number;
   hasFooter?: boolean;
   footerStartIndex?: number;
 }

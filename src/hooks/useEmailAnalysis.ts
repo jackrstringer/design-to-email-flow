@@ -46,7 +46,7 @@ export const useEmailAnalysis = () => {
 
       const result = data as AnalysisResultWithBrand;
       setBlocks(result.blocks);
-      setOriginalDimensions({ width: result.originalWidth, height: result.originalHeight });
+      setOriginalDimensions({ width: result.analyzedWidth, height: result.analyzedHeight });
       setDetectedBrand(result.detectedBrand);
       
       if (result.detectedBrand) {
