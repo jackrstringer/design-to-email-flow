@@ -190,79 +190,58 @@ Return both the detected brand info AND blocks as JSON.`,
       console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
     }
 
-    // CRITICAL FIX: Gemini resizes large images internally but echoes back our provided dimensions.
-    // We CANNOT trust observedWidth/observedHeight from the AI response.
-    // Instead, infer the actual analyzed height from block coverage.
-    
+    // SYSTEMIC POSITIONING: map startFraction/endFraction (0–1) to pixel bounds
     const rawBlocks = parsed.blocks || [];
-    
-    // Find the maximum Y extent of all blocks (bottom of lowest block)
-    let maxBlockBottom = 0;
-    for (const block of rawBlocks) {
-      const blockBottom = (block.bounds?.y ?? 0) + (block.bounds?.height ?? 0);
-      if (blockBottom > maxBlockBottom) {
-        maxBlockBottom = blockBottom;
-      }
-    }
-    
-    console.log(`Raw block analysis: maxBlockBottom=${maxBlockBottom}, originalHeight=${height}`);
-    
-    // Determine if scaling is needed:
-    // If the max block bottom is significantly less than original height, 
-    // Gemini analyzed a smaller image
-    let inferredScaleY = 1.0;
-    const scaleX = 1.0; // Width is rarely compressed by Gemini
-    
-    if (maxBlockBottom > 0 && maxBlockBottom < height * 0.95) {
-      // Blocks don't reach near the bottom - Gemini analyzed a smaller image
-      inferredScaleY = height / maxBlockBottom;
-      console.log(`SCALING DETECTED: Gemini analyzed ~${maxBlockBottom}px tall image, scaling by ${inferredScaleY.toFixed(3)}x`);
-    } else if (maxBlockBottom > height * 1.05) {
-      // Blocks extend beyond original - unlikely but handle gracefully
-      inferredScaleY = height / maxBlockBottom;
-      console.log(`SCALING CORRECTION: Blocks exceed original, scaling by ${inferredScaleY.toFixed(3)}x`);
-    } else {
-      console.log(`No scaling needed: blocks cover ${((maxBlockBottom / height) * 100).toFixed(1)}% of original height`);
-    }
 
-    // Validate, normalize, and SCALE blocks to original dimensions
+    const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
     const blocks = rawBlocks
       .map((block: any, index: number) => {
-        const rawX = block.bounds?.x ?? 0;
-        const rawY = block.bounds?.y ?? 0;
-        const rawWidth = block.bounds?.width ?? width;
-        const rawHeight = block.bounds?.height ?? 50;
+        // Prefer explicit fractions; fall back to any legacy pixel bounds if present
+        let startFraction: number | undefined =
+          typeof block.startFraction === 'number' ? block.startFraction : undefined;
+        let endFraction: number | undefined =
+          typeof block.endFraction === 'number' ? block.endFraction : undefined;
 
-        const scaledX = Math.max(0, Math.round(rawX * scaleX));
-        const scaledY = Math.max(0, Math.round(rawY * inferredScaleY));
-        const scaledWidth = Math.min(width, Math.round(rawWidth * scaleX));
-        const scaledHeight = Math.max(20, Math.round(rawHeight * inferredScaleY));
+        // Legacy fallback: derive fractions from pixel y/height if AI still sends bounds
+        if ((startFraction === undefined || endFraction === undefined) && block.bounds) {
+          const legacyY = block.bounds.y ?? 0;
+          const legacyH = block.bounds.height ?? height;
+          startFraction = legacyY / height;
+          endFraction = (legacyY + legacyH) / height;
+        }
 
-        // Geometric sanity check for footer blocks
-        const startFraction = scaledY / height;
-        const heightFraction = scaledHeight / height;
+        // Final clamp and safety adjustments
+        const safeStart = clamp01(startFraction ?? 0);
+        const safeEnd = clamp01(endFraction ?? safeStart + 0.01);
+        const normalizedEnd = safeEnd <= safeStart ? clamp01(safeStart + 0.01) : safeEnd;
+
+        const pixelY = Math.round(safeStart * height);
+        const pixelHeight = Math.max(20, Math.round((normalizedEnd - safeStart) * height));
+
         const isFooterCandidate = Boolean(block.isFooter);
+        const startFractionForFooter = pixelY / height;
+        const heightFractionForFooter = pixelHeight / height;
         const saneFooter =
           isFooterCandidate &&
-          startFraction > 0.6 && // starts in bottom 40%
-          heightFraction < 0.5;   // spans less than half the email
+          startFractionForFooter > 0.6 &&
+          heightFractionForFooter < 0.5;
 
         return {
           id: block.id || `block-${index}`,
           name: block.name || `Block ${index + 1}`,
           type: block.type === 'image' ? 'image' : 'code',
           bounds: {
-            x: scaledX,
-            y: scaledY,
-            width: scaledWidth,
-            height: scaledHeight,
+            x: 0,
+            y: pixelY,
+            width,
+            height: pixelHeight,
           },
           suggestedLink: block.suggestedLink || '',
           altText: block.altText || '',
           isFooter: saneFooter,
         };
       })
-      // Sort by Y position (top to bottom)
       .sort((a: any, b: any) => a.bounds.y - b.bounds.y);
 
     // Identify footer blocks (all blocks marked as footer, or last few blocks if none marked)
