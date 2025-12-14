@@ -28,10 +28,23 @@ export const DesignPreview = ({
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (imageRef.current) {
-          console.log('=== DIMENSION DEBUG ===');
-          console.log('Image natural:', imageRef.current.naturalWidth, 'x', imageRef.current.naturalHeight);
-          console.log('Image client:', imageRef.current.clientWidth, 'x', imageRef.current.clientHeight);
-          console.log('Scale:', imageRef.current.clientWidth / imageRef.current.naturalWidth);
+          console.log('=== CRITICAL DEBUG ===');
+          console.log('Props originalWidth:', originalWidth);
+          console.log('Props originalHeight:', originalHeight);
+          console.log('Image naturalWidth:', imageRef.current.naturalWidth);
+          console.log('Image naturalHeight:', imageRef.current.naturalHeight);
+          console.log('Image clientWidth:', imageRef.current.clientWidth);
+          console.log('Image clientHeight:', imageRef.current.clientHeight);
+          console.log('Aspect ratio (props):', originalWidth / originalHeight);
+          console.log('Aspect ratio (natural):', imageRef.current.naturalWidth / imageRef.current.naturalHeight);
+          console.log('Aspect ratio (client):', imageRef.current.clientWidth / imageRef.current.clientHeight);
+          
+          // THIS IS THE KEY CHECK:
+          if (originalWidth !== imageRef.current.naturalWidth || 
+              originalHeight !== imageRef.current.naturalHeight) {
+            console.error('!!! MISMATCH: Props do not match actual image dimensions !!!');
+          }
+          
           setDimensions({
             width: imageRef.current.clientWidth,
             height: imageRef.current.clientHeight,
