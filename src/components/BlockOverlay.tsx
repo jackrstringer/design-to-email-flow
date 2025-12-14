@@ -43,10 +43,20 @@ export const BlockOverlay = ({
         const isFooter = (block as any).isFooter;
         
         // Scale ALL coordinates by the same factor
-        const left = block.bounds.x * scale;
-        const top = block.bounds.y * scale;
-        const width = block.bounds.width * scale;
-        const height = block.bounds.height * scale;
+        let left = block.bounds.x * scale;
+        let top = block.bounds.y * scale;
+        let width = block.bounds.width * scale;
+        let height = block.bounds.height * scale;
+
+        // SAFETY GUARD: ensure footer visually stays at the bottom of the layout
+        if (isFooter) {
+          // Force full-width footer near the bottom of the analyzed space
+          left = 0;
+          width = containerWidth;
+          const minFooterTop = containerHeight * 0.6;
+          const maxFooterTop = Math.max(0, containerHeight - height);
+          top = Math.max(minFooterTop, maxFooterTop);
+        }
         
         const colorClasses = isFooter
           ? 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30'
