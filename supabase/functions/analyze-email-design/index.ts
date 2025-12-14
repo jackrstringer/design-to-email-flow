@@ -17,54 +17,57 @@ serve(async (req) => {
       throw new Error('No image data provided');
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
     console.log(`Analyzing image: ${width}×${height}, isFirstCampaign: ${isFirstCampaign}`);
 
-    // ============================================
-    // SIMPLE, EXPLICIT PROMPT
-    // Tell the AI exactly what coordinate space to use
-    // ============================================
-    const systemPrompt = `You are an expert email template analyst.
+    // Extract base64 and media type from data URL
+    const dataUrlMatch = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!dataUrlMatch) {
+      throw new Error('Invalid image data URL format');
+    }
+    const mediaType = dataUrlMatch[1];
+    const base64Data = dataUrlMatch[2];
+
+    const systemPrompt = `You are an expert email template analyst with PRECISE pixel-level accuracy.
 
 ## IMAGE DIMENSIONS
-The image you are analyzing is EXACTLY ${width} pixels wide and ${height} pixels tall.
-The coordinate system starts at (0,0) in the TOP-LEFT corner.
-X increases going RIGHT. Y increases going DOWN.
+The image is EXACTLY ${width} pixels wide and ${height} pixels tall.
+Coordinate system: (0,0) is TOP-LEFT. X increases RIGHT. Y increases DOWN.
 
 ## YOUR TASK
-Identify all distinct HORIZONTAL FULL-WIDTH SECTIONS in this email from TOP to BOTTOM.
+Identify all distinct HORIZONTAL FULL-WIDTH SECTIONS from TOP to BOTTOM.
 
-## CRITICAL REQUIREMENTS
-1. The FIRST block MUST start at y=0 (the very top)
-2. The LAST block MUST end at y=${height} (the very bottom)
-3. Blocks must NOT overlap
-4. Blocks must be CONTIGUOUS (no gaps between them)
-5. Each block spans the full width: x=0, width=${width}
+## CRITICAL REQUIREMENTS - READ CAREFULLY
+1. FIRST block MUST start at y=0
+2. LAST block MUST end at y=${height}
+3. Blocks must NOT overlap and must be CONTIGUOUS (no gaps)
+4. Each block spans full width: x=0, width=${width}
+5. Measure PRECISELY where visual content changes - look at actual pixel boundaries
 
 ## BLOCK TYPE RULES
-- "image": Photos, graphics, text overlaid on images, logos, icons, complex visual elements
-- "code": Plain solid color backgrounds with simple text/buttons that can be recreated in HTML
+- "image": Photos, graphics, text overlaid on images, logos, icons, complex visual elements, gradients
+- "code": ONLY plain solid color backgrounds with simple text/buttons that can be recreated in HTML
 
-When in doubt, use "image" - it's safer for email rendering.
+BE CONSERVATIVE: When in doubt, use "image". It's safer for email rendering.
 
 ## BRAND DETECTION
-Look for the brand's website URL and company name (usually in header or footer).
+Look for brand's website URL and company name (usually in header or footer).
 
 ## FOOTER DETECTION
-${isFirstCampaign ? `Mark footer sections with "isFooter": true. The footer typically starts after main content and includes logo, nav links, social icons, and legal text.` : 'Footer detection not needed.'}
+${isFirstCampaign ? `Mark footer sections with "isFooter": true. Footer typically includes logo, nav links, social icons, legal text.` : 'Footer detection not needed.'}
 
 ## OUTPUT FORMAT
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "detectedBrand": { "url": "example.com", "name": "Example Company" },
   "blocks": [
     {
-      "id": "header",
-      "name": "Header Logo",
+      "id": "unique_id",
+      "name": "Descriptive Name",
       "type": "image",
       "bounds": { "x": 0, "y": 0, "width": ${width}, "height": 100 },
       "suggestedLink": "",
@@ -74,29 +77,34 @@ Return ONLY valid JSON:
   ]
 }
 
-VALIDATION CHECK: Add up all block heights. The total MUST equal ${height}.
-If your blocks only cover 70% of the image, you are MISSING sections. Try again.`;
+VALIDATION: Sum of all block heights MUST equal ${height}. Count pixels carefully.`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           {
             role: 'user',
             content: [
               {
-                type: 'text',
-                text: `Analyze this ${width}×${height} pixel email design. Identify ALL sections from y=0 to y=${height}. Return JSON with blocks.`,
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64Data,
+                },
               },
               {
-                type: 'image_url',
-                image_url: { url: imageDataUrl },
+                type: 'text',
+                text: `Analyze this ${width}×${height} pixel email design. Identify ALL sections from y=0 to y=${height}. Be PRECISE with pixel measurements. Return JSON only.`,
               },
             ],
           },
@@ -106,7 +114,7 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI Gateway error:', response.status, errorText);
+      console.error('Claude API error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -114,24 +122,24 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      if (response.status === 402) {
+      if (response.status === 401) {
         return new Response(
-          JSON.stringify({ error: 'API credits exhausted.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: 'Invalid API key.' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      throw new Error(`AI analysis failed: ${response.status}`);
+      throw new Error(`Claude API failed: ${response.status} - ${errorText}`);
     }
 
     const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content;
+    const content = aiResponse.content?.[0]?.text;
     
     if (!content) {
-      throw new Error('No response from AI');
+      throw new Error('No response from Claude');
     }
 
-    console.log('AI raw response:', content);
+    console.log('Claude raw response:', content);
 
     // Parse JSON
     let jsonStr = content.trim();
@@ -147,12 +155,7 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
       console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
     }
 
-    // ============================================
-    // VALIDATE AND NORMALIZE BLOCKS (SIMPLE VERSION)
-    // - Trust AI coordinates as-is
-    // - Only clamp to image bounds
-    // - Do NOT rescale or force coverage/contiguity
-    // ============================================
+    // Validate and normalize blocks
     const rawBlocks = parsed.blocks || [];
 
     const blocks = rawBlocks
@@ -162,7 +165,7 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
         const rawWidth = typeof block.bounds?.width === 'number' ? block.bounds.width : width;
         const rawHeight = typeof block.bounds?.height === 'number' ? block.bounds.height : 50;
 
-        // Clamp into image space without changing relative geometry
+        // Clamp into image space
         const x = Math.max(0, Math.min(rawX, width));
         const y = Math.max(0, Math.min(rawY, height));
         const w = Math.max(1, Math.min(rawWidth, width - x));
@@ -172,12 +175,7 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
           id: block.id || `block-${index}`,
           name: block.name || `Block ${index + 1}`,
           type: block.type === 'image' ? 'image' : 'code',
-          bounds: {
-            x,
-            y,
-            width: w,
-            height: h,
-          },
+          bounds: { x, y, width: w, height: h },
           suggestedLink: block.suggestedLink || '',
           altText: block.altText || '',
           isFooter: Boolean(block.isFooter),
@@ -185,7 +183,7 @@ If your blocks only cover 70% of the image, you are MISSING sections. Try again.
       })
       .sort((a: any, b: any) => a.bounds.y - b.bounds.y);
 
-    // Log final blocks for debugging
+    // Log final blocks
     console.log('Final blocks:');
     blocks.forEach((b: any) => {
       console.log(`  ${b.name}: y=${b.bounds.y}, h=${b.bounds.height}, bottom=${b.bounds.y + b.bounds.height}`);
