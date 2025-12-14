@@ -190,33 +190,55 @@ Return both the detected brand info AND blocks as JSON.`,
       console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
     }
 
-    // Get observed dimensions from AI response (what Gemini actually analyzed)
-    const observedWidth = parsed.observedWidth || width;
-    const observedHeight = parsed.observedHeight || height;
+    // CRITICAL FIX: Gemini resizes large images internally but echoes back our provided dimensions.
+    // We CANNOT trust observedWidth/observedHeight from the AI response.
+    // Instead, infer the actual analyzed height from block coverage.
     
-    // Calculate scale factors to map from observed dimensions to original dimensions
-    const scaleX = width / observedWidth;
-    const scaleY = height / observedHeight;
+    const rawBlocks = parsed.blocks || [];
     
-    console.log(`Image scaling: observed ${observedWidth}x${observedHeight} → original ${width}x${height}`);
-    console.log(`Scale factors: X=${scaleX.toFixed(3)}, Y=${scaleY.toFixed(3)}`);
+    // Find the maximum Y extent of all blocks (bottom of lowest block)
+    let maxBlockBottom = 0;
+    for (const block of rawBlocks) {
+      const blockBottom = (block.bounds?.y ?? 0) + (block.bounds?.height ?? 0);
+      if (blockBottom > maxBlockBottom) {
+        maxBlockBottom = blockBottom;
+      }
+    }
+    
+    console.log(`Raw block analysis: maxBlockBottom=${maxBlockBottom}, originalHeight=${height}`);
+    
+    // Determine if scaling is needed:
+    // If the max block bottom is significantly less than original height, 
+    // Gemini analyzed a smaller image
+    let inferredScaleY = 1.0;
+    const scaleX = 1.0; // Width is rarely compressed by Gemini
+    
+    if (maxBlockBottom > 0 && maxBlockBottom < height * 0.95) {
+      // Blocks don't reach near the bottom - Gemini analyzed a smaller image
+      inferredScaleY = height / maxBlockBottom;
+      console.log(`SCALING DETECTED: Gemini analyzed ~${maxBlockBottom}px tall image, scaling by ${inferredScaleY.toFixed(3)}x`);
+    } else if (maxBlockBottom > height * 1.05) {
+      // Blocks extend beyond original - unlikely but handle gracefully
+      inferredScaleY = height / maxBlockBottom;
+      console.log(`SCALING CORRECTION: Blocks exceed original, scaling by ${inferredScaleY.toFixed(3)}x`);
+    } else {
+      console.log(`No scaling needed: blocks cover ${((maxBlockBottom / height) * 100).toFixed(1)}% of original height`);
+    }
 
     // Validate, normalize, and SCALE blocks to original dimensions
-    const blocks = (parsed.blocks || [])
+    const blocks = rawBlocks
       .map((block: any, index: number) => {
         const rawX = block.bounds?.x ?? 0;
         const rawY = block.bounds?.y ?? 0;
-        const rawWidth = block.bounds?.width ?? observedWidth;
+        const rawWidth = block.bounds?.width ?? width;
         const rawHeight = block.bounds?.height ?? 50;
 
         const scaledX = Math.max(0, Math.round(rawX * scaleX));
-        const scaledY = Math.max(0, Math.round(rawY * scaleY));
+        const scaledY = Math.max(0, Math.round(rawY * inferredScaleY));
         const scaledWidth = Math.min(width, Math.round(rawWidth * scaleX));
-        const scaledHeight = Math.max(20, Math.round(rawHeight * scaleY));
+        const scaledHeight = Math.max(20, Math.round(rawHeight * inferredScaleY));
 
-        // Geometric sanity check for footer blocks: they should only live near the bottom
-        // and should not span most of the email height. This avoids huge mid‑page areas
-        // being mis-labelled as footers.
+        // Geometric sanity check for footer blocks
         const startFraction = scaledY / height;
         const heightFraction = scaledHeight / height;
         const isFooterCandidate = Boolean(block.isFooter);
