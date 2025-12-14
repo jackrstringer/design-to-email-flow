@@ -18,8 +18,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<OverlayTest />} />
-          <Route path="/converter" element={<Index />} />
+          <Route path="/" element={<Index />} />
           <Route path="/brands" element={<Brands />} />
           <Route path="/brands/:id" element={<BrandDetail />} />
           <Route path="/test-overlay" element={<OverlayTest />} />
