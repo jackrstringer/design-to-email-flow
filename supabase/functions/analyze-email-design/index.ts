@@ -72,9 +72,11 @@ const systemPrompt = `You are an expert email template analyst. Your job is to:
 - Each block's width should be approximately the full image width (${width}px)
 
 ### Footer Detection:
-${isFirstCampaign ? `- IMPORTANT: This is the FIRST campaign for this brand. Identify the FOOTER section(s) and mark them with "isFooter": true
-- Footer typically includes: brand logo, navigation links, social media icons, copyright text
-- The footer usually starts after the main content and extends to the bottom` : '- Footer detection not needed for this analysis'}
+${isFirstCampaign ? `- IMPORTANT: This is the FIRST campaign for this brand.
+- You MUST break the footer into its LOGICAL SUB-SECTIONS as SEPARATE BLOCKS (e.g. "Footer Logo", "Footer Navigation Links", "Social Media Icons", "Copyright and Disclaimer").
+- DO NOT merge multiple distinct areas (CTA sections, journey timelines, hero content) into a single giant footer block.
+- The footer typically only starts AFTER all main content (CTAs, journeys, feature lists) and extends to the very bottom.
+- Mark ONLY true footer sub-sections with "isFooter": true and ensure their bounds match the actual sub-section, not the entire bottom half of the email.` : '- Footer detection not needed for this analysis'}
 
 ## CRITICAL - OBSERVED DIMENSIONS:
 The image may have been resized before you see it. You MUST report the ACTUAL dimensions of the image you are analyzing.
