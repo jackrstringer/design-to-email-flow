@@ -201,20 +201,43 @@ Return both the detected brand info AND blocks as JSON.`,
 
     // Validate, normalize, and SCALE blocks to original dimensions
     const blocks = (parsed.blocks || [])
-      .map((block: any, index: number) => ({
-        id: block.id || `block-${index}`,
-        name: block.name || `Block ${index + 1}`,
-        type: block.type === 'image' ? 'image' : 'code',
-        bounds: {
-          x: Math.max(0, Math.round((block.bounds?.x || 0) * scaleX)),
-          y: Math.max(0, Math.round((block.bounds?.y || 0) * scaleY)),
-          width: Math.min(width, Math.round((block.bounds?.width || observedWidth) * scaleX)),
-          height: Math.max(20, Math.round((block.bounds?.height || 50) * scaleY)),
-        },
-        suggestedLink: block.suggestedLink || '',
-        altText: block.altText || '',
-        isFooter: Boolean(block.isFooter),
-      }))
+      .map((block: any, index: number) => {
+        const rawX = block.bounds?.x ?? 0;
+        const rawY = block.bounds?.y ?? 0;
+        const rawWidth = block.bounds?.width ?? observedWidth;
+        const rawHeight = block.bounds?.height ?? 50;
+
+        const scaledX = Math.max(0, Math.round(rawX * scaleX));
+        const scaledY = Math.max(0, Math.round(rawY * scaleY));
+        const scaledWidth = Math.min(width, Math.round(rawWidth * scaleX));
+        const scaledHeight = Math.max(20, Math.round(rawHeight * scaleY));
+
+        // Geometric sanity check for footer blocks: they should only live near the bottom
+        // and should not span most of the email height. This avoids huge mid‑page areas
+        // being mis-labelled as footers.
+        const startFraction = scaledY / height;
+        const heightFraction = scaledHeight / height;
+        const isFooterCandidate = Boolean(block.isFooter);
+        const saneFooter =
+          isFooterCandidate &&
+          startFraction > 0.6 && // starts in bottom 40%
+          heightFraction < 0.5;   // spans less than half the email
+
+        return {
+          id: block.id || `block-${index}`,
+          name: block.name || `Block ${index + 1}`,
+          type: block.type === 'image' ? 'image' : 'code',
+          bounds: {
+            x: scaledX,
+            y: scaledY,
+            width: scaledWidth,
+            height: scaledHeight,
+          },
+          suggestedLink: block.suggestedLink || '',
+          altText: block.altText || '',
+          isFooter: saneFooter,
+        };
+      })
       // Sort by Y position (top to bottom)
       .sort((a: any, b: any) => a.bounds.y - b.bounds.y);
 
