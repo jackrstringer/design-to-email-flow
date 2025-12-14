@@ -1,6 +1,5 @@
-import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
-import { BlockOverlay } from './BlockOverlay';
 import type { EmailBlock } from '@/types/email-blocks';
+import { BlockOverlay } from './BlockOverlay';
 
 interface DesignPreviewProps {
   imageUrl: string;
@@ -11,6 +10,10 @@ interface DesignPreviewProps {
   analyzedHeight: number;
 }
 
+// Simplified, "always correct" overlay system:
+// - Render the image at the exact pixel dimensions used for analysis
+// - Overlay uses the same fixed coordinate space (no runtime measurement)
+// This guarantees perfect alignment regardless of layout/resizing quirks.
 export const DesignPreview = ({
   imageUrl,
   blocks,
@@ -19,62 +22,12 @@ export const DesignPreview = ({
   analyzedWidth,
   analyzedHeight,
 }: DesignPreviewProps) => {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [rendered, setRendered] = useState({ width: 0, height: 0 });
+  const imageCount = blocks.filter((b) => b.type === 'image').length;
+  const codeCount = blocks.filter((b) => b.type === 'code').length;
 
-  // Measure the actual rendered size of the image
-  const measure = useCallback(() => {
-    if (!imgRef.current) return;
-    
-    const img = imgRef.current;
-    const w = img.clientWidth;
-    const h = img.clientHeight;
-    
-    if (w > 0 && h > 0) {
-      console.log('=== IMAGE MEASUREMENT ===');
-      console.log('Natural:', img.naturalWidth, '×', img.naturalHeight);
-      console.log('Rendered:', w, '×', h);
-      console.log('Analyzed at:', analyzedWidth, '×', analyzedHeight);
-      
-      if (img.naturalWidth !== analyzedWidth || img.naturalHeight !== analyzedHeight) {
-        console.warn('Natural dimensions differ from analyzed dimensions');
-      }
-      
-      setRendered({ width: w, height: h });
-    }
-  }, [analyzedWidth, analyzedHeight]);
-
-  // Double RAF ensures CSS layout is complete before measuring
-  const handleLoad = useCallback(() => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        measure();
-      });
-    });
-  }, [measure]);
-
-  // Handle cached images (already loaded when component mounts)
-  useLayoutEffect(() => {
-    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
-      handleLoad();
-    }
-  }, [imageUrl, handleLoad]);
-
-  // Re-measure on resize
-  useEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
-    
-    const observer = new ResizeObserver(() => measure());
-    observer.observe(img);
-    return () => observer.disconnect();
-  }, [measure]);
-
-  // THE KEY: single scale factor = rendered size / analyzed size
-  const scale = rendered.width > 0 ? rendered.width / analyzedWidth : 1;
-
-  const imageCount = blocks.filter(b => b.type === 'image').length;
-  const codeCount = blocks.filter(b => b.type === 'code').length;
+  // Coordinate system is exactly the analysis size
+  const containerWidth = analyzedWidth || 0;
+  const containerHeight = analyzedHeight || 0;
 
   return (
     <div className="flex-1 bg-muted/30 rounded-xl p-4 overflow-auto">
@@ -82,37 +35,35 @@ export const DesignPreview = ({
         <h2 className="text-sm font-medium text-foreground">Original Design</h2>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-red-500"></span>
+            <span className="w-2.5 h-2.5 rounded-sm bg-red-500" />
             Image ({imageCount})
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-blue-500"></span>
+            <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
             Code ({codeCount})
           </span>
         </div>
       </div>
-      
-      {/* 
-        CRITICAL CSS STRUCTURE:
-        - inline-block makes container shrink-wrap to image size
-        - relative establishes positioning context for overlay
-        - line-height: 0 removes gap below image
+
+      {/*
+        CRITICAL: We lock the image and overlay to the exact analysis dimensions.
+        - Outer div scrolls if this is larger than the viewport
+        - Inner div is the fixed coordinate space for both image and overlay
       */}
-      <div className="inline-block relative" style={{ lineHeight: 0 }}>
+      <div className="inline-block relative" style={{ width: containerWidth, height: containerHeight, lineHeight: 0 }}>
         <img
-          ref={imgRef}
           src={imageUrl}
           alt="Email design"
-          onLoad={handleLoad}
-          className="block max-w-full h-auto"
+          // Force the rendered size to exactly match the analysis coordinate space
+          style={{ width: containerWidth, height: containerHeight, display: 'block' }}
         />
-        
-        {rendered.width > 0 && rendered.height > 0 && (
+
+        {containerWidth > 0 && containerHeight > 0 && (
           <BlockOverlay
             blocks={blocks}
-            scale={scale}
-            containerWidth={rendered.width}
-            containerHeight={rendered.height}
+            scale={1}
+            containerWidth={containerWidth}
+            containerHeight={containerHeight}
             selectedBlockId={selectedBlockId}
             onBlockSelect={onBlockSelect}
           />
