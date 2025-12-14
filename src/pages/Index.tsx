@@ -229,8 +229,8 @@ const Index = () => {
                 blocks={blocks}
                 selectedBlockId={selectedBlockId}
                 onBlockSelect={setSelectedBlockId}
-                originalWidth={originalDimensions.width}
-                originalHeight={originalDimensions.height}
+                analyzedWidth={originalDimensions.width}
+                analyzedHeight={originalDimensions.height}
               />
             )}
           </div>

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useLayoutEffect } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { BlockOverlay } from './BlockOverlay';
 import type { EmailBlock } from '@/types/email-blocks';
 
@@ -7,8 +7,8 @@ interface DesignPreviewProps {
   blocks: EmailBlock[];
   selectedBlockId: string | null;
   onBlockSelect: (blockId: string) => void;
-  originalWidth: number;
-  originalHeight: number;
+  analyzedWidth: number;
+  analyzedHeight: number;
 }
 
 export const DesignPreview = ({
@@ -16,60 +16,62 @@ export const DesignPreview = ({
   blocks,
   selectedBlockId,
   onBlockSelect,
-  originalWidth,
-  originalHeight,
+  analyzedWidth,
+  analyzedHeight,
 }: DesignPreviewProps) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [rendered, setRendered] = useState({ width: 0, height: 0 });
 
-  const updateDimensions = () => {
-    // Double RAF ensures layout is complete before measuring
+  // Measure the actual rendered size of the image
+  const measure = useCallback(() => {
+    if (!imgRef.current) return;
+    
+    const img = imgRef.current;
+    const w = img.clientWidth;
+    const h = img.clientHeight;
+    
+    if (w > 0 && h > 0) {
+      console.log('=== IMAGE MEASUREMENT ===');
+      console.log('Natural:', img.naturalWidth, '×', img.naturalHeight);
+      console.log('Rendered:', w, '×', h);
+      console.log('Analyzed at:', analyzedWidth, '×', analyzedHeight);
+      
+      if (img.naturalWidth !== analyzedWidth || img.naturalHeight !== analyzedHeight) {
+        console.warn('Natural dimensions differ from analyzed dimensions');
+      }
+      
+      setRendered({ width: w, height: h });
+    }
+  }, [analyzedWidth, analyzedHeight]);
+
+  // Double RAF ensures CSS layout is complete before measuring
+  const handleLoad = useCallback(() => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (imageRef.current) {
-          console.log('=== CRITICAL DEBUG ===');
-          console.log('Props originalWidth:', originalWidth);
-          console.log('Props originalHeight:', originalHeight);
-          console.log('Image naturalWidth:', imageRef.current.naturalWidth);
-          console.log('Image naturalHeight:', imageRef.current.naturalHeight);
-          console.log('Image clientWidth:', imageRef.current.clientWidth);
-          console.log('Image clientHeight:', imageRef.current.clientHeight);
-          console.log('Aspect ratio (props):', originalWidth / originalHeight);
-          console.log('Aspect ratio (natural):', imageRef.current.naturalWidth / imageRef.current.naturalHeight);
-          console.log('Aspect ratio (client):', imageRef.current.clientWidth / imageRef.current.clientHeight);
-          
-          // THIS IS THE KEY CHECK:
-          if (originalWidth !== imageRef.current.naturalWidth || 
-              originalHeight !== imageRef.current.naturalHeight) {
-            console.error('!!! MISMATCH: Props do not match actual image dimensions !!!');
-          }
-          
-          setDimensions({
-            width: imageRef.current.clientWidth,
-            height: imageRef.current.clientHeight,
-          });
-        }
+        measure();
       });
     });
-  };
+  }, [measure]);
 
-  // Observe the image directly for resize changes
+  // Handle cached images (already loaded when component mounts)
+  useLayoutEffect(() => {
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
+      handleLoad();
+    }
+  }, [imageUrl, handleLoad]);
+
+  // Re-measure on resize
   useEffect(() => {
-    const img = imageRef.current;
+    const img = imgRef.current;
     if (!img) return;
-
-    const observer = new ResizeObserver(() => updateDimensions());
+    
+    const observer = new ResizeObserver(() => measure());
     observer.observe(img);
     return () => observer.disconnect();
-  }, []);
+  }, [measure]);
 
-  // Handle cached images - useLayoutEffect prevents flash
-  useLayoutEffect(() => {
-    if (imageRef.current?.complete && imageRef.current?.naturalWidth > 0) {
-      updateDimensions();
-    }
-  }, [imageUrl]);
+  // THE KEY: single scale factor = rendered size / analyzed size
+  const scale = rendered.width > 0 ? rendered.width / analyzedWidth : 1;
 
   const imageCount = blocks.filter(b => b.type === 'image').length;
   const codeCount = blocks.filter(b => b.type === 'code').length;
@@ -90,24 +92,29 @@ export const DesignPreview = ({
         </div>
       </div>
       
-      <div ref={containerRef} className="relative inline-block leading-[0]">
+      {/* 
+        CRITICAL CSS STRUCTURE:
+        - inline-block makes container shrink-wrap to image size
+        - relative establishes positioning context for overlay
+        - line-height: 0 removes gap below image
+      */}
+      <div className="inline-block relative" style={{ lineHeight: 0 }}>
         <img
-          ref={imageRef}
+          ref={imgRef}
           src={imageUrl}
-          alt="Uploaded email design"
-          className="max-w-full h-auto block"
-          onLoad={updateDimensions}
+          alt="Email design"
+          onLoad={handleLoad}
+          className="block max-w-full h-auto"
         />
         
-        {dimensions.width > 0 && dimensions.height > 0 && (
+        {rendered.width > 0 && rendered.height > 0 && (
           <BlockOverlay
             blocks={blocks}
+            scale={scale}
+            containerWidth={rendered.width}
+            containerHeight={rendered.height}
             selectedBlockId={selectedBlockId}
             onBlockSelect={onBlockSelect}
-            containerWidth={dimensions.width}
-            containerHeight={dimensions.height}
-            originalWidth={originalWidth}
-            originalHeight={originalHeight}
           />
         )}
       </div>
