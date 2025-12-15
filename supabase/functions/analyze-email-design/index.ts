@@ -32,12 +32,22 @@ serve(async (req) => {
     const mediaType = dataUrlMatch[1];
     const base64Data = dataUrlMatch[2];
 
-    const userPrompt = `Break this email down by section/element. Footer can be 4 elements (logo, nav, socials, disclaimer text).
+    const userPrompt = `Break this email down into horizontal sections from top to bottom. Footer should be 4 sections: Footer Logo, Footer Nav, Footer Socials, Footer Disclaimer.
 
-For each section, identify at which point (0-100, 100 being the bottom) on the y axis it starts and ends. Be precise with boundaries.
+For each section, return:
+- id (short, snake_case)
+- name
+- type: "image" or "code"
+- yStart and yEnd as INTEGERS from 0-100 (100 is the bottom)
 
-Return JSON:
-{"detectedBrand":{"url":"","name":""},"blocks":[{"id":"","name":"","type":"image or code","yStart":0,"yEnd":5,"isFooter":false}]}`;
+Rules:
+- First section must start at 0
+- Last section must end at 100
+- Sections must be contiguous (next yStart = previous yEnd)
+- Split at obvious visual boundaries (background change / separators); don't lump multiple distinct areas into one section
+
+Return JSON only:
+{"detectedBrand":{"url":"","name":""},"blocks":[{"id":"header_logo","name":"Header Logo","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -49,6 +59,7 @@ Return JSON:
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
+        temperature: 0,
         messages: [
           {
             role: 'user',
