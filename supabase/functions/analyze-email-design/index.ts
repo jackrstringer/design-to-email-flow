@@ -32,17 +32,12 @@ serve(async (req) => {
     const mediaType = dataUrlMatch[1];
     const base64Data = dataUrlMatch[2];
 
-    const userPrompt = `Break this email down by section/element. The footer can be multiple elements (logo, nav, socials, disclaimer).
+    const userPrompt = `Break this email down by section/element. Footer can be 4 elements (logo, nav, socials, disclaimer text).
 
-For each section, identify at which point (0-100, where 100 is the bottom) on the y axis it starts and ends.
+For each section, identify at which point (0-100, 100 being the bottom) on the y axis it starts and ends. Be precise with boundaries.
 
-Also identify:
-- The brand name and URL
-- Whether each section is "image" (photos, graphics, complex visuals) or "code" (plain solid backgrounds with text/buttons)
-${isFirstCampaign ? '- Mark footer sections with isFooter: true' : ''}
-
-Return JSON only:
-{"detectedBrand":{"url":"","name":""},"blocks":[{"id":"","name":"","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
+Return JSON:
+{"detectedBrand":{"url":"","name":""},"blocks":[{"id":"","name":"","type":"image or code","yStart":0,"yEnd":5,"isFooter":false}]}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
