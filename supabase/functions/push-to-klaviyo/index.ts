@@ -138,38 +138,34 @@ serve(async (req) => {
 
     console.log(`Creating campaign with list: ${listId}`);
 
-    // Create campaign with correct Klaviyo API format
-    const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
+    // Create campaign (legacy v1 endpoint) so we can set from_email/from_name/subject at creation time.
+    // Docs example: https://a.klaviyo.com/api/v1/campaigns?api_key=PRIVATE_API_KEY
+    const fromEmail = 'jack@redwood.so';
+    const fromName = 'Jack Stringer';
+    const subject = 'Hi there';
+
+    const campaignUrl = `https://a.klaviyo.com/api/v1/campaigns?api_key=${encodeURIComponent(klaviyoApiKey)}`;
+
+    const campaignResponse = await fetch(campaignUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-        'Content-Type': 'application/vnd.api+json',
-        'accept': 'application/vnd.api+json',
-        'revision': '2025-10-15'
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
-        data: {
-          type: 'campaign',
-          attributes: {
-            name: templateName,
-            audiences: {
-              included: [listId],
-              excluded: []
-            },
-            send_strategy: {
-              method: 'static',
-              options: {
-                is_local: true,
-                send_past_recipients_immediately: false
-              }
-            }
-          }
-        }
-      })
+      body: new URLSearchParams({
+        list_id: String(listId),
+        template_id: String(templateId),
+        from_email: fromEmail,
+        from_name: fromName,
+        subject,
+        name: templateName,
+        use_smart_sending: 'true',
+        add_google_analytics: 'false',
+      }),
     });
 
     const campaignResponseText = await campaignResponse.text();
-    console.log(`Klaviyo campaign response status: ${campaignResponse.status}`);
+    console.log(`Klaviyo v1 campaign response status: ${campaignResponse.status}`);
     if (!campaignResponse.ok) {
       console.log(`Campaign creation error response: ${campaignResponseText}`);
     }
@@ -178,92 +174,32 @@ serve(async (req) => {
       let errorMessage = 'Failed to create Klaviyo campaign';
       try {
         const errorData = JSON.parse(campaignResponseText);
-        errorMessage = errorData.errors?.[0]?.detail || errorMessage;
+        errorMessage = errorData.detail || errorData.message || errorMessage;
       } catch {
         errorMessage = campaignResponseText || errorMessage;
       }
+
       // Still return template ID so user can use it
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           templateId,
-          error: `Template created but campaign failed: ${errorMessage}`
+          error: `Template created but campaign failed: ${errorMessage}`,
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const campaignData = JSON.parse(campaignResponseText);
-    const campaignId = campaignData.data?.id;
+    const campaignId = campaignData.id;
     console.log(`Campaign created: ${campaignId}`);
 
-    // Get the campaign message ID from relationships
-    const campaignMessageId = campaignData.data?.relationships?.['campaign-messages']?.data?.[0]?.id;
-    
-    if (!campaignMessageId) {
-      console.error('No campaign message ID found in response');
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          templateId,
-          campaignId,
-          error: 'Campaign created but could not find message ID to assign template'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Assigning template ${templateId} to campaign message ${campaignMessageId}`);
-
-    // Assign template to campaign message
-    const assignResponse = await fetch(`https://a.klaviyo.com/api/campaign-messages/${campaignMessageId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-        'Content-Type': 'application/vnd.api+json',
-        'accept': 'application/vnd.api+json',
-        'revision': '2025-10-15'
-      },
-      body: JSON.stringify({
-        data: {
-          type: 'campaign-message',
-          id: campaignMessageId,
-          relationships: {
-            template: {
-              data: {
-                type: 'template',
-                id: templateId
-              }
-            }
-          }
-        }
-      })
-    });
-
-    const assignResponseText = await assignResponse.text();
-    console.log(`Template assignment response status: ${assignResponse.status}`);
-
-    if (!assignResponse.ok) {
-      console.error('Template assignment failed:', assignResponseText);
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          templateId,
-          campaignId,
-          error: 'Campaign created but template assignment failed'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Template assigned successfully to campaign ${campaignId}`);
-
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         templateId,
         campaignId,
-        message: 'Campaign created successfully with template'
+        message: 'Campaign created successfully with template',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
