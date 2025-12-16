@@ -594,33 +594,32 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent className="py-4">
-          <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-4">
             {footers.map((footer) => (
               <div key={footer.id} className="group">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     {footer.isPrimary && <Star className="h-3 w-3 text-primary fill-primary" />}
-                    <span className="text-sm font-medium">{footer.name}</span>
+                    <span className="text-xs font-medium truncate">{footer.name}</span>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     {!footer.isPrimary && (
-                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleSetPrimary(footer)}>
-                        Set Primary
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSetPrimary(footer)} title="Set Primary">
+                        <Star className="h-3 w-3" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openFooterEditor(footer)}>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openFooterEditor(footer)}>
                       <Pencil className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteFooter(footer)}>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDeleteFooter(footer)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
-                {/* Footer preview - auto height, scaled */}
-                <div className="bg-muted/20 rounded-lg overflow-hidden">
-                  <div className="w-full" style={{ maxWidth: '100%' }}>
-                    <iframe
-                      srcDoc={`<!DOCTYPE html>
+                {/* Footer preview - scaled down to fit 3 per row */}
+                <div className="bg-muted/20 rounded-lg overflow-hidden h-[200px]">
+                  <iframe
+                    srcDoc={`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -634,26 +633,28 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   </table>
 </body>
 </html>`}
-                      className="w-full border-0"
-                      style={{ 
-                        height: '300px',
-                        transform: 'scale(0.6)',
-                        transformOrigin: 'top center',
-                        width: '166.67%',
-                        marginLeft: '-33.33%',
-                      }}
-                      sandbox="allow-same-origin"
-                      title={`${footer.name} preview`}
-                    />
-                  </div>
+                    className="border-0"
+                    style={{ 
+                      width: '600px',
+                      height: '600px',
+                      transform: 'scale(0.33)',
+                      transformOrigin: 'top left',
+                    }}
+                    sandbox="allow-same-origin"
+                    title={`${footer.name} preview`}
+                  />
                 </div>
               </div>
             ))}
             
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => openFooterEditor()}>
-              <Plus className="h-3 w-3 mr-2" />
-              Add Footer
-            </Button>
+            {/* Add footer button as a card */}
+            <button 
+              onClick={() => openFooterEditor()}
+              className="h-[200px] rounded-lg border border-dashed border-border/50 flex items-center justify-center text-muted-foreground hover:bg-muted/20 hover:border-border transition-colors"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              <span className="text-sm">Add Footer</span>
+            </button>
           </div>
         </CollapsibleContent>
       </Collapsible>
