@@ -82,6 +82,25 @@ serve(async (req) => {
       accent: branding.colors?.accent || undefined,
     };
 
+    // Extract typography data
+    const typography = branding.typography ? {
+      fontFamilies: branding.typography.fontFamilies || {},
+      fontSizes: branding.typography.fontSizes || {},
+      fontWeights: branding.typography.fontWeights || {},
+    } : null;
+
+    // Extract fonts
+    const fonts = branding.fonts || [];
+
+    // Extract spacing
+    const spacing = branding.spacing || null;
+
+    // Extract logo
+    const logo = branding.logo || branding.images?.logo || null;
+
+    // Extract color scheme (light/dark)
+    const colorScheme = branding.colorScheme || null;
+
     // Find social links
     const socialLinks: Array<{ platform: string; url: string }> = [];
     const foundPlatforms = new Set<string>();
@@ -107,13 +126,19 @@ serve(async (req) => {
     }
 
     console.log('Extracted colors:', colors);
+    console.log('Extracted typography:', typography);
+    console.log('Extracted fonts:', fonts);
     console.log('Found social links:', socialLinks);
     console.log('Total links found:', allLinks.length);
 
-    // Note: We no longer auto-discover logos - users must upload manually
     const result = {
       success: true,
       colors,
+      typography,
+      fonts,
+      spacing,
+      logo,
+      colorScheme,
       socialLinks,
       allLinks,
     };

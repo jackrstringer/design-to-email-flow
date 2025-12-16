@@ -34,6 +34,7 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
   const [isSaving, setIsSaving] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [socialLinks, setSocialLinks] = useState<Brand['socialLinks']>([]);
+  const [typography, setTypography] = useState<Brand['typography'] | null>(null);
 
   useEffect(() => {
     if (initialDomain) {
@@ -52,6 +53,7 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
       setKlaviyoApiKey('');
       setAnalyzed(false);
       setSocialLinks([]);
+      setTypography(null);
     }
   }, [open]);
 
@@ -82,6 +84,10 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
         setPrimaryColor(data.colors.primary || '#3b82f6');
         setSecondaryColor(data.colors.secondary || '#64748b');
         setAccentColor(data.colors.accent || '');
+      }
+
+      if (data?.typography) {
+        setTypography(data.typography);
       }
 
       if (data?.socialLinks && Array.isArray(data.socialLinks)) {
@@ -135,6 +141,7 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
           secondary_color: secondaryColor,
           accent_color: accentColor || null,
           social_links: socialLinks as unknown as Json,
+          typography: typography as unknown as Json,
           klaviyo_api_key: klaviyoApiKey.trim(),
         })
         .select()

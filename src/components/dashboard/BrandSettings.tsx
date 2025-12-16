@@ -382,45 +382,58 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             </div>
           </AccordionTrigger>
           <AccordionContent className="pb-4">
-            <div className="space-y-3">
+            <div className="space-y-4">
               {footers.map((footer) => (
                 <div 
                   key={footer.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border/60 bg-card hover:bg-muted/30 transition-colors"
+                  className="rounded-lg border border-border/60 bg-card overflow-hidden"
                 >
-                  <div className="flex items-center gap-3">
-                    {footer.isPrimary && (
-                      <Star className="h-4 w-4 text-primary fill-primary" />
-                    )}
-                    <span className="font-medium text-sm">{footer.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!footer.isPrimary && (
+                  {/* Footer header */}
+                  <div className="flex items-center justify-between p-3 border-b border-border/40">
+                    <div className="flex items-center gap-3">
+                      {footer.isPrimary && (
+                        <Star className="h-4 w-4 text-primary fill-primary" />
+                      )}
+                      <span className="font-medium text-sm">{footer.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!footer.isPrimary && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => handleSetPrimary(footer)}
+                        >
+                          Set Primary
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => handleSetPrimary(footer)}
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openFooterEditor(footer)}
                       >
-                        Set Primary
+                        <Pencil className="h-3 w-3" />
                       </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => openFooterEditor(footer)}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => handleDeleteFooter(footer)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteFooter(footer)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* Inline HTML preview */}
+                  <div className="bg-white">
+                    <iframe
+                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;}</style></head><body>${footer.html}</body></html>`}
+                      className="w-full h-auto min-h-[120px]"
+                      style={{ height: '200px' }}
+                      sandbox="allow-same-origin"
+                      title={`${footer.name} preview`}
+                    />
                   </div>
                 </div>
               ))}
