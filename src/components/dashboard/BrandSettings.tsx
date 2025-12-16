@@ -14,14 +14,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { Brand, BrandFooter, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
+import { ChevronRight } from 'lucide-react';
 
 interface BrandSettingsProps {
   brand: Brand;
@@ -56,6 +56,12 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [ruleName, setRuleName] = useState('');
   const [ruleDescription, setRuleDescription] = useState('');
   const [ruleCode, setRuleCode] = useState('');
+
+  // Collapsible sections
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    footers: true,
+    api: true,
+  });
 
   useEffect(() => {
     fetchFooters();
@@ -145,7 +151,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
 
       if (error) throw error;
 
-      // Update brand with new data
       const updates: any = {};
       
       if (data?.colors) {
@@ -157,7 +162,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         updates.link_color = data.colors.link || null;
       }
 
-      // Merge typography with fonts, spacing, and components
       if (data?.typography || data?.fonts || data?.spacing || data?.components) {
         updates.typography = {
           ...(data.typography || {}),
@@ -202,7 +206,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       setEditingFooter(null);
       setFooterName('');
       setFooterHtml('');
-      setFooterIsPrimary(footers.length === 0); // First footer is primary by default
+      setFooterIsPrimary(footers.length === 0);
     }
     setFooterEditorOpen(true);
   };
@@ -215,7 +219,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
 
     setIsSaving(true);
     try {
-      // If setting as primary, unset other primaries first
       if (footerIsPrimary) {
         await supabase
           .from('brand_footers')
@@ -277,13 +280,11 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
 
   const handleSetPrimary = async (footer: BrandFooter) => {
     try {
-      // Unset all primaries
       await supabase
         .from('brand_footers')
         .update({ is_primary: false })
         .eq('brand_id', brand.id);
 
-      // Set this one as primary
       await supabase
         .from('brand_footers')
         .update({ is_primary: true })
@@ -369,469 +370,366 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     onBrandChange();
   };
 
+  const toggleSection = (key: string) => {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const maskedApiKey = brand.klaviyoApiKey 
     ? `pk_****${brand.klaviyoApiKey.slice(-4)}` 
     : null;
 
+  // Collect all colors for display
+  const allColors = [
+    { label: 'Primary', value: brand.primaryColor },
+    { label: 'Secondary', value: brand.secondaryColor },
+    brand.accentColor && { label: 'Accent', value: brand.accentColor },
+    brand.backgroundColor && { label: 'Background', value: brand.backgroundColor },
+    brand.textPrimaryColor && { label: 'Text', value: brand.textPrimaryColor },
+    brand.linkColor && { label: 'Link', value: brand.linkColor },
+  ].filter(Boolean) as { label: string; value: string }[];
+
   return (
-    <div className="space-y-8">
+    <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+      <div className="flex items-center justify-between py-6 border-b border-border/30">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-3">
-            <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg"
-              style={{ backgroundColor: brand.primaryColor }}
-            >
-              {brand.name.charAt(0)}
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold">{brand.name}</h1>
-              <p className="text-sm text-muted-foreground">{brand.domain}</p>
-            </div>
+          <div 
+            className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold"
+            style={{ backgroundColor: brand.primaryColor }}
+          >
+            {brand.name.charAt(0)}
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold">{brand.name}</h1>
+            <p className="text-sm text-muted-foreground">{brand.domain}</p>
           </div>
         </div>
         <Button 
-          variant="outline" 
+          variant="ghost" 
           size="sm" 
           onClick={handleReanalyze}
           disabled={isReanalyzing || !brand.websiteUrl}
+          className="text-muted-foreground hover:text-foreground"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${isReanalyzing ? 'animate-spin' : ''}`} />
-          {isReanalyzing ? 'Analyzing...' : 'Re-analyze Brand'}
+          {isReanalyzing ? 'Analyzing...' : 'Re-analyze'}
         </Button>
       </div>
 
-      {/* Brand Colors & Typography Section - Always visible at top */}
-      <div className="rounded-xl border border-border/60 p-5 space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="font-medium">Brand Identity</h2>
+      {/* Colors Section */}
+      <div className="py-6 border-b border-border/30">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Colors</h2>
           {!editingColors && (
-            <Button variant="outline" size="sm" onClick={() => setEditingColors(true)}>
-              <Pencil className="h-3 w-3 mr-2" />
-              Edit Colors
+            <Button variant="ghost" size="sm" onClick={() => setEditingColors(true)} className="h-7 text-xs">
+              <Pencil className="h-3 w-3 mr-1" />
+              Edit
             </Button>
           )}
         </div>
 
-        {/* Colors */}
         {editingColors ? (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs">Primary</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Primary</Label>
                 <div className="flex items-center gap-2">
                   <input 
                     type="color" 
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="w-10 h-10 rounded cursor-pointer"
+                    className="w-8 h-8 rounded cursor-pointer border-0"
                   />
                   <Input 
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="flex-1 text-xs font-mono"
+                    className="flex-1 h-8 text-xs font-mono"
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Secondary</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Secondary</Label>
                 <div className="flex items-center gap-2">
                   <input 
                     type="color" 
                     value={secondaryColor}
                     onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="w-10 h-10 rounded cursor-pointer"
+                    className="w-8 h-8 rounded cursor-pointer border-0"
                   />
                   <Input 
                     value={secondaryColor}
                     onChange={(e) => setSecondaryColor(e.target.value)}
-                    className="flex-1 text-xs font-mono"
+                    className="flex-1 h-8 text-xs font-mono"
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Accent</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Accent</Label>
                 <div className="flex items-center gap-2">
                   <input 
                     type="color" 
                     value={accentColor || '#000000'}
                     onChange={(e) => setAccentColor(e.target.value)}
-                    className="w-10 h-10 rounded cursor-pointer"
+                    className="w-8 h-8 rounded cursor-pointer border-0"
                   />
                   <Input 
                     value={accentColor}
                     onChange={(e) => setAccentColor(e.target.value)}
                     placeholder="Optional"
-                    className="flex-1 text-xs font-mono"
+                    className="flex-1 h-8 text-xs font-mono"
                   />
                 </div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEditingColors(false)}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditingColors(false)}>Cancel</Button>
               <Button size="sm" onClick={handleSaveColors} disabled={isSaving}>Save</Button>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.primaryColor }} />
-              <div>
-                <span className="text-xs text-muted-foreground">Primary</span>
-                <p className="text-xs font-mono">{brand.primaryColor}</p>
+          <div className="flex flex-wrap gap-4">
+            {allColors.map((color) => (
+              <div key={color.label} className="flex items-center gap-2">
+                <div 
+                  className="w-6 h-6 rounded-md shadow-sm ring-1 ring-black/5" 
+                  style={{ backgroundColor: color.value }} 
+                />
+                <span className="text-sm">{color.label}</span>
+                <span className="text-xs text-muted-foreground font-mono">{color.value}</span>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.secondaryColor }} />
-              <div>
-                <span className="text-xs text-muted-foreground">Secondary</span>
-                <p className="text-xs font-mono">{brand.secondaryColor}</p>
-              </div>
-            </div>
-            {brand.accentColor && (
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.accentColor }} />
-                <div>
-                  <span className="text-xs text-muted-foreground">Accent</span>
-                  <p className="text-xs font-mono">{brand.accentColor}</p>
-                </div>
-              </div>
-            )}
-            {brand.backgroundColor && (
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.backgroundColor }} />
-                <div>
-                  <span className="text-xs text-muted-foreground">Background</span>
-                  <p className="text-xs font-mono">{brand.backgroundColor}</p>
-                </div>
-              </div>
-            )}
-            {brand.textPrimaryColor && (
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.textPrimaryColor }} />
-                <div>
-                  <span className="text-xs text-muted-foreground">Text</span>
-                  <p className="text-xs font-mono">{brand.textPrimaryColor}</p>
-                </div>
-              </div>
-            )}
-            {brand.linkColor && (
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.linkColor }} />
-                <div>
-                  <span className="text-xs text-muted-foreground">Link</span>
-                  <p className="text-xs font-mono">{brand.linkColor}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Typography */}
-        {brand.typography && Object.keys(brand.typography).length > 0 && (
-          <div className="pt-4 border-t border-border/40">
-            <div className="flex items-center gap-2 mb-3">
-              <Type className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Typography</span>
-            </div>
-            <div className="space-y-3">
-              {/* Font Families */}
-              {brand.typography.fontFamilies && Object.keys(brand.typography.fontFamilies).length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(brand.typography.fontFamilies).map(([key, value]) => (
-                    <div key={key} className="px-3 py-1.5 rounded-lg bg-muted/50 text-sm">
-                      <span className="text-muted-foreground text-xs">{key}:</span>{' '}
-                      <span className="font-medium">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Font Sizes */}
-              {brand.typography.fontSizes && Object.keys(brand.typography.fontSizes).length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(brand.typography.fontSizes).map(([key, value]) => (
-                    <div key={key} className="px-2 py-1 rounded bg-muted/30 text-xs font-mono">
-                      {key}: {value}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Detected Fonts */}
-              {brand.typography.fonts && brand.typography.fonts.length > 0 && (
-                <div className="pt-2">
-                  <span className="text-xs text-muted-foreground mb-2 block">Detected Fonts:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {brand.typography.fonts.map((font: any, i: number) => (
-                      <div key={i} className="px-2 py-1 rounded bg-muted/30 text-xs">
-                        <span className="font-medium">{font.family}</span>
-                        {font.role && <span className="text-muted-foreground ml-1">({font.role})</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Spacing */}
-              {brand.typography.spacing && (
-                <div className="pt-2">
-                  <span className="text-xs text-muted-foreground mb-2 block">Spacing:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {brand.typography.spacing.baseUnit && (
-                      <div className="px-2 py-1 rounded bg-muted/30 text-xs font-mono">
-                        Base Unit: {brand.typography.spacing.baseUnit}px
-                      </div>
-                    )}
-                    {brand.typography.spacing.borderRadius && (
-                      <div className="px-2 py-1 rounded bg-muted/30 text-xs font-mono">
-                        Border Radius: {brand.typography.spacing.borderRadius}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            ))}
           </div>
         )}
       </div>
 
-      <Accordion type="multiple" defaultValue={['footers', 'api']} className="space-y-4">
-        {/* Links Section */}
-        <AccordionItem value="links" className="border border-border/60 rounded-xl px-5">
-          <AccordionTrigger className="py-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <ExternalLink className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">Scraped Links</span>
-              <span className="text-xs text-muted-foreground ml-2">({brand.allLinks.length})</span>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pb-4">
-            {brand.allLinks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No links scraped yet</p>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {brand.allLinks.map((link, i) => (
-                  <div 
-                    key={i}
-                    className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors group"
-                  >
-                    <span className="text-sm truncate flex-1">{link}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      onClick={() => copyLink(link)}
-                    >
-                      {copiedLink === link ? (
-                        <Check className="h-3 w-3 text-green-600" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </Button>
+      {/* Typography Section */}
+      {brand.typography && Object.keys(brand.typography).length > 0 && (
+        <div className="py-6 border-b border-border/30">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Typography</h2>
+          <div className="space-y-3">
+            {brand.typography.fontFamilies && Object.keys(brand.typography.fontFamilies).length > 0 && (
+              <div className="flex flex-wrap gap-x-6 gap-y-1">
+                {Object.entries(brand.typography.fontFamilies).map(([key, value]) => (
+                  <div key={key} className="text-sm">
+                    <span className="text-muted-foreground">{key}:</span>{' '}
+                    <span className="font-medium">{value}</span>
                   </div>
                 ))}
               </div>
             )}
-          </AccordionContent>
-        </AccordionItem>
+            {brand.typography.fonts && brand.typography.fonts.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {brand.typography.fonts.map((font: any, i: number) => (
+                  <span key={i} className="text-sm">
+                    {font.family}
+                    {font.role && <span className="text-muted-foreground"> ({font.role})</span>}
+                    {i < brand.typography!.fonts!.length - 1 && <span className="text-muted-foreground">,</span>}
+                  </span>
+                ))}
+              </div>
+            )}
+            {brand.typography.spacing && (
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                {brand.typography.spacing.baseUnit && (
+                  <span>Base: {brand.typography.spacing.baseUnit}px</span>
+                )}
+                {brand.typography.spacing.borderRadius && (
+                  <span>Radius: {brand.typography.spacing.borderRadius}</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-        {/* Footers Section */}
-        <AccordionItem value="footers" className="border border-border/60 rounded-xl px-5">
-          <AccordionTrigger className="py-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Code className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">Footers</span>
-              <span className="text-xs text-muted-foreground ml-2">({footers.length})</span>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pb-4">
-            <div className="space-y-4">
-              {footers.map((footer) => (
+      {/* Scraped Links */}
+      <Collapsible open={openSections.links} onOpenChange={() => toggleSection('links')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.links ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">Scraped Links</span>
+            <span className="text-xs text-muted-foreground">({brand.allLinks.length})</span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          {brand.allLinks.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No links scraped yet</p>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {brand.allLinks.map((link, i) => (
                 <div 
-                  key={footer.id}
-                  className="rounded-lg border border-border/60 bg-card overflow-hidden"
+                  key={i}
+                  className="flex items-center justify-between gap-2 py-1.5 group"
                 >
-                  {/* Footer header */}
-                  <div className="flex items-center justify-between p-3 border-b border-border/40">
-                    <div className="flex items-center gap-3">
-                      {footer.isPrimary && (
-                        <Star className="h-4 w-4 text-primary fill-primary" />
-                      )}
-                      <span className="font-medium text-sm">{footer.name}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {!footer.isPrimary && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => handleSetPrimary(footer)}
-                        >
-                          Set Primary
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => openFooterEditor(footer)}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteFooter(footer)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                  <span className="text-sm truncate flex-1 text-muted-foreground">{link}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                    onClick={() => copyLink(link)}
+                  >
+                    {copiedLink === link ? (
+                      <Check className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Footers */}
+      <Collapsible open={openSections.footers} onOpenChange={() => toggleSection('footers')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.footers ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">Footers</span>
+            <span className="text-xs text-muted-foreground">({footers.length})</span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          <div className="space-y-4">
+            {footers.map((footer) => (
+              <div key={footer.id} className="group">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    {footer.isPrimary && <Star className="h-3 w-3 text-primary fill-primary" />}
+                    <span className="text-sm font-medium">{footer.name}</span>
                   </div>
-                  {/* Inline HTML preview - scaled to fit */}
-                  <div className="flex justify-center bg-muted/30 p-4">
-                    <div className="w-[400px] h-[250px] overflow-hidden rounded border border-border/40 relative">
-                      <iframe
-                        srcDoc={`<!DOCTYPE html>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {!footer.isPrimary && (
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => handleSetPrimary(footer)}>
+                        Set Primary
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openFooterEditor(footer)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteFooter(footer)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                {/* Footer preview - auto height, scaled */}
+                <div className="bg-muted/20 rounded-lg overflow-hidden">
+                  <div className="w-full" style={{ maxWidth: '100%' }}>
+                    <iframe
+                      srcDoc={`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=600">
   <style>
-    html, body { margin: 0; padding: 0; background: #f6f6f6; font-family: Arial, sans-serif; width: 600px; }
-    .email-wrapper { width: 600px; margin: 0 auto; }
+    html, body { margin: 0; padding: 0; background: #f6f6f6; font-family: Arial, sans-serif; }
   </style>
 </head>
 <body>
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width: 600px; background-color: #ffffff;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width: 600px; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
     ${footer.html}
   </table>
 </body>
 </html>`}
-                        className="border-0"
-                        style={{ 
-                          width: '600px', 
-                          height: '375px',
-                          transform: 'scale(0.667)',
-                          transformOrigin: 'top left',
-                        }}
-                        sandbox="allow-same-origin"
-                        title={`${footer.name} preview`}
-                      />
-                    </div>
+                      className="w-full border-0"
+                      style={{ 
+                        height: '300px',
+                        transform: 'scale(0.6)',
+                        transformOrigin: 'top center',
+                        width: '166.67%',
+                        marginLeft: '-33.33%',
+                      }}
+                      sandbox="allow-same-origin"
+                      title={`${footer.name} preview`}
+                    />
                   </div>
                 </div>
-              ))}
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => openFooterEditor()}
-              >
-                <Plus className="h-3 w-3 mr-2" />
-                Add Footer
+              </div>
+            ))}
+            
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => openFooterEditor()}>
+              <Plus className="h-3 w-3 mr-2" />
+              Add Footer
+            </Button>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* API Key */}
+      <Collapsible open={openSections.api} onOpenChange={() => toggleSection('api')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.api ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">Klaviyo API Key</span>
+            {maskedApiKey ? (
+              <span className="text-xs text-green-600">Connected</span>
+            ) : (
+              <span className="text-xs text-amber-600">Not configured</span>
+            )}
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          {maskedApiKey ? (
+            <div className="flex items-center justify-between">
+              <code className="text-sm text-muted-foreground">{maskedApiKey}</code>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditApiKey(true)}>
+                Update
               </Button>
             </div>
-          </AccordionContent>
-        </AccordionItem>
+          ) : (
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditApiKey(true)}>
+              <Plus className="h-3 w-3 mr-2" />
+              Add API Key
+            </Button>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
 
-        {/* API Key Section */}
-        <AccordionItem value="api" className="border border-border/60 rounded-xl px-5">
-          <AccordionTrigger className="py-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Key className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">Klaviyo API Key</span>
-              {maskedApiKey ? (
-                <span className="text-xs text-green-600 ml-2">Connected</span>
-              ) : (
-                <span className="text-xs text-amber-600 ml-2">Not configured</span>
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pb-4">
-            <div className="space-y-3">
-              {maskedApiKey ? (
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                  <code className="text-sm">{maskedApiKey}</code>
-                  <Button variant="outline" size="sm" onClick={() => setEditApiKey(true)}>
-                    Update Key
-                  </Button>
-                </div>
-              ) : (
-                <Button onClick={() => setEditApiKey(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add API Key
-                </Button>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-
-        {/* HTML Formatting Rules Section */}
-        <AccordionItem value="rules" className="border border-border/60 rounded-xl px-5">
-          <AccordionTrigger className="py-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Code className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">HTML Formatting Rules</span>
-              <span className="text-xs text-muted-foreground ml-2">({(brand.htmlFormattingRules || []).length})</span>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pb-4">
-            <div className="space-y-3">
-              {(brand.htmlFormattingRules || []).map((rule) => (
-                <div 
-                  key={rule.id}
-                  className="p-3 rounded-lg border border-border/60 bg-card"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <span className="font-medium text-sm">{rule.name}</span>
-                      {rule.description && (
-                        <p className="text-xs text-muted-foreground">{rule.description}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => openRulesEditor(rule)}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteRule(rule.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+      {/* HTML Formatting Rules */}
+      <Collapsible open={openSections.rules} onOpenChange={() => toggleSection('rules')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.rules ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">HTML Formatting Rules</span>
+            <span className="text-xs text-muted-foreground">({(brand.htmlFormattingRules || []).length})</span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          <div className="space-y-3">
+            {(brand.htmlFormattingRules || []).map((rule) => (
+              <div key={rule.id} className="group">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-sm font-medium">{rule.name}</span>
+                    {rule.description && (
+                      <p className="text-xs text-muted-foreground">{rule.description}</p>
+                    )}
                   </div>
-                  <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                    {rule.code.slice(0, 200)}{rule.code.length > 200 ? '...' : ''}
-                  </pre>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openRulesEditor(rule)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteRule(rule.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
-              ))}
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => openRulesEditor()}
-              >
-                <Plus className="h-3 w-3 mr-2" />
-                Add Formatting Rule
-              </Button>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+                <pre className="text-xs text-muted-foreground mt-1 font-mono">
+                  {rule.code.slice(0, 100)}{rule.code.length > 100 ? '...' : ''}
+                </pre>
+              </div>
+            ))}
+            
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => openRulesEditor()}>
+              <Plus className="h-3 w-3 mr-2" />
+              Add Rule
+            </Button>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* API Key Dialog */}
       <Dialog open={editApiKey} onOpenChange={setEditApiKey}>
@@ -899,10 +797,10 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             {footerHtml && (
               <div className="space-y-2">
                 <Label>Preview</Label>
-                <div className="border rounded-lg overflow-hidden bg-white">
+                <div className="rounded-lg overflow-hidden bg-muted/30">
                   <iframe
                     srcDoc={footerHtml}
-                    className="w-full h-48"
+                    className="w-full h-48 border-0"
                     sandbox="allow-same-origin"
                   />
                 </div>
@@ -912,26 +810,23 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           <DialogFooter>
             <Button variant="outline" onClick={() => setFooterEditorOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveFooter} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save Footer'}
+              {isSaving ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Formatting Rules Editor Dialog */}
+      {/* Formatting Rules Dialog */}
       <Dialog open={rulesEditorOpen} onOpenChange={setRulesEditorOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingRule ? 'Edit Formatting Rule' : 'Add Formatting Rule'}</DialogTitle>
-            <DialogDescription>
-              Define HTML/CSS patterns to use when generating email HTML
-            </DialogDescription>
+            <DialogTitle>{editingRule ? 'Edit Rule' : 'Add Formatting Rule'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Name</Label>
               <Input
-                placeholder="e.g., Button Style, Heading Format"
+                placeholder="e.g., Button Style, Link Format"
                 value={ruleName}
                 onChange={(e) => setRuleName(e.target.value)}
               />
@@ -939,15 +834,15 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             <div className="space-y-2">
               <Label>Description (optional)</Label>
               <Input
-                placeholder="Brief description of when to use this rule"
+                placeholder="Brief description of this rule"
                 value={ruleDescription}
                 onChange={(e) => setRuleDescription(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label>Code</Label>
+              <Label>Code / Template</Label>
               <Textarea
-                placeholder="/* CSS or HTML template */"
+                placeholder="HTML or CSS template..."
                 value={ruleCode}
                 onChange={(e) => setRuleCode(e.target.value)}
                 className="font-mono text-xs min-h-[150px]"
@@ -957,7 +852,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           <DialogFooter>
             <Button variant="outline" onClick={() => setRulesEditorOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveRule} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save Rule'}
+              {isSaving ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
