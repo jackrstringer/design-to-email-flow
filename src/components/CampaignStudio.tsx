@@ -310,12 +310,12 @@ export function CampaignStudio({
         </div>
       </div>
 
-      {/* Panel Layout - conditional 3rd panel */}
+      {/* Panel Layout - equal sizing: 33/34/33 for 3 panels, 33/67 for 2 panels */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (
           <>
-            <ResizablePanel defaultSize={hasHtmlSlices ? 18 : 20} minSize={14} maxSize={30}>
+            <ResizablePanel defaultSize={33} minSize={20} maxSize={45}>
               <div className="h-full flex flex-col">
                 <div className="px-3 py-2 border-b border-border/30">
                   <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
@@ -339,7 +339,7 @@ export function CampaignStudio({
         )}
 
         {/* Panel 2: Combined Campaign + Details */}
-        <ResizablePanel defaultSize={hasHtmlSlices ? (chatExpanded ? 50 : 60) : (chatExpanded ? 80 : 100)} minSize={30}>
+        <ResizablePanel defaultSize={hasHtmlSlices ? 34 : (chatExpanded ? 67 : 100)} minSize={30}>
           <div className="h-full overflow-auto bg-muted/20">
             <div className="p-4 flex justify-center">
               <div className="flex flex-col">
@@ -372,69 +372,75 @@ export function CampaignStudio({
                         )}
                       </button>
 
-                      {/* Link - either pill, dropdown, or add button */}
-                      {slice.link !== null && slice.link !== '' ? (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/60 rounded-md text-xs max-w-[200px]">
-                          <Link className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" />
-                          <span className="text-foreground/80 truncate">{slice.link}</span>
-                          <button
-                            onClick={() => removeLink(index)}
-                            className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
-                          if (open) {
-                            setEditingLinkIndex(index);
-                            setLinkSearchValue('');
-                          } else {
-                            setEditingLinkIndex(null);
-                          }
-                        }}>
-                          <PopoverTrigger asChild>
+                      {/* Link - clickable to edit, or add button */}
+                      <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
+                        if (open) {
+                          setEditingLinkIndex(index);
+                          setLinkSearchValue(slice.link || '');
+                        } else {
+                          setEditingLinkIndex(null);
+                        }
+                      }}>
+                        <PopoverTrigger asChild>
+                          {slice.link !== null && slice.link !== '' ? (
+                            <button className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/60 rounded-md text-xs hover:bg-muted/80 transition-colors">
+                              <Link className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" />
+                              <span className="text-foreground/80 break-all text-left">{slice.link}</span>
+                            </button>
+                          ) : (
                             <button className="flex items-center gap-1 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs">
                               <Link className="w-3.5 h-3.5" />
                               <span>Add link</span>
                             </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-72 p-0" align="start">
-                            <Command>
-                              <CommandInput 
-                                placeholder="Search or enter URL..." 
-                                value={linkSearchValue}
-                                onValueChange={setLinkSearchValue}
-                              />
-                              <CommandList>
-                                <CommandEmpty>
-                                  {linkSearchValue && (
-                                    <button
-                                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                      onClick={() => setSliceLink(index, linkSearchValue)}
-                                    >
-                                      Use "{linkSearchValue}"
-                                    </button>
-                                  )}
-                                </CommandEmpty>
-                                {filteredLinks.length > 0 && (
-                                  <CommandGroup heading="Brand Links">
-                                    {filteredLinks.slice(0, 10).map((link) => (
-                                      <CommandItem
-                                        key={link}
-                                        value={link}
-                                        onSelect={() => setSliceLink(index, link)}
-                                        className="text-xs"
-                                      >
-                                        <span className="truncate">{link}</span>
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
+                          )}
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0" align="start">
+                          <Command>
+                            <CommandInput 
+                              placeholder="Search or enter URL..." 
+                              value={linkSearchValue}
+                              onValueChange={setLinkSearchValue}
+                            />
+                            <CommandList>
+                              <CommandEmpty>
+                                {linkSearchValue && (
+                                  <button
+                                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                    onClick={() => setSliceLink(index, linkSearchValue)}
+                                  >
+                                    Use "{linkSearchValue}"
+                                  </button>
                                 )}
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
+                              </CommandEmpty>
+                              {filteredLinks.length > 0 && (
+                                <CommandGroup heading="Brand Links">
+                                  {filteredLinks.slice(0, 10).map((link) => (
+                                    <CommandItem
+                                      key={link}
+                                      value={link}
+                                      onSelect={() => setSliceLink(index, link)}
+                                      className="text-xs"
+                                    >
+                                      <span className="break-all">{link}</span>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {/* Remove link button - separate from popover */}
+                      {slice.link && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeLink(index);
+                          }}
+                          className="text-muted-foreground/40 hover:text-foreground/60"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
                       )}
 
                       {/* Dimensions */}
@@ -484,7 +490,7 @@ export function CampaignStudio({
         {hasHtmlSlices && (
           <>
             <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
-            <ResizablePanel defaultSize={chatExpanded ? 32 : 40} minSize={20}>
+            <ResizablePanel defaultSize={33} minSize={20}>
               <div className="h-full overflow-auto bg-background">
                 <div className="p-6">
                   <div 
