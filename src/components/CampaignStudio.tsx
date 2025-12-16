@@ -247,62 +247,6 @@ export function CampaignStudio({
               isAutoRefining={isAutoRefining}
             />
           </div>
-
-          {/* Actions */}
-          <div className="p-3 border-t border-border/50 space-y-2">
-            {templateId ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-green-600 text-xs px-1">
-                  <CheckCircle className="w-3 h-3" />
-                  <span>{campaignId ? 'Campaign' : 'Template'} created</span>
-                </div>
-                {campaignId ? (
-                  <Button
-                    size="sm"
-                    className="w-full h-8 text-xs"
-                    onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
-                  >
-                    <ExternalLink className="w-3 h-3 mr-1.5" />
-                    Open Editor
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="w-full h-8 text-xs"
-                    onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
-                  >
-                    <ExternalLink className="w-3 h-3 mr-1.5" />
-                    View Template
-                  </Button>
-                )}
-                {onReset && (
-                  <Button variant="ghost" size="sm" className="w-full h-7 text-xs text-muted-foreground" onClick={onReset}>
-                    Upload another
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={onCreateTemplate}
-                  disabled={isCreating || convertingIndex !== null}
-                  className="w-full h-8 text-xs"
-                >
-                  <FileText className="w-3 h-3 mr-1.5" />
-                  Create Template
-                </Button>
-                <Button
-                  onClick={onCreateCampaign}
-                  disabled={isCreating || convertingIndex !== null}
-                  className="w-full h-8 text-xs"
-                >
-                  <Rocket className="w-3 h-3 mr-1.5" />
-                  {isCreating ? 'Creating...' : 'Create Campaign'}
-                </Button>
-              </>
-            )}
-          </div>
         </CollapsibleContent>
 
         {/* Collapse Toggle */}
@@ -317,7 +261,7 @@ export function CampaignStudio({
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
           <span className="text-sm text-muted-foreground">Campaign · {slices.length} slices</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Slider
               value={[zoomLevel]}
               onValueChange={([v]) => setZoomLevel(v)}
@@ -330,16 +274,16 @@ export function CampaignStudio({
           </div>
         </div>
         <div className="flex-1 overflow-auto bg-muted/5" ref={containerRef}>
-          <div className="p-6 flex justify-end">
+          <div className="p-6">
             <div 
               className="flex gap-6"
               style={{ 
                 transform: `scale(${zoomLevel / 100})`, 
-                transformOrigin: 'top right',
+                transformOrigin: 'top left',
               }}
             >
-              {/* Slice details column - flexible width */}
-              <div className="min-w-[320px] max-w-[420px] flex-shrink-0">
+              {/* Slice details column */}
+              <div className="w-[360px] flex-shrink-0">
                 {slices.map((slice, index) => (
                   <div
                     key={index}
@@ -383,13 +327,7 @@ export function CampaignStudio({
                       </div>
 
                       <div className="flex-1 flex flex-col gap-2">
-                        <Textarea
-                          value={slice.altText}
-                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                          placeholder="Alt text description..."
-                          className="text-sm bg-background border-border/50 resize-none flex-1 min-h-[60px]"
-                        />
-
+                        {/* Link input - moved before alt text */}
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => toggleLink(index)}
@@ -413,6 +351,14 @@ export function CampaignStudio({
                             />
                           )}
                         </div>
+
+                        {/* Alt text */}
+                        <Textarea
+                          value={slice.altText}
+                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                          placeholder="Alt text description..."
+                          className="text-sm bg-background border-border/50 resize-none flex-1 min-h-[60px]"
+                        />
                       </div>
                     </div>
                   </div>
@@ -441,12 +387,70 @@ export function CampaignStudio({
         </div>
       </div>
 
-      {/* Right Column - Preview */}
+      {/* Right Column - Preview + Actions */}
       <div className="flex-1 flex flex-col min-w-0 border-l border-border/50">
-        <div className="h-12 px-4 flex items-center border-b border-border/50">
+        <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
           <span className="text-sm text-muted-foreground">
             {hasHtmlSlices ? 'HTML Preview' : 'Preview'}
           </span>
+          
+          {/* Action buttons - always visible */}
+          <div className="flex items-center gap-2">
+            {templateId ? (
+              <>
+                <div className="flex items-center gap-1.5 text-green-600 text-xs">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>{campaignId ? 'Campaign' : 'Template'} created</span>
+                </div>
+                {campaignId ? (
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                    Open Editor
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                    View Template
+                  </Button>
+                )}
+                {onReset && (
+                  <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onReset}>
+                    New Upload
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onCreateTemplate}
+                  disabled={isCreating || convertingIndex !== null}
+                  className="h-8 text-xs"
+                >
+                  <FileText className="w-3.5 h-3.5 mr-1.5" />
+                  Create Template
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={onCreateCampaign}
+                  disabled={isCreating || convertingIndex !== null}
+                  className="h-8 text-xs"
+                >
+                  <Rocket className="w-3.5 h-3.5 mr-1.5" />
+                  {isCreating ? 'Creating...' : 'Create Campaign'}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex-1 overflow-auto bg-muted/5">
           <div className="p-6">
