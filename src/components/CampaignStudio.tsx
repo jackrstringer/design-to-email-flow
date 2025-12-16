@@ -310,12 +310,12 @@ export function CampaignStudio({
         </div>
       </div>
 
-      {/* Panel Layout - equal sizing: 33/34/33 for 3 panels, 33/67 for 2 panels */}
+      {/* Panel Layout - Chat narrower, content gets more space */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (
           <>
-            <ResizablePanel defaultSize={33} minSize={20} maxSize={45}>
+            <ResizablePanel defaultSize={22} minSize={15} maxSize={35}>
               <div className="h-full flex flex-col">
                 <div className="px-3 py-2 border-b border-border/30">
                   <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
@@ -339,15 +339,15 @@ export function CampaignStudio({
         )}
 
         {/* Panel 2: Combined Campaign + Details */}
-        <ResizablePanel defaultSize={hasHtmlSlices ? 34 : (chatExpanded ? 67 : 100)} minSize={30}>
+        <ResizablePanel defaultSize={hasHtmlSlices ? 45 : (chatExpanded ? 78 : 100)} minSize={35}>
           <div className="h-full overflow-auto bg-muted/20">
-            <div className="p-4 flex justify-center">
+            <div className="p-6 flex justify-center">
               <div className="flex flex-col">
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
                 <div key={index} className="flex items-stretch border-b border-border/20 last:border-b-0">
-                  {/* Slice details - constrained width */}
-                  <div className="w-48 flex-shrink-0 p-3 space-y-2">
+                  {/* Slice details - wider for readability */}
+                  <div className="w-80 flex-shrink-0 p-4 space-y-3">
                     {/* Row 1: Type toggle + Link + dimensions - all inline */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Compact icon toggle */}
@@ -490,7 +490,7 @@ export function CampaignStudio({
         {hasHtmlSlices && (
           <>
             <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
-            <ResizablePanel defaultSize={33} minSize={20}>
+            <ResizablePanel defaultSize={33} minSize={25}>
               <div className="h-full overflow-auto bg-background">
                 <div className="p-6">
                   <div 
