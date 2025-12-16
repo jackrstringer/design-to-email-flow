@@ -9,6 +9,8 @@ interface SliceData {
   imageUrl: string;
   altText: string;
   link?: string | null;
+  type?: 'image' | 'html';
+  htmlContent?: string;
 }
 
 serve(async (req) => {
@@ -61,8 +63,21 @@ serve(async (req) => {
     let imageContent: string;
     
     if (hasSlices) {
-      // Multiple slices - stack them vertically
+      // Multiple slices - stack them vertically, supporting both image and HTML types
       imageContent = (slices as SliceData[]).map((slice: SliceData) => {
+        // Check if this is an HTML slice
+        if (slice.type === 'html' && slice.htmlContent) {
+          // Return raw HTML content wrapped in editable region
+          return `<tr>
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+              <div class="klaviyo-block klaviyo-text-block">
+                ${slice.htmlContent}
+              </div>
+            </td>
+          </tr>`;
+        }
+        
+        // Image slice (default)
         const imgTag = `<img src="${slice.imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${slice.altText || 'Email image'}" />`;
         
         if (slice.link) {
