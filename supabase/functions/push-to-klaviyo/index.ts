@@ -138,12 +138,7 @@ serve(async (req) => {
 
     console.log(`Creating campaign with list: ${listId}`);
 
-    // Create campaign using new API (v2025-10-15)
-    // Set datetime far in future to create a draft campaign
-    const futureDate = new Date();
-    futureDate.setFullYear(futureDate.getFullYear() + 1);
-    const futureDatetime = futureDate.toISOString();
-
+    // Create campaign using new API with immediate method (creates draft)
     const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
       method: 'POST',
       headers: {
@@ -162,12 +157,7 @@ serve(async (req) => {
               excluded: []
             },
             send_strategy: {
-              method: 'static',
-              options: {
-                datetime: futureDatetime,
-                is_local: true,
-                send_past_recipients_immediately: false
-              }
+              method: 'immediate'
             },
             send_options: {
               use_smart_sending: true
