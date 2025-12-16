@@ -64,13 +64,15 @@ export function CampaignPreviewFrame({ slices, className, width = 600 }: Campaig
 </html>`;
   }, [slices, width]);
 
+  // Calculate approximate height based on content
+  // Use a large height to ensure full content is visible
   return (
     <iframe
       srcDoc={campaignHtml}
       title="Campaign Preview"
       className={className}
       sandbox="allow-same-origin"
-      style={{ border: 'none', width: `${width}px`, height: '100%' }}
+      style={{ border: 'none', width: `${width}px`, minHeight: '2000px' }}
     />
   );
 }

@@ -47,7 +47,7 @@ export function CampaignStudio({
   const [isRefining, setIsRefining] = useState(false);
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(75);
+  const [zoomLevel, setZoomLevel] = useState(70);
   const [chatExpanded, setChatExpanded] = useState(false);
 
   const updateSlice = (index: number, updates: Partial<ProcessedSlice>) => {
@@ -184,8 +184,8 @@ export function CampaignStudio({
 
   return (
     <div className="flex h-screen">
-      {/* Left Column - Slices + Chat */}
-      <div className="w-72 flex-shrink-0 flex flex-col border-r border-border/50 bg-background">
+      {/* Left Column - Slices + Chat (equal width) */}
+      <div className="flex-1 flex flex-col border-r border-border/50 bg-background min-w-0">
         {/* Header */}
         <div className="h-12 px-3 flex items-center justify-between border-b border-border/50">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
