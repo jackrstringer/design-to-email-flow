@@ -8,10 +8,9 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SliceEditor } from '@/components/SliceEditor';
-import { SliceResults } from '@/components/SliceResults';
+import { CampaignStudio } from '@/components/CampaignStudio';
 import { sliceImage, ImageSlice } from '@/lib/imageSlicing';
 import type { ProcessedSlice, SliceType } from '@/types/slice';
-
 const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
 <tr>
     <td align="center" class="darkmode" style="padding: 60px 5% 50px 5%; background-color: #111111;">
@@ -431,18 +430,21 @@ export default function SimpleUpload() {
           </div>
         )}
 
-        {/* Slice Results View */}
-        {viewState === 'slice-results' && (
-          <SliceResults
-            slices={processedSlices}
-            onSlicesChange={setProcessedSlices}
-            onBack={() => setViewState('slice-editor')}
-            onCreateTemplate={() => createTemplate('template')}
-            onCreateCampaign={() => createTemplate('campaign')}
-            onConvertToHtml={convertSliceToHtml}
-            isCreating={isProcessing}
-            brandUrl="https://www.enhanced.com"
-          />
+        {/* Campaign Studio View */}
+        {viewState === 'slice-results' && uploadedImage && (
+          <div className="fixed inset-0 bg-background p-4 z-50">
+            <CampaignStudio
+              slices={processedSlices}
+              onSlicesChange={setProcessedSlices}
+              originalImageUrl={uploadedImage.dataUrl}
+              brandUrl="https://www.enhanced.com"
+              onBack={() => setViewState('slice-editor')}
+              onCreateTemplate={() => createTemplate('template')}
+              onCreateCampaign={() => createTemplate('campaign')}
+              onConvertToHtml={convertSliceToHtml}
+              isCreating={isProcessing}
+            />
+          </div>
         )}
 
         {/* Success State - Campaign Mode */}

@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.refine-slice-html]
 verify_jwt = false
+
+[functions.refine-campaign]
+verify_jwt = false
