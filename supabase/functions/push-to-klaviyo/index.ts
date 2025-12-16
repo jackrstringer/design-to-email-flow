@@ -231,8 +231,8 @@ serve(async (req) => {
       );
     }
 
-    // Assign template to campaign message
-    const assignResponse = await fetch(`https://a.klaviyo.com/api/campaign-messages/${campaignMessageId}/relationships/template`, {
+    // Assign template to campaign message using the correct endpoint
+    const assignResponse = await fetch('https://a.klaviyo.com/api/campaign-message-assign-template', {
       method: 'POST',
       headers: {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
@@ -242,8 +242,16 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         data: {
-          type: 'template',
-          id: templateId
+          type: 'campaign-message',
+          id: campaignMessageId,
+          relationships: {
+            template: {
+              data: {
+                type: 'template',
+                id: templateId
+              }
+            }
+          }
         }
       })
     });
