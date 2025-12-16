@@ -341,12 +341,13 @@ export function CampaignStudio({
         {/* Panel 2: Combined Campaign + Details */}
         <ResizablePanel defaultSize={hasHtmlSlices ? (chatExpanded ? 50 : 60) : (chatExpanded ? 80 : 100)} minSize={30}>
           <div className="h-full overflow-auto bg-muted/20">
-            <div className="p-4">
+            <div className="p-4 flex justify-center">
+              <div className="flex flex-col">
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
                 <div key={index} className="flex items-stretch border-b border-border/20 last:border-b-0">
-                  {/* Slice details - fills left space */}
-                  <div className="flex-1 min-w-0 p-4 space-y-2">
+                  {/* Slice details - constrained width */}
+                  <div className="w-48 flex-shrink-0 p-3 space-y-2">
                     {/* Row 1: Type toggle + Link + dimensions - all inline */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Compact icon toggle */}
@@ -474,6 +475,7 @@ export function CampaignStudio({
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           </div>
         </ResizablePanel>
