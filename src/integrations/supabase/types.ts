@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      brand_footers: {
+        Row: {
+          brand_id: string
+          created_at: string
+          html: string
+          id: string
+          is_primary: boolean | null
+          logo_public_id: string | null
+          logo_url: string | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string
+          html: string
+          id?: string
+          is_primary?: boolean | null
+          logo_public_id?: string | null
+          logo_url?: string | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string
+          html?: string
+          id?: string
+          is_primary?: boolean | null
+          logo_public_id?: string | null
+          logo_url?: string | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_footers_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           accent_color: string | null
@@ -26,6 +70,7 @@ export type Database = {
           footer_html: string | null
           footer_logo_public_id: string | null
           footer_logo_url: string | null
+          html_formatting_rules: Json | null
           id: string
           klaviyo_api_key: string | null
           light_logo_public_id: string | null
@@ -35,6 +80,7 @@ export type Database = {
           secondary_color: string
           social_icons: Json | null
           social_links: Json
+          typography: Json | null
           updated_at: string
           website_url: string | null
         }
@@ -49,6 +95,7 @@ export type Database = {
           footer_html?: string | null
           footer_logo_public_id?: string | null
           footer_logo_url?: string | null
+          html_formatting_rules?: Json | null
           id?: string
           klaviyo_api_key?: string | null
           light_logo_public_id?: string | null
@@ -58,6 +105,7 @@ export type Database = {
           secondary_color?: string
           social_icons?: Json | null
           social_links?: Json
+          typography?: Json | null
           updated_at?: string
           website_url?: string | null
         }
@@ -72,6 +120,7 @@ export type Database = {
           footer_html?: string | null
           footer_logo_public_id?: string | null
           footer_logo_url?: string | null
+          html_formatting_rules?: Json | null
           id?: string
           klaviyo_api_key?: string | null
           light_logo_public_id?: string | null
@@ -81,6 +130,7 @@ export type Database = {
           secondary_color?: string
           social_icons?: Json | null
           social_links?: Json
+          typography?: Json | null
           updated_at?: string
           website_url?: string | null
         }

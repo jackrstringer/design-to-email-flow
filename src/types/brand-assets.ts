@@ -25,6 +25,43 @@ export interface FooterAssets {
   html?: string;
 }
 
+// Brand footer (stored in brand_footers table)
+export interface BrandFooter {
+  id: string;
+  brandId: string;
+  name: string;
+  html: string;
+  isPrimary: boolean;
+  logoUrl?: string;
+  logoPublicId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Typography settings for a brand
+export interface BrandTypography {
+  fontFamilies?: {
+    primary?: string;
+    heading?: string;
+    code?: string;
+  };
+  fontSizes?: {
+    h1?: string;
+    h2?: string;
+    h3?: string;
+    body?: string;
+  };
+  fontWeights?: Record<string, number>;
+}
+
+// HTML formatting rule for email generation
+export interface HtmlFormattingRule {
+  id: string;
+  name: string;
+  description?: string;
+  code: string;
+}
+
 export interface BrandAssets {
   websiteUrl?: string;
   darkLogo?: LogoAsset;  // For light backgrounds
@@ -61,7 +98,7 @@ export interface Brand {
   accentColor?: string;
   socialLinks: SocialLink[];
   allLinks: string[];
-  // Footer fields
+  // Footer fields (legacy - now use brand_footers table)
   footerHtml?: string;
   footerLogoUrl?: string;
   footerLogoPublicId?: string;
@@ -69,6 +106,9 @@ export interface Brand {
   footerConfigured?: boolean;
   // Per-brand Klaviyo API key
   klaviyoApiKey?: string;
+  // Typography and formatting
+  typography?: BrandTypography;
+  htmlFormattingRules?: HtmlFormattingRule[];
   createdAt: string;
   updatedAt: string;
 }
