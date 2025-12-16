@@ -336,9 +336,9 @@ export function CampaignStudio({
                 <div key={index} className="group">
                   {/* Slice row: Details on left, Image on right */}
                   <div className="flex items-start gap-5">
-                    {/* Slice details card - Firecrawl/Notion style */}
+                    {/* Slice details card */}
                     <div 
-                      className="w-[240px] flex-shrink-0 space-y-3 py-3"
+                      className="w-[320px] flex-shrink-0 space-y-3 py-3"
                       style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top right' }}
                     >
                       {/* Row 1: Switch + dimensions */}
@@ -430,7 +430,7 @@ export function CampaignStudio({
 
                   {/* Subtle divider */}
                   {index < slices.length - 1 && (
-                    <div className="h-px bg-border/20 my-1" style={{ marginLeft: 240 + 20, width: scaledWidth }} />
+                    <div className="h-px bg-border/20 my-1" style={{ marginLeft: 320 + 20, width: scaledWidth }} />
                   )}
                 </div>
               ))}
