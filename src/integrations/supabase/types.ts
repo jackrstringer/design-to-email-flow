@@ -27,6 +27,7 @@ export type Database = {
           footer_logo_public_id: string | null
           footer_logo_url: string | null
           id: string
+          klaviyo_api_key: string | null
           light_logo_public_id: string | null
           light_logo_url: string | null
           name: string
@@ -49,6 +50,7 @@ export type Database = {
           footer_logo_public_id?: string | null
           footer_logo_url?: string | null
           id?: string
+          klaviyo_api_key?: string | null
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           name: string
@@ -71,6 +73,7 @@ export type Database = {
           footer_logo_public_id?: string | null
           footer_logo_url?: string | null
           id?: string
+          klaviyo_api_key?: string | null
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           name?: string
