@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ExternalLink, CheckCircle, MessageSquare, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ExternalLink, CheckCircle, Sparkles, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -52,42 +53,40 @@ export function CampaignStudio({
   const [isRefining, setIsRefining] = useState(false);
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(70);
+  const [zoomLevel, setZoomLevel] = useState(65);
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
-  const imageRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Calculate slice dimensions when image loads
+  // Calculate slice dimensions from actual slice images
   useEffect(() => {
-    const img = imageRef.current;
-    if (!img) return;
+    const loadSliceHeights = async () => {
+      const dims: SliceDimensions[] = [];
+      let cumulativeTop = 0;
 
-    const calculateDimensions = () => {
-      const totalHeight = img.naturalHeight;
-      const displayHeight = img.clientHeight;
-      const scale = displayHeight / totalHeight;
-      
-      // Assuming slices divide the image evenly for now
-      // In practice, this would use actual slice boundaries
-      const sliceHeight = displayHeight / slices.length;
-      const dims = slices.map((_, i) => ({
-        height: sliceHeight,
-        top: i * sliceHeight,
-      }));
+      for (const slice of slices) {
+        const height = await new Promise<number>((resolve) => {
+          const img = new window.Image();
+          img.onload = () => {
+            // Scale height proportionally to BASE_WIDTH
+            const scale = BASE_WIDTH / img.naturalWidth;
+            resolve(img.naturalHeight * scale);
+          };
+          img.onerror = () => resolve(100); // fallback
+          img.src = slice.imageUrl;
+        });
+
+        dims.push({ height, top: cumulativeTop });
+        cumulativeTop += height;
+      }
+
       setSliceDimensions(dims);
     };
 
-    if (img.complete) {
-      calculateDimensions();
+    if (slices.length > 0) {
+      loadSliceHeights();
     }
-    img.addEventListener('load', calculateDimensions);
-    window.addEventListener('resize', calculateDimensions);
-
-    return () => {
-      img.removeEventListener('load', calculateDimensions);
-      window.removeEventListener('resize', calculateDimensions);
-    };
-  }, [slices.length, originalImageUrl]);
+  }, [slices]);
 
   const updateSlice = (index: number, updates: Partial<ProcessedSlice>) => {
     const updated = [...slices];
@@ -317,7 +316,7 @@ export function CampaignStudio({
       {/* Center Column - Original with inline slice details */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
-          <span className="text-[11px] text-muted-foreground">Campaign · {slices.length} slices</span>
+          <span className="text-xs text-muted-foreground">Campaign · {slices.length} slices</span>
           <div className="flex items-center gap-2">
             <Slider
               value={[zoomLevel]}
@@ -330,80 +329,85 @@ export function CampaignStudio({
             <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
           </div>
         </div>
-        <div className="flex-1 overflow-auto bg-muted/10">
-          <div className="p-4">
+        <div className="flex-1 overflow-auto bg-muted/5" ref={containerRef}>
+          <div className="p-4 flex justify-end">
             <div 
               className="flex"
               style={{ 
                 transform: `scale(${zoomLevel / 100})`, 
-                transformOrigin: 'top left',
+                transformOrigin: 'top right',
               }}
             >
-              {/* Slice details column */}
-              <div className="w-48 flex-shrink-0 pr-3">
+              {/* Slice details column - grows to fill available space */}
+              <div className="w-64 flex-shrink-0 pr-4">
                 {slices.map((slice, index) => (
                   <div
                     key={index}
-                    className="relative"
+                    className="border-b border-border/30 last:border-b-0"
                     style={{ 
-                      height: sliceDimensions[index]?.height || 'auto',
-                      minHeight: 80,
+                      height: sliceDimensions[index]?.height || 120,
                     }}
                   >
-                    <div className="sticky top-0 space-y-1.5 py-2">
+                    <div className="py-3 pr-2 space-y-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground font-medium">{index + 1}</span>
+                        <span className="text-xs font-medium text-foreground">{index + 1}</span>
                         <button
                           onClick={() => toggleSliceType(index)}
                           disabled={convertingIndex !== null || isCreating}
                           className={cn(
-                            'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors border',
+                            'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors border',
                             slice.type === 'html'
                               ? 'text-blue-600 border-blue-200 bg-blue-50'
                               : 'text-muted-foreground border-border/50 hover:border-border'
                           )}
                         >
                           {convertingIndex === index ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : slice.type === 'html' ? (
                             <>
-                              <Code className="w-3 h-3" />
+                              <Code className="w-3.5 h-3.5" />
                               <span>HTML</span>
                             </>
                           ) : (
                             <>
-                              <Image className="w-3 h-3" />
+                              <Image className="w-3.5 h-3.5" />
                               <span>Image</span>
                             </>
                           )}
                         </button>
+                        {sliceDimensions[index] && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {Math.round(sliceDimensions[index].height)}px
+                          </span>
+                        )}
                       </div>
 
-                      <Input
+                      <Textarea
                         value={slice.altText}
                         onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                        placeholder="Alt text..."
-                        className="h-6 text-[10px] bg-background border-border/50"
+                        placeholder="Alt text description..."
+                        className="text-xs bg-background border-border/50 resize-none min-h-[48px]"
+                        rows={2}
                       />
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-start gap-1.5">
                         <button
                           onClick={() => toggleLink(index)}
                           className={cn(
-                            'p-1 rounded transition-colors',
+                            'p-1.5 rounded transition-colors mt-0.5',
                             slice.link !== null
-                              ? 'text-primary'
-                              : 'text-muted-foreground hover:text-foreground'
+                              ? 'text-primary bg-primary/10'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                           )}
                         >
-                          {slice.link !== null ? <Link className="w-3 h-3" /> : <Unlink className="w-3 h-3" />}
+                          {slice.link !== null ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
                         </button>
                         {slice.link !== null && (
                           <Input
                             value={slice.link}
                             onChange={(e) => updateSlice(index, { link: e.target.value })}
                             placeholder="https://..."
-                            className="h-6 text-[10px] flex-1 bg-background border-border/50"
+                            className="h-7 text-xs flex-1 bg-background border-border/50"
                             autoFocus={editingLinkIndex === index}
                             onBlur={() => setEditingLinkIndex(null)}
                           />
@@ -415,9 +419,8 @@ export function CampaignStudio({
               </div>
 
               {/* Campaign image with red slice lines */}
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <img
-                  ref={imageRef}
                   src={originalImageUrl}
                   alt="Original"
                   style={{ width: `${BASE_WIDTH}px` }}
@@ -440,11 +443,11 @@ export function CampaignStudio({
       {/* Right Column - Preview */}
       <div className="flex-1 flex flex-col min-w-0 border-l border-border/50">
         <div className="h-12 px-4 flex items-center border-b border-border/50">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {hasHtmlSlices ? 'HTML Preview' : 'Preview'}
           </span>
         </div>
-        <div className="flex-1 overflow-auto bg-muted/10">
+        <div className="flex-1 overflow-auto bg-muted/5">
           <div className="p-4">
             <div 
               style={{ 
