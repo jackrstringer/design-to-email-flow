@@ -104,8 +104,8 @@ serve(async (req) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${templateName}</title>${darkModeCss}
 </head>
-<body style="margin: 0; padding: 0; background-color: #f4f4f4;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f4f4f4;">
+<body style="margin: 0; padding: 0; background-color: #ffffff;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
     <tr>
       <td align="center" style="padding: 20px 0;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
