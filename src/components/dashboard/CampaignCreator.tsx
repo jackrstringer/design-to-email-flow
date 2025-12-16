@@ -13,7 +13,10 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { SliceEditor } from '@/components/SliceEditor';
+import { sliceImage } from '@/lib/imageSlicing';
 import type { Brand } from '@/types/brand-assets';
+import type { SliceType } from '@/types/slice';
 
 interface PendingCampaign {
   file: File;
@@ -37,6 +40,8 @@ interface CampaignCreatorProps {
   onCampaignProcessed: () => void;
 }
 
+type ViewState = 'upload' | 'slice-editor' | 'processing';
+
 export function CampaignCreator({
   brands,
   selectedBrandId,
@@ -54,6 +59,8 @@ export function CampaignCreator({
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasFooters, setHasFooters] = useState(false);
+  const [viewState, setViewState] = useState<ViewState>('upload');
+  const [uploadedImageDataUrl, setUploadedImageDataUrl] = useState<string | null>(null);
 
   // Check if selected brand has footers
   useEffect(() => {
@@ -76,26 +83,75 @@ export function CampaignCreator({
     checkFooters();
   }, [selectedBrand?.id]);
 
-  // Process pending campaign when brand is selected and has API key
+  // When pending campaign is set and brand has API key, show slice editor
   useEffect(() => {
-    if (pendingCampaign && selectedBrand?.klaviyoApiKey && !isProcessing) {
-      processCampaign(pendingCampaign.dataUrl, pendingCampaign.analysisData);
+    if (pendingCampaign && selectedBrand?.klaviyoApiKey && viewState === 'upload') {
+      setUploadedImageDataUrl(pendingCampaign.dataUrl);
+      setViewState('slice-editor');
     }
-  }, [pendingCampaign, selectedBrand]);
+  }, [pendingCampaign, selectedBrand, viewState]);
 
-  const processCampaign = async (dataUrl: string, analysisData: any) => {
-    if (!selectedBrand?.klaviyoApiKey) return;
+  const processSlices = async (slicePositions: number[], sliceTypes: SliceType[]) => {
+    if (!selectedBrand?.klaviyoApiKey || !uploadedImageDataUrl) return;
     
+    setViewState('processing');
     setIsProcessing(true);
+    
     try {
-      // Upload to Cloudinary
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
-        body: { imageData: dataUrl }
+      // Upload original image to Cloudinary
+      const { data: originalUpload, error: originalError } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: { imageData: uploadedImageDataUrl }
       });
 
-      if (uploadError || !uploadData?.url) {
-        throw new Error('Failed to upload image');
+      if (originalError || !originalUpload?.url) {
+        throw new Error('Failed to upload original image');
       }
+
+      // Slice the image
+      const slices = await sliceImage(uploadedImageDataUrl, slicePositions);
+      
+      // Upload each slice to Cloudinary
+      const uploadedSlices = await Promise.all(
+        slices.map(async (slice, index) => {
+          const { data: sliceUpload, error: sliceError } = await supabase.functions.invoke('upload-to-cloudinary', {
+            body: { imageData: slice.dataUrl }
+          });
+
+          if (sliceError || !sliceUpload?.url) {
+            throw new Error(`Failed to upload slice ${index}`);
+          }
+
+          return {
+            ...slice,
+            imageUrl: sliceUpload.url,
+            type: sliceTypes[index] || 'image' as SliceType,
+          };
+        })
+      );
+
+      // Analyze slices with AI for alt text and links
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
+        body: {
+          slices: uploadedSlices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
+          brandUrl: selectedBrand.websiteUrl || `https://${selectedBrand.domain}`
+        }
+      });
+
+      // Merge analysis data with uploaded slices
+      const processedSlices = uploadedSlices.map((slice, index) => {
+        const analysis = analysisData?.analyses?.find((a: any) => a.index === index);
+        return {
+          imageUrl: slice.imageUrl,
+          startPercent: slice.startPercent,
+          endPercent: slice.endPercent,
+          width: slice.width,
+          height: slice.height,
+          type: slice.type,
+          altText: analysis?.altText || `Email section ${index + 1}`,
+          link: analysis?.suggestedLink || null,
+          html: null,
+        };
+      });
 
       // Create campaign in database
       const { data: campaign, error: campaignError } = await supabase
@@ -103,8 +159,9 @@ export function CampaignCreator({
         .insert({
           brand_id: selectedBrand.id,
           name: `Campaign ${new Date().toLocaleDateString()}`,
-          original_image_url: uploadData.url,
-          status: 'draft'
+          original_image_url: originalUpload.url,
+          status: 'draft',
+          blocks: processedSlices
         })
         .select()
         .single();
@@ -113,21 +170,27 @@ export function CampaignCreator({
 
       onCampaignProcessed();
 
-      // Navigate to campaign studio
+      // Navigate to campaign studio with processed slices
       navigate(`/campaign/${campaign.id}`, {
         state: {
-          imageUrl: uploadData.url,
+          imageUrl: originalUpload.url,
           brand: selectedBrand,
           includeFooter,
-          blocks: analysisData?.blocks || []
+          slices: processedSlices
         }
       });
     } catch (error) {
-      console.error('Error processing campaign:', error);
-      toast.error('Failed to process campaign');
+      console.error('Error processing slices:', error);
+      toast.error('Failed to process slices');
+      setViewState('slice-editor');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleSliceCancel = () => {
+    setViewState('upload');
+    setUploadedImageDataUrl(null);
   };
 
   const handleFile = useCallback(async (file: File) => {
@@ -139,7 +202,6 @@ export function CampaignCreator({
     setIsProcessing(true);
 
     try {
-      // Convert to data URL for analysis
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUrl = e.target?.result as string;
@@ -171,14 +233,14 @@ export function CampaignCreator({
         };
 
         if (campaignData.matchedBrandId || campaignData.detectedBrand) {
-          // Let parent handle brand matching/creation
           onBrandDetected(campaignData);
           setIsProcessing(false);
         } else if (selectedBrand?.klaviyoApiKey) {
-          // No brand detected but we have one selected - use it
-          processCampaign(dataUrl, analysisData);
+          // No brand detected but we have one selected - go to slice editor
+          setUploadedImageDataUrl(dataUrl);
+          setViewState('slice-editor');
+          setIsProcessing(false);
         } else {
-          // No brand detected and none selected - prompt to add one
           toast.error('Could not detect brand. Please select or add a brand first.');
           setIsProcessing(false);
         }
@@ -189,7 +251,7 @@ export function CampaignCreator({
       toast.error('Failed to process image');
       setIsProcessing(false);
     }
-  }, [selectedBrand, includeFooter, onBrandDetected, navigate]);
+  }, [selectedBrand, brands, onBrandDetected]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -208,8 +270,21 @@ export function CampaignCreator({
     setIsDragging(false);
   }, []);
 
-  // Show waiting state when we have a pending campaign but no API key
   const waitingForApiKey = pendingCampaign && selectedBrand && !selectedBrand.klaviyoApiKey;
+
+  // Show slice editor when in that state
+  if (viewState === 'slice-editor' && uploadedImageDataUrl) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <SliceEditor
+          imageDataUrl={uploadedImageDataUrl}
+          onProcess={processSlices}
+          onCancel={handleSliceCancel}
+          isProcessing={isProcessing}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">

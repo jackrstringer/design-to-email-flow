@@ -10,13 +10,16 @@ interface LocationState {
   imageUrl: string;
   brand: Brand;
   includeFooter: boolean;
-  blocks: Array<{
-    imageUrl?: string;
-    altText?: string;
-    link?: string;
-    isClickable?: boolean;
-    type?: 'image' | 'html';
-    htmlContent?: string;
+  slices: Array<{
+    imageUrl: string;
+    startPercent?: number;
+    endPercent?: number;
+    width?: number;
+    height?: number;
+    type: 'image' | 'html';
+    altText: string;
+    link: string | null;
+    html?: string | null;
   }>;
 }
 
@@ -35,36 +38,26 @@ export default function CampaignPage() {
   const [campaignId, setCampaignId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (state) {
-      // Initialize from navigation state
+    if (state?.slices && state.slices.length > 0) {
+      // Initialize from navigation state with processed slices
       setOriginalImageUrl(state.imageUrl);
       setBrand(state.brand);
       
-      // Convert blocks to ProcessedSlice format
-      if (state.blocks && state.blocks.length > 0) {
-        const processedSlices: ProcessedSlice[] = state.blocks.map((block) => ({
-          imageUrl: block.imageUrl || state.imageUrl,
-          altText: block.altText || '',
-          link: block.link || null,
-          isClickable: block.isClickable || false,
-          type: block.type || 'image',
-          htmlContent: block.htmlContent,
-        }));
-        setSlices(processedSlices);
-      } else {
-        // Default single slice from the whole image
-        setSlices([{
-          imageUrl: state.imageUrl,
-          altText: '',
-          link: null,
-          isClickable: false,
-          type: 'image',
-        }]);
-      }
+      const processedSlices: ProcessedSlice[] = state.slices.map((slice) => ({
+        imageUrl: slice.imageUrl,
+        altText: slice.altText || '',
+        link: slice.link || null,
+        isClickable: !!slice.link,
+        type: slice.type || 'image',
+        htmlContent: slice.html || undefined,
+      }));
+      setSlices(processedSlices);
       setIsLoading(false);
-    } else {
+    } else if (id) {
       // Load from database if no state
       loadCampaign();
+    } else {
+      navigate('/');
     }
   }, [id, state]);
 
