@@ -138,7 +138,7 @@ serve(async (req) => {
 
     console.log(`Creating campaign with list: ${listId}`);
 
-    // Create campaign using new API with immediate method (creates draft)
+    // Create campaign with campaign-messages inline (required by Klaviyo API)
     const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
       method: 'POST',
       headers: {
@@ -161,6 +161,24 @@ serve(async (req) => {
             },
             send_options: {
               use_smart_sending: true
+            },
+            'campaign-messages': {
+              data: [
+                {
+                  type: 'campaign-message',
+                  attributes: {
+                    definition: {
+                      channel: 'email',
+                      label: templateName,
+                      content: {
+                        subject: 'Hi there',
+                        from_email: 'jack@redwood.so',
+                        from_label: 'Jack Stringer'
+                      }
+                    }
+                  }
+                }
+              ]
             }
           }
         }
@@ -245,36 +263,7 @@ serve(async (req) => {
       );
     }
 
-    // Update campaign message with from/subject
-    const updateMessageResponse = await fetch(`https://a.klaviyo.com/api/campaign-messages/${campaignMessageId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-        'Content-Type': 'application/vnd.api+json',
-        'accept': 'application/vnd.api+json',
-        'revision': '2025-10-15'
-      },
-      body: JSON.stringify({
-        data: {
-          type: 'campaign-message',
-          id: campaignMessageId,
-          attributes: {
-            label: templateName,
-            content: {
-              subject: 'Hi there',
-              from_email: 'jack@redwood.so',
-              from_label: 'Jack Stringer'
-            }
-          }
-        }
-      })
-    });
-
-    const updateResponseText = await updateMessageResponse.text();
-    console.log(`Update message response status: ${updateMessageResponse.status}`);
-    if (!updateMessageResponse.ok) {
-      console.log(`Update message error: ${updateResponseText}`);
-    }
+    console.log(`Template assigned to campaign successfully`);
 
     return new Response(
       JSON.stringify({
