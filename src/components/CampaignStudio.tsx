@@ -334,11 +334,11 @@ export function CampaignStudio({
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
                 <div key={index} className="group">
-                  {/* Slice row: Details on left, Image on right */}
+                  {/* Slice row: Details fills left space, Image on right */}
                   <div className="flex items-start gap-5">
-                    {/* Slice details card */}
+                    {/* Slice details - fills available width */}
                     <div 
-                      className="w-[320px] flex-shrink-0 space-y-3 py-3"
+                      className="flex-1 min-w-0 space-y-3 py-3"
                       style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top right' }}
                     >
                       {/* Row 1: Switch + dimensions */}
@@ -430,7 +430,7 @@ export function CampaignStudio({
 
                   {/* Subtle divider */}
                   {index < slices.length - 1 && (
-                    <div className="h-px bg-border/20 my-1" style={{ marginLeft: 320 + 20, width: scaledWidth }} />
+                    <div className="h-px bg-border/20 my-2" />
                   )}
                 </div>
               ))}
