@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ExternalLink } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ZoomIn, ZoomOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -37,6 +38,7 @@ export function CampaignStudio({
   const [isRefining, setIsRefining] = useState(false);
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(100);
 
   const updateSlice = (index: number, updates: Partial<ProcessedSlice>) => {
     const updated = [...slices];
@@ -69,12 +71,13 @@ export function CampaignStudio({
   };
 
   const handleSendMessage = async (message: string) => {
-    // Add user message to chat
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }];
     setChatMessages(newMessages);
     setIsRefining(true);
 
     try {
+      console.log('Sending chat request with originalImageUrl:', originalImageUrl);
+      
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
         body: {
           allSlices: slices.map(s => ({
@@ -92,15 +95,21 @@ export function CampaignStudio({
         }
       });
 
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message);
+      }
 
-      // Add assistant response
+      if (data?.error) {
+        console.error('API error:', data.error);
+        throw new Error(data.error);
+      }
+
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
 
-      // Update slices if we got updated HTML
-      if (data.updatedSlices) {
+      if (data.updatedSlices && data.updatedSlices.length > 0) {
         const updatedSlices = slices.map((slice, i) => {
-          const updated = data.updatedSlices[i];
+          const updated = data.updatedSlices.find((u: any) => u.index === i);
           if (updated?.htmlContent && slice.type === 'html') {
             return { ...slice, htmlContent: updated.htmlContent };
           }
@@ -111,7 +120,10 @@ export function CampaignStudio({
       }
     } catch (err) {
       console.error('Chat error:', err);
-      setChatMessages([...newMessages, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
+      setChatMessages([...newMessages, { 
+        role: 'assistant', 
+        content: `Error: ${err instanceof Error ? err.message : 'Failed to process request'}` 
+      }]);
       toast.error('Failed to process request');
     } finally {
       setIsRefining(false);
@@ -124,6 +136,8 @@ export function CampaignStudio({
     setChatMessages(newMessages);
 
     try {
+      console.log('Auto-refine with originalImageUrl:', originalImageUrl);
+      
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
         body: {
           allSlices: slices.map(s => ({
@@ -141,13 +155,21 @@ export function CampaignStudio({
         }
       });
 
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message);
+      }
+
+      if (data?.error) {
+        console.error('API error:', data.error);
+        throw new Error(data.error);
+      }
 
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Auto-refinement complete!' }]);
 
-      if (data.updatedSlices) {
+      if (data.updatedSlices && data.updatedSlices.length > 0) {
         const updatedSlices = slices.map((slice, i) => {
-          const updated = data.updatedSlices[i];
+          const updated = data.updatedSlices.find((u: any) => u.index === i);
           if (updated?.htmlContent && slice.type === 'html') {
             return { ...slice, htmlContent: updated.htmlContent };
           }
@@ -158,7 +180,10 @@ export function CampaignStudio({
       }
     } catch (err) {
       console.error('Auto-refine error:', err);
-      setChatMessages([...newMessages, { role: 'assistant', content: 'Auto-refinement failed. Please try again.' }]);
+      setChatMessages([...newMessages, { 
+        role: 'assistant', 
+        content: `Auto-refinement failed: ${err instanceof Error ? err.message : 'Unknown error'}` 
+      }]);
       toast.error('Auto-refine failed');
     } finally {
       setIsAutoRefining(false);
@@ -168,7 +193,7 @@ export function CampaignStudio({
   const hasHtmlSlices = slices.some(s => s.type === 'html');
 
   return (
-    <div className="flex h-[calc(100vh-12rem)] gap-4">
+    <div className="flex h-[calc(100vh-2rem)] gap-4">
       {/* Left Panel - Slices */}
       <div className="w-[380px] flex-shrink-0 flex flex-col border border-border rounded-lg bg-card">
         <div className="p-3 border-b border-border flex items-center justify-between">
@@ -298,7 +323,7 @@ export function CampaignStudio({
 
       {/* Right Panel - Preview + Chat */}
       <div className="flex-1 flex flex-col border border-border rounded-lg bg-card overflow-hidden">
-        {/* Preview Header */}
+        {/* Preview Header with Zoom */}
         <div className="p-3 border-b border-border flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-foreground">Live Preview</h3>
@@ -306,31 +331,62 @@ export function CampaignStudio({
               {hasHtmlSlices ? 'HTML + Images combined' : 'All image slices'}
             </p>
           </div>
+          
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-2">
+            <ZoomOut className="w-4 h-4 text-muted-foreground" />
+            <Slider
+              value={[zoomLevel]}
+              onValueChange={([v]) => setZoomLevel(v)}
+              min={25}
+              max={150}
+              step={5}
+              className="w-24"
+            />
+            <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground w-10">{zoomLevel}%</span>
+          </div>
         </div>
 
         {/* Split Preview - Original vs Rendered */}
         <div className="flex-1 flex overflow-hidden">
           {/* Original Image */}
           <div className="w-1/2 border-r border-border overflow-auto bg-muted/20">
-            <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50">
+            <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50 sticky top-0 z-10">
               Original Design
             </div>
-            <div className="p-2">
-              <img
-                src={originalImageUrl}
-                alt="Original campaign"
-                className="w-full h-auto"
-              />
+            <div className="p-2 flex justify-center">
+              <div 
+                style={{ 
+                  transform: `scale(${zoomLevel / 100})`, 
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.2s ease'
+                }}
+              >
+                <img
+                  src={originalImageUrl}
+                  alt="Original campaign"
+                  className="max-w-none"
+                />
+              </div>
             </div>
           </div>
 
           {/* Live Preview */}
           <div className="w-1/2 flex flex-col overflow-hidden">
-            <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50">
+            <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50 sticky top-0 z-10">
               HTML Render
             </div>
-            <div className="flex-1 overflow-auto">
-              <CampaignPreviewFrame slices={slices} className="w-full h-full min-h-[400px]" />
+            <div className="flex-1 overflow-auto flex justify-center">
+              <div 
+                style={{ 
+                  transform: `scale(${zoomLevel / 100})`, 
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.2s ease'
+                }}
+              >
+                <CampaignPreviewFrame slices={slices} className="min-h-[400px]" />
+              </div>
             </div>
           </div>
         </div>
