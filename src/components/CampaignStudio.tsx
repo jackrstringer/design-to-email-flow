@@ -330,108 +330,97 @@ export function CampaignStudio({
         {/* Panel 2: Combined Campaign + Details */}
         <ResizablePanel defaultSize={chatExpanded ? 50 : 60} minSize={30}>
           <div className="h-full overflow-auto bg-muted/20">
-            <div className="p-6" style={{ width: 'fit-content' }}>
+            <div className="p-4">
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
-                <div key={index} className="group">
-                  {/* Slice row: Details fills left space, Image on right */}
-                  <div className="flex items-start gap-5">
-                    {/* Slice details - fills available width */}
-                    <div 
-                      className="flex-1 min-w-0 space-y-3 py-3"
-                      style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top right' }}
-                    >
-                      {/* Row 1: Switch + dimensions */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={slice.type === 'html'}
-                            onCheckedChange={() => toggleSliceType(index)}
-                            disabled={convertingIndex !== null || isCreating}
-                            className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground/20"
-                          />
-                          {convertingIndex === index && (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground/50">
-                          {sliceDimensions[index] ? `${BASE_WIDTH}×${Math.round(sliceDimensions[index].height)}` : ''}
-                        </span>
-                      </div>
-
-                      {/* Row 2: Link - pill tag or icon */}
-                      {slice.link !== null && slice.link !== '' ? (
-                        <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 bg-muted/60 rounded-lg text-xs">
-                          <Link className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
-                          <span className="text-foreground/80 break-all">{slice.link || 'empty'}</span>
-                          <button
-                            onClick={() => toggleLink(index)}
-                            className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0 mt-0.5"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : editingLinkIndex === index ? (
-                        <Input
-                          value={slice.link || ''}
-                          onChange={(e) => updateSlice(index, { link: e.target.value, isClickable: true })}
-                          placeholder="https://..."
-                          className="h-7 text-xs bg-muted/40 border-0 rounded-full px-3"
-                          autoFocus
-                          onBlur={() => {
-                            if (!slice.link) updateSlice(index, { link: null, isClickable: false });
-                            setEditingLinkIndex(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') setEditingLinkIndex(null);
-                          }}
+                <div key={index} className="flex items-stretch border-b border-border/20 last:border-b-0">
+                  {/* Slice details - fills left space */}
+                  <div className="flex-1 min-w-0 p-4 space-y-3">
+                    {/* Row 1: Switch + dimensions */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={slice.type === 'html'}
+                          onCheckedChange={() => toggleSliceType(index)}
+                          disabled={convertingIndex !== null || isCreating}
+                          className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground/20"
                         />
-                      ) : (
+                        {convertingIndex === index && (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground/50">
+                        {sliceDimensions[index] ? `${BASE_WIDTH}×${Math.round(sliceDimensions[index].height)}` : ''}
+                      </span>
+                    </div>
+
+                    {/* Row 2: Link */}
+                    {slice.link !== null && slice.link !== '' ? (
+                      <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 bg-muted/60 rounded-lg text-xs">
+                        <Link className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+                        <span className="text-foreground/80 break-all">{slice.link}</span>
                         <button
                           onClick={() => toggleLink(index)}
-                          className="flex items-center gap-1.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs"
+                          className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0 mt-0.5"
                         >
-                          <Link className="w-3.5 h-3.5" />
-                          <span>Add link</span>
+                          <X className="w-3.5 h-3.5" />
                         </button>
-                      )}
-
-                      {/* Row 3: Alt text - editable */}
-                      {editingAltIndex === index ? (
-                        <textarea
-                          value={slice.altText}
-                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                          placeholder="Add description..."
-                          className="w-full text-xs text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2.5 py-2 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                          rows={3}
-                          autoFocus
-                          onBlur={() => setEditingAltIndex(null)}
-                        />
-                      ) : (
-                        <p 
-                          onClick={() => setEditingAltIndex(index)}
-                          className="text-xs text-muted-foreground/50 leading-relaxed cursor-pointer hover:text-muted-foreground/70 transition-colors"
-                        >
-                          {slice.altText || 'Add description...'}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Slice image */}
-                    <div style={{ width: scaledWidth }} className="flex-shrink-0">
-                      <img
-                        src={slice.imageUrl}
-                        alt={slice.altText}
-                        style={{ width: scaledWidth }}
-                        className="block"
+                      </div>
+                    ) : editingLinkIndex === index ? (
+                      <Input
+                        value={slice.link || ''}
+                        onChange={(e) => updateSlice(index, { link: e.target.value, isClickable: true })}
+                        placeholder="https://..."
+                        className="h-7 text-xs bg-muted/40 border-0 rounded-lg px-3"
+                        autoFocus
+                        onBlur={() => {
+                          if (!slice.link) updateSlice(index, { link: null, isClickable: false });
+                          setEditingLinkIndex(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') setEditingLinkIndex(null);
+                        }}
                       />
-                    </div>
+                    ) : (
+                      <button
+                        onClick={() => toggleLink(index)}
+                        className="flex items-center gap-1.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs"
+                      >
+                        <Link className="w-3.5 h-3.5" />
+                        <span>Add link</span>
+                      </button>
+                    )}
+
+                    {/* Row 3: Alt text */}
+                    {editingAltIndex === index ? (
+                      <textarea
+                        value={slice.altText}
+                        onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                        placeholder="Add description..."
+                        className="w-full text-xs text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2.5 py-2 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        rows={3}
+                        autoFocus
+                        onBlur={() => setEditingAltIndex(null)}
+                      />
+                    ) : (
+                      <p 
+                        onClick={() => setEditingAltIndex(index)}
+                        className="text-xs text-muted-foreground/50 leading-relaxed cursor-pointer hover:text-muted-foreground/70 transition-colors"
+                      >
+                        {slice.altText || 'Add description...'}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Subtle divider */}
-                  {index < slices.length - 1 && (
-                    <div className="h-px bg-border/20 my-2" />
-                  )}
+                  {/* Slice image - fixed width, no gap */}
+                  <div className="flex-shrink-0" style={{ width: scaledWidth }}>
+                    <img
+                      src={slice.imageUrl}
+                      alt={slice.altText}
+                      style={{ width: scaledWidth }}
+                      className="block"
+                    />
+                  </div>
                 </div>
               ))}
             </div>
