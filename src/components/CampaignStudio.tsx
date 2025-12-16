@@ -53,6 +53,7 @@ export function CampaignStudio({
   const [isRefining, setIsRefining] = useState(false);
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
+  const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState(65);
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
@@ -337,7 +338,7 @@ export function CampaignStudio({
                   <div className="flex items-start gap-5">
                     {/* Slice details card - Firecrawl/Notion style */}
                     <div 
-                      className="w-[180px] flex-shrink-0 space-y-3 py-3"
+                      className="w-[240px] flex-shrink-0 space-y-3 py-3"
                       style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top right' }}
                     >
                       {/* Row 1: Switch + dimensions */}
@@ -347,27 +348,27 @@ export function CampaignStudio({
                             checked={slice.type === 'html'}
                             onCheckedChange={() => toggleSliceType(index)}
                             disabled={convertingIndex !== null || isCreating}
-                            className="h-4 w-7 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground/20"
+                            className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground/20"
                           />
                           {convertingIndex === index && (
-                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
                           )}
                         </div>
-                        <span className="text-[10px] text-muted-foreground/40">
+                        <span className="text-xs text-muted-foreground/50">
                           {sliceDimensions[index] ? `${BASE_WIDTH}×${Math.round(sliceDimensions[index].height)}` : ''}
                         </span>
                       </div>
 
                       {/* Row 2: Link - pill tag or icon */}
                       {slice.link !== null && slice.link !== '' ? (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/60 rounded-full text-[11px] max-w-full">
-                          <Link className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" />
-                          <span className="truncate text-foreground/70">{slice.link || 'empty'}</span>
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-muted/60 rounded-full text-xs max-w-full">
+                          <Link className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+                          <span className="truncate text-foreground/80">{slice.link || 'empty'}</span>
                           <button
                             onClick={() => toggleLink(index)}
                             className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0"
                           >
-                            <X className="w-3 h-3" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ) : editingLinkIndex === index ? (
@@ -375,7 +376,7 @@ export function CampaignStudio({
                           value={slice.link || ''}
                           onChange={(e) => updateSlice(index, { link: e.target.value, isClickable: true })}
                           placeholder="https://..."
-                          className="h-6 text-[11px] bg-muted/40 border-0 rounded-full px-2.5"
+                          className="h-7 text-xs bg-muted/40 border-0 rounded-full px-3"
                           autoFocus
                           onBlur={() => {
                             if (!slice.link) updateSlice(index, { link: null, isClickable: false });
@@ -388,16 +389,32 @@ export function CampaignStudio({
                       ) : (
                         <button
                           onClick={() => toggleLink(index)}
-                          className="flex items-center gap-1 text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors"
+                          className="flex items-center gap-1.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs"
                         >
                           <Link className="w-3.5 h-3.5" />
+                          <span>Add link</span>
                         </button>
                       )}
 
-                      {/* Row 3: Alt text - small, light */}
-                      <p className="text-[10px] text-muted-foreground/35 leading-relaxed line-clamp-3">
-                        {slice.altText || 'No description'}
-                      </p>
+                      {/* Row 3: Alt text - editable */}
+                      {editingAltIndex === index ? (
+                        <textarea
+                          value={slice.altText}
+                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                          placeholder="Add description..."
+                          className="w-full text-xs text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2.5 py-2 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                          rows={3}
+                          autoFocus
+                          onBlur={() => setEditingAltIndex(null)}
+                        />
+                      ) : (
+                        <p 
+                          onClick={() => setEditingAltIndex(index)}
+                          className="text-xs text-muted-foreground/50 leading-relaxed cursor-pointer hover:text-muted-foreground/70 transition-colors"
+                        >
+                          {slice.altText || 'Add description...'}
+                        </p>
+                      )}
                     </div>
 
                     {/* Slice image */}
@@ -413,7 +430,7 @@ export function CampaignStudio({
 
                   {/* Subtle divider */}
                   {index < slices.length - 1 && (
-                    <div className="h-px bg-border/20 my-1" style={{ marginLeft: 180 + 20, width: scaledWidth }} />
+                    <div className="h-px bg-border/20 my-1" style={{ marginLeft: 240 + 20, width: scaledWidth }} />
                   )}
                 </div>
               ))}
