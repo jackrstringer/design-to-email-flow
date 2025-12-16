@@ -29,6 +29,9 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
   const [primaryColor, setPrimaryColor] = useState('#3b82f6');
   const [secondaryColor, setSecondaryColor] = useState('#64748b');
   const [accentColor, setAccentColor] = useState('');
+  const [backgroundColor, setBackgroundColor] = useState('');
+  const [textPrimaryColor, setTextPrimaryColor] = useState('');
+  const [linkColor, setLinkColor] = useState('');
   const [klaviyoApiKey, setKlaviyoApiKey] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -50,6 +53,9 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
       setPrimaryColor('#3b82f6');
       setSecondaryColor('#64748b');
       setAccentColor('');
+      setBackgroundColor('');
+      setTextPrimaryColor('');
+      setLinkColor('');
       setKlaviyoApiKey('');
       setAnalyzed(false);
       setSocialLinks([]);
@@ -84,10 +90,19 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
         setPrimaryColor(data.colors.primary || '#3b82f6');
         setSecondaryColor(data.colors.secondary || '#64748b');
         setAccentColor(data.colors.accent || '');
+        setBackgroundColor(data.colors.background || '');
+        setTextPrimaryColor(data.colors.textPrimary || '');
+        setLinkColor(data.colors.link || '');
       }
 
-      if (data?.typography) {
-        setTypography(data.typography);
+      // Merge typography with fonts, spacing, components from Firecrawl
+      if (data?.typography || data?.fonts || data?.spacing || data?.components) {
+        setTypography({
+          ...(data.typography || {}),
+          fonts: data.fonts || [],
+          spacing: data.spacing || null,
+          components: data.components || null,
+        });
       }
 
       if (data?.socialLinks && Array.isArray(data.socialLinks)) {
@@ -140,6 +155,9 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           accent_color: accentColor || null,
+          background_color: backgroundColor || null,
+          text_primary_color: textPrimaryColor || null,
+          link_color: linkColor || null,
           social_links: socialLinks as unknown as Json,
           typography: typography as unknown as Json,
           klaviyo_api_key: klaviyoApiKey.trim(),

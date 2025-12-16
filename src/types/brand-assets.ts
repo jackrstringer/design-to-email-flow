@@ -38,6 +38,31 @@ export interface BrandFooter {
   updatedAt: string;
 }
 
+// Font detected from website
+export interface DetectedFont {
+  family: string;
+  role?: 'heading' | 'body' | 'display' | 'code';
+}
+
+// Spacing settings from Firecrawl
+export interface BrandSpacing {
+  baseUnit?: number;
+  borderRadius?: string;
+}
+
+// Button component style from Firecrawl
+export interface ButtonStyle {
+  background?: string;
+  textColor?: string;
+  borderRadius?: string;
+}
+
+// Component styles from Firecrawl
+export interface BrandComponents {
+  buttonPrimary?: ButtonStyle;
+  buttonSecondary?: ButtonStyle;
+}
+
 // Typography settings for a brand
 export interface BrandTypography {
   fontFamilies?: {
@@ -52,6 +77,10 @@ export interface BrandTypography {
     body?: string;
   };
   fontWeights?: Record<string, number>;
+  // Additional data from Firecrawl
+  fonts?: DetectedFont[];
+  spacing?: BrandSpacing;
+  components?: BrandComponents;
 }
 
 // HTML formatting rule for email generation
@@ -96,6 +125,9 @@ export interface Brand {
   primaryColor: string;
   secondaryColor: string;
   accentColor?: string;
+  backgroundColor?: string;
+  textPrimaryColor?: string;
+  linkColor?: string;
   socialLinks: SocialLink[];
   allLinks: string[];
   // Footer fields (legacy - now use brand_footers table)

@@ -75,11 +75,14 @@ serve(async (req) => {
     const branding = firecrawlData.data?.branding || firecrawlData.branding || {};
     const links = firecrawlData.data?.links || firecrawlData.links || [];
 
-    // Extract colors
+    // Extract ALL colors from Firecrawl
     const colors = {
       primary: branding.colors?.primary || '#3b82f6',
-      secondary: branding.colors?.secondary || branding.colors?.background || '#64748b',
+      secondary: branding.colors?.secondary || '#64748b',
       accent: branding.colors?.accent || undefined,
+      background: branding.colors?.background || '#ffffff',
+      textPrimary: branding.colors?.textPrimary || '#333333',
+      link: branding.colors?.link || branding.colors?.primary || '#3b82f6',
     };
 
     // Extract typography data
@@ -89,11 +92,14 @@ serve(async (req) => {
       fontWeights: branding.typography.fontWeights || {},
     } : null;
 
-    // Extract fonts
+    // Extract ALL fonts with roles
     const fonts = branding.fonts || [];
 
-    // Extract spacing
+    // Extract spacing (baseUnit, borderRadius)
     const spacing = branding.spacing || null;
+
+    // Extract component styles (buttons)
+    const components = branding.components || null;
 
     // Extract logo
     const logo = branding.logo || branding.images?.logo || null;
@@ -128,6 +134,8 @@ serve(async (req) => {
     console.log('Extracted colors:', colors);
     console.log('Extracted typography:', typography);
     console.log('Extracted fonts:', fonts);
+    console.log('Extracted spacing:', spacing);
+    console.log('Extracted components:', components);
     console.log('Found social links:', socialLinks);
     console.log('Total links found:', allLinks.length);
 
@@ -137,6 +145,7 @@ serve(async (req) => {
       typography,
       fonts,
       spacing,
+      components,
       logo,
       colorScheme,
       socialLinks,
