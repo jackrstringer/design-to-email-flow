@@ -441,6 +441,7 @@ export default function SimpleUpload() {
             onCreateCampaign={() => createTemplate('campaign')}
             onConvertToHtml={convertSliceToHtml}
             isCreating={isProcessing}
+            brandUrl="https://www.enhanced.com"
           />
         )}
 
