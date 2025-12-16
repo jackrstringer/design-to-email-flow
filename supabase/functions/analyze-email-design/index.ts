@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageDataUrl, width, height, isFirstCampaign } = await req.json();
+    const { imageDataUrl, width, height, isFirstCampaign, existingBrands } = await req.json();
     
     if (!imageDataUrl) {
       throw new Error('No image data provided');
@@ -23,6 +23,7 @@ serve(async (req) => {
     }
 
     console.log(`Analyzing image: ${width}×${height}, isFirstCampaign: ${isFirstCampaign}`);
+    console.log(`Existing brands provided: ${existingBrands?.length || 0}`);
 
     // Extract base64 and media type from data URL
     const dataUrlMatch = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -31,6 +32,14 @@ serve(async (req) => {
     }
     const mediaType = dataUrlMatch[1];
     const base64Data = dataUrlMatch[2];
+
+    // Build brand matching context if existing brands are provided
+    const brandMatchingContext = existingBrands?.length > 0 
+      ? `\n\nEXISTING BRANDS IN OUR SYSTEM:
+${existingBrands.map((b: any) => `- ID: "${b.id}", Name: "${b.name}", Domain: "${b.domain}"`).join('\n')}
+
+IMPORTANT: If this email clearly belongs to one of the existing brands above (based on logo, brand name, domain, colors, or any visual identifiers), return its ID in "matchedBrandId". If it's a new brand not in the list, set "matchedBrandId" to null and provide the detected brand info in "detectedBrand".`
+      : '';
 
     const userPrompt = `Break this email down into horizontal sections from top to bottom. Footer should be 4 sections: Footer Logo, Footer Nav, Footer Socials, Footer Disclaimer.
 
@@ -45,9 +54,10 @@ Rules:
 - Last section must end at 100
 - Sections must be contiguous (next yStart = previous yEnd)
 - Split at obvious visual boundaries (background change / separators); don't lump multiple distinct areas into one section
+${brandMatchingContext}
 
 Return JSON only:
-{"detectedBrand":{"url":"","name":""},"blocks":[{"id":"header_logo","name":"Header Logo","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
+{"matchedBrandId":"uuid-or-null","detectedBrand":{"url":"","name":""},"blocks":[{"id":"header_logo","name":"Header Logo","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -119,10 +129,13 @@ Return JSON only:
     }
 
     const parsed = JSON.parse(jsonStr);
+    const matchedBrandId = parsed.matchedBrandId || null;
     const detectedBrand = parsed.detectedBrand || null;
     
-    if (detectedBrand) {
-      console.log(`Detected brand: ${detectedBrand.name} (${detectedBrand.url})`);
+    if (matchedBrandId) {
+      console.log(`Matched existing brand ID: ${matchedBrandId}`);
+    } else if (detectedBrand) {
+      console.log(`Detected new brand: ${detectedBrand.name} (${detectedBrand.url})`);
     }
 
     // Convert percentage-based blocks to pixel coordinates
@@ -171,6 +184,7 @@ Return JSON only:
       analyzedHeight: height,
       hasFooter: footerBlocks.length > 0,
       footerStartIndex: footerBlocks.length > 0 ? blocks.findIndex((b: any) => b.isFooter) : -1,
+      matchedBrandId,
       detectedBrand,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
