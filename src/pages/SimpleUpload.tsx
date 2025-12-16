@@ -94,6 +94,7 @@ export default function SimpleUpload() {
   const [viewState, setViewState] = useState<ViewState>('upload');
   const [uploadedImage, setUploadedImage] = useState<{ dataUrl: string; fileName: string } | null>(null);
   const [processedSlices, setProcessedSlices] = useState<ProcessedSlice[]>([]);
+  const [originalCloudinaryUrl, setOriginalCloudinaryUrl] = useState<string | null>(null);
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
@@ -158,10 +159,22 @@ export default function SimpleUpload() {
     if (!uploadedImage) return;
 
     setIsProcessing(true);
-    setStatus('Slicing image...');
+    setStatus('Uploading original image...');
 
     try {
+      // Upload original image to Cloudinary FIRST for AI reference
+      const { data: originalUpload, error: originalError } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: { imageData: uploadedImage.dataUrl, folder: 'klaviyo-originals' }
+      });
+
+      if (originalError || !originalUpload?.url) {
+        throw new Error('Failed to upload original image');
+      }
+      setOriginalCloudinaryUrl(originalUpload.url);
+      console.log('Original image uploaded:', originalUpload.url);
+
       // Slice the image
+      setStatus('Slicing image...');
       const slices = await sliceImage(uploadedImage.dataUrl, slicePositions);
       console.log(`Created ${slices.length} slices`);
 
@@ -320,6 +333,7 @@ export default function SimpleUpload() {
     setViewState('upload');
     setUploadedImage(null);
     setProcessedSlices([]);
+    setOriginalCloudinaryUrl(null);
   };
 
   return (
@@ -431,12 +445,12 @@ export default function SimpleUpload() {
         )}
 
         {/* Campaign Studio View */}
-        {viewState === 'slice-results' && uploadedImage && (
+        {viewState === 'slice-results' && uploadedImage && originalCloudinaryUrl && (
           <div className="fixed inset-0 bg-background p-4 z-50">
             <CampaignStudio
               slices={processedSlices}
               onSlicesChange={setProcessedSlices}
-              originalImageUrl={uploadedImage.dataUrl}
+              originalImageUrl={originalCloudinaryUrl}
               brandUrl="https://www.enhanced.com"
               onBack={() => setViewState('slice-editor')}
               onCreateTemplate={() => createTemplate('template')}

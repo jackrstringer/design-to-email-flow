@@ -36,14 +36,29 @@ serve(async (req) => {
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY is not configured');
+      console.error('ANTHROPIC_API_KEY not configured');
+      return new Response(JSON.stringify({ 
+        error: 'ANTHROPIC_API_KEY is not configured',
+        message: 'API key missing - please configure ANTHROPIC_API_KEY',
+        updatedSlices: []
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
+
+    // Validate the image URL is a real URL, not a data URL
+    const isValidImageUrl = originalCampaignImageUrl && 
+      originalCampaignImageUrl.startsWith('http') && 
+      !originalCampaignImageUrl.startsWith('data:');
 
     console.log('Refine campaign request:', { 
       sliceCount: allSlices?.length, 
       mode,
       hasHistory: conversationHistory?.length > 0,
-      userRequest: userRequest?.substring(0, 100)
+      userRequest: userRequest?.substring(0, 100),
+      originalImageUrl: originalCampaignImageUrl?.substring(0, 80),
+      isValidImageUrl
     });
 
     // Build context about the campaign
@@ -91,8 +106,9 @@ If no HTML changes are needed, return empty updatedSlices array.`;
     // Build messages array with conversation history
     const messages = [];
 
-    // Add original design image for context
-    if (originalCampaignImageUrl) {
+    // Add original design image for context (only if it's a valid URL)
+    if (isValidImageUrl) {
+      console.log('Adding original image to context:', originalCampaignImageUrl);
       messages.push({
         role: 'user',
         content: [
@@ -113,6 +129,8 @@ If no HTML changes are needed, return empty updatedSlices array.`;
         role: 'assistant',
         content: 'I can see the original campaign design. I\'ll use this as reference to ensure the HTML matches the visual styling, colors, spacing, and typography.'
       });
+    } else {
+      console.warn('No valid image URL provided, skipping image context');
     }
 
     // Add conversation history (excluding the current request which comes next)
