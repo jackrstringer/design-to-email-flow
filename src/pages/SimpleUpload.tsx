@@ -29,8 +29,8 @@ export default function SimpleUpload() {
   }, []);
 
   const processFile = async (file: File) => {
-    if (!file.type.match(/^image\/png$/)) {
-      toast.error('Please upload a PNG file');
+    if (!file.type.match(/^image\/(png|jpe?g)$/)) {
+      toast.error('Please upload a PNG or JPG file');
       return;
     }
 
@@ -114,7 +114,7 @@ export default function SimpleUpload() {
       <div className="max-w-xl mx-auto space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-foreground">PNG → Klaviyo</h1>
-          <p className="text-muted-foreground mt-2">Upload a PNG and push it directly to Klaviyo as an editable template</p>
+          <p className="text-muted-foreground mt-2">Upload a PNG or JPG and push it directly to Klaviyo as an editable template</p>
         </div>
 
         {/* API Key Section */}
@@ -151,7 +151,7 @@ export default function SimpleUpload() {
         >
           <input
             type="file"
-            accept=".png"
+            accept=".png,.jpg,.jpeg"
             onChange={handleFileChange}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             disabled={isUploading}
