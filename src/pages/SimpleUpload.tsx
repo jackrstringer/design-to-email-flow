@@ -192,14 +192,27 @@ export default function SimpleUpload() {
               <CheckCircle className="w-5 h-5" />
               <span className="font-medium">Template created successfully!</span>
             </div>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
-            >
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Open in Klaviyo
-            </Button>
+            <p className="text-sm text-muted-foreground">
+              <strong>Important:</strong> To edit this template with drag-and-drop, you must use it in a <strong>Campaign</strong> or <strong>Flow</strong>. 
+              Opening it directly from Templates will show the code editor.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                View Template
+              </Button>
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={() => window.open('https://www.klaviyo.com/campaigns/create', '_blank')}
+              >
+                Create Campaign
+              </Button>
+            </div>
           </div>
         )}
       </div>
