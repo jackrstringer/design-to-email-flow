@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ZoomIn, ZoomOut, ExternalLink, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
+
+const BASE_WIDTH = 600; // Both panels use same base width for accurate comparison
 
 interface CampaignStudioProps {
   slices: ProcessedSlice[];
@@ -20,6 +22,9 @@ interface CampaignStudioProps {
   onCreateCampaign: () => void;
   onConvertToHtml: (index: number) => Promise<void>;
   isCreating: boolean;
+  templateId?: string | null;
+  campaignId?: string | null;
+  onReset?: () => void;
 }
 
 export function CampaignStudio({
@@ -32,13 +37,16 @@ export function CampaignStudio({
   onCreateCampaign,
   onConvertToHtml,
   isCreating,
+  templateId,
+  campaignId,
+  onReset,
 }: CampaignStudioProps) {
   const [convertingIndex, setConvertingIndex] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isRefining, setIsRefining] = useState(false);
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(100);
+  const [zoomLevel, setZoomLevel] = useState(75); // Default to 75% for better fit
 
   const updateSlice = (index: number, updates: Partial<ProcessedSlice>) => {
     const updated = [...slices];
@@ -299,25 +307,79 @@ export function CampaignStudio({
 
         {/* Actions */}
         <div className="p-3 border-t border-border space-y-2">
-          <Button
-            variant="outline"
-            onClick={onCreateTemplate}
-            disabled={isCreating || convertingIndex !== null}
-            className="w-full"
-            size="sm"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Create Template
-          </Button>
-          <Button
-            onClick={onCreateCampaign}
-            disabled={isCreating || convertingIndex !== null}
-            className="w-full"
-            size="sm"
-          >
-            <Rocket className="w-4 h-4 mr-2" />
-            {isCreating ? 'Creating...' : 'Create Campaign'}
-          </Button>
+          {/* Success State */}
+          {templateId && (
+            <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 space-y-2 mb-2">
+              <div className="flex items-center gap-2 text-green-600 text-sm">
+                <CheckCircle className="w-4 h-4" />
+                <span className="font-medium">{campaignId ? 'Campaign' : 'Template'} created!</span>
+              </div>
+              {campaignId ? (
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open Campaign Editor
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => window.open('https://www.klaviyo.com/campaigns/create', '_blank')}
+                  >
+                    <Rocket className="w-4 h-4 mr-2" />
+                    Campaign
+                  </Button>
+                </div>
+              )}
+              {onReset && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground"
+                  onClick={onReset}
+                >
+                  Upload another
+                </Button>
+              )}
+            </div>
+          )}
+          
+          {!templateId && (
+            <>
+              <Button
+                variant="outline"
+                onClick={onCreateTemplate}
+                disabled={isCreating || convertingIndex !== null}
+                className="w-full"
+                size="sm"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Create Template
+              </Button>
+              <Button
+                onClick={onCreateCampaign}
+                disabled={isCreating || convertingIndex !== null}
+                className="w-full"
+                size="sm"
+              >
+                <Rocket className="w-4 h-4 mr-2" />
+                {isCreating ? 'Creating...' : 'Create Campaign'}
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -366,6 +428,7 @@ export function CampaignStudio({
                 <img
                   src={originalImageUrl}
                   alt="Original campaign"
+                  style={{ width: `${BASE_WIDTH}px` }}
                   className="max-w-none"
                 />
               </div>
@@ -377,7 +440,7 @@ export function CampaignStudio({
             <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50 sticky top-0 z-10">
               HTML Render
             </div>
-            <div className="flex-1 overflow-auto flex justify-center">
+            <div className="flex-1 overflow-auto flex justify-center p-2">
               <div 
                 style={{ 
                   transform: `scale(${zoomLevel / 100})`, 
@@ -385,7 +448,7 @@ export function CampaignStudio({
                   transition: 'transform 0.2s ease'
                 }}
               >
-                <CampaignPreviewFrame slices={slices} className="min-h-[400px]" />
+                <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} className="min-h-[400px]" />
               </div>
             </div>
           </div>

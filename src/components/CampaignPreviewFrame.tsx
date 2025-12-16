@@ -4,9 +4,10 @@ import type { ProcessedSlice } from '@/types/slice';
 interface CampaignPreviewFrameProps {
   slices: ProcessedSlice[];
   className?: string;
+  width?: number;
 }
 
-export function CampaignPreviewFrame({ slices, className }: CampaignPreviewFrameProps) {
+export function CampaignPreviewFrame({ slices, className, width = 600 }: CampaignPreviewFrameProps) {
   // Build the full campaign HTML from all slices
   const campaignHtml = useMemo(() => {
     const sliceHtml = slices.map((slice, index) => {
@@ -15,7 +16,7 @@ export function CampaignPreviewFrame({ slices, className }: CampaignPreviewFrame
         return slice.htmlContent;
       } else {
         // Image slice - wrap in table row with optional link
-        const imgTag = `<img src="${slice.imageUrl}" alt="${slice.altText || `Section ${index + 1}`}" style="display: block; width: 100%; max-width: 600px; height: auto; border: 0;" />`;
+        const imgTag = `<img src="${slice.imageUrl}" alt="${slice.altText || `Section ${index + 1}`}" style="display: block; width: 100%; max-width: ${width}px; height: auto; border: 0;" />`;
         
         const content = slice.link 
           ? `<a href="${slice.link}" target="_blank" style="text-decoration: none;">${imgTag}</a>`
@@ -30,7 +31,7 @@ export function CampaignPreviewFrame({ slices, className }: CampaignPreviewFrame
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=${width}, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <style>
     body {
@@ -39,13 +40,15 @@ export function CampaignPreviewFrame({ slices, className }: CampaignPreviewFrame
       background-color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
+      -webkit-text-size-adjust: 100%;
     }
     .email-wrapper {
       width: 100%;
       background-color: #ffffff;
     }
     .email-container {
-      max-width: 600px;
+      width: ${width}px;
+      max-width: ${width}px;
       margin: 0 auto;
       background-color: #ffffff;
     }
@@ -53,13 +56,13 @@ export function CampaignPreviewFrame({ slices, className }: CampaignPreviewFrame
 </head>
 <body>
   <div class="email-wrapper">
-    <table class="email-container" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto;">
+    <table class="email-container" border="0" cellpadding="0" cellspacing="0" width="${width}" style="width: ${width}px; max-width: ${width}px; margin: 0 auto;">
       ${sliceHtml}
     </table>
   </div>
 </body>
 </html>`;
-  }, [slices]);
+  }, [slices, width]);
 
   return (
     <iframe
@@ -67,7 +70,7 @@ export function CampaignPreviewFrame({ slices, className }: CampaignPreviewFrame
       title="Campaign Preview"
       className={className}
       sandbox="allow-same-origin"
-      style={{ border: 'none', width: '100%', height: '100%' }}
+      style={{ border: 'none', width: `${width}px`, height: '100%' }}
     />
   );
 }
