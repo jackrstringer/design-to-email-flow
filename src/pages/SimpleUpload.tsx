@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Upload, Key, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Upload, Key, CheckCircle, Loader2, ExternalLink, FileText, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -73,6 +73,10 @@ const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
     </td>
 </tr>`;
 
+const DEFAULT_LIST_ID = 'QRLACj';
+
+type CreationMode = 'template' | 'campaign';
+
 export default function SimpleUpload() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('klaviyo_api_key') || '');
   const [includeFooter, setIncludeFooter] = useState(() => localStorage.getItem('include_footer') !== 'false');
@@ -80,6 +84,8 @@ export default function SimpleUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [templateId, setTemplateId] = useState<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [creationMode, setCreationMode] = useState<CreationMode>('campaign');
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
@@ -110,6 +116,7 @@ export default function SimpleUpload() {
     setIsUploading(true);
     setStatus('Reading file...');
     setTemplateId(null);
+    setCampaignId(null);
 
     try {
       // Convert to base64
@@ -131,15 +138,22 @@ export default function SimpleUpload() {
       }
 
       // Push to Klaviyo
-      setStatus('Creating Klaviyo template...');
       const templateName = file.name.replace(/\.(png|jpe?g)$/i, '') || 'Email Template';
+      
+      if (creationMode === 'campaign') {
+        setStatus('Creating Klaviyo template & campaign...');
+      } else {
+        setStatus('Creating Klaviyo template...');
+      }
       
       const { data: klaviyoData, error: klaviyoError } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           imageUrl: uploadData.url,
           templateName,
           klaviyoApiKey: apiKey.trim(),
-          footerHtml: includeFooter ? ENHANCED_FOOTER_HTML : null
+          footerHtml: includeFooter ? ENHANCED_FOOTER_HTML : null,
+          mode: creationMode,
+          listId: creationMode === 'campaign' ? DEFAULT_LIST_ID : undefined
         }
       });
 
@@ -148,8 +162,15 @@ export default function SimpleUpload() {
       }
 
       setTemplateId(klaviyoData.templateId);
-      setStatus('Template created successfully!');
-      toast.success('Template pushed to Klaviyo!');
+      
+      if (creationMode === 'campaign' && klaviyoData.campaignId) {
+        setCampaignId(klaviyoData.campaignId);
+        setStatus('Campaign created successfully!');
+        toast.success('Template & campaign created in Klaviyo!');
+      } else {
+        setStatus('Template created successfully!');
+        toast.success('Template pushed to Klaviyo!');
+      }
 
     } catch (error) {
       console.error('Upload error:', error);
@@ -169,13 +190,19 @@ export default function SimpleUpload() {
     if (files && files[0]) {
       processFile(files[0]);
     }
-  }, [apiKey]);
+  }, [apiKey, creationMode, includeFooter]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files[0]) {
       processFile(files[0]);
     }
+  };
+
+  const resetUpload = () => {
+    setTemplateId(null);
+    setCampaignId(null);
+    setStatus('');
   };
 
   return (
@@ -222,58 +249,142 @@ export default function SimpleUpload() {
           />
         </div>
 
-        {/* Drop Zone */}
-        <div
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-          className={cn(
-            'relative flex flex-col items-center justify-center',
-            'h-64 border-2 border-dashed rounded-xl transition-all duration-200',
-            'cursor-pointer hover:border-primary/50 hover:bg-muted/50',
-            isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border',
-            isUploading && 'pointer-events-none opacity-60'
-          )}
-        >
-          <input
-            type="file"
-            accept=".png,.jpg,.jpeg"
-            onChange={handleFileChange}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            disabled={isUploading}
-          />
-          
-          <div className="flex flex-col items-center gap-4 p-8 text-center">
-            {isUploading ? (
-              <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            ) : (
-              <div className={cn(
-                'p-4 rounded-full transition-colors',
-                isDragActive ? 'bg-primary/10' : 'bg-muted'
-              )}>
-                <Upload className={cn(
-                  'w-8 h-8 transition-colors',
-                  isDragActive ? 'text-primary' : 'text-muted-foreground'
-                )} />
-              </div>
+        {/* Creation Mode Selection */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setCreationMode('template')}
+            className={cn(
+              'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all',
+              creationMode === 'template'
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-muted-foreground/50'
             )}
-            
-            <div>
-              <p className="text-lg font-medium text-foreground">
-                {isUploading ? status : 'Drop your PNG here'}
-              </p>
-              {!isUploading && (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  or click to browse
-                </p>
-              )}
-            </div>
-          </div>
+          >
+            <FileText className={cn(
+              'w-6 h-6',
+              creationMode === 'template' ? 'text-primary' : 'text-muted-foreground'
+            )} />
+            <span className={cn(
+              'text-sm font-medium',
+              creationMode === 'template' ? 'text-foreground' : 'text-muted-foreground'
+            )}>
+              Standalone Template
+            </span>
+            <span className="text-xs text-muted-foreground text-center">
+              Create template only
+            </span>
+          </button>
+          
+          <button
+            onClick={() => setCreationMode('campaign')}
+            className={cn(
+              'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all',
+              creationMode === 'campaign'
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-muted-foreground/50'
+            )}
+          >
+            <Rocket className={cn(
+              'w-6 h-6',
+              creationMode === 'campaign' ? 'text-primary' : 'text-muted-foreground'
+            )} />
+            <span className={cn(
+              'text-sm font-medium',
+              creationMode === 'campaign' ? 'text-foreground' : 'text-muted-foreground'
+            )}>
+              New Campaign
+            </span>
+            <span className="text-xs text-muted-foreground text-center">
+              Go straight to editor
+            </span>
+          </button>
         </div>
 
-        {/* Success State */}
-        {templateId && (
+        {/* Drop Zone */}
+        {!templateId && (
+          <div
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            className={cn(
+              'relative flex flex-col items-center justify-center',
+              'h-64 border-2 border-dashed rounded-xl transition-all duration-200',
+              'cursor-pointer hover:border-primary/50 hover:bg-muted/50',
+              isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border',
+              isUploading && 'pointer-events-none opacity-60'
+            )}
+          >
+            <input
+              type="file"
+              accept=".png,.jpg,.jpeg"
+              onChange={handleFileChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={isUploading}
+            />
+            
+            <div className="flex flex-col items-center gap-4 p-8 text-center">
+              {isUploading ? (
+                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              ) : (
+                <div className={cn(
+                  'p-4 rounded-full transition-colors',
+                  isDragActive ? 'bg-primary/10' : 'bg-muted'
+                )}>
+                  <Upload className={cn(
+                    'w-8 h-8 transition-colors',
+                    isDragActive ? 'text-primary' : 'text-muted-foreground'
+                  )} />
+                </div>
+              )}
+              
+              <div>
+                <p className="text-lg font-medium text-foreground">
+                  {isUploading ? status : 'Drop your PNG here'}
+                </p>
+                {!isUploading && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    or click to browse
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success State - Campaign Mode */}
+        {templateId && campaignId && (
+          <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 space-y-3">
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="w-5 h-5" />
+              <span className="font-medium">Campaign created successfully!</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Your template has been created and added to a new campaign. Click below to open the drag-and-drop editor.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={() => window.open(`https://www.klaviyo.com/campaign/${campaignId}/edit/content`, '_blank')}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Open Campaign Editor
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              onClick={resetUpload}
+            >
+              Upload another
+            </Button>
+          </div>
+        )}
+
+        {/* Success State - Template Mode */}
+        {templateId && !campaignId && (
           <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 space-y-3">
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle className="w-5 h-5" />
@@ -300,6 +411,14 @@ export default function SimpleUpload() {
                 Create Campaign
               </Button>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              onClick={resetUpload}
+            >
+              Upload another
+            </Button>
           </div>
         )}
       </div>

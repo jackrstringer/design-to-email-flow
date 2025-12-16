@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrl, templateName, klaviyoApiKey, footerHtml } = await req.json();
+    const { imageUrl, templateName, klaviyoApiKey, footerHtml, mode = 'template', listId } = await req.json();
 
     if (!imageUrl || !templateName || !klaviyoApiKey) {
       return new Response(
@@ -21,7 +21,7 @@ serve(async (req) => {
     }
 
     console.log(`Creating Klaviyo template: ${templateName}`);
-    console.log(`Footer included: ${!!footerHtml}`);
+    console.log(`Mode: ${mode}, Footer included: ${!!footerHtml}`);
 
     // Dark mode CSS for footer
     const darkModeCss = footerHtml ? `
@@ -36,10 +36,10 @@ serve(async (req) => {
     }
   </style>` : '';
 
-    // Footer section wrapped in editable region
+    // Footer section wrapped in editable region with zero padding
     const footerSection = footerHtml ? `
           <tr>
-            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600" style="padding: 0;">
               <div class="klaviyo-block klaviyo-text-block">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   ${footerHtml}
@@ -96,8 +96,7 @@ serve(async (req) => {
     });
 
     const responseText = await response.text();
-    console.log(`Klaviyo response status: ${response.status}`);
-    console.log(`Klaviyo response: ${responseText}`);
+    console.log(`Klaviyo template response status: ${response.status}`);
 
     if (!response.ok) {
       let errorMessage = 'Failed to create Klaviyo template';
@@ -113,16 +112,153 @@ serve(async (req) => {
       );
     }
 
-    const data = JSON.parse(responseText);
-    const templateId = data.data?.id;
-
+    const templateData = JSON.parse(responseText);
+    const templateId = templateData.data?.id;
     console.log(`Template created successfully: ${templateId}`);
+
+    // If mode is 'template', return just the template
+    if (mode === 'template') {
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          templateId,
+          message: 'Template created successfully'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Mode is 'campaign' - create campaign and assign template
+    if (!listId) {
+      return new Response(
+        JSON.stringify({ error: 'listId is required for campaign mode' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Creating campaign with list: ${listId}`);
+
+    // Create campaign
+    const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+        'Content-Type': 'application/json',
+        'revision': '2025-01-15'
+      },
+      body: JSON.stringify({
+        data: {
+          type: 'campaign',
+          attributes: {
+            name: templateName,
+            audiences: {
+              included: [listId],
+              excluded: []
+            },
+            send_strategy: {
+              method: 'static',
+              options_static: {
+                send_time: null
+              }
+            },
+            campaign_type: 'HTML'
+          }
+        }
+      })
+    });
+
+    const campaignResponseText = await campaignResponse.text();
+    console.log(`Klaviyo campaign response status: ${campaignResponse.status}`);
+
+    if (!campaignResponse.ok) {
+      let errorMessage = 'Failed to create Klaviyo campaign';
+      try {
+        const errorData = JSON.parse(campaignResponseText);
+        errorMessage = errorData.errors?.[0]?.detail || errorMessage;
+      } catch {
+        errorMessage = campaignResponseText || errorMessage;
+      }
+      // Still return template ID so user can use it
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          templateId,
+          error: `Template created but campaign failed: ${errorMessage}`
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const campaignData = JSON.parse(campaignResponseText);
+    const campaignId = campaignData.data?.id;
+    console.log(`Campaign created: ${campaignId}`);
+
+    // Get the campaign message ID from relationships
+    const campaignMessageId = campaignData.data?.relationships?.['campaign-messages']?.data?.[0]?.id;
+    
+    if (!campaignMessageId) {
+      console.error('No campaign message ID found in response');
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          templateId,
+          campaignId,
+          error: 'Campaign created but could not find message ID to assign template'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Assigning template ${templateId} to campaign message ${campaignMessageId}`);
+
+    // Assign template to campaign message
+    const assignResponse = await fetch(`https://a.klaviyo.com/api/campaign-messages/${campaignMessageId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+        'Content-Type': 'application/json',
+        'revision': '2025-01-15'
+      },
+      body: JSON.stringify({
+        data: {
+          type: 'campaign-message',
+          id: campaignMessageId,
+          relationships: {
+            template: {
+              data: {
+                type: 'template',
+                id: templateId
+              }
+            }
+          }
+        }
+      })
+    });
+
+    const assignResponseText = await assignResponse.text();
+    console.log(`Template assignment response status: ${assignResponse.status}`);
+
+    if (!assignResponse.ok) {
+      console.error('Template assignment failed:', assignResponseText);
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          templateId,
+          campaignId,
+          error: 'Campaign created but template assignment failed'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`Template assigned successfully to campaign ${campaignId}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         templateId,
-        message: 'Template created successfully'
+        campaignId,
+        message: 'Campaign created successfully with template'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
