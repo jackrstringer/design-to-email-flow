@@ -163,7 +163,12 @@ export default function SimpleUpload() {
 
       setTemplateId(klaviyoData.templateId);
       
-      if (creationMode === 'campaign' && klaviyoData.campaignId) {
+      // Check for partial success (template created but campaign failed)
+      if (creationMode === 'campaign' && klaviyoData.error) {
+        // Campaign failed but template was created
+        toast.error(klaviyoData.error);
+        setStatus('Template created (campaign failed)');
+      } else if (creationMode === 'campaign' && klaviyoData.campaignId) {
         setCampaignId(klaviyoData.campaignId);
         setStatus('Campaign created successfully!');
         toast.success('Template & campaign created in Klaviyo!');
