@@ -152,10 +152,19 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         updates.primary_color = data.colors.primary || brand.primaryColor;
         updates.secondary_color = data.colors.secondary || brand.secondaryColor;
         updates.accent_color = data.colors.accent || null;
+        updates.background_color = data.colors.background || null;
+        updates.text_primary_color = data.colors.textPrimary || null;
+        updates.link_color = data.colors.link || null;
       }
 
-      if (data?.typography) {
-        updates.typography = data.typography;
+      // Merge typography with fonts, spacing, and components
+      if (data?.typography || data?.fonts || data?.spacing || data?.components) {
+        updates.typography = {
+          ...(data.typography || {}),
+          fonts: data.fonts || [],
+          spacing: data.spacing || null,
+          components: data.components || null,
+        };
       }
 
       if (data?.socialLinks) {
@@ -468,16 +477,16 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg shadow-sm" style={{ backgroundColor: brand.primaryColor }} />
+              <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.primaryColor }} />
               <div>
                 <span className="text-xs text-muted-foreground">Primary</span>
                 <p className="text-xs font-mono">{brand.primaryColor}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg shadow-sm" style={{ backgroundColor: brand.secondaryColor }} />
+              <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.secondaryColor }} />
               <div>
                 <span className="text-xs text-muted-foreground">Secondary</span>
                 <p className="text-xs font-mono">{brand.secondaryColor}</p>
@@ -485,10 +494,37 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             </div>
             {brand.accentColor && (
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-lg shadow-sm" style={{ backgroundColor: brand.accentColor }} />
+                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.accentColor }} />
                 <div>
                   <span className="text-xs text-muted-foreground">Accent</span>
                   <p className="text-xs font-mono">{brand.accentColor}</p>
+                </div>
+              </div>
+            )}
+            {brand.backgroundColor && (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.backgroundColor }} />
+                <div>
+                  <span className="text-xs text-muted-foreground">Background</span>
+                  <p className="text-xs font-mono">{brand.backgroundColor}</p>
+                </div>
+              </div>
+            )}
+            {brand.textPrimaryColor && (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.textPrimaryColor }} />
+                <div>
+                  <span className="text-xs text-muted-foreground">Text</span>
+                  <p className="text-xs font-mono">{brand.textPrimaryColor}</p>
+                </div>
+              </div>
+            )}
+            {brand.linkColor && (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg shadow-sm border" style={{ backgroundColor: brand.linkColor }} />
+                <div>
+                  <span className="text-xs text-muted-foreground">Link</span>
+                  <p className="text-xs font-mono">{brand.linkColor}</p>
                 </div>
               </div>
             )}
@@ -503,6 +539,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
               <span className="text-sm font-medium">Typography</span>
             </div>
             <div className="space-y-3">
+              {/* Font Families */}
               {brand.typography.fontFamilies && Object.keys(brand.typography.fontFamilies).length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(brand.typography.fontFamilies).map(([key, value]) => (
@@ -513,6 +550,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                   ))}
                 </div>
               )}
+              {/* Font Sizes */}
               {brand.typography.fontSizes && Object.keys(brand.typography.fontSizes).length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(brand.typography.fontSizes).map(([key, value]) => (
@@ -520,6 +558,38 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                       {key}: {value}
                     </div>
                   ))}
+                </div>
+              )}
+              {/* Detected Fonts */}
+              {brand.typography.fonts && brand.typography.fonts.length > 0 && (
+                <div className="pt-2">
+                  <span className="text-xs text-muted-foreground mb-2 block">Detected Fonts:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {brand.typography.fonts.map((font: any, i: number) => (
+                      <div key={i} className="px-2 py-1 rounded bg-muted/30 text-xs">
+                        <span className="font-medium">{font.family}</span>
+                        {font.role && <span className="text-muted-foreground ml-1">({font.role})</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Spacing */}
+              {brand.typography.spacing && (
+                <div className="pt-2">
+                  <span className="text-xs text-muted-foreground mb-2 block">Spacing:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {brand.typography.spacing.baseUnit && (
+                      <div className="px-2 py-1 rounded bg-muted/30 text-xs font-mono">
+                        Base Unit: {brand.typography.spacing.baseUnit}px
+                      </div>
+                    )}
+                    {brand.typography.spacing.borderRadius && (
+                      <div className="px-2 py-1 rounded bg-muted/30 text-xs font-mono">
+                        Border Radius: {brand.typography.spacing.borderRadius}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -620,11 +690,34 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                       </Button>
                     </div>
                   </div>
-                  {/* Inline HTML preview - scaled down */}
+                  {/* Inline HTML preview - proper email table structure */}
                   <div className="flex justify-center bg-muted/30 p-4">
                     <div className="w-[400px] overflow-hidden rounded border border-border/40">
                       <iframe
-                        srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;background:#111;}</style></head><body>${footer.html}</body></html>`}
+                        srcDoc={`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 0; background: #f6f6f6; font-family: Arial, sans-serif; }
+    .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+  </style>
+</head>
+<body>
+  <center>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f6f6f6;">
+      <tr>
+        <td align="center">
+          <table role="presentation" class="email-wrapper" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
+            ${footer.html}
+          </table>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+</html>`}
                         className="w-full"
                         style={{ height: '300px' }}
                         sandbox="allow-same-origin"

@@ -62,6 +62,7 @@ export type Database = {
         Row: {
           accent_color: string | null
           all_links: Json
+          background_color: string | null
           created_at: string
           dark_logo_public_id: string | null
           dark_logo_url: string | null
@@ -75,11 +76,13 @@ export type Database = {
           klaviyo_api_key: string | null
           light_logo_public_id: string | null
           light_logo_url: string | null
+          link_color: string | null
           name: string
           primary_color: string
           secondary_color: string
           social_icons: Json | null
           social_links: Json
+          text_primary_color: string | null
           typography: Json | null
           updated_at: string
           website_url: string | null
@@ -87,6 +90,7 @@ export type Database = {
         Insert: {
           accent_color?: string | null
           all_links?: Json
+          background_color?: string | null
           created_at?: string
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
@@ -100,11 +104,13 @@ export type Database = {
           klaviyo_api_key?: string | null
           light_logo_public_id?: string | null
           light_logo_url?: string | null
+          link_color?: string | null
           name: string
           primary_color?: string
           secondary_color?: string
           social_icons?: Json | null
           social_links?: Json
+          text_primary_color?: string | null
           typography?: Json | null
           updated_at?: string
           website_url?: string | null
@@ -112,6 +118,7 @@ export type Database = {
         Update: {
           accent_color?: string | null
           all_links?: Json
+          background_color?: string | null
           created_at?: string
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
@@ -125,11 +132,13 @@ export type Database = {
           klaviyo_api_key?: string | null
           light_logo_public_id?: string | null
           light_logo_url?: string | null
+          link_color?: string | null
           name?: string
           primary_color?: string
           secondary_color?: string
           social_icons?: Json | null
           social_links?: Json
+          text_primary_color?: string | null
           typography?: Json | null
           updated_at?: string
           website_url?: string | null
