@@ -7,6 +7,9 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { SliceEditor } from '@/components/SliceEditor';
+import { SliceResults, ProcessedSlice } from '@/components/SliceResults';
+import { sliceImage, ImageSlice } from '@/lib/imageSlicing';
 
 const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
 <tr>
@@ -75,17 +78,22 @@ const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
 
 const DEFAULT_LIST_ID = 'QRLACj';
 
+type ViewState = 'upload' | 'slice-editor' | 'slice-results' | 'success';
 type CreationMode = 'template' | 'campaign';
 
 export default function SimpleUpload() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('klaviyo_api_key') || '');
   const [includeFooter, setIncludeFooter] = useState(() => localStorage.getItem('include_footer') !== 'false');
   const [isDragActive, setIsDragActive] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
-  const [creationMode, setCreationMode] = useState<CreationMode>('campaign');
+  
+  // Slice workflow state
+  const [viewState, setViewState] = useState<ViewState>('upload');
+  const [uploadedImage, setUploadedImage] = useState<{ dataUrl: string; fileName: string } | null>(null);
+  const [processedSlices, setProcessedSlices] = useState<ProcessedSlice[]>([]);
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
@@ -102,7 +110,7 @@ export default function SimpleUpload() {
     }
   }, []);
 
-  const processFile = async (file: File) => {
+  const handleFileSelect = async (file: File) => {
     if (!file.type.match(/^image\/(png|jpe?g)$/)) {
       toast.error('Please upload a PNG or JPG file');
       return;
@@ -113,77 +121,19 @@ export default function SimpleUpload() {
       return;
     }
 
-    setIsUploading(true);
-    setStatus('Reading file...');
-    setTemplateId(null);
-    setCampaignId(null);
-
-    try {
-      // Convert to base64
-      const reader = new FileReader();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+    // Read file and show slice editor
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUploadedImage({
+        dataUrl: reader.result as string,
+        fileName: file.name
       });
-
-      // Upload to Cloudinary
-      setStatus('Uploading image to Cloudinary...');
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
-        body: { imageData: dataUrl, folder: 'klaviyo-templates' }
-      });
-
-      if (uploadError || !uploadData?.url) {
-        throw new Error(uploadError?.message || 'Failed to upload image');
-      }
-
-      // Push to Klaviyo
-      const templateName = file.name.replace(/\.(png|jpe?g)$/i, '') || 'Email Template';
-      
-      if (creationMode === 'campaign') {
-        setStatus('Creating Klaviyo template & campaign...');
-      } else {
-        setStatus('Creating Klaviyo template...');
-      }
-      
-      const { data: klaviyoData, error: klaviyoError } = await supabase.functions.invoke('push-to-klaviyo', {
-        body: {
-          imageUrl: uploadData.url,
-          templateName,
-          klaviyoApiKey: apiKey.trim(),
-          footerHtml: includeFooter ? ENHANCED_FOOTER_HTML : null,
-          mode: creationMode,
-          listId: creationMode === 'campaign' ? DEFAULT_LIST_ID : undefined
-        }
-      });
-
-      if (klaviyoError || !klaviyoData?.templateId) {
-        throw new Error(klaviyoData?.error || klaviyoError?.message || 'Failed to create Klaviyo template');
-      }
-
-      setTemplateId(klaviyoData.templateId);
-      
-      // Check for partial success (template created but campaign failed)
-      if (creationMode === 'campaign' && klaviyoData.error) {
-        // Campaign failed but template was created
-        toast.error(klaviyoData.error);
-        setStatus('Template created (campaign failed)');
-      } else if (creationMode === 'campaign' && klaviyoData.campaignId) {
-        setCampaignId(klaviyoData.campaignId);
-        setStatus('Campaign created successfully!');
-        toast.success('Template & campaign created in Klaviyo!');
-      } else {
-        setStatus('Template created successfully!');
-        toast.success('Template pushed to Klaviyo!');
-      }
-
-    } catch (error) {
-      console.error('Upload error:', error);
-      setStatus('');
-      toast.error(error instanceof Error ? error.message : 'Upload failed');
-    } finally {
-      setIsUploading(false);
-    }
+      setViewState('slice-editor');
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read file');
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -193,14 +143,134 @@ export default function SimpleUpload() {
 
     const files = e.dataTransfer.files;
     if (files && files[0]) {
-      processFile(files[0]);
+      handleFileSelect(files[0]);
     }
-  }, [apiKey, creationMode, includeFooter]);
+  }, [apiKey]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files[0]) {
-      processFile(files[0]);
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const processSlices = async (slicePositions: number[]) => {
+    if (!uploadedImage) return;
+
+    setIsProcessing(true);
+    setStatus('Slicing image...');
+
+    try {
+      // Slice the image
+      const slices = await sliceImage(uploadedImage.dataUrl, slicePositions);
+      console.log(`Created ${slices.length} slices`);
+
+      // Upload each slice to Cloudinary
+      setStatus(`Uploading ${slices.length} slices to Cloudinary...`);
+      const uploadedSlices: { imageUrl: string; slice: ImageSlice }[] = [];
+
+      for (let i = 0; i < slices.length; i++) {
+        setStatus(`Uploading slice ${i + 1} of ${slices.length}...`);
+        const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+          body: { imageData: slices[i].dataUrl, folder: 'klaviyo-slices' }
+        });
+
+        if (error || !data?.url) {
+          throw new Error(`Failed to upload slice ${i + 1}`);
+        }
+
+        uploadedSlices.push({ imageUrl: data.url, slice: slices[i] });
+      }
+
+      // Analyze slices with AI
+      setStatus('Analyzing slices with AI...');
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
+        body: {
+          slices: slices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
+          brandUrl: 'https://www.enhanced.com'
+        }
+      });
+
+      if (analysisError) {
+        console.warn('AI analysis failed, using defaults:', analysisError);
+      }
+
+      // Combine uploads with analysis
+      const analyses = analysisData?.analyses || [];
+      const results: ProcessedSlice[] = uploadedSlices.map((uploaded, i) => ({
+        imageUrl: uploaded.imageUrl,
+        altText: analyses[i]?.altText || `Email section ${i + 1}`,
+        link: analyses[i]?.suggestedLink || null,
+        isClickable: analyses[i]?.isClickable || false
+      }));
+
+      setProcessedSlices(results);
+      setViewState('slice-results');
+      setStatus('');
+
+    } catch (error) {
+      console.error('Slice processing error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to process slices');
+      setStatus('');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const createTemplate = async (mode: CreationMode) => {
+    if (!uploadedImage || processedSlices.length === 0) return;
+
+    setIsProcessing(true);
+    const templateName = uploadedImage.fileName.replace(/\.(png|jpe?g)$/i, '') || 'Email Template';
+    
+    if (mode === 'campaign') {
+      setStatus('Creating Klaviyo template & campaign...');
+    } else {
+      setStatus('Creating Klaviyo template...');
+    }
+
+    try {
+      const { data: klaviyoData, error: klaviyoError } = await supabase.functions.invoke('push-to-klaviyo', {
+        body: {
+          slices: processedSlices.map(s => ({
+            imageUrl: s.imageUrl,
+            altText: s.altText,
+            link: s.link
+          })),
+          templateName,
+          klaviyoApiKey: apiKey.trim(),
+          footerHtml: includeFooter ? ENHANCED_FOOTER_HTML : null,
+          mode,
+          listId: mode === 'campaign' ? DEFAULT_LIST_ID : undefined
+        }
+      });
+
+      if (klaviyoError || !klaviyoData?.templateId) {
+        throw new Error(klaviyoData?.error || klaviyoError?.message || 'Failed to create Klaviyo template');
+      }
+
+      setTemplateId(klaviyoData.templateId);
+      
+      if (mode === 'campaign' && klaviyoData.error) {
+        toast.error(klaviyoData.error);
+        setStatus('Template created (campaign failed)');
+      } else if (mode === 'campaign' && klaviyoData.campaignId) {
+        setCampaignId(klaviyoData.campaignId);
+        setStatus('Campaign created successfully!');
+        toast.success('Template & campaign created in Klaviyo!');
+      } else {
+        setStatus('Template created successfully!');
+        toast.success('Template pushed to Klaviyo!');
+      }
+
+      setViewState('success');
+
+    } catch (error) {
+      console.error('Create error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create template');
+      setStatus('');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -208,6 +278,9 @@ export default function SimpleUpload() {
     setTemplateId(null);
     setCampaignId(null);
     setStatus('');
+    setViewState('upload');
+    setUploadedImage(null);
+    setProcessedSlices([]);
   };
 
   return (
@@ -215,98 +288,53 @@ export default function SimpleUpload() {
       <div className="max-w-xl mx-auto space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-foreground">PNG → Klaviyo</h1>
-          <p className="text-muted-foreground mt-2">Upload a PNG or JPG and push it directly to Klaviyo as an editable template</p>
-        </div>
-
-        {/* API Key Section */}
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Key className="w-4 h-4" />
-            Klaviyo Private API Key
-          </label>
-          <Input
-            type="password"
-            placeholder="pk_xxxxxxxxxxxx"
-            value={apiKey}
-            onChange={(e) => saveApiKey(e.target.value)}
-            className="font-mono"
-          />
-          <p className="text-xs text-muted-foreground">
-            Your key is saved locally and never stored on our servers
+          <p className="text-muted-foreground mt-2">
+            {viewState === 'upload' && 'Upload a PNG or JPG to slice and push to Klaviyo'}
+            {viewState === 'slice-editor' && 'Click to add slice lines, drag to adjust'}
+            {viewState === 'slice-results' && 'Review and edit your slices before creating'}
+            {viewState === 'success' && 'Your template is ready!'}
           </p>
         </div>
 
-        {/* Footer Toggle */}
-        <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
-          <div className="space-y-0.5">
-            <Label htmlFor="footer-toggle" className="text-sm font-medium">Include Footer</Label>
-            <p className="text-xs text-muted-foreground">
-              Add the Enhanced footer to exported templates
-            </p>
+        {/* API Key Section - always visible except on success */}
+        {viewState !== 'success' && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Key className="w-4 h-4" />
+              Klaviyo Private API Key
+            </label>
+            <Input
+              type="password"
+              placeholder="pk_xxxxxxxxxxxx"
+              value={apiKey}
+              onChange={(e) => saveApiKey(e.target.value)}
+              className="font-mono"
+            />
           </div>
-          <Switch
-            id="footer-toggle"
-            checked={includeFooter}
-            onCheckedChange={(checked) => {
-              setIncludeFooter(checked);
-              localStorage.setItem('include_footer', String(checked));
-            }}
-          />
-        </div>
+        )}
 
-        {/* Creation Mode Selection */}
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setCreationMode('template')}
-            className={cn(
-              'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all',
-              creationMode === 'template'
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:border-muted-foreground/50'
-            )}
-          >
-            <FileText className={cn(
-              'w-6 h-6',
-              creationMode === 'template' ? 'text-primary' : 'text-muted-foreground'
-            )} />
-            <span className={cn(
-              'text-sm font-medium',
-              creationMode === 'template' ? 'text-foreground' : 'text-muted-foreground'
-            )}>
-              Standalone Template
-            </span>
-            <span className="text-xs text-muted-foreground text-center">
-              Create template only
-            </span>
-          </button>
-          
-          <button
-            onClick={() => setCreationMode('campaign')}
-            className={cn(
-              'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all',
-              creationMode === 'campaign'
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:border-muted-foreground/50'
-            )}
-          >
-            <Rocket className={cn(
-              'w-6 h-6',
-              creationMode === 'campaign' ? 'text-primary' : 'text-muted-foreground'
-            )} />
-            <span className={cn(
-              'text-sm font-medium',
-              creationMode === 'campaign' ? 'text-foreground' : 'text-muted-foreground'
-            )}>
-              New Campaign
-            </span>
-            <span className="text-xs text-muted-foreground text-center">
-              Go straight to editor
-            </span>
-          </button>
-        </div>
+        {/* Footer Toggle - only on upload view */}
+        {viewState === 'upload' && (
+          <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
+            <div className="space-y-0.5">
+              <Label htmlFor="footer-toggle" className="text-sm font-medium">Include Footer</Label>
+              <p className="text-xs text-muted-foreground">
+                Add the Enhanced footer to exported templates
+              </p>
+            </div>
+            <Switch
+              id="footer-toggle"
+              checked={includeFooter}
+              onCheckedChange={(checked) => {
+                setIncludeFooter(checked);
+                localStorage.setItem('include_footer', String(checked));
+              }}
+            />
+          </div>
+        )}
 
-        {/* Drop Zone */}
-        {!templateId && (
+        {/* Upload View */}
+        {viewState === 'upload' && (
           <div
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -316,8 +344,7 @@ export default function SimpleUpload() {
               'relative flex flex-col items-center justify-center',
               'h-64 border-2 border-dashed rounded-xl transition-all duration-200',
               'cursor-pointer hover:border-primary/50 hover:bg-muted/50',
-              isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border',
-              isUploading && 'pointer-events-none opacity-60'
+              isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border'
             )}
           >
             <input
@@ -325,47 +352,66 @@ export default function SimpleUpload() {
               accept=".png,.jpg,.jpeg"
               onChange={handleFileChange}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              disabled={isUploading}
             />
             
             <div className="flex flex-col items-center gap-4 p-8 text-center">
-              {isUploading ? (
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
-              ) : (
-                <div className={cn(
-                  'p-4 rounded-full transition-colors',
-                  isDragActive ? 'bg-primary/10' : 'bg-muted'
-                )}>
-                  <Upload className={cn(
-                    'w-8 h-8 transition-colors',
-                    isDragActive ? 'text-primary' : 'text-muted-foreground'
-                  )} />
-                </div>
-              )}
+              <div className={cn(
+                'p-4 rounded-full transition-colors',
+                isDragActive ? 'bg-primary/10' : 'bg-muted'
+              )}>
+                <Upload className={cn(
+                  'w-8 h-8 transition-colors',
+                  isDragActive ? 'text-primary' : 'text-muted-foreground'
+                )} />
+              </div>
               
               <div>
-                <p className="text-lg font-medium text-foreground">
-                  {isUploading ? status : 'Drop your PNG here'}
-                </p>
-                {!isUploading && (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    or click to browse
-                  </p>
-                )}
+                <p className="text-lg font-medium text-foreground">Drop your PNG here</p>
+                <p className="mt-1 text-sm text-muted-foreground">or click to browse</p>
               </div>
             </div>
           </div>
         )}
 
+        {/* Slice Editor View */}
+        {viewState === 'slice-editor' && uploadedImage && (
+          <SliceEditor
+            imageDataUrl={uploadedImage.dataUrl}
+            onProcess={processSlices}
+            onCancel={resetUpload}
+            isProcessing={isProcessing}
+          />
+        )}
+
+        {/* Processing status overlay */}
+        {isProcessing && status && viewState === 'slice-editor' && (
+          <div className="flex items-center justify-center gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-sm text-muted-foreground">{status}</span>
+          </div>
+        )}
+
+        {/* Slice Results View */}
+        {viewState === 'slice-results' && (
+          <SliceResults
+            slices={processedSlices}
+            onSlicesChange={setProcessedSlices}
+            onBack={() => setViewState('slice-editor')}
+            onCreateTemplate={() => createTemplate('template')}
+            onCreateCampaign={() => createTemplate('campaign')}
+            isCreating={isProcessing}
+          />
+        )}
+
         {/* Success State - Campaign Mode */}
-        {templateId && campaignId && (
+        {viewState === 'success' && templateId && campaignId && (
           <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 space-y-3">
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle className="w-5 h-5" />
-              <span className="font-medium">Campaign created successfully!</span>
+              <span className="font-medium">Campaign created with {processedSlices.length} slices!</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Your template has been created and added to a new campaign. Click below to open the drag-and-drop editor.
+              Your sliced email template has been created and added to a new campaign.
             </p>
             <div className="flex gap-2">
               <Button
@@ -389,15 +435,14 @@ export default function SimpleUpload() {
         )}
 
         {/* Success State - Template Mode */}
-        {templateId && !campaignId && (
+        {viewState === 'success' && templateId && !campaignId && (
           <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 space-y-3">
             <div className="flex items-center gap-2 text-green-600">
               <CheckCircle className="w-5 h-5" />
-              <span className="font-medium">Template created successfully!</span>
+              <span className="font-medium">Template created with {processedSlices.length} slices!</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              <strong>Important:</strong> To edit this template with drag-and-drop, you must use it in a <strong>Campaign</strong> or <strong>Flow</strong>. 
-              Opening it directly from Templates will show the code editor.
+              <strong>Important:</strong> To edit this template with drag-and-drop, use it in a Campaign or Flow.
             </p>
             <div className="flex gap-2">
               <Button
@@ -413,6 +458,7 @@ export default function SimpleUpload() {
                 className="flex-1"
                 onClick={() => window.open('https://www.klaviyo.com/campaigns/create', '_blank')}
               >
+                <Rocket className="w-4 h-4 mr-2" />
                 Create Campaign
               </Button>
             </div>
