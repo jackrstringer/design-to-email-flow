@@ -5,23 +5,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface SliceData {
+  imageUrl: string;
+  altText: string;
+  link?: string | null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { imageUrl, templateName, klaviyoApiKey, footerHtml, mode = 'template', listId } = await req.json();
+    const { imageUrl, templateName, klaviyoApiKey, footerHtml, mode = 'template', listId, slices } = await req.json();
 
-    if (!imageUrl || !templateName || !klaviyoApiKey) {
+    // Support both single image and slices array
+    const hasSlices = Array.isArray(slices) && slices.length > 0;
+
+    if ((!imageUrl && !hasSlices) || !templateName || !klaviyoApiKey) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: imageUrl, templateName, klaviyoApiKey' }),
+        JSON.stringify({ error: 'Missing required fields: imageUrl or slices, templateName, klaviyoApiKey' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log(`Creating Klaviyo template: ${templateName}`);
-    console.log(`Mode: ${mode}, Footer included: ${!!footerHtml}`);
+    console.log(`Mode: ${mode}, Footer included: ${!!footerHtml}, Slices: ${hasSlices ? slices.length : 0}`);
 
     // Dark mode CSS for footer
     const darkModeCss = footerHtml ? `
@@ -48,6 +57,45 @@ serve(async (req) => {
             </td>
           </tr>` : '';
 
+    // Build image content - either single image or multiple slices
+    let imageContent: string;
+    
+    if (hasSlices) {
+      // Multiple slices - stack them vertically
+      imageContent = (slices as SliceData[]).map((slice: SliceData) => {
+        const imgTag = `<img src="${slice.imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${slice.altText || 'Email image'}" />`;
+        
+        if (slice.link) {
+          return `<tr>
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+              <div class="klaviyo-block klaviyo-image-block">
+                <a href="${slice.link}" target="_blank" style="text-decoration: none;">
+                  ${imgTag}
+                </a>
+              </div>
+            </td>
+          </tr>`;
+        }
+        
+        return `<tr>
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+              <div class="klaviyo-block klaviyo-image-block">
+                ${imgTag}
+              </div>
+            </td>
+          </tr>`;
+      }).join('\n');
+    } else {
+      // Single image (legacy support)
+      imageContent = `<tr>
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+              <div class="klaviyo-block klaviyo-image-block">
+                <img src="${imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${templateName}" />
+              </div>
+            </td>
+          </tr>`;
+    }
+
     // Build the hybrid HTML template with Klaviyo editable region
     const html = `<!DOCTYPE html>
 <html>
@@ -61,13 +109,7 @@ serve(async (req) => {
     <tr>
       <td align="center" style="padding: 20px 0;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
-          <tr>
-            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
-              <div class="klaviyo-block klaviyo-image-block">
-                <img src="${imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${templateName}" />
-              </div>
-            </td>
-          </tr>${footerSection}
+          ${imageContent}${footerSection}
         </table>
       </td>
     </tr>
