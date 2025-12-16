@@ -222,9 +222,9 @@ export function CampaignStudio({
 
   return (
     <div className="flex h-screen w-full">
-      {/* Column 1: Chat (collapsible) */}
+      {/* Column 1: Chat (collapsible) - 25% when open */}
       <Collapsible open={chatExpanded} onOpenChange={setChatExpanded} className="flex">
-        <CollapsibleContent className="flex-1 min-w-0 flex flex-col border-r border-border/50 bg-background">
+        <CollapsibleContent className="w-[25vw] flex flex-col border-r border-border/50 bg-background">
           <div className="h-12 px-3 flex items-center justify-between border-b border-border/50">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5" />
@@ -252,91 +252,10 @@ export function CampaignStudio({
         </CollapsibleTrigger>
       </Collapsible>
 
-      {/* Column 2: Details */}
-      <div className="flex-1 min-w-0 flex flex-col border-r border-border/50">
-        <div className="h-12 px-4 flex items-center border-b border-border/50">
-          <span className="text-sm text-muted-foreground">Details · {slices.length} slices</span>
-        </div>
-        <div className="flex-1 overflow-auto">
-          {slices.map((slice, index) => (
-            <div
-              key={index}
-              className="border-b border-border/30 last:border-b-0 p-4"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
-                  <button
-                    onClick={() => toggleSliceType(index)}
-                    disabled={convertingIndex !== null || isCreating}
-                    className={cn(
-                      'flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm transition-colors border',
-                      slice.type === 'html'
-                        ? 'text-blue-600 border-blue-200 bg-blue-50'
-                        : 'text-muted-foreground border-border/50 hover:border-border'
-                    )}
-                  >
-                    {convertingIndex === index ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : slice.type === 'html' ? (
-                      <>
-                        <Code className="w-4 h-4" />
-                        <span>HTML</span>
-                      </>
-                    ) : (
-                      <>
-                        <Image className="w-4 h-4" />
-                        <span>Image</span>
-                      </>
-                    )}
-                  </button>
-                  {sliceDimensions[index] && (
-                    <span className="text-xs text-muted-foreground">
-                      {BASE_WIDTH} × {Math.round(sliceDimensions[index].height)}px
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleLink(index)}
-                    className={cn(
-                      'p-2 rounded transition-colors flex-shrink-0',
-                      slice.link !== null
-                        ? 'text-primary bg-primary/10'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    )}
-                  >
-                    {slice.link !== null ? <Link className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
-                  </button>
-                  {slice.link !== null && (
-                    <Input
-                      value={slice.link}
-                      onChange={(e) => updateSlice(index, { link: e.target.value })}
-                      placeholder="https://..."
-                      className="h-9 text-sm flex-1 bg-background border-border/50"
-                      autoFocus={editingLinkIndex === index}
-                      onBlur={() => setEditingLinkIndex(null)}
-                    />
-                  )}
-                </div>
-
-                <Textarea
-                  value={slice.altText}
-                  onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                  placeholder="Alt text description..."
-                  className="text-sm bg-background border-border/50 resize-none min-h-[60px]"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Column 3: Original Campaign */}
-      <div className="flex-1 min-w-0 flex flex-col border-r border-border/50">
+      {/* Column 2: Details + Original (combined, single scroll) - 50% */}
+      <div className="flex-1 flex flex-col border-r border-border/50">
         <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
-          <span className="text-sm text-muted-foreground">Original</span>
+          <span className="text-sm text-muted-foreground">Campaign · {slices.length} slices</span>
           <div className="flex items-center gap-3">
             <Slider
               value={[zoomLevel]}
@@ -351,30 +270,111 @@ export function CampaignStudio({
         </div>
         <div className="flex-1 overflow-auto" ref={containerRef}>
           <div 
+            className="flex gap-4 p-4"
             style={{ 
               transform: `scale(${zoomLevel / 100})`, 
               transformOrigin: 'top left',
             }}
           >
-            <img
-              src={originalImageUrl}
-              alt="Original"
-              style={{ width: `${BASE_WIDTH}px` }}
-              className="max-w-none"
-            />
-            {sliceDimensions.slice(1).map((dim, i) => (
-              <div
-                key={i}
-                className="absolute left-0 right-0 h-0.5 bg-red-500"
-                style={{ top: dim.top }}
+            {/* Details sub-column */}
+            <div className="w-[300px] flex-shrink-0">
+              {slices.map((slice, index) => (
+                <div
+                  key={index}
+                  className="border-b border-border/30 last:border-b-0"
+                  style={{ height: sliceDimensions[index]?.height || 120 }}
+                >
+                  <div className="py-3 pr-4 space-y-2 h-full flex flex-col justify-end">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
+                      <button
+                        onClick={() => toggleSliceType(index)}
+                        disabled={convertingIndex !== null || isCreating}
+                        className={cn(
+                          'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors border',
+                          slice.type === 'html'
+                            ? 'text-blue-600 border-blue-200 bg-blue-50'
+                            : 'text-muted-foreground border-border/50 hover:border-border'
+                        )}
+                      >
+                        {convertingIndex === index ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : slice.type === 'html' ? (
+                          <>
+                            <Code className="w-3 h-3" />
+                            <span>HTML</span>
+                          </>
+                        ) : (
+                          <>
+                            <Image className="w-3 h-3" />
+                            <span>Image</span>
+                          </>
+                        )}
+                      </button>
+                      {sliceDimensions[index] && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {BASE_WIDTH}×{Math.round(sliceDimensions[index].height)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleLink(index)}
+                        className={cn(
+                          'p-1.5 rounded transition-colors flex-shrink-0',
+                          slice.link !== null
+                            ? 'text-primary bg-primary/10'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        )}
+                      >
+                        {slice.link !== null ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
+                      </button>
+                      {slice.link !== null && (
+                        <Input
+                          value={slice.link}
+                          onChange={(e) => updateSlice(index, { link: e.target.value })}
+                          placeholder="https://..."
+                          className="h-7 text-xs flex-1 bg-background border-border/50"
+                          autoFocus={editingLinkIndex === index}
+                          onBlur={() => setEditingLinkIndex(null)}
+                        />
+                      )}
+                    </div>
+
+                    <Textarea
+                      value={slice.altText}
+                      onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                      placeholder="Alt text..."
+                      className="text-xs bg-background border-border/50 resize-none flex-1 min-h-[40px]"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Original image sub-column */}
+            <div className="relative flex-shrink-0">
+              <img
+                src={originalImageUrl}
+                alt="Original"
+                style={{ width: `${BASE_WIDTH}px` }}
+                className="max-w-none"
               />
-            ))}
+              {sliceDimensions.slice(1).map((dim, i) => (
+                <div
+                  key={i}
+                  className="absolute left-0 right-0 h-0.5 bg-red-500"
+                  style={{ top: dim.top }}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Column 4: Preview */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      {/* Column 3: Preview - 25% */}
+      <div className="w-[25vw] flex-shrink-0 flex flex-col">
         <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
           <span className="text-sm text-muted-foreground">
             {hasHtmlSlices ? 'HTML Preview' : 'Preview'}
