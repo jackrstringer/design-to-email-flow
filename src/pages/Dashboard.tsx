@@ -71,7 +71,8 @@ function mapRowToBrand(row: any): Brand {
 interface PendingCampaign {
   file: File;
   dataUrl: string;
-  detectedDomain: string | null;
+  matchedBrandId: string | null;
+  detectedBrand: { url: string; name: string } | null;
   analysisData: any;
 }
 
@@ -116,20 +117,27 @@ export default function Dashboard() {
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || null;
   const settingsBrand = brands.find(b => b.id === settingsBrandId) || null;
 
-  // Called when a campaign image is dropped and brand is detected
-  const handleBrandDetected = useCallback((domain: string, campaignData: PendingCampaign) => {
-    // Try to find existing brand by domain
-    const existingBrand = brands.find(b => 
-      b.domain.toLowerCase() === domain.toLowerCase()
-    );
+  // Called when a campaign image is dropped and brand is detected/matched
+  const handleBrandDetected = useCallback((campaignData: PendingCampaign) => {
+    // If AI matched an existing brand by ID
+    if (campaignData.matchedBrandId) {
+      const existingBrand = brands.find(b => b.id === campaignData.matchedBrandId);
+      if (existingBrand) {
+        setSelectedBrandId(existingBrand.id);
+        setPendingCampaign(campaignData);
+        return;
+      }
+    }
     
-    if (existingBrand) {
-      // Brand exists - auto-select it
-      setSelectedBrandId(existingBrand.id);
-      // Keep the pending campaign for processing
-      setPendingCampaign(campaignData);
-    } else {
-      // New brand detected - store campaign data and show modal
+    // New brand detected - extract domain and show modal
+    if (campaignData.detectedBrand?.url) {
+      let domain: string;
+      try {
+        domain = new URL(campaignData.detectedBrand.url).hostname.replace('www.', '');
+      } catch {
+        domain = campaignData.detectedBrand.url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
+      }
+      
       setPendingCampaign(campaignData);
       setPendingBrandDomain(domain);
       

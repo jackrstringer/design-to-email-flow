@@ -18,7 +18,8 @@ import type { Brand } from '@/types/brand-assets';
 interface PendingCampaign {
   file: File;
   dataUrl: string;
-  detectedDomain: string | null;
+  matchedBrandId: string | null;
+  detectedBrand: { url: string; name: string } | null;
   analysisData: any;
 }
 
@@ -29,7 +30,7 @@ interface CampaignCreatorProps {
   selectedBrand: Brand | null;
   includeFooter: boolean;
   onIncludeFooterChange: (include: boolean) => void;
-  onBrandDetected: (domain: string, campaignData: PendingCampaign) => void;
+  onBrandDetected: (campaignData: PendingCampaign) => void;
   onAddBrandClick: () => void;
   isLoading: boolean;
   pendingCampaign: PendingCampaign | null;
@@ -143,12 +144,17 @@ export function CampaignCreator({
       reader.onload = async (e) => {
         const dataUrl = e.target?.result as string;
         
-        // Always analyze the image first to detect brand
+        // Pass existing brands to AI for intelligent matching
         const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-email-design', {
           body: { 
             imageDataUrl: dataUrl,
             width: 600,
-            height: 2000
+            height: 2000,
+            existingBrands: brands.map(b => ({
+              id: b.id,
+              name: b.name,
+              domain: b.domain
+            }))
           }
         });
 
@@ -156,24 +162,17 @@ export function CampaignCreator({
           console.error('Analysis error:', analysisError);
         }
 
-        // Extract detected domain
-        let detectedDomain: string | null = null;
-        if (analysisData?.detectedBrand?.url) {
-          try {
-            detectedDomain = new URL(analysisData.detectedBrand.url).hostname.replace('www.', '');
-          } catch {}
-        }
-
         const campaignData: PendingCampaign = {
           file,
           dataUrl,
-          detectedDomain,
+          matchedBrandId: analysisData?.matchedBrandId || null,
+          detectedBrand: analysisData?.detectedBrand || null,
           analysisData
         };
 
-        if (detectedDomain) {
-          // Let parent handle brand detection/creation
-          onBrandDetected(detectedDomain, campaignData);
+        if (campaignData.matchedBrandId || campaignData.detectedBrand) {
+          // Let parent handle brand matching/creation
+          onBrandDetected(campaignData);
           setIsProcessing(false);
         } else if (selectedBrand?.klaviyoApiKey) {
           // No brand detected but we have one selected - use it
