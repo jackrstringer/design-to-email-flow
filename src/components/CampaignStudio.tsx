@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ExternalLink, CheckCircle, Sparkles, ChevronRight } from 'lucide-react';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -221,42 +221,26 @@ export function CampaignStudio({
   const hasHtmlSlices = slices.some(s => s.type === 'html');
 
   return (
-    <div className="flex h-screen w-full">
-      {/* Column 1: Chat (collapsible) - 25% when open */}
-      <Collapsible open={chatExpanded} onOpenChange={setChatExpanded} className="flex">
-        <CollapsibleContent className="w-[25vw] flex flex-col border-r border-border/50 bg-background">
-          <div className="h-12 px-3 flex items-center justify-between border-b border-border/50">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              AI Refinement
-            </span>
-            <Button variant="ghost" size="sm" onClick={onBack} disabled={isCreating} className="h-7 px-2 text-xs">
-              <ChevronLeft className="w-3 h-3 mr-1" />
-              Back
-            </Button>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <CampaignChat
-              messages={chatMessages}
-              onSendMessage={handleSendMessage}
-              onAutoRefine={handleAutoRefine}
-              isLoading={isRefining}
-              isAutoRefining={isAutoRefining}
-            />
-          </div>
-        </CollapsibleContent>
-        <CollapsibleTrigger asChild>
-          <button className="w-6 flex-shrink-0 flex items-center justify-center border-r border-border/50 hover:bg-muted/30 transition-colors">
-            <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', chatExpanded && 'rotate-180')} />
+    <div className="h-screen w-full flex flex-col">
+      {/* Header */}
+      <div className="h-12 px-4 flex items-center justify-between border-b border-border/50 flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack} disabled={isCreating} className="h-8 px-2 text-xs">
+            <ChevronLeft className="w-3 h-3 mr-1" />
+            Back
+          </Button>
+          <button
+            onClick={() => setChatExpanded(!chatExpanded)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {chatExpanded ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
+            {chatExpanded ? 'Hide Chat' : 'Show Chat'}
           </button>
-        </CollapsibleTrigger>
-      </Collapsible>
-
-      {/* Column 2: Details + Original (combined, single scroll) - 50% */}
-      <div className="flex-1 flex flex-col border-r border-border/50">
-        <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
-          <span className="text-sm text-muted-foreground">Campaign · {slices.length} slices</span>
-          <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{slices.length} slices</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Zoom</span>
             <Slider
               value={[zoomLevel]}
               onValueChange={([v]) => setZoomLevel(v)}
@@ -265,19 +249,100 @@ export function CampaignStudio({
               step={5}
               className="w-24"
             />
-            <span className="text-xs text-muted-foreground w-10">{zoomLevel}%</span>
+            <span className="text-xs text-muted-foreground w-8">{zoomLevel}%</span>
           </div>
-        </div>
-        <div className="flex-1 flex overflow-hidden">
-          {/* Details sub-column - NO zoom, fixed width */}
-          <div className="w-[280px] flex-shrink-0 border-r border-border/30 overflow-auto p-4">
-            {slices.map((slice, index) => (
-              <div
-                key={index}
-                className="border-b border-border/30 last:border-b-0 py-3 space-y-2"
+          {templateId ? (
+            <>
+              <div className="flex items-center gap-1.5 text-green-600 text-xs">
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>{campaignId ? 'Campaign' : 'Template'} created</span>
+              </div>
+              {campaignId ? (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
+                >
+                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                  Open Editor
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
+                >
+                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                  View Template
+                </Button>
+              )}
+              {onReset && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onReset}>
+                  New Upload
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCreateTemplate}
+                disabled={isCreating || convertingIndex !== null}
+                className="h-8 text-xs"
               >
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
+                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                Template
+              </Button>
+              <Button
+                size="sm"
+                onClick={onCreateCampaign}
+                disabled={isCreating || convertingIndex !== null}
+                className="h-8 text-xs"
+              >
+                <Rocket className="w-3.5 h-3.5 mr-1.5" />
+                {isCreating ? 'Creating...' : 'Campaign'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Resizable Panels */}
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* Panel 1: Chat */}
+        {chatExpanded && (
+          <>
+            <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
+              <div className="h-full flex flex-col border-r border-border/50">
+                <div className="px-3 py-2 border-b border-border/50">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    AI Refinement
+                  </span>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <CampaignChat
+                    messages={chatMessages}
+                    onSendMessage={handleSendMessage}
+                    onAutoRefine={handleAutoRefine}
+                    isLoading={isRefining}
+                    isAutoRefining={isAutoRefining}
+                  />
+                </div>
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+          </>
+        )}
+
+        {/* Panel 2: Slice Details */}
+        <ResizablePanel defaultSize={chatExpanded ? 25 : 30} minSize={15} maxSize={50}>
+          <div className="h-full overflow-auto p-4 border-r border-border/50">
+            {slices.map((slice, index) => (
+              <div key={index} className="mb-4 pb-4 border-b border-border/30 last:border-b-0 last:mb-0 last:pb-0">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="font-medium text-foreground">Slice {index + 1}</span>
                   <button
                     onClick={() => toggleSliceType(index)}
                     disabled={convertingIndex !== null || isCreating}
@@ -303,48 +368,59 @@ export function CampaignStudio({
                     )}
                   </button>
                   {sliceDimensions[index] && (
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {BASE_WIDTH}×{Math.round(sliceDimensions[index].height)}
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleLink(index)}
-                    className={cn(
-                      'p-1.5 rounded transition-colors flex-shrink-0',
-                      slice.link !== null
-                        ? 'text-primary bg-primary/10'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    )}
-                  >
-                    {slice.link !== null ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
-                  </button>
-                  {slice.link !== null && (
-                    <Input
-                      value={slice.link}
-                      onChange={(e) => updateSlice(index, { link: e.target.value })}
-                      placeholder="https://..."
-                      className="h-7 text-xs flex-1 bg-background border-border/50"
-                      autoFocus={editingLinkIndex === index}
-                      onBlur={() => setEditingLinkIndex(null)}
-                    />
-                  )}
-                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Link</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleLink(index)}
+                        className={cn(
+                          'p-2 rounded transition-colors flex-shrink-0',
+                          slice.link !== null
+                            ? 'text-primary bg-primary/10'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        )}
+                      >
+                        {slice.link !== null ? <Link className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
+                      </button>
+                      {slice.link !== null && (
+                        <Input
+                          value={slice.link}
+                          onChange={(e) => updateSlice(index, { link: e.target.value })}
+                          placeholder="https://..."
+                          className="h-9 text-sm flex-1"
+                          autoFocus={editingLinkIndex === index}
+                          onBlur={() => setEditingLinkIndex(null)}
+                        />
+                      )}
+                    </div>
+                  </div>
 
-                <Textarea
-                  value={slice.altText}
-                  onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                  placeholder="Alt text..."
-                  className="text-xs bg-background border-border/50 resize-none min-h-[60px]"
-                />
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Alt Text</label>
+                    <Textarea
+                      value={slice.altText}
+                      onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                      placeholder="Describe this section..."
+                      className="text-sm resize-none min-h-[80px]"
+                    />
+                  </div>
+                </div>
               </div>
             ))}
           </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
 
-          {/* Original image sub-column - zoom applied ONLY here */}
-          <div className="flex-1 overflow-auto" ref={containerRef}>
+        {/* Panel 3: Original Campaign */}
+        <ResizablePanel defaultSize={chatExpanded ? 30 : 40} minSize={20}>
+          <div className="h-full overflow-auto border-r border-border/50" ref={containerRef}>
             <div 
               className="p-4"
               style={{ 
@@ -352,7 +428,7 @@ export function CampaignStudio({
                 transformOrigin: 'top left',
               }}
             >
-              <div className="relative flex-shrink-0">
+              <div className="relative">
                 <img
                   src={originalImageUrl}
                   alt="Original"
@@ -369,83 +445,24 @@ export function CampaignStudio({
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
 
-      {/* Column 3: Preview - 25% */}
-      <div className="w-[25vw] flex-shrink-0 flex flex-col">
-        <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
-          <span className="text-sm text-muted-foreground">
-            {hasHtmlSlices ? 'HTML Preview' : 'Preview'}
-          </span>
-          <div className="flex items-center gap-2">
-            {templateId ? (
-              <>
-                <div className="flex items-center gap-1.5 text-green-600 text-xs">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  <span>{campaignId ? 'Campaign' : 'Template'} created</span>
-                </div>
-                {campaignId ? (
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                    Open Editor
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                    View Template
-                  </Button>
-                )}
-                {onReset && (
-                  <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onReset}>
-                    New Upload
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onCreateTemplate}
-                  disabled={isCreating || convertingIndex !== null}
-                  className="h-8 text-xs"
-                >
-                  <FileText className="w-3.5 h-3.5 mr-1.5" />
-                  Create Template
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={onCreateCampaign}
-                  disabled={isCreating || convertingIndex !== null}
-                  className="h-8 text-xs"
-                >
-                  <Rocket className="w-3.5 h-3.5 mr-1.5" />
-                  {isCreating ? 'Creating...' : 'Create Campaign'}
-                </Button>
-              </>
-            )}
+        {/* Panel 4: Preview */}
+        <ResizablePanel defaultSize={25} minSize={15}>
+          <div className="h-full overflow-auto">
+            <div 
+              className="p-4"
+              style={{ 
+                transform: `scale(${zoomLevel / 100})`, 
+                transformOrigin: 'top left',
+              }}
+            >
+              <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} />
+            </div>
           </div>
-        </div>
-        <div className="flex-1 overflow-auto">
-          <div 
-            style={{ 
-              transform: `scale(${zoomLevel / 100})`, 
-              transformOrigin: 'top left',
-            }}
-          >
-            <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} />
-          </div>
-        </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
