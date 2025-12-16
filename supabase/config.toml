@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.analyze-brand]
 verify_jwt = false
+
+[functions.push-to-klaviyo]
+verify_jwt = false
