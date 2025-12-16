@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -19,6 +20,7 @@ interface CampaignStudioProps {
   onSlicesChange: (slices: ProcessedSlice[]) => void;
   originalImageUrl: string;
   brandUrl: string;
+  brandLinks?: string[];
   onBack: () => void;
   onCreateTemplate: () => void;
   onCreateCampaign: () => void;
@@ -39,6 +41,7 @@ export function CampaignStudio({
   onSlicesChange,
   originalImageUrl,
   brandUrl,
+  brandLinks = [],
   onBack,
   onCreateTemplate,
   onCreateCampaign,
@@ -54,9 +57,12 @@ export function CampaignStudio({
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
   const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
+  const [linkSearchValue, setLinkSearchValue] = useState('');
   const [zoomLevel, setZoomLevel] = useState(65);
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
+
+  const hasHtmlSlices = slices.some(s => s.type === 'html');
 
   useEffect(() => {
     const loadSliceHeights = async () => {
@@ -106,14 +112,14 @@ export function CampaignStudio({
     }
   };
 
-  const toggleLink = (index: number) => {
-    const slice = slices[index];
-    if (slice.link) {
-      updateSlice(index, { link: null, isClickable: false });
-    } else {
-      updateSlice(index, { link: '', isClickable: true });
-      setEditingLinkIndex(index);
-    }
+  const setSliceLink = (index: number, link: string) => {
+    updateSlice(index, { link, isClickable: true });
+    setEditingLinkIndex(null);
+    setLinkSearchValue('');
+  };
+
+  const removeLink = (index: number) => {
+    updateSlice(index, { link: null, isClickable: false });
   };
 
   const handleSendMessage = async (message: string) => {
@@ -218,6 +224,11 @@ export function CampaignStudio({
 
   const scaledWidth = BASE_WIDTH * (zoomLevel / 100);
 
+  // Filter brand links based on search
+  const filteredLinks = brandLinks.filter(link => 
+    link.toLowerCase().includes(linkSearchValue.toLowerCase())
+  );
+
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       {/* Minimal Header */}
@@ -299,12 +310,12 @@ export function CampaignStudio({
         </div>
       </div>
 
-      {/* 3-Panel Layout */}
+      {/* Panel Layout - conditional 3rd panel */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (
           <>
-            <ResizablePanel defaultSize={18} minSize={14} maxSize={30}>
+            <ResizablePanel defaultSize={hasHtmlSlices ? 18 : 20} minSize={14} maxSize={30}>
               <div className="h-full flex flex-col">
                 <div className="px-3 py-2 border-b border-border/30">
                   <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
@@ -328,84 +339,124 @@ export function CampaignStudio({
         )}
 
         {/* Panel 2: Combined Campaign + Details */}
-        <ResizablePanel defaultSize={chatExpanded ? 50 : 60} minSize={30}>
+        <ResizablePanel defaultSize={hasHtmlSlices ? (chatExpanded ? 50 : 60) : (chatExpanded ? 80 : 100)} minSize={30}>
           <div className="h-full overflow-auto bg-muted/20">
             <div className="p-4">
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
                 <div key={index} className="flex items-stretch border-b border-border/20 last:border-b-0">
                   {/* Slice details - fills left space */}
-                  <div className="flex-1 min-w-0 p-4 space-y-3">
-                    {/* Row 1: Switch + dimensions */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={slice.type === 'html'}
-                          onCheckedChange={() => toggleSliceType(index)}
-                          disabled={convertingIndex !== null || isCreating}
-                          className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground/20"
-                        />
-                        {convertingIndex === index && (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                  <div className="flex-1 min-w-0 p-4 space-y-2">
+                    {/* Row 1: Type toggle + Link + dimensions - all inline */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Compact icon toggle */}
+                      <button
+                        onClick={() => toggleSliceType(index)}
+                        disabled={convertingIndex !== null || isCreating}
+                        className={cn(
+                          "h-6 w-6 rounded flex items-center justify-center transition-colors",
+                          slice.type === 'html' 
+                            ? "bg-primary/10 text-primary" 
+                            : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
                         )}
-                      </div>
-                      <span className="text-xs text-muted-foreground/50">
+                        title={slice.type === 'html' ? 'HTML (click for image)' : 'Image (click for HTML)'}
+                      >
+                        {convertingIndex === index ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : slice.type === 'html' ? (
+                          <Code2 className="w-3.5 h-3.5" />
+                        ) : (
+                          <Image className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
+                      {/* Link - either pill, dropdown, or add button */}
+                      {slice.link !== null && slice.link !== '' ? (
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/60 rounded-md text-xs max-w-[200px]">
+                          <Link className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" />
+                          <span className="text-foreground/80 truncate">{slice.link}</span>
+                          <button
+                            onClick={() => removeLink(index)}
+                            className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
+                          if (open) {
+                            setEditingLinkIndex(index);
+                            setLinkSearchValue('');
+                          } else {
+                            setEditingLinkIndex(null);
+                          }
+                        }}>
+                          <PopoverTrigger asChild>
+                            <button className="flex items-center gap-1 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs">
+                              <Link className="w-3.5 h-3.5" />
+                              <span>Add link</span>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72 p-0" align="start">
+                            <Command>
+                              <CommandInput 
+                                placeholder="Search or enter URL..." 
+                                value={linkSearchValue}
+                                onValueChange={setLinkSearchValue}
+                              />
+                              <CommandList>
+                                <CommandEmpty>
+                                  {linkSearchValue && (
+                                    <button
+                                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                      onClick={() => setSliceLink(index, linkSearchValue)}
+                                    >
+                                      Use "{linkSearchValue}"
+                                    </button>
+                                  )}
+                                </CommandEmpty>
+                                {filteredLinks.length > 0 && (
+                                  <CommandGroup heading="Brand Links">
+                                    {filteredLinks.slice(0, 10).map((link) => (
+                                      <CommandItem
+                                        key={link}
+                                        value={link}
+                                        onSelect={() => setSliceLink(index, link)}
+                                        className="text-xs"
+                                      >
+                                        <span className="truncate">{link}</span>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                )}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+
+                      {/* Dimensions */}
+                      <span className="text-[10px] text-muted-foreground/40 ml-auto">
                         {sliceDimensions[index] ? `${BASE_WIDTH}×${Math.round(sliceDimensions[index].height)}` : ''}
                       </span>
                     </div>
 
-                    {/* Row 2: Link */}
-                    {slice.link !== null && slice.link !== '' ? (
-                      <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 bg-muted/60 rounded-lg text-xs">
-                        <Link className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
-                        <span className="text-foreground/80 break-all">{slice.link}</span>
-                        <button
-                          onClick={() => toggleLink(index)}
-                          className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0 mt-0.5"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : editingLinkIndex === index ? (
-                      <Input
-                        value={slice.link || ''}
-                        onChange={(e) => updateSlice(index, { link: e.target.value, isClickable: true })}
-                        placeholder="https://..."
-                        className="h-7 text-xs bg-muted/40 border-0 rounded-lg px-3"
-                        autoFocus
-                        onBlur={() => {
-                          if (!slice.link) updateSlice(index, { link: null, isClickable: false });
-                          setEditingLinkIndex(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') setEditingLinkIndex(null);
-                        }}
-                      />
-                    ) : (
-                      <button
-                        onClick={() => toggleLink(index)}
-                        className="flex items-center gap-1.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs"
-                      >
-                        <Link className="w-3.5 h-3.5" />
-                        <span>Add link</span>
-                      </button>
-                    )}
-
-                    {/* Row 3: Alt text */}
+                    {/* Row 2: Alt text (smaller) */}
                     {editingAltIndex === index ? (
                       <textarea
                         value={slice.altText}
                         onChange={(e) => updateSlice(index, { altText: e.target.value })}
                         placeholder="Add description..."
-                        className="w-full text-xs text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2.5 py-2 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                        rows={3}
+                        className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        rows={2}
                         autoFocus
                         onBlur={() => setEditingAltIndex(null)}
                       />
                     ) : (
                       <p 
                         onClick={() => setEditingAltIndex(index)}
-                        className="text-xs text-muted-foreground/50 leading-relaxed cursor-pointer hover:text-muted-foreground/70 transition-colors"
+                        className="text-[11px] text-muted-foreground/40 leading-relaxed cursor-pointer hover:text-muted-foreground/60 transition-colors line-clamp-2"
                       >
                         {slice.altText || 'Add description...'}
                       </p>
@@ -426,24 +477,28 @@ export function CampaignStudio({
             </div>
           </div>
         </ResizablePanel>
-        <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
 
-        {/* Panel 3: Preview */}
-        <ResizablePanel defaultSize={chatExpanded ? 32 : 40} minSize={20}>
-          <div className="h-full overflow-auto bg-background">
-            <div className="p-6">
-              <div 
-                style={{ 
-                  transform: `scale(${zoomLevel / 100})`, 
-                  transformOrigin: 'top left',
-                  width: BASE_WIDTH,
-                }}
-              >
-                <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} />
+        {/* Panel 3: Preview - only show if HTML slices exist */}
+        {hasHtmlSlices && (
+          <>
+            <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
+            <ResizablePanel defaultSize={chatExpanded ? 32 : 40} minSize={20}>
+              <div className="h-full overflow-auto bg-background">
+                <div className="p-6">
+                  <div 
+                    style={{ 
+                      transform: `scale(${zoomLevel / 100})`, 
+                      transformOrigin: 'top left',
+                      width: BASE_WIDTH,
+                    }}
+                  >
+                    <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </ResizablePanel>
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
     </div>
   );
