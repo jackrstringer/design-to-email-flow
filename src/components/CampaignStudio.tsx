@@ -361,12 +361,12 @@ export function CampaignStudio({
 
                       {/* Row 2: Link - pill tag or icon */}
                       {slice.link !== null && slice.link !== '' ? (
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-muted/60 rounded-full text-xs max-w-full">
-                          <Link className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-                          <span className="truncate text-foreground/80">{slice.link || 'empty'}</span>
+                        <div className="inline-flex items-start gap-1.5 px-2.5 py-1.5 bg-muted/60 rounded-lg text-xs">
+                          <Link className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+                          <span className="text-foreground/80 break-all">{slice.link || 'empty'}</span>
                           <button
                             onClick={() => toggleLink(index)}
-                            className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0"
+                            className="text-muted-foreground/40 hover:text-foreground/60 flex-shrink-0 mt-0.5"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
