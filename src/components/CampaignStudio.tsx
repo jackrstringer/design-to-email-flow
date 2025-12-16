@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ZoomIn, ZoomOut, ExternalLink, CheckCircle } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronLeft, Rocket, FileText, Image, Code, Loader2, Link, Unlink, ExternalLink, CheckCircle, MessageSquare, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -10,7 +11,7 @@ import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
 
-const BASE_WIDTH = 600; // Both panels use same base width for accurate comparison
+const BASE_WIDTH = 600;
 
 interface CampaignStudioProps {
   slices: ProcessedSlice[];
@@ -46,7 +47,8 @@ export function CampaignStudio({
   const [isRefining, setIsRefining] = useState(false);
   const [isAutoRefining, setIsAutoRefining] = useState(false);
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(75); // Default to 75% for better fit
+  const [zoomLevel, setZoomLevel] = useState(75);
+  const [chatExpanded, setChatExpanded] = useState(false);
 
   const updateSlice = (index: number, updates: Partial<ProcessedSlice>) => {
     const updated = [...slices];
@@ -84,8 +86,6 @@ export function CampaignStudio({
     setIsRefining(true);
 
     try {
-      console.log('Sending chat request with originalImageUrl:', originalImageUrl);
-      
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
         body: {
           allSlices: slices.map(s => ({
@@ -103,15 +103,8 @@ export function CampaignStudio({
         }
       });
 
-      if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message);
-      }
-
-      if (data?.error) {
-        console.error('API error:', data.error);
-        throw new Error(data.error);
-      }
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
 
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
 
@@ -127,7 +120,6 @@ export function CampaignStudio({
         toast.success('HTML updated');
       }
     } catch (err) {
-      console.error('Chat error:', err);
       setChatMessages([...newMessages, { 
         role: 'assistant', 
         content: `Error: ${err instanceof Error ? err.message : 'Failed to process request'}` 
@@ -140,12 +132,10 @@ export function CampaignStudio({
 
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Compare to original and fix styling]' }];
+    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
     setChatMessages(newMessages);
 
     try {
-      console.log('Auto-refine with originalImageUrl:', originalImageUrl);
-      
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
         body: {
           allSlices: slices.map(s => ({
@@ -157,23 +147,16 @@ export function CampaignStudio({
           })),
           originalCampaignImageUrl: originalImageUrl,
           conversationHistory: newMessages,
-          userRequest: 'Compare the HTML render to the original design image. Identify any visual differences (colors, spacing, typography, button styles, alignment) and update the HTML to match the original design as closely as possible.',
+          userRequest: 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.',
           brandUrl,
           mode: 'auto-refine',
         }
       });
 
-      if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message);
-      }
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
 
-      if (data?.error) {
-        console.error('API error:', data.error);
-        throw new Error(data.error);
-      }
-
-      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Auto-refinement complete!' }]);
+      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Refinement complete!' }]);
 
       if (data.updatedSlices && data.updatedSlices.length > 0) {
         const updatedSlices = slices.map((slice, i) => {
@@ -187,10 +170,9 @@ export function CampaignStudio({
         toast.success('Campaign refined');
       }
     } catch (err) {
-      console.error('Auto-refine error:', err);
       setChatMessages([...newMessages, { 
         role: 'assistant', 
-        content: `Auto-refinement failed: ${err instanceof Error ? err.message : 'Unknown error'}` 
+        content: `Failed: ${err instanceof Error ? err.message : 'Unknown error'}` 
       }]);
       toast.error('Auto-refine failed');
     } finally {
@@ -201,32 +183,33 @@ export function CampaignStudio({
   const hasHtmlSlices = slices.some(s => s.type === 'html');
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] gap-4">
-      {/* Left Panel - Slices */}
-      <div className="w-[380px] flex-shrink-0 flex flex-col border border-border rounded-lg bg-card">
-        <div className="p-3 border-b border-border flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">Slices</h3>
-            <p className="text-xs text-muted-foreground">{slices.length} sections</p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onBack} disabled={isCreating}>
-            <ChevronLeft className="w-4 h-4 mr-1" />
+    <div className="flex h-screen">
+      {/* Left Column - Slices + Chat */}
+      <div className="w-72 flex-shrink-0 flex flex-col border-r border-border/50 bg-background">
+        {/* Header */}
+        <div className="h-12 px-3 flex items-center justify-between border-b border-border/50">
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            Slices · {slices.length}
+          </span>
+          <Button variant="ghost" size="sm" onClick={onBack} disabled={isCreating} className="h-7 px-2 text-[11px]">
+            <ChevronLeft className="w-3 h-3 mr-1" />
             Back
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {/* Slices List */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {slices.map((slice, index) => (
             <div
               key={index}
               className={cn(
-                'p-2 rounded-lg border bg-muted/30',
-                slice.type === 'html' ? 'border-blue-500/50' : 'border-border'
+                'group p-2 rounded-md transition-colors hover:bg-muted/50',
+                slice.type === 'html' && 'bg-blue-500/5'
               )}
             >
-              <div className="flex gap-2">
-                {/* Thumbnail */}
-                <div className="w-16 h-16 flex-shrink-0 rounded overflow-hidden border border-border bg-background">
+              <div className="flex gap-2.5">
+                {/* Thumbnail - larger */}
+                <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden bg-muted/30">
                   <img
                     src={slice.imageUrl}
                     alt={slice.altText}
@@ -236,28 +219,26 @@ export function CampaignStudio({
 
                 {/* Controls */}
                 <div className="flex-1 min-w-0 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Slice {index + 1}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground">
+                      {index + 1}
                     </span>
-
-                    {/* Type toggle */}
                     <button
                       onClick={() => toggleSliceType(index)}
                       disabled={convertingIndex !== null || isCreating}
                       className={cn(
-                        'flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-colors',
+                        'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors',
                         slice.type === 'html'
-                          ? 'bg-blue-500/20 text-blue-600 hover:bg-blue-500/30'
-                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                          ? 'text-blue-600'
+                          : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
                       {convertingIndex === index ? (
-                        <><Loader2 className="w-3 h-3 animate-spin" /> Converting...</>
+                        <Loader2 className="w-3 h-3 animate-spin" />
                       ) : slice.type === 'html' ? (
-                        <><Code className="w-3 h-3" /> HTML</>
+                        <Code className="w-3 h-3" />
                       ) : (
-                        <><Image className="w-3 h-3" /> Image</>
+                        <Image className="w-3 h-3" />
                       )}
                     </button>
                   </div>
@@ -268,16 +249,16 @@ export function CampaignStudio({
                         value={slice.altText}
                         onChange={(e) => updateSlice(index, { altText: e.target.value })}
                         placeholder="Alt text"
-                        className="h-6 text-xs"
+                        className="h-6 text-[11px] bg-transparent border-border/50"
                       />
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => toggleLink(index)}
                           className={cn(
-                            'flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors',
+                            'p-1 rounded transition-colors',
                             slice.link !== null
-                              ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                              ? 'text-primary'
+                              : 'text-muted-foreground hover:text-foreground'
                           )}
                         >
                           {slice.link !== null ? <Link className="w-3 h-3" /> : <Unlink className="w-3 h-3" />}
@@ -287,7 +268,7 @@ export function CampaignStudio({
                             value={slice.link}
                             onChange={(e) => updateSlice(index, { link: e.target.value })}
                             placeholder="https://..."
-                            className="h-6 text-xs flex-1"
+                            className="h-6 text-[11px] flex-1 bg-transparent border-border/50"
                             autoFocus={editingLinkIndex === index}
                             onBlur={() => setEditingLinkIndex(null)}
                           />
@@ -295,174 +276,145 @@ export function CampaignStudio({
                       </div>
                     </>
                   )}
-
-                  {slice.type === 'html' && (
-                    <p className="text-xs text-blue-600">Ready for refinement</p>
-                  )}
                 </div>
               </div>
             </div>
           ))}
         </div>
 
+        {/* Collapsible Chat */}
+        <Collapsible open={chatExpanded} onOpenChange={setChatExpanded}>
+          <CollapsibleTrigger asChild>
+            <button className="w-full h-10 px-3 flex items-center justify-between border-t border-border/50 hover:bg-muted/30 transition-colors">
+              <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-2">
+                <MessageSquare className="w-3.5 h-3.5" />
+                Refine with AI
+              </span>
+              <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform', chatExpanded && 'rotate-180')} />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CampaignChat
+              messages={chatMessages}
+              onSendMessage={handleSendMessage}
+              onAutoRefine={handleAutoRefine}
+              isLoading={isRefining}
+              isAutoRefining={isAutoRefining}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+
         {/* Actions */}
-        <div className="p-3 border-t border-border space-y-2">
-          {/* Success State */}
-          {templateId && (
-            <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20 space-y-2 mb-2">
-              <div className="flex items-center gap-2 text-green-600 text-sm">
-                <CheckCircle className="w-4 h-4" />
-                <span className="font-medium">{campaignId ? 'Campaign' : 'Template'} created!</span>
+        <div className="p-2 border-t border-border/50 space-y-1.5">
+          {templateId ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-green-600 text-[11px] px-1">
+                <CheckCircle className="w-3 h-3" />
+                <span>{campaignId ? 'Campaign' : 'Template'} created</span>
               </div>
               {campaignId ? (
                 <Button
                   size="sm"
-                  className="w-full"
+                  className="w-full h-8 text-[11px]"
                   onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
                 >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open Campaign Editor
+                  <ExternalLink className="w-3 h-3 mr-1.5" />
+                  Open Editor
                 </Button>
               ) : (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    View
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => window.open('https://www.klaviyo.com/campaigns/create', '_blank')}
-                  >
-                    <Rocket className="w-4 h-4 mr-2" />
-                    Campaign
-                  </Button>
-                </div>
+                <Button
+                  size="sm"
+                  className="w-full h-8 text-[11px]"
+                  onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
+                >
+                  <ExternalLink className="w-3 h-3 mr-1.5" />
+                  View Template
+                </Button>
               )}
               {onReset && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground"
-                  onClick={onReset}
-                >
+                <Button variant="ghost" size="sm" className="w-full h-7 text-[11px] text-muted-foreground" onClick={onReset}>
                   Upload another
                 </Button>
               )}
             </div>
-          )}
-          
-          {!templateId && (
+          ) : (
             <>
               <Button
                 variant="outline"
                 onClick={onCreateTemplate}
                 disabled={isCreating || convertingIndex !== null}
-                className="w-full"
-                size="sm"
+                className="w-full h-8 text-[11px]"
               >
-                <FileText className="w-4 h-4 mr-2" />
-                Create Template
+                <FileText className="w-3 h-3 mr-1.5" />
+                Template
               </Button>
               <Button
                 onClick={onCreateCampaign}
                 disabled={isCreating || convertingIndex !== null}
-                className="w-full"
-                size="sm"
+                className="w-full h-8 text-[11px]"
               >
-                <Rocket className="w-4 h-4 mr-2" />
-                {isCreating ? 'Creating...' : 'Create Campaign'}
+                <Rocket className="w-3 h-3 mr-1.5" />
+                {isCreating ? 'Creating...' : 'Campaign'}
               </Button>
             </>
           )}
         </div>
       </div>
 
-      {/* Right Panel - Preview + Chat */}
-      <div className="flex-1 flex flex-col border border-border rounded-lg bg-card overflow-hidden">
-        {/* Preview Header with Zoom */}
-        <div className="p-3 border-b border-border flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">Live Preview</h3>
-            <p className="text-xs text-muted-foreground">
-              {hasHtmlSlices ? 'HTML + Images combined' : 'All image slices'}
-            </p>
+      {/* Center Column - Original */}
+      <div className="flex-1 flex flex-col min-w-0 border-r border-border/50">
+        <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
+          <span className="text-[11px] text-muted-foreground">Original</span>
+        </div>
+        <div className="flex-1 overflow-auto bg-muted/10">
+          <div className="p-4 flex justify-center">
+            <div 
+              style={{ 
+                transform: `scale(${zoomLevel / 100})`, 
+                transformOrigin: 'top center',
+              }}
+            >
+              <img
+                src={originalImageUrl}
+                alt="Original"
+                style={{ width: `${BASE_WIDTH}px` }}
+                className="max-w-none"
+              />
+            </div>
           </div>
-          
-          {/* Zoom Controls */}
+        </div>
+      </div>
+
+      {/* Right Column - Preview */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
+          <span className="text-[11px] text-muted-foreground">
+            {hasHtmlSlices ? 'HTML Preview' : 'Preview'}
+          </span>
           <div className="flex items-center gap-2">
-            <ZoomOut className="w-4 h-4 text-muted-foreground" />
             <Slider
               value={[zoomLevel]}
               onValueChange={([v]) => setZoomLevel(v)}
               min={25}
               max={150}
               step={5}
-              className="w-24"
+              className="w-20"
             />
-            <ZoomIn className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground w-10">{zoomLevel}%</span>
+            <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
           </div>
         </div>
-
-        {/* Split Preview - Original vs Rendered */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Original Image */}
-          <div className="w-1/2 border-r border-border overflow-auto bg-muted/20">
-            <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50 sticky top-0 z-10">
-              Original Design
-            </div>
-            <div className="p-2 flex justify-center">
-              <div 
-                style={{ 
-                  transform: `scale(${zoomLevel / 100})`, 
-                  transformOrigin: 'top center',
-                  transition: 'transform 0.2s ease'
-                }}
-              >
-                <img
-                  src={originalImageUrl}
-                  alt="Original campaign"
-                  style={{ width: `${BASE_WIDTH}px` }}
-                  className="max-w-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Live Preview */}
-          <div className="w-1/2 flex flex-col overflow-hidden">
-            <div className="p-2 text-xs text-muted-foreground text-center border-b border-border bg-muted/50 sticky top-0 z-10">
-              HTML Render
-            </div>
-            <div className="flex-1 overflow-auto flex justify-center p-2">
-              <div 
-                style={{ 
-                  transform: `scale(${zoomLevel / 100})`, 
-                  transformOrigin: 'top center',
-                  transition: 'transform 0.2s ease'
-                }}
-              >
-                <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} className="min-h-[400px]" />
-              </div>
+        <div className="flex-1 overflow-auto bg-muted/10">
+          <div className="p-4 flex justify-center">
+            <div 
+              style={{ 
+                transform: `scale(${zoomLevel / 100})`, 
+                transformOrigin: 'top center',
+              }}
+            >
+              <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} />
             </div>
           </div>
         </div>
-
-        {/* Chat Panel */}
-        <CampaignChat
-          messages={chatMessages}
-          onSendMessage={handleSendMessage}
-          onAutoRefine={handleAutoRefine}
-          isLoading={isRefining}
-          isAutoRefining={isAutoRefining}
-          className="h-[280px]"
-        />
       </div>
     </div>
   );
