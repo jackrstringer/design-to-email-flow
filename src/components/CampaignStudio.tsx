@@ -282,8 +282,8 @@ export function CampaignStudio({
                 transformOrigin: 'top left',
               }}
             >
-              {/* Slice details column */}
-              <div className="w-[360px] flex-shrink-0">
+              {/* Slice details column - flexible width */}
+              <div className="flex-1 min-w-[280px] max-w-[400px]">
                 {slices.map((slice, index) => (
                   <div
                     key={index}
@@ -292,7 +292,7 @@ export function CampaignStudio({
                       height: sliceDimensions[index]?.height || 120,
                     }}
                   >
-                    <div className="py-4 pr-4 space-y-3 h-full flex flex-col">
+                    <div className="py-4 pr-4 space-y-3 h-full flex flex-col justify-end">
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
                         <button
