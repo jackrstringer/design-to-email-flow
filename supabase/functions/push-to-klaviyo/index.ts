@@ -138,12 +138,13 @@ serve(async (req) => {
 
     console.log(`Creating campaign with list: ${listId}`);
 
-    // Create campaign
+    // Create campaign with correct Klaviyo API format
     const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
       method: 'POST',
       headers: {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/vnd.api+json',
+        'accept': 'application/vnd.api+json',
         'revision': '2025-01-15'
       },
       body: JSON.stringify({
@@ -157,8 +158,9 @@ serve(async (req) => {
             },
             send_strategy: {
               method: 'static',
-              options_static: {
-                send_time: null
+              options: {
+                is_local: true,
+                send_past_recipients_immediately: false
               }
             },
             campaign_type: 'HTML'
@@ -169,6 +171,9 @@ serve(async (req) => {
 
     const campaignResponseText = await campaignResponse.text();
     console.log(`Klaviyo campaign response status: ${campaignResponse.status}`);
+    if (!campaignResponse.ok) {
+      console.log(`Campaign creation error response: ${campaignResponseText}`);
+    }
 
     if (!campaignResponse.ok) {
       let errorMessage = 'Failed to create Klaviyo campaign';
@@ -216,7 +221,8 @@ serve(async (req) => {
       method: 'PATCH',
       headers: {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/vnd.api+json',
+        'accept': 'application/vnd.api+json',
         'revision': '2025-01-15'
       },
       body: JSON.stringify({
