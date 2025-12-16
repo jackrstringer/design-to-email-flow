@@ -66,7 +66,9 @@ export interface Brand {
   footerLogoUrl?: string;
   footerLogoPublicId?: string;
   socialIcons?: SocialIconAsset[];
-  footerConfigured: boolean;
+  footerConfigured?: boolean;
+  // Per-brand Klaviyo API key
+  klaviyoApiKey?: string;
   createdAt: string;
   updatedAt: string;
 }
