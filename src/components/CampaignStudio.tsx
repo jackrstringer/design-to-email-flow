@@ -336,82 +336,86 @@ export function CampaignStudio({
           </>
         )}
 
-        {/* Panel 2: Slice Details */}
+        {/* Panel 2: Slice Details - Notion-style minimal */}
         <ResizablePanel defaultSize={chatExpanded ? 25 : 30} minSize={15} maxSize={50}>
-          <div className="h-full overflow-auto p-4 border-r border-border/50">
+          <div className="h-full overflow-auto">
             {slices.map((slice, index) => (
-              <div key={index} className="mb-4 pb-4 border-b border-border/30 last:border-b-0 last:mb-0 last:pb-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="font-medium text-foreground">Slice {index + 1}</span>
+              <div key={index} className="group">
+                {/* Slice header - minimal */}
+                <div className="px-4 py-3 flex items-center gap-3 border-b border-transparent hover:bg-muted/30 transition-colors">
+                  <span className="text-sm text-foreground/80">{index + 1}</span>
                   <button
                     onClick={() => toggleSliceType(index)}
                     disabled={convertingIndex !== null || isCreating}
-                    className={cn(
-                      'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors border',
-                      slice.type === 'html'
-                        ? 'text-blue-600 border-blue-200 bg-blue-50'
-                        : 'text-muted-foreground border-border/50 hover:border-border'
-                    )}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {convertingIndex === index ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : slice.type === 'html' ? (
-                      <>
-                        <Code className="w-3 h-3" />
-                        <span>HTML</span>
-                      </>
+                      <span className="flex items-center gap-1.5">
+                        <Code className="w-3.5 h-3.5" />
+                        html
+                      </span>
                     ) : (
-                      <>
-                        <Image className="w-3 h-3" />
-                        <span>Image</span>
-                      </>
+                      <span className="flex items-center gap-1.5">
+                        <Image className="w-3.5 h-3.5" />
+                        image
+                      </span>
                     )}
                   </button>
-                  {sliceDimensions[index] && (
-                    <span className="text-xs text-muted-foreground">
-                      {BASE_WIDTH}×{Math.round(sliceDimensions[index].height)}
-                    </span>
-                  )}
+                  <span className="text-[11px] text-muted-foreground/60 ml-auto">
+                    {sliceDimensions[index] ? `${BASE_WIDTH}×${Math.round(sliceDimensions[index].height)}` : ''}
+                  </span>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Link</label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => toggleLink(index)}
-                        className={cn(
-                          'p-2 rounded transition-colors flex-shrink-0',
-                          slice.link !== null
-                            ? 'text-primary bg-primary/10'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                        )}
+                {/* Properties - Notion style */}
+                <div className="px-4 pb-4 space-y-1">
+                  {/* Link row */}
+                  <div 
+                    className="flex items-center gap-2 py-1.5 rounded hover:bg-muted/30 transition-colors cursor-pointer -mx-2 px-2"
+                    onClick={() => !slice.link && toggleLink(index)}
+                  >
+                    <Link className={cn(
+                      "w-4 h-4 flex-shrink-0",
+                      slice.link ? "text-foreground/60" : "text-muted-foreground/40"
+                    )} />
+                    {slice.link !== null ? (
+                      <Input
+                        value={slice.link}
+                        onChange={(e) => updateSlice(index, { link: e.target.value })}
+                        placeholder="Add link..."
+                        className="h-7 text-sm flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 px-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={() => setEditingLinkIndex(null)}
+                      />
+                    ) : (
+                      <span className="text-sm text-muted-foreground/50">Add link...</span>
+                    )}
+                    {slice.link && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); toggleLink(index); }}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-foreground/60 transition-opacity"
                       >
-                        {slice.link !== null ? <Link className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
+                        <Unlink className="w-3.5 h-3.5" />
                       </button>
-                      {slice.link !== null && (
-                        <Input
-                          value={slice.link}
-                          onChange={(e) => updateSlice(index, { link: e.target.value })}
-                          placeholder="https://..."
-                          className="h-9 text-sm flex-1"
-                          autoFocus={editingLinkIndex === index}
-                          onBlur={() => setEditingLinkIndex(null)}
-                        />
-                      )}
-                    </div>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Alt Text</label>
+                  {/* Alt text row */}
+                  <div className="py-1.5 -mx-2 px-2 rounded hover:bg-muted/30 transition-colors">
                     <Textarea
                       value={slice.altText}
                       onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                      placeholder="Describe this section..."
-                      className="text-sm resize-none min-h-[80px]"
+                      placeholder="Add description..."
+                      className="text-sm border-0 bg-transparent shadow-none focus-visible:ring-0 resize-none min-h-[60px] p-0"
                     />
                   </div>
                 </div>
+
+                {/* Subtle divider */}
+                {index < slices.length - 1 && (
+                  <div className="h-px bg-border/30 mx-4" />
+                )}
               </div>
             ))}
           </div>
