@@ -42,12 +42,25 @@ serve(async (req) => {
     // Analyze all slices in one API call for efficiency
     const sliceDescriptions = slices.map((s, i) => `Slice ${i + 1}`).join(', ');
     
-    const prompt = `You are analyzing sliced sections of an email marketing image. There are ${slices.length} slices: ${sliceDescriptions}.
+    const prompt = `You are analyzing sliced sections of an email marketing campaign image. There are ${slices.length} slices: ${sliceDescriptions}.
+
+IMPORTANT CONTEXT: Look at ALL slices together to understand the campaign's overall goal and main CTA.
 
 For each slice, provide:
-1. A concise alt text description (max 100 chars) for accessibility
-2. Whether this slice should be clickable (contains a CTA button, product image, clickable banner, etc.)
-3. If clickable, suggest an appropriate link path based on content (e.g., "/shop", "/products", "/about")
+1. ALT TEXT: Write the actual campaign copy/text visible in the slice, condensed and spoken as if to someone who cannot see it. 
+   - For CTAs/buttons: Add "Click to" prefix (e.g., "Click to Schedule Consultation" not just "Schedule Consultation")
+   - For hero text: Include the headline copy (e.g., "It's time to get Enhanced")
+   - For logos: Just the brand name (e.g., "Enhanced")
+   - Max 100 chars
+
+2. IS CLICKABLE: true if the slice contains a CTA button, product image, or clickable banner
+
+3. LINK STRATEGY (IMPORTANT):
+   - If the campaign has a clear single goal/CTA, ALL clickable slices should link to that CTA destination
+   - Hero images and product images should link to the main campaign goal, not generic pages
+   - Only use homepage ("/") if the campaign is very general/brand-focused
+   - Only use "/products" or "/collections" if multiple products are showcased without a specific CTA
+   - Return just the path (e.g., "/schedule-consultation"), NOT the full URL
 
 ${brandUrl ? `The brand website is: ${brandUrl}` : 'No brand URL provided.'}
 
@@ -56,9 +69,9 @@ Respond in JSON format:
   "slices": [
     {
       "index": 0,
-      "altText": "description here",
+      "altText": "alt text here",
       "isClickable": true/false,
-      "suggestedLink": "/suggested-path" or null
+      "suggestedLink": "/path" or null
     }
   ]
 }`;
@@ -123,14 +136,22 @@ Respond in JSON format:
         const parsed = JSON.parse(jsonMatch[0]);
         analyses = parsed.slices || [];
         
-        // Ensure indices are correct
-        analyses = analyses.map((a: SliceAnalysis, i: number) => ({
-          ...a,
-          index: i,
-          suggestedLink: a.isClickable && a.suggestedLink && brandUrl 
-            ? `${brandUrl.replace(/\/$/, '')}${a.suggestedLink.startsWith('/') ? '' : '/'}${a.suggestedLink}`
-            : null
-        }));
+        // Ensure indices are correct and build full URLs
+        analyses = analyses.map((a: SliceAnalysis, i: number) => {
+          let link = null;
+          if (a.isClickable && a.suggestedLink && brandUrl) {
+            // Check if AI returned a full URL (shouldn't, but handle it)
+            if (a.suggestedLink.startsWith('http://') || a.suggestedLink.startsWith('https://')) {
+              link = a.suggestedLink;
+            } else {
+              // Build full URL from path
+              const cleanBrandUrl = brandUrl.replace(/\/$/, '');
+              const cleanPath = a.suggestedLink.startsWith('/') ? a.suggestedLink : `/${a.suggestedLink}`;
+              link = `${cleanBrandUrl}${cleanPath}`;
+            }
+          }
+          return { ...a, index: i, suggestedLink: link };
+        });
       }
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);

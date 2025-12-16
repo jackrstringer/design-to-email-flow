@@ -417,7 +417,7 @@ export default function SimpleUpload() {
               <Button
                 variant="default"
                 className="flex-1"
-                onClick={() => window.open(`https://www.klaviyo.com/campaign/${campaignId}/edit/content`, '_blank')}
+                onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
                 Open Campaign Editor
