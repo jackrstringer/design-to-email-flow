@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Copy, Check, Key, Pencil, Trash2, Star, ExternalLink, Code } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Check, Key, Pencil, Trash2, Star, ExternalLink, Code, RefreshCw, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,6 +35,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [editApiKey, setEditApiKey] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState(brand.klaviyoApiKey || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
   
   // Footer editor state
   const [footerEditorOpen, setFooterEditorOpen] = useState(false);
@@ -127,6 +128,58 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       toast.error('Failed to update colors');
     } finally {
       setIsSaving(false);
+    }
+    };
+
+  const handleReanalyze = async () => {
+    if (!brand.websiteUrl) {
+      toast.error('No website URL to analyze');
+      return;
+    }
+
+    setIsReanalyzing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-brand', {
+        body: { websiteUrl: brand.websiteUrl }
+      });
+
+      if (error) throw error;
+
+      // Update brand with new data
+      const updates: any = {};
+      
+      if (data?.colors) {
+        updates.primary_color = data.colors.primary || brand.primaryColor;
+        updates.secondary_color = data.colors.secondary || brand.secondaryColor;
+        updates.accent_color = data.colors.accent || null;
+      }
+
+      if (data?.typography) {
+        updates.typography = data.typography;
+      }
+
+      if (data?.socialLinks) {
+        updates.social_links = data.socialLinks;
+      }
+
+      if (data?.allLinks) {
+        updates.all_links = data.allLinks;
+      }
+
+      const { error: updateError } = await supabase
+        .from('brands')
+        .update(updates)
+        .eq('id', brand.id);
+
+      if (updateError) throw updateError;
+
+      toast.success('Brand info refreshed');
+      onBrandChange();
+    } catch (error) {
+      console.error('Error re-analyzing brand:', error);
+      toast.error('Failed to re-analyze brand');
+    } finally {
+      setIsReanalyzing(false);
     }
   };
 
@@ -314,25 +367,167 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex items-center gap-3">
-          <div 
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg"
-            style={{ backgroundColor: brand.primaryColor }}
-          >
-            {brand.name.charAt(0)}
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">{brand.name}</h1>
-            <p className="text-sm text-muted-foreground">{brand.domain}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg"
+              style={{ backgroundColor: brand.primaryColor }}
+            >
+              {brand.name.charAt(0)}
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold">{brand.name}</h1>
+              <p className="text-sm text-muted-foreground">{brand.domain}</p>
+            </div>
           </div>
         </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleReanalyze}
+          disabled={isReanalyzing || !brand.websiteUrl}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isReanalyzing ? 'animate-spin' : ''}`} />
+          {isReanalyzing ? 'Analyzing...' : 'Re-analyze Brand'}
+        </Button>
       </div>
 
-      <Accordion type="multiple" defaultValue={['links', 'footers', 'api', 'colors']} className="space-y-4">
+      {/* Brand Colors & Typography Section - Always visible at top */}
+      <div className="rounded-xl border border-border/60 p-5 space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium">Brand Identity</h2>
+          {!editingColors && (
+            <Button variant="outline" size="sm" onClick={() => setEditingColors(true)}>
+              <Pencil className="h-3 w-3 mr-2" />
+              Edit Colors
+            </Button>
+          )}
+        </div>
+
+        {/* Colors */}
+        {editingColors ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Primary</Label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="color" 
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input 
+                    value={primaryColor}
+                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    className="flex-1 text-xs font-mono"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Secondary</Label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="color" 
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input 
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="flex-1 text-xs font-mono"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Accent</Label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="color" 
+                    value={accentColor || '#000000'}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input 
+                    value={accentColor}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    placeholder="Optional"
+                    className="flex-1 text-xs font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditingColors(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleSaveColors} disabled={isSaving}>Save</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-lg shadow-sm" style={{ backgroundColor: brand.primaryColor }} />
+              <div>
+                <span className="text-xs text-muted-foreground">Primary</span>
+                <p className="text-xs font-mono">{brand.primaryColor}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-lg shadow-sm" style={{ backgroundColor: brand.secondaryColor }} />
+              <div>
+                <span className="text-xs text-muted-foreground">Secondary</span>
+                <p className="text-xs font-mono">{brand.secondaryColor}</p>
+              </div>
+            </div>
+            {brand.accentColor && (
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg shadow-sm" style={{ backgroundColor: brand.accentColor }} />
+                <div>
+                  <span className="text-xs text-muted-foreground">Accent</span>
+                  <p className="text-xs font-mono">{brand.accentColor}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Typography */}
+        {brand.typography && Object.keys(brand.typography).length > 0 && (
+          <div className="pt-4 border-t border-border/40">
+            <div className="flex items-center gap-2 mb-3">
+              <Type className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Typography</span>
+            </div>
+            <div className="space-y-3">
+              {brand.typography.fontFamilies && Object.keys(brand.typography.fontFamilies).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(brand.typography.fontFamilies).map(([key, value]) => (
+                    <div key={key} className="px-3 py-1.5 rounded-lg bg-muted/50 text-sm">
+                      <span className="text-muted-foreground text-xs">{key}:</span>{' '}
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {brand.typography.fontSizes && Object.keys(brand.typography.fontSizes).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(brand.typography.fontSizes).map(([key, value]) => (
+                    <div key={key} className="px-2 py-1 rounded bg-muted/30 text-xs font-mono">
+                      {key}: {value}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Accordion type="multiple" defaultValue={['footers', 'api']} className="space-y-4">
         {/* Links Section */}
         <AccordionItem value="links" className="border border-border/60 rounded-xl px-5">
           <AccordionTrigger className="py-4 hover:no-underline">
@@ -425,15 +620,17 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                       </Button>
                     </div>
                   </div>
-                  {/* Inline HTML preview */}
-                  <div className="bg-white">
-                    <iframe
-                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;}</style></head><body>${footer.html}</body></html>`}
-                      className="w-full h-auto min-h-[120px]"
-                      style={{ height: '200px' }}
-                      sandbox="allow-same-origin"
-                      title={`${footer.name} preview`}
-                    />
+                  {/* Inline HTML preview - scaled down */}
+                  <div className="flex justify-center bg-muted/30 p-4">
+                    <div className="w-[400px] overflow-hidden rounded border border-border/40">
+                      <iframe
+                        srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;background:#111;}</style></head><body>${footer.html}</body></html>`}
+                        className="w-full"
+                        style={{ height: '300px' }}
+                        sandbox="allow-same-origin"
+                        title={`${footer.name} preview`}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -483,143 +680,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           </AccordionContent>
         </AccordionItem>
 
-        {/* Colors Section */}
-        <AccordionItem value="colors" className="border border-border/60 rounded-xl px-5">
-          <AccordionTrigger className="py-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <div className="flex -space-x-1">
-                <div className="w-4 h-4 rounded-full border-2 border-background" style={{ backgroundColor: brand.primaryColor }} />
-                <div className="w-4 h-4 rounded-full border-2 border-background" style={{ backgroundColor: brand.secondaryColor }} />
-              </div>
-              <span className="font-medium">Brand Colors</span>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="pb-4">
-            {editingColors ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Primary</Label>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="w-10 h-10 rounded cursor-pointer"
-                      />
-                      <Input 
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="flex-1 text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Secondary</Label>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={secondaryColor}
-                        onChange={(e) => setSecondaryColor(e.target.value)}
-                        className="w-10 h-10 rounded cursor-pointer"
-                      />
-                      <Input 
-                        value={secondaryColor}
-                        onChange={(e) => setSecondaryColor(e.target.value)}
-                        className="flex-1 text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Accent</Label>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={accentColor || '#000000'}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        className="w-10 h-10 rounded cursor-pointer"
-                      />
-                      <Input 
-                        value={accentColor}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        placeholder="Optional"
-                        className="flex-1 text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setEditingColors(false)}>Cancel</Button>
-                  <Button size="sm" onClick={handleSaveColors} disabled={isSaving}>Save</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: brand.primaryColor }} />
-                    <span className="text-xs font-mono text-muted-foreground">{brand.primaryColor}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: brand.secondaryColor }} />
-                    <span className="text-xs font-mono text-muted-foreground">{brand.secondaryColor}</span>
-                  </div>
-                  {brand.accentColor && (
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: brand.accentColor }} />
-                      <span className="text-xs font-mono text-muted-foreground">{brand.accentColor}</span>
-                    </div>
-                  )}
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setEditingColors(true)}>
-                  <Pencil className="h-3 w-3 mr-2" />
-                  Edit
-                </Button>
-              </div>
-            )}
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* Typography Section */}
-        {brand.typography && Object.keys(brand.typography).length > 0 && (
-          <AccordionItem value="typography" className="border border-border/60 rounded-xl px-5">
-            <AccordionTrigger className="py-4 hover:no-underline">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">Typography</span>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="pb-4">
-              <div className="space-y-4">
-                {brand.typography.fontFamilies && (
-                  <div>
-                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Font Families</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      {Object.entries(brand.typography.fontFamilies).map(([key, value]) => (
-                        <div key={key} className="p-2 rounded-lg bg-muted/50">
-                          <span className="text-xs text-muted-foreground">{key}</span>
-                          <p className="text-sm font-medium">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {brand.typography.fontSizes && (
-                  <div>
-                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Font Sizes</h4>
-                    <div className="grid grid-cols-4 gap-2">
-                      {Object.entries(brand.typography.fontSizes).map(([key, value]) => (
-                        <div key={key} className="p-2 rounded-lg bg-muted/50">
-                          <span className="text-xs text-muted-foreground">{key}</span>
-                          <p className="text-sm font-mono">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        )}
 
         {/* HTML Formatting Rules Section */}
         <AccordionItem value="rules" className="border border-border/60 rounded-xl px-5">
