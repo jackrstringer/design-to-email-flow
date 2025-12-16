@@ -145,7 +145,7 @@ serve(async (req) => {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
         'Content-Type': 'application/vnd.api+json',
         'accept': 'application/vnd.api+json',
-        'revision': '2025-01-15'
+        'revision': '2025-10-15'
       },
       body: JSON.stringify({
         data: {
@@ -162,8 +162,7 @@ serve(async (req) => {
                 is_local: true,
                 send_past_recipients_immediately: false
               }
-            },
-            campaign_type: 'HTML'
+            }
           }
         }
       })
@@ -223,7 +222,7 @@ serve(async (req) => {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
         'Content-Type': 'application/vnd.api+json',
         'accept': 'application/vnd.api+json',
-        'revision': '2025-01-15'
+        'revision': '2025-10-15'
       },
       body: JSON.stringify({
         data: {
