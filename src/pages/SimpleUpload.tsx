@@ -272,14 +272,14 @@ export default function SimpleUpload() {
         setStatus('Template created (campaign failed)');
       } else if (mode === 'campaign' && klaviyoData.campaignId) {
         setCampaignId(klaviyoData.campaignId);
-        setStatus('Campaign created successfully!');
+        setStatus('');
         toast.success('Template & campaign created in Klaviyo!');
       } else {
-        setStatus('Template created successfully!');
+        setStatus('');
         toast.success('Template pushed to Klaviyo!');
       }
-
-      setViewState('success');
+      // Don't change viewState - stay in studio to show success inline
+      // Success is now shown inline in CampaignStudio
 
     } catch (error) {
       console.error('Create error:', error);
@@ -457,6 +457,9 @@ export default function SimpleUpload() {
               onCreateCampaign={() => createTemplate('campaign')}
               onConvertToHtml={convertSliceToHtml}
               isCreating={isProcessing}
+              templateId={templateId}
+              campaignId={campaignId}
+              onReset={resetUpload}
             />
           </div>
         )}
