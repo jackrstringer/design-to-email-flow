@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, Plus, ChevronDown } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
@@ -41,6 +41,28 @@ export function CampaignCreator({
   const navigate = useNavigate();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hasFooters, setHasFooters] = useState(false);
+
+  // Check if selected brand has footers
+  useEffect(() => {
+    const checkFooters = async () => {
+      if (!selectedBrand?.id) {
+        setHasFooters(false);
+        return;
+      }
+
+      const { count, error } = await supabase
+        .from('brand_footers')
+        .select('*', { count: 'exact', head: true })
+        .eq('brand_id', selectedBrand.id);
+
+      if (!error && count !== null) {
+        setHasFooters(count > 0);
+      }
+    };
+
+    checkFooters();
+  }, [selectedBrand?.id]);
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -203,7 +225,7 @@ export function CampaignCreator({
               id="include-footer"
               checked={includeFooter}
               onCheckedChange={onIncludeFooterChange}
-              disabled={!selectedBrand?.footerHtml}
+              disabled={!hasFooters}
             />
           </div>
 
