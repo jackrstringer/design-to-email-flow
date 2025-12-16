@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Brands from "./pages/Brands";
 import BrandDetail from "./pages/BrandDetail";
 import OverlayTest from "./pages/OverlayTest";
+import CampaignPage from "./pages/CampaignPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/legacy" element={<Index />} />
           <Route path="/brands" element={<Brands />} />
           <Route path="/brands/:id" element={<BrandDetail />} />
+          <Route path="/campaign/:id" element={<CampaignPage />} />
           <Route path="/test-overlay" element={<OverlayTest />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
