@@ -690,36 +690,33 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                       </Button>
                     </div>
                   </div>
-                  {/* Inline HTML preview - proper email table structure */}
+                  {/* Inline HTML preview - scaled to fit */}
                   <div className="flex justify-center bg-muted/30 p-4">
-                    <div className="w-[400px] overflow-hidden rounded border border-border/40">
+                    <div className="w-[400px] h-[250px] overflow-hidden rounded border border-border/40 relative">
                       <iframe
                         srcDoc={`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=600">
   <style>
-    body { margin: 0; padding: 0; background: #f6f6f6; font-family: Arial, sans-serif; }
-    .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+    html, body { margin: 0; padding: 0; background: #f6f6f6; font-family: Arial, sans-serif; width: 600px; }
+    .email-wrapper { width: 600px; margin: 0 auto; }
   </style>
 </head>
 <body>
-  <center>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f6f6f6;">
-      <tr>
-        <td align="center">
-          <table role="presentation" class="email-wrapper" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
-            ${footer.html}
-          </table>
-        </td>
-      </tr>
-    </table>
-  </center>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width: 600px; background-color: #ffffff;">
+    ${footer.html}
+  </table>
 </body>
 </html>`}
-                        className="w-full"
-                        style={{ height: '300px' }}
+                        className="border-0"
+                        style={{ 
+                          width: '600px', 
+                          height: '375px',
+                          transform: 'scale(0.667)',
+                          transformOrigin: 'top left',
+                        }}
                         sandbox="allow-same-origin"
                         title={`${footer.name} preview`}
                       />
