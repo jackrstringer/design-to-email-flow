@@ -220,12 +220,17 @@ export default function CampaignPage() {
     );
   }
 
+  // Extract brand links from allLinks/all_links JSON field (handles both camelCase and snake_case)
+  const rawLinks = (brand as any)?.allLinks || (brand as any)?.all_links;
+  const brandLinks = Array.isArray(rawLinks) ? rawLinks as string[] : [];
+
   return (
     <CampaignStudio
       slices={slices}
       onSlicesChange={setSlices}
       originalImageUrl={originalImageUrl}
       brandUrl={brand?.websiteUrl || brand?.domain || ''}
+      brandLinks={brandLinks}
       onBack={handleBack}
       onCreateTemplate={handleCreateTemplate}
       onCreateCampaign={handleCreateCampaign}
