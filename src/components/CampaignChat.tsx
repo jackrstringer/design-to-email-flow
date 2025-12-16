@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Loader2, Sparkles } from 'lucide-react';
+import { Send, Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface ChatMessage {
@@ -17,9 +17,9 @@ interface CampaignChatProps {
   isAutoRefining: boolean;
 }
 
-export function CampaignChat({ 
-  messages, 
-  onSendMessage, 
+export function CampaignChat({
+  messages,
+  onSendMessage,
   onAutoRefine,
   isLoading,
   isAutoRefining,
@@ -27,78 +27,87 @@ export function CampaignChat({
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading || isAutoRefining) return;
-    onSendMessage(input.trim());
-    setInput('');
-  };
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && !isLoading) {
+      onSendMessage(input.trim());
+      setInput('');
+    }
+  };
+
   return (
-    <div className="flex flex-col border-t border-border/50 max-h-80">
-      {/* Auto-refine */}
-      <div className="p-2 border-b border-border/50">
-        <Button 
-          onClick={onAutoRefine} 
+    <div className="flex flex-col h-full">
+      {/* Auto-refine button - orange */}
+      <div className="p-3 border-b border-border/50">
+        <Button
+          onClick={onAutoRefine}
           disabled={isLoading || isAutoRefining}
-          variant="outline"
-          size="sm"
-          className="w-full h-7 text-[11px]"
+          className="w-full h-9 text-[11px] bg-orange-500 hover:bg-orange-600 text-white"
         >
           {isAutoRefining ? (
-            <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Refining...</>
+            <>
+              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              Refining...
+            </>
           ) : (
-            <><Sparkles className="w-3 h-3 mr-1.5" /> Auto-refine</>
+            <>
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              Refine with AI
+            </>
           )}
         </Button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[100px]">
-        {messages.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground text-center py-2">
-            "make button wider", "more spacing"
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {messages.length === 0 && (
+          <p className="text-[11px] text-muted-foreground text-center py-4">
+            Ask AI to refine the HTML, or use auto-refine to match the original design.
           </p>
-        ) : (
-          messages.map((message, index) => (
-            <div
-              key={index}
-              className={cn(
-                'text-[11px] px-2 py-1.5 rounded',
-                message.role === 'user'
-                  ? 'bg-primary text-primary-foreground ml-4'
-                  : 'bg-muted/50 text-foreground mr-4'
-              )}
-            >
-              {message.content}
-            </div>
-          ))
         )}
-        {isLoading && !isAutoRefining && (
-          <div className="flex items-center gap-1.5 text-muted-foreground">
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={cn(
+              'text-[11px] p-2 rounded-md',
+              msg.role === 'user'
+                ? 'bg-primary/10 ml-4'
+                : 'bg-muted/50 mr-4'
+            )}
+          >
+            {msg.content}
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span className="text-[10px]">Thinking...</span>
+            Thinking...
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-2 border-t border-border/50">
-        <div className="flex gap-1.5">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-border/50">
+        <div className="flex gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Request a change..."
-            disabled={isLoading || isAutoRefining}
-            className="flex-1 h-7 text-[11px] bg-transparent border-border/50"
+            placeholder="Describe changes..."
+            className="h-8 text-[11px] bg-background"
+            disabled={isLoading}
           />
-          <Button type="submit" size="sm" className="h-7 w-7 p-0" disabled={!input.trim() || isLoading || isAutoRefining}>
-            <Send className="w-3 h-3" />
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!input.trim() || isLoading}
+            className="h-8 px-3"
+          >
+            <Send className="w-3.5 h-3.5" />
           </Button>
         </div>
       </form>
