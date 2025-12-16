@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -21,9 +21,16 @@ interface NewBrandModalProps {
   onOpenChange: (open: boolean) => void;
   initialDomain: string | null;
   onBrandCreated: (brand: Brand) => void;
+  backgroundAnalysis?: Promise<any> | null;
 }
 
-export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreated }: NewBrandModalProps) {
+export function NewBrandModal({ 
+  open, 
+  onOpenChange, 
+  initialDomain, 
+  onBrandCreated,
+  backgroundAnalysis 
+}: NewBrandModalProps) {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [brandName, setBrandName] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#3b82f6');
@@ -38,12 +45,35 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
   const [analyzed, setAnalyzed] = useState(false);
   const [socialLinks, setSocialLinks] = useState<Brand['socialLinks']>([]);
   const [typography, setTypography] = useState<Brand['typography'] | null>(null);
+  const [allLinks, setAllLinks] = useState<string[]>([]);
 
+  // Handle background analysis result when modal opens with initialDomain
   useEffect(() => {
-    if (initialDomain) {
+    if (open && initialDomain && backgroundAnalysis) {
       setWebsiteUrl(`https://${initialDomain}`);
+      setIsAnalyzing(true);
+      
+      // Wait for background analysis to complete
+      backgroundAnalysis.then(({ data, error }) => {
+        if (!error && data) {
+          applyAnalysisData(data, initialDomain);
+        } else {
+          // Analysis failed - allow manual entry
+          const suggestedName = initialDomain.split('.')[0];
+          setBrandName(suggestedName.charAt(0).toUpperCase() + suggestedName.slice(1));
+        }
+        setAnalyzed(true);
+        setIsAnalyzing(false);
+      }).catch(() => {
+        setAnalyzed(true);
+        setIsAnalyzing(false);
+      });
+    } else if (open && initialDomain && !backgroundAnalysis) {
+      // No background analysis - start one
+      setWebsiteUrl(`https://${initialDomain}`);
+      handleAnalyze(`https://${initialDomain}`);
     }
-  }, [initialDomain]);
+  }, [open, initialDomain, backgroundAnalysis]);
 
   useEffect(() => {
     if (!open) {
@@ -60,6 +90,7 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
       setAnalyzed(false);
       setSocialLinks([]);
       setTypography(null);
+      setAllLinks([]);
     }
   }, [open]);
 
@@ -72,8 +103,46 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!websiteUrl) {
+  const applyAnalysisData = (data: any, domain: string) => {
+    if (data?.colors) {
+      setPrimaryColor(data.colors.primary || '#3b82f6');
+      setSecondaryColor(data.colors.secondary || '#64748b');
+      setAccentColor(data.colors.accent || '');
+      setBackgroundColor(data.colors.background || '');
+      setTextPrimaryColor(data.colors.textPrimary || '');
+      setLinkColor(data.colors.link || '');
+    }
+
+    if (data?.typography || data?.fonts || data?.spacing || data?.components) {
+      setTypography({
+        ...(data.typography || {}),
+        fonts: data.fonts || [],
+        spacing: data.spacing || null,
+        components: data.components || null,
+      });
+    }
+
+    if (data?.socialLinks && Array.isArray(data.socialLinks)) {
+      const validPlatforms = ['facebook', 'instagram', 'twitter', 'linkedin', 'youtube', 'tiktok'];
+      const validLinks = data.socialLinks.filter(
+        (link: any) => validPlatforms.includes(link.platform)
+      ) as Brand['socialLinks'];
+      setSocialLinks(validLinks);
+    }
+
+    if (data?.allLinks && Array.isArray(data.allLinks)) {
+      setAllLinks(data.allLinks);
+    }
+
+    // Extract brand name from domain
+    const nameParts = domain.split('.');
+    const suggestedName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
+    setBrandName(suggestedName);
+  };
+
+  const handleAnalyze = async (url?: string) => {
+    const targetUrl = url || websiteUrl;
+    if (!targetUrl) {
       toast.error('Please enter a website URL');
       return;
     }
@@ -81,51 +150,24 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
     setIsAnalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-brand', {
-        body: { websiteUrl }
+        body: { websiteUrl: targetUrl }
       });
 
       if (error) throw error;
 
-      if (data?.colors) {
-        setPrimaryColor(data.colors.primary || '#3b82f6');
-        setSecondaryColor(data.colors.secondary || '#64748b');
-        setAccentColor(data.colors.accent || '');
-        setBackgroundColor(data.colors.background || '');
-        setTextPrimaryColor(data.colors.textPrimary || '');
-        setLinkColor(data.colors.link || '');
-      }
-
-      // Merge typography with fonts, spacing, components from Firecrawl
-      if (data?.typography || data?.fonts || data?.spacing || data?.components) {
-        setTypography({
-          ...(data.typography || {}),
-          fonts: data.fonts || [],
-          spacing: data.spacing || null,
-          components: data.components || null,
-        });
-      }
-
-      if (data?.socialLinks && Array.isArray(data.socialLinks)) {
-        // Filter to only valid platform types
-        const validPlatforms = ['facebook', 'instagram', 'twitter', 'linkedin', 'youtube', 'tiktok'];
-        const validLinks = data.socialLinks.filter(
-          (link: any) => validPlatforms.includes(link.platform)
-        ) as Brand['socialLinks'];
-        setSocialLinks(validLinks);
-      }
-
-      // Try to extract brand name from domain
-      const domain = extractDomain(websiteUrl);
-      const nameParts = domain.split('.');
-      const suggestedName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
-      setBrandName(suggestedName);
+      const domain = extractDomain(targetUrl);
+      applyAnalysisData(data, domain);
 
       setAnalyzed(true);
       toast.success('Brand analyzed successfully');
     } catch (error) {
       console.error('Error analyzing brand:', error);
       toast.error('Failed to analyze brand. Please enter details manually.');
-      setAnalyzed(true); // Allow manual entry
+      // Still allow manual entry
+      const domain = extractDomain(targetUrl);
+      const suggestedName = domain.split('.')[0];
+      setBrandName(suggestedName.charAt(0).toUpperCase() + suggestedName.slice(1));
+      setAnalyzed(true);
     } finally {
       setIsAnalyzing(false);
     }
@@ -159,6 +201,7 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
           text_primary_color: textPrimaryColor || null,
           link_color: linkColor || null,
           social_links: socialLinks as unknown as Json,
+          all_links: allLinks as unknown as Json,
           typography: typography as unknown as Json,
           klaviyo_api_key: klaviyoApiKey.trim(),
         })
@@ -175,10 +218,14 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
         primaryColor: data.primary_color,
         secondaryColor: data.secondary_color,
         accentColor: data.accent_color || undefined,
+        backgroundColor: data.background_color || undefined,
+        textPrimaryColor: data.text_primary_color || undefined,
+        linkColor: data.link_color || undefined,
         socialLinks: socialLinks,
-        allLinks: [],
+        allLinks: allLinks,
         klaviyoApiKey: data.klaviyo_api_key || undefined,
         footerConfigured: false,
+        typography: typography || undefined,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -197,36 +244,58 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add New Brand</DialogTitle>
+          <DialogTitle>
+            {initialDomain ? `Add ${initialDomain.split('.')[0].charAt(0).toUpperCase() + initialDomain.split('.')[0].slice(1)}` : 'Add New Brand'}
+          </DialogTitle>
           <DialogDescription>
-            Enter the brand's website URL to auto-detect brand information, then add their Klaviyo API key.
+            {initialDomain 
+              ? 'We detected a new brand. Enter the Klaviyo API key to continue.'
+              : 'Enter the brand\'s website URL to auto-detect brand information.'
+            }
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Website URL + Analyze */}
-          <div className="space-y-2">
-            <Label>Website URL</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="https://example.com"
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                disabled={isAnalyzing}
-              />
-              <Button 
-                onClick={handleAnalyze} 
-                disabled={isAnalyzing || !websiteUrl}
-                variant="secondary"
-              >
-                {isAnalyzing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  'Analyze'
-                )}
-              </Button>
+          {/* Analysis status for auto-detected brands */}
+          {initialDomain && isAnalyzing && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Analyzing brand colors and typography...</span>
             </div>
-          </div>
+          )}
+
+          {initialDomain && analyzed && !isAnalyzing && (
+            <div className="flex items-center gap-2 text-sm text-green-600">
+              <Check className="w-4 h-4" />
+              <span>Brand info detected</span>
+            </div>
+          )}
+
+          {/* Website URL - only show input if not auto-detected */}
+          {!initialDomain && (
+            <div className="space-y-2">
+              <Label>Website URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="https://example.com"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  disabled={isAnalyzing}
+                />
+                <Button 
+                  onClick={() => handleAnalyze()} 
+                  disabled={isAnalyzing || !websiteUrl}
+                  variant="secondary"
+                >
+                  {isAnalyzing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    'Analyze'
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {analyzed && (
             <>
@@ -240,67 +309,33 @@ export function NewBrandModal({ open, onOpenChange, initialDomain, onBrandCreate
                 />
               </div>
 
-              {/* Colors */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <Label className="text-xs">Primary</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={primaryColor}
-                      onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="w-8 h-8 rounded cursor-pointer"
-                    />
-                    <Input
-                      value={primaryColor}
-                      onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="text-xs h-8"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Secondary</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={secondaryColor}
-                      onChange={(e) => setSecondaryColor(e.target.value)}
-                      className="w-8 h-8 rounded cursor-pointer"
-                    />
-                    <Input
-                      value={secondaryColor}
-                      onChange={(e) => setSecondaryColor(e.target.value)}
-                      className="text-xs h-8"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Accent</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={accentColor || '#ffffff'}
-                      onChange={(e) => setAccentColor(e.target.value)}
-                      className="w-8 h-8 rounded cursor-pointer"
-                    />
-                    <Input
-                      value={accentColor}
-                      onChange={(e) => setAccentColor(e.target.value)}
-                      className="text-xs h-8"
-                      placeholder="Optional"
-                    />
-                  </div>
+              {/* Colors - compact preview */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Detected Colors</Label>
+                <div className="flex gap-2">
+                  {[primaryColor, secondaryColor, accentColor, backgroundColor, textPrimaryColor, linkColor]
+                    .filter(Boolean)
+                    .map((color, i) => (
+                      <div 
+                        key={i}
+                        className="w-6 h-6 rounded-md shadow-sm ring-1 ring-black/10"
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))
+                  }
                 </div>
               </div>
 
-              {/* Klaviyo API Key */}
-              <div className="space-y-2">
-                <Label>Klaviyo API Key *</Label>
+              {/* Klaviyo API Key - PRIMARY INPUT */}
+              <div className="space-y-2 pt-2 border-t">
+                <Label className="font-medium">Klaviyo API Key *</Label>
                 <Input
                   type="password"
                   placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx"
                   value={klaviyoApiKey}
                   onChange={(e) => setKlaviyoApiKey(e.target.value)}
+                  autoFocus={!!initialDomain}
                 />
                 <p className="text-xs text-muted-foreground">
                   Find this in Klaviyo → Settings → API Keys (Private Key)
