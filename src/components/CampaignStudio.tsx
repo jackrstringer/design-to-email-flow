@@ -268,106 +268,105 @@ export function CampaignStudio({
             <span className="text-xs text-muted-foreground w-10">{zoomLevel}%</span>
           </div>
         </div>
-        <div className="flex-1 overflow-auto" ref={containerRef}>
-          <div 
-            className="flex gap-4 p-4"
-            style={{ 
-              transform: `scale(${zoomLevel / 100})`, 
-              transformOrigin: 'top left',
-            }}
-          >
-            {/* Details sub-column */}
-            <div className="w-[300px] flex-shrink-0">
-              {slices.map((slice, index) => (
-                <div
-                  key={index}
-                  className="border-b border-border/30 last:border-b-0"
-                  style={{ height: sliceDimensions[index]?.height || 120 }}
-                >
-                  <div className="py-3 pr-4 space-y-2 h-full flex flex-col justify-end">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
-                      <button
-                        onClick={() => toggleSliceType(index)}
-                        disabled={convertingIndex !== null || isCreating}
-                        className={cn(
-                          'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors border',
-                          slice.type === 'html'
-                            ? 'text-blue-600 border-blue-200 bg-blue-50'
-                            : 'text-muted-foreground border-border/50 hover:border-border'
-                        )}
-                      >
-                        {convertingIndex === index ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : slice.type === 'html' ? (
-                          <>
-                            <Code className="w-3 h-3" />
-                            <span>HTML</span>
-                          </>
-                        ) : (
-                          <>
-                            <Image className="w-3 h-3" />
-                            <span>Image</span>
-                          </>
-                        )}
-                      </button>
-                      {sliceDimensions[index] && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {BASE_WIDTH}×{Math.round(sliceDimensions[index].height)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => toggleLink(index)}
-                        className={cn(
-                          'p-1.5 rounded transition-colors flex-shrink-0',
-                          slice.link !== null
-                            ? 'text-primary bg-primary/10'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                        )}
-                      >
-                        {slice.link !== null ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
-                      </button>
-                      {slice.link !== null && (
-                        <Input
-                          value={slice.link}
-                          onChange={(e) => updateSlice(index, { link: e.target.value })}
-                          placeholder="https://..."
-                          className="h-7 text-xs flex-1 bg-background border-border/50"
-                          autoFocus={editingLinkIndex === index}
-                          onBlur={() => setEditingLinkIndex(null)}
-                        />
-                      )}
-                    </div>
-
-                    <Textarea
-                      value={slice.altText}
-                      onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                      placeholder="Alt text..."
-                      className="text-xs bg-background border-border/50 resize-none flex-1 min-h-[40px]"
-                    />
-                  </div>
+        <div className="flex-1 flex overflow-hidden">
+          {/* Details sub-column - NO zoom, fixed width */}
+          <div className="w-[280px] flex-shrink-0 border-r border-border/30 overflow-auto p-4">
+            {slices.map((slice, index) => (
+              <div
+                key={index}
+                className="border-b border-border/30 last:border-b-0 py-3 space-y-2"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
+                  <button
+                    onClick={() => toggleSliceType(index)}
+                    disabled={convertingIndex !== null || isCreating}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors border',
+                      slice.type === 'html'
+                        ? 'text-blue-600 border-blue-200 bg-blue-50'
+                        : 'text-muted-foreground border-border/50 hover:border-border'
+                    )}
+                  >
+                    {convertingIndex === index ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : slice.type === 'html' ? (
+                      <>
+                        <Code className="w-3 h-3" />
+                        <span>HTML</span>
+                      </>
+                    ) : (
+                      <>
+                        <Image className="w-3 h-3" />
+                        <span>Image</span>
+                      </>
+                    )}
+                  </button>
+                  {sliceDimensions[index] && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {BASE_WIDTH}×{Math.round(sliceDimensions[index].height)}
+                    </span>
+                  )}
                 </div>
-              ))}
-            </div>
 
-            {/* Original image sub-column */}
-            <div className="relative flex-shrink-0">
-              <img
-                src={originalImageUrl}
-                alt="Original"
-                style={{ width: `${BASE_WIDTH}px` }}
-                className="max-w-none"
-              />
-              {sliceDimensions.slice(1).map((dim, i) => (
-                <div
-                  key={i}
-                  className="absolute left-0 right-0 h-0.5 bg-red-500"
-                  style={{ top: dim.top }}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleLink(index)}
+                    className={cn(
+                      'p-1.5 rounded transition-colors flex-shrink-0',
+                      slice.link !== null
+                        ? 'text-primary bg-primary/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    )}
+                  >
+                    {slice.link !== null ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
+                  </button>
+                  {slice.link !== null && (
+                    <Input
+                      value={slice.link}
+                      onChange={(e) => updateSlice(index, { link: e.target.value })}
+                      placeholder="https://..."
+                      className="h-7 text-xs flex-1 bg-background border-border/50"
+                      autoFocus={editingLinkIndex === index}
+                      onBlur={() => setEditingLinkIndex(null)}
+                    />
+                  )}
+                </div>
+
+                <Textarea
+                  value={slice.altText}
+                  onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                  placeholder="Alt text..."
+                  className="text-xs bg-background border-border/50 resize-none min-h-[60px]"
                 />
-              ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Original image sub-column - zoom applied ONLY here */}
+          <div className="flex-1 overflow-auto" ref={containerRef}>
+            <div 
+              className="p-4"
+              style={{ 
+                transform: `scale(${zoomLevel / 100})`, 
+                transformOrigin: 'top left',
+              }}
+            >
+              <div className="relative flex-shrink-0">
+                <img
+                  src={originalImageUrl}
+                  alt="Original"
+                  style={{ width: `${BASE_WIDTH}px` }}
+                  className="max-w-none"
+                />
+                {sliceDimensions.slice(1).map((dim, i) => (
+                  <div
+                    key={i}
+                    className="absolute left-0 right-0 h-0.5 bg-red-500"
+                    style={{ top: dim.top }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
