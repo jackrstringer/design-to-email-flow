@@ -90,7 +90,7 @@ export function CampaignCreator({
     try {
       // Upload to Cloudinary
       const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
-        body: { imageDataUrl: dataUrl }
+        body: { imageData: dataUrl }
       });
 
       if (uploadError || !uploadData?.url) {
