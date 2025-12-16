@@ -221,17 +221,17 @@ export function CampaignStudio({
   const hasHtmlSlices = slices.some(s => s.type === 'html');
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen w-full">
       {/* Left Column - Chat (collapsible) */}
-      <Collapsible open={chatExpanded} onOpenChange={setChatExpanded} className="flex">
+      <Collapsible open={chatExpanded} onOpenChange={setChatExpanded} className="flex flex-shrink-0">
         <CollapsibleContent className="w-80 flex flex-col border-r border-border/50 bg-background">
           {/* Header */}
           <div className="h-12 px-3 flex items-center justify-between border-b border-border/50">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5" />
               AI Refinement
             </span>
-            <Button variant="ghost" size="sm" onClick={onBack} disabled={isCreating} className="h-7 px-2 text-[11px]">
+            <Button variant="ghost" size="sm" onClick={onBack} disabled={isCreating} className="h-7 px-2 text-xs">
               <ChevronLeft className="w-3 h-3 mr-1" />
               Back
             </Button>
@@ -252,14 +252,14 @@ export function CampaignStudio({
           <div className="p-3 border-t border-border/50 space-y-2">
             {templateId ? (
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-green-600 text-[11px] px-1">
+                <div className="flex items-center gap-1.5 text-green-600 text-xs px-1">
                   <CheckCircle className="w-3 h-3" />
                   <span>{campaignId ? 'Campaign' : 'Template'} created</span>
                 </div>
                 {campaignId ? (
                   <Button
                     size="sm"
-                    className="w-full h-8 text-[11px]"
+                    className="w-full h-8 text-xs"
                     onClick={() => window.open(`https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`, '_blank')}
                   >
                     <ExternalLink className="w-3 h-3 mr-1.5" />
@@ -268,7 +268,7 @@ export function CampaignStudio({
                 ) : (
                   <Button
                     size="sm"
-                    className="w-full h-8 text-[11px]"
+                    className="w-full h-8 text-xs"
                     onClick={() => window.open(`https://www.klaviyo.com/email-templates/${templateId}`, '_blank')}
                   >
                     <ExternalLink className="w-3 h-3 mr-1.5" />
@@ -276,7 +276,7 @@ export function CampaignStudio({
                   </Button>
                 )}
                 {onReset && (
-                  <Button variant="ghost" size="sm" className="w-full h-7 text-[11px] text-muted-foreground" onClick={onReset}>
+                  <Button variant="ghost" size="sm" className="w-full h-7 text-xs text-muted-foreground" onClick={onReset}>
                     Upload another
                   </Button>
                 )}
@@ -287,7 +287,7 @@ export function CampaignStudio({
                   variant="outline"
                   onClick={onCreateTemplate}
                   disabled={isCreating || convertingIndex !== null}
-                  className="w-full h-8 text-[11px]"
+                  className="w-full h-8 text-xs"
                 >
                   <FileText className="w-3 h-3 mr-1.5" />
                   Create Template
@@ -295,7 +295,7 @@ export function CampaignStudio({
                 <Button
                   onClick={onCreateCampaign}
                   disabled={isCreating || convertingIndex !== null}
-                  className="w-full h-8 text-[11px]"
+                  className="w-full h-8 text-xs"
                 >
                   <Rocket className="w-3 h-3 mr-1.5" />
                   {isCreating ? 'Creating...' : 'Create Campaign'}
@@ -316,7 +316,7 @@ export function CampaignStudio({
       {/* Center Column - Original with inline slice details */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-12 px-4 flex items-center justify-between border-b border-border/50">
-          <span className="text-xs text-muted-foreground">Campaign · {slices.length} slices</span>
+          <span className="text-sm text-muted-foreground">Campaign · {slices.length} slices</span>
           <div className="flex items-center gap-2">
             <Slider
               value={[zoomLevel]}
@@ -324,22 +324,22 @@ export function CampaignStudio({
               min={25}
               max={150}
               step={5}
-              className="w-20"
+              className="w-24"
             />
-            <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
+            <span className="text-xs text-muted-foreground w-10">{zoomLevel}%</span>
           </div>
         </div>
         <div className="flex-1 overflow-auto bg-muted/5" ref={containerRef}>
-          <div className="p-4 flex justify-end">
+          <div className="p-6 flex justify-end">
             <div 
-              className="flex"
+              className="flex gap-6"
               style={{ 
                 transform: `scale(${zoomLevel / 100})`, 
                 transformOrigin: 'top right',
               }}
             >
-              {/* Slice details column - grows to fill available space */}
-              <div className="w-64 flex-shrink-0 pr-4">
+              {/* Slice details column - flexible width */}
+              <div className="min-w-[320px] max-w-[420px] flex-shrink-0">
                 {slices.map((slice, index) => (
                   <div
                     key={index}
@@ -348,70 +348,71 @@ export function CampaignStudio({
                       height: sliceDimensions[index]?.height || 120,
                     }}
                   >
-                    <div className="py-3 pr-2 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-foreground">{index + 1}</span>
+                    <div className="py-4 pr-4 space-y-3 h-full flex flex-col">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-sm font-semibold text-foreground">Slice {index + 1}</span>
                         <button
                           onClick={() => toggleSliceType(index)}
                           disabled={convertingIndex !== null || isCreating}
                           className={cn(
-                            'flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors border',
+                            'flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm transition-colors border',
                             slice.type === 'html'
                               ? 'text-blue-600 border-blue-200 bg-blue-50'
                               : 'text-muted-foreground border-border/50 hover:border-border'
                           )}
                         >
                           {convertingIndex === index ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                           ) : slice.type === 'html' ? (
                             <>
-                              <Code className="w-3.5 h-3.5" />
+                              <Code className="w-4 h-4" />
                               <span>HTML</span>
                             </>
                           ) : (
                             <>
-                              <Image className="w-3.5 h-3.5" />
+                              <Image className="w-4 h-4" />
                               <span>Image</span>
                             </>
                           )}
                         </button>
                         {sliceDimensions[index] && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {Math.round(sliceDimensions[index].height)}px
+                          <span className="text-xs text-muted-foreground">
+                            {BASE_WIDTH} × {Math.round(sliceDimensions[index].height)}px
                           </span>
                         )}
                       </div>
 
-                      <Textarea
-                        value={slice.altText}
-                        onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                        placeholder="Alt text description..."
-                        className="text-xs bg-background border-border/50 resize-none min-h-[48px]"
-                        rows={2}
-                      />
+                      <div className="flex-1 flex flex-col gap-2">
+                        <Textarea
+                          value={slice.altText}
+                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                          placeholder="Alt text description..."
+                          className="text-sm bg-background border-border/50 resize-none flex-1 min-h-[60px]"
+                        />
 
-                      <div className="flex items-start gap-1.5">
-                        <button
-                          onClick={() => toggleLink(index)}
-                          className={cn(
-                            'p-1.5 rounded transition-colors mt-0.5',
-                            slice.link !== null
-                              ? 'text-primary bg-primary/10'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleLink(index)}
+                            className={cn(
+                              'p-2 rounded transition-colors flex-shrink-0',
+                              slice.link !== null
+                                ? 'text-primary bg-primary/10'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            )}
+                          >
+                            {slice.link !== null ? <Link className="w-4 h-4" /> : <Unlink className="w-4 h-4" />}
+                          </button>
+                          {slice.link !== null && (
+                            <Input
+                              value={slice.link}
+                              onChange={(e) => updateSlice(index, { link: e.target.value })}
+                              placeholder="https://..."
+                              className="h-9 text-sm flex-1 bg-background border-border/50"
+                              autoFocus={editingLinkIndex === index}
+                              onBlur={() => setEditingLinkIndex(null)}
+                            />
                           )}
-                        >
-                          {slice.link !== null ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
-                        </button>
-                        {slice.link !== null && (
-                          <Input
-                            value={slice.link}
-                            onChange={(e) => updateSlice(index, { link: e.target.value })}
-                            placeholder="https://..."
-                            className="h-7 text-xs flex-1 bg-background border-border/50"
-                            autoFocus={editingLinkIndex === index}
-                            onBlur={() => setEditingLinkIndex(null)}
-                          />
-                        )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -443,12 +444,12 @@ export function CampaignStudio({
       {/* Right Column - Preview */}
       <div className="flex-1 flex flex-col min-w-0 border-l border-border/50">
         <div className="h-12 px-4 flex items-center border-b border-border/50">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-sm text-muted-foreground">
             {hasHtmlSlices ? 'HTML Preview' : 'Preview'}
           </span>
         </div>
         <div className="flex-1 overflow-auto bg-muted/5">
-          <div className="p-4">
+          <div className="p-6">
             <div 
               style={{ 
                 transform: `scale(${zoomLevel / 100})`, 
