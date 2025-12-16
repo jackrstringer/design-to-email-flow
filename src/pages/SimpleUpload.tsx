@@ -237,7 +237,9 @@ export default function SimpleUpload() {
           slices: processedSlices.map(s => ({
             imageUrl: s.imageUrl,
             altText: s.altText,
-            link: s.link
+            link: s.link,
+            type: s.type,
+            htmlContent: s.htmlContent
           })),
           templateName,
           klaviyoApiKey: apiKey.trim(),
