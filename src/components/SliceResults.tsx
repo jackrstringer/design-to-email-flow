@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Link, Unlink, ExternalLink, ChevronLeft, Rocket, FileText, Image, Code, Loader2 } from 'lucide-react';
+import { Link, Unlink, ExternalLink, ChevronLeft, Rocket, FileText, Image, Code, Loader2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ProcessedSlice } from '@/types/slice';
+import { HtmlEditorModal } from './HtmlEditorModal';
 
 interface SliceResultsProps {
   slices: ProcessedSlice[];
@@ -14,6 +15,7 @@ interface SliceResultsProps {
   onCreateCampaign: () => void;
   onConvertToHtml: (index: number) => Promise<void>;
   isCreating: boolean;
+  brandUrl?: string;
 }
 
 export function SliceResults({ 
@@ -23,10 +25,13 @@ export function SliceResults({
   onCreateTemplate, 
   onCreateCampaign,
   onConvertToHtml,
-  isCreating 
+  isCreating,
+  brandUrl,
 }: SliceResultsProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [convertingIndex, setConvertingIndex] = useState<number | null>(null);
+  const [htmlEditorOpen, setHtmlEditorOpen] = useState(false);
+  const [htmlEditorSliceIndex, setHtmlEditorSliceIndex] = useState<number | null>(null);
 
   const updateSlice = (index: number, updates: Partial<ProcessedSlice>) => {
     const updated = [...slices];
@@ -176,17 +181,28 @@ export function SliceResults({
                     </div>
                   </>
                 ) : (
-                  /* HTML Content editor */
+                  /* HTML Content with Edit button */
                   <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setHtmlEditorSliceIndex(index);
+                          setHtmlEditorOpen(true);
+                        }}
+                        className="h-7 text-xs"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" />
+                        Edit in Studio
+                      </Button>
+                    </div>
                     <Textarea
                       value={slice.htmlContent || ''}
                       onChange={(e) => updateSlice(index, { htmlContent: e.target.value })}
                       placeholder="HTML content..."
-                      className="text-xs font-mono min-h-[100px]"
+                      className="text-xs font-mono min-h-[80px]"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Edit the generated HTML or paste your own. Tables and inline styles required.
-                    </p>
                   </div>
                 )}
               </div>
@@ -215,6 +231,21 @@ export function SliceResults({
           {isCreating ? 'Creating...' : 'Create Campaign'}
         </Button>
       </div>
+
+      {/* HTML Editor Modal */}
+      {htmlEditorSliceIndex !== null && (
+        <HtmlEditorModal
+          open={htmlEditorOpen}
+          onOpenChange={setHtmlEditorOpen}
+          html={slices[htmlEditorSliceIndex]?.htmlContent || ''}
+          originalImageUrl={slices[htmlEditorSliceIndex]?.imageUrl || ''}
+          brandUrl={brandUrl}
+          onSave={(html) => {
+            updateSlice(htmlEditorSliceIndex, { htmlContent: html });
+            setHtmlEditorSliceIndex(null);
+          }}
+        />
+      )}
     </div>
   );
 }
