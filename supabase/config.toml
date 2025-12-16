@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.analyze-slices]
 verify_jwt = false
+
+[functions.generate-slice-html]
+verify_jwt = false

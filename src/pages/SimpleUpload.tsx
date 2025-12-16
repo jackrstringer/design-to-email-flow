@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SliceEditor } from '@/components/SliceEditor';
-import { SliceResults, ProcessedSlice } from '@/components/SliceResults';
+import { SliceResults } from '@/components/SliceResults';
 import { sliceImage, ImageSlice } from '@/lib/imageSlicing';
+import type { ProcessedSlice, SliceType } from '@/types/slice';
 
 const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
 <tr>
@@ -201,7 +202,8 @@ export default function SimpleUpload() {
         imageUrl: uploaded.imageUrl,
         altText: analyses[i]?.altText || `Email section ${i + 1}`,
         link: analyses[i]?.suggestedLink || null,
-        isClickable: analyses[i]?.isClickable || false
+        isClickable: analyses[i]?.isClickable || false,
+        type: 'image' as SliceType
       }));
 
       setProcessedSlices(results);
@@ -271,6 +273,42 @@ export default function SimpleUpload() {
       setStatus('');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const convertSliceToHtml = async (index: number) => {
+    const slice = processedSlices[index];
+    if (!slice || !uploadedImage) return;
+
+    try {
+      // We need to get the original slice dataUrl to send to AI
+      // Since we already uploaded to Cloudinary, we'll use the hosted image
+      const { data, error } = await supabase.functions.invoke('generate-slice-html', {
+        body: {
+          sliceDataUrl: slice.imageUrl, // Use the Cloudinary URL
+          brandUrl: 'https://www.enhanced.com',
+          sliceIndex: index,
+          totalSlices: processedSlices.length
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to generate HTML');
+      }
+
+      if (data?.htmlContent) {
+        const updated = [...processedSlices];
+        updated[index] = {
+          ...updated[index],
+          type: 'html',
+          htmlContent: data.htmlContent
+        };
+        setProcessedSlices(updated);
+        toast.success(`Slice ${index + 1} converted to HTML`);
+      }
+    } catch (err) {
+      console.error('HTML conversion error:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to convert to HTML');
     }
   };
 
@@ -399,6 +437,7 @@ export default function SimpleUpload() {
             onBack={() => setViewState('slice-editor')}
             onCreateTemplate={() => createTemplate('template')}
             onCreateCampaign={() => createTemplate('campaign')}
+            onConvertToHtml={convertSliceToHtml}
             isCreating={isProcessing}
           />
         )}
