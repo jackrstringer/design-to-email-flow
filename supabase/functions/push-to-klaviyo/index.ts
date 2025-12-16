@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrl, templateName, klaviyoApiKey } = await req.json();
+    const { imageUrl, templateName, klaviyoApiKey, footerHtml } = await req.json();
 
     if (!imageUrl || !templateName || !klaviyoApiKey) {
       return new Response(
@@ -21,6 +21,32 @@ serve(async (req) => {
     }
 
     console.log(`Creating Klaviyo template: ${templateName}`);
+    console.log(`Footer included: ${!!footerHtml}`);
+
+    // Dark mode CSS for footer
+    const darkModeCss = footerHtml ? `
+  <style type="text/css">
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      .darkmode { background-color: #111111 !important; }
+      .darkmode-text { color: #ffffff !important; }
+    }
+  </style>` : '';
+
+    // Footer section wrapped in editable region
+    const footerSection = footerHtml ? `
+          <tr>
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+              <div class="klaviyo-block klaviyo-text-block">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  ${footerHtml}
+                </table>
+              </div>
+            </td>
+          </tr>` : '';
 
     // Build the hybrid HTML template with Klaviyo editable region
     const html = `<!DOCTYPE html>
@@ -28,7 +54,7 @@ serve(async (req) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${templateName}</title>
+  <title>${templateName}</title>${darkModeCss}
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f4;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f4f4f4;">
@@ -41,7 +67,7 @@ serve(async (req) => {
                 <img src="${imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${templateName}" />
               </div>
             </td>
-          </tr>
+          </tr>${footerSection}
         </table>
       </td>
     </tr>

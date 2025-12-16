@@ -2,12 +2,80 @@ import { useState, useCallback } from 'react';
 import { Upload, Key, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
+<tr>
+    <td align="center" class="darkmode" style="padding: 60px 5% 50px 5%; background-color: #111111;">
+        <a href="https://www.enhanced.com/products" style="text-decoration: none;">
+            <img src="https://tellescope-public-files.s3.amazonaws.com/prod/68430fb605def07f844d4d25/rDUn8nIA-Q3HREpjBcEiSXea_60YOsrWyLH6O97ZdgU.?version=0" alt="Enhanced" style="display: block; border: 0; margin: 0 auto; width: 100%; max-width: 380px; height: auto;" />
+        </a>
+    </td>
+</tr>
+
+<!-- Footer Navigation Grid -->
+<tr>
+    <td align="center" class="darkmode" style="padding: 0 5% 50px 5%; background-color: #111111;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 500px;">
+            <tr>
+                <td align="center" width="50%" style="border-right: 1px solid #ffffff; padding: 20px 10px;">
+                    <a href="https://www.enhanced.com/games" class="darkmode-text" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; color: #ffffff; text-decoration: none; font-weight: 400; display: block;">Games</a>
+                </td>
+                <td align="center" width="50%" style="padding: 20px 10px;">
+                    <a href="https://www.enhanced.com/athletes" class="darkmode-text" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; color: #ffffff; text-decoration: none; font-weight: 400; display: block;">Athletes</a>
+                </td>
+            </tr>
+            <tr>
+                <td align="center" width="50%" style="border-right: 1px solid #ffffff; border-top: 1px solid #ffffff; padding: 20px 10px;">
+                    <a href="https://www.enhanced.com/products" class="darkmode-text" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; color: #ffffff; text-decoration: none; font-weight: 400; display: block;">Products</a>
+                </td>
+                <td align="center" width="50%" style="border-top: 1px solid #ffffff; padding: 20px 10px;">
+                    <a href="https://www.enhanced.com/company" class="darkmode-text" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; color: #ffffff; text-decoration: none; font-weight: 400; display: block;">About</a>
+                </td>
+            </tr>
+        </table>
+    </td>
+</tr>
+
+<!-- Social Icons -->
+<tr>
+    <td align="center" class="darkmode" style="padding: 0 5% 50px 5%; background-color: #111111;">
+        <table border="0" cellpadding="0" cellspacing="0">
+            <tr>
+                <td style="padding: 0 15px;">
+                    <a href="https://www.instagram.com/enhanced_games" style="text-decoration: none;">
+                        <img src="https://tellescope-public-files.s3.amazonaws.com/prod/68430fb605def07f844d4d25/eszASf0EhsU8PeyF96_CaStHNO2MrHFB6uDt23HJXus.?version=0" alt="Instagram" width="32" height="32" style="display: block; border: 0;" />
+                    </a>
+                </td>
+                <td style="padding: 0 15px;">
+                    <a href="https://x.com/enhanced_games" style="text-decoration: none;">
+                        <img src="https://tellescope-public-files.s3.amazonaws.com/prod/68430fb605def07f844d4d25/uAuy6tvHgNCPxZE11k-iicgXiw-P3p7Jacko8xpi-L8.?version=0" alt="X" width="32" height="32" style="display: block; border: 0;" />
+                    </a>
+                </td>
+                <td style="padding: 0 15px;">
+                    <a href="https://www.tiktok.com/@enhanced_games" style="text-decoration: none;">
+                        <img src="https://tellescope-public-files.s3.amazonaws.com/prod/68430fb605def07f844d4d25/FKYqxcI8lR8HQQH-C7P-X8R_PNiZkfWQ-H1fsUNOwXs.?version=0" alt="TikTok" width="32" height="32" style="display: block; border: 0;" />
+                    </a>
+                </td>
+            </tr>
+        </table>
+    </td>
+</tr>
+
+<!-- Legal Text -->
+<tr>
+    <td class="darkmode" style="padding: 0 5% 50px 5%; background-color: #111111; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 10px; line-height: 15px; color: #888888; text-align: center;">
+        "Enhanced:" and "Enhanced Games" are registered trademarks of Enhanced Ltd. All rights reserved. There cannot be any confusion; the Enhanced Games are separate and independent from the Olympics, the IOC and the USOPC. The Enhanced Games are founded on very different ideas about financial fairness and a level playing field in elite sport.
+    </td>
+</tr>`;
+
 export default function SimpleUpload() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('klaviyo_api_key') || '');
+  const [includeFooter, setIncludeFooter] = useState(() => localStorage.getItem('include_footer') !== 'false');
   const [isDragActive, setIsDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<string>('');
@@ -64,13 +132,14 @@ export default function SimpleUpload() {
 
       // Push to Klaviyo
       setStatus('Creating Klaviyo template...');
-      const templateName = file.name.replace(/\.png$/i, '') || 'Email Template';
+      const templateName = file.name.replace(/\.(png|jpe?g)$/i, '') || 'Email Template';
       
       const { data: klaviyoData, error: klaviyoError } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           imageUrl: uploadData.url,
           templateName,
-          klaviyoApiKey: apiKey.trim()
+          klaviyoApiKey: apiKey.trim(),
+          footerHtml: includeFooter ? ENHANCED_FOOTER_HTML : null
         }
       });
 
@@ -133,6 +202,24 @@ export default function SimpleUpload() {
           <p className="text-xs text-muted-foreground">
             Your key is saved locally and never stored on our servers
           </p>
+        </div>
+
+        {/* Footer Toggle */}
+        <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
+          <div className="space-y-0.5">
+            <Label htmlFor="footer-toggle" className="text-sm font-medium">Include Footer</Label>
+            <p className="text-xs text-muted-foreground">
+              Add the Enhanced footer to exported templates
+            </p>
+          </div>
+          <Switch
+            id="footer-toggle"
+            checked={includeFooter}
+            onCheckedChange={(checked) => {
+              setIncludeFooter(checked);
+              localStorage.setItem('include_footer', String(checked));
+            }}
+          />
         </div>
 
         {/* Drop Zone */}
