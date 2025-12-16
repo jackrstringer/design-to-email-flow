@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CampaignCreator } from '@/components/dashboard/CampaignCreator';
 import { BrandsView } from '@/components/dashboard/BrandsView';
+import { BrandSettings } from '@/components/dashboard/BrandSettings';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { NewBrandModal } from '@/components/dashboard/NewBrandModal';
 import { supabase } from '@/integrations/supabase/client';
-import type { Brand } from '@/types/brand-assets';
+import type { Brand, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
 
-type ViewMode = 'campaign' | 'brands';
+type ViewMode = 'campaign' | 'brands' | 'brand-settings';
 
 // Helper functions for JSON parsing
 function parseSocialLinks(json: Json | null): Brand['socialLinks'] {
@@ -23,6 +24,16 @@ function parseAllLinks(json: Json | null): string[] {
 function parseSocialIcons(json: Json | null): Brand['socialIcons'] {
   if (!json || !Array.isArray(json)) return [];
   return json as unknown as Brand['socialIcons'];
+}
+
+function parseTypography(json: Json | null): BrandTypography | undefined {
+  if (!json || typeof json !== 'object') return undefined;
+  return json as unknown as BrandTypography;
+}
+
+function parseFormattingRules(json: Json | null): HtmlFormattingRule[] | undefined {
+  if (!json || !Array.isArray(json)) return undefined;
+  return json as unknown as HtmlFormattingRule[];
 }
 
 function mapRowToBrand(row: any): Brand {
@@ -46,6 +57,8 @@ function mapRowToBrand(row: any): Brand {
     socialIcons: parseSocialIcons(row.social_icons),
     footerConfigured: row.footer_configured || false,
     klaviyoApiKey: row.klaviyo_api_key || undefined,
+    typography: parseTypography(row.typography),
+    htmlFormattingRules: parseFormattingRules(row.html_formatting_rules),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -59,6 +72,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [showNewBrandModal, setShowNewBrandModal] = useState(false);
   const [pendingBrandDomain, setPendingBrandDomain] = useState<string | null>(null);
+  const [settingsBrandId, setSettingsBrandId] = useState<string | null>(null);
 
   const fetchBrands = useCallback(async () => {
     setIsLoading(true);
@@ -88,6 +102,7 @@ export default function Dashboard() {
   }, [fetchBrands]);
 
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || null;
+  const settingsBrand = brands.find(b => b.id === settingsBrandId) || null;
 
   const handleBrandDetected = useCallback((domain: string) => {
     // Try to find existing brand by domain
@@ -116,15 +131,33 @@ export default function Dashboard() {
     setShowNewBrandModal(true);
   }, []);
 
+  const handleBrandSettingsClick = useCallback((brand: Brand) => {
+    setSettingsBrandId(brand.id);
+    setView('brand-settings');
+  }, []);
+
+  const handleBackFromSettings = useCallback(() => {
+    setSettingsBrandId(null);
+    setView('brands');
+  }, []);
+
+  // Compute header view (maps 'brand-settings' to 'brands' for nav highlighting)
+  const headerView: 'campaign' | 'brands' = view === 'campaign' ? 'campaign' : 'brands';
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader 
-        view={view} 
-        onViewChange={setView}
+        view={headerView} 
+        onViewChange={(v) => {
+          setView(v);
+          if (v === 'brands') {
+            setSettingsBrandId(null);
+          }
+        }}
       />
       
       <main className="container mx-auto px-4 py-8">
-        {view === 'campaign' ? (
+        {view === 'campaign' && (
           <CampaignCreator
             brands={brands}
             selectedBrandId={selectedBrandId}
@@ -136,15 +169,22 @@ export default function Dashboard() {
             onAddBrandClick={handleAddBrandClick}
             isLoading={isLoading}
           />
-        ) : (
+        )}
+        
+        {view === 'brands' && (
           <BrandsView
             brands={brands}
-            onBrandSelect={(brand) => {
-              setSelectedBrandId(brand.id);
-              setView('campaign');
-            }}
+            onBrandSelect={handleBrandSettingsClick}
             onAddBrand={handleAddBrandClick}
             onBrandsChange={fetchBrands}
+          />
+        )}
+        
+        {view === 'brand-settings' && settingsBrand && (
+          <BrandSettings
+            brand={settingsBrand}
+            onBack={handleBackFromSettings}
+            onBrandChange={fetchBrands}
           />
         )}
       </main>
