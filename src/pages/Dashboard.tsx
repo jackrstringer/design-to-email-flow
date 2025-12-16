@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { CampaignCreator } from '@/components/dashboard/CampaignCreator';
 import { BrandsView } from '@/components/dashboard/BrandsView';
 import { BrandSettings } from '@/components/dashboard/BrandSettings';
@@ -67,6 +67,14 @@ function mapRowToBrand(row: any): Brand {
   };
 }
 
+// Store pending image data while waiting for brand selection/creation
+interface PendingCampaign {
+  file: File;
+  dataUrl: string;
+  detectedDomain: string | null;
+  analysisData: any;
+}
+
 export default function Dashboard() {
   const [view, setView] = useState<ViewMode>('campaign');
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -76,6 +84,10 @@ export default function Dashboard() {
   const [showNewBrandModal, setShowNewBrandModal] = useState(false);
   const [pendingBrandDomain, setPendingBrandDomain] = useState<string | null>(null);
   const [settingsBrandId, setSettingsBrandId] = useState<string | null>(null);
+  const [pendingCampaign, setPendingCampaign] = useState<PendingCampaign | null>(null);
+  
+  // Track if we're auto-analyzing a new brand in background
+  const backgroundAnalysisRef = useRef<Promise<any> | null>(null);
 
   const fetchBrands = useCallback(async () => {
     setIsLoading(true);
@@ -89,16 +101,13 @@ export default function Dashboard() {
       const mappedBrands = (data || []).map(mapRowToBrand);
       setBrands(mappedBrands);
       
-      // Auto-select first brand if none selected
-      if (!selectedBrandId && mappedBrands.length > 0) {
-        setSelectedBrandId(mappedBrands[0].id);
-      }
+      // Don't auto-select any brand - let user drop campaign first
     } catch (error) {
       console.error('Error fetching brands:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedBrandId]);
+  }, []);
 
   useEffect(() => {
     fetchBrands();
@@ -107,31 +116,47 @@ export default function Dashboard() {
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || null;
   const settingsBrand = brands.find(b => b.id === settingsBrandId) || null;
 
-  const handleBrandDetected = useCallback((domain: string) => {
+  // Called when a campaign image is dropped and brand is detected
+  const handleBrandDetected = useCallback((domain: string, campaignData: PendingCampaign) => {
     // Try to find existing brand by domain
     const existingBrand = brands.find(b => 
       b.domain.toLowerCase() === domain.toLowerCase()
     );
     
     if (existingBrand) {
+      // Brand exists - auto-select it
       setSelectedBrandId(existingBrand.id);
+      // Keep the pending campaign for processing
+      setPendingCampaign(campaignData);
     } else {
-      // New brand detected - show modal
+      // New brand detected - store campaign data and show modal
+      setPendingCampaign(campaignData);
       setPendingBrandDomain(domain);
+      
+      // Start brand analysis in background
+      backgroundAnalysisRef.current = supabase.functions.invoke('analyze-brand', {
+        body: { websiteUrl: `https://${domain}` }
+      });
+      
       setShowNewBrandModal(true);
     }
   }, [brands]);
+
+  // Called when user manually wants to add a brand (without pending campaign)
+  const handleAddBrandClick = useCallback(() => {
+    setPendingBrandDomain(null);
+    setPendingCampaign(null);
+    backgroundAnalysisRef.current = null;
+    setShowNewBrandModal(true);
+  }, []);
 
   const handleNewBrandCreated = useCallback((brand: Brand) => {
     setBrands(prev => [...prev, brand]);
     setSelectedBrandId(brand.id);
     setShowNewBrandModal(false);
     setPendingBrandDomain(null);
-  }, []);
-
-  const handleAddBrandClick = useCallback(() => {
-    setPendingBrandDomain(null);
-    setShowNewBrandModal(true);
+    backgroundAnalysisRef.current = null;
+    // Keep pendingCampaign - CampaignCreator will continue processing
   }, []);
 
   const handleBrandSettingsClick = useCallback((brand: Brand) => {
@@ -142,6 +167,11 @@ export default function Dashboard() {
   const handleBackFromSettings = useCallback(() => {
     setSettingsBrandId(null);
     setView('brands');
+  }, []);
+
+  const handleCampaignProcessed = useCallback(() => {
+    // Clear pending campaign after it's been processed
+    setPendingCampaign(null);
   }, []);
 
   // Compute header view (maps 'brand-settings' to 'brands' for nav highlighting)
@@ -171,6 +201,8 @@ export default function Dashboard() {
             onBrandDetected={handleBrandDetected}
             onAddBrandClick={handleAddBrandClick}
             isLoading={isLoading}
+            pendingCampaign={pendingCampaign}
+            onCampaignProcessed={handleCampaignProcessed}
           />
         )}
         
@@ -197,6 +229,7 @@ export default function Dashboard() {
         onOpenChange={setShowNewBrandModal}
         initialDomain={pendingBrandDomain}
         onBrandCreated={handleNewBrandCreated}
+        backgroundAnalysis={backgroundAnalysisRef.current}
       />
     </div>
   );
