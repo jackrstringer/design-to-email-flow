@@ -5,65 +5,287 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const HTML_EMAIL_RULES = `
-# HTML Email Building Rules - YOU MUST FOLLOW THESE EXACTLY
+const REFERENCE_HTML_EXAMPLE = `
+<!-- REFERENCE: This is an example of high-quality email HTML you should match -->
+<tr>
+    <td style="padding: 32px 5% 24px 5%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 17px; line-height: 26px; color: #333333; background-color: #ffffff;">
+        You will need to schedule your appointment within the next 24 hours. You can do so by completing the form below.
+    </td>
+</tr>
 
-## CRITICAL: Match the Original Design EXACTLY
-- Your HTML must look IDENTICAL to the image slice provided
-- Match ALL text exactly (fonts, sizes, colors, spacing, alignment)
-- Match ALL colors precisely (use the exact hex values from the design)
-- Match ALL spacing and padding exactly
-- Match ALL layouts and alignments exactly
-- If it has a background color, use that exact background color
-- If it has specific typography styling, replicate it exactly
+<!-- CTA Button - Note the full-width table pattern -->
+<tr>
+    <td style="padding: 0 5% 24px 5%; background-color: #ffffff;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center" style="background-color: #1904FF;">
+                    <a href="https://example.com" style="display: block; padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; letter-spacing: 0.5px;">BUTTON TEXT HERE</a>
+                </td>
+            </tr>
+        </table>
+    </td>
+</tr>
+
+<!-- Multi-paragraph text with signature -->
+<tr>
+    <td style="padding: 0 5% 32px 5%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 17px; line-height: 26px; color: #333333; background-color: #ffffff;">
+        If you need any assistance, feel free to reply to this email.<br/><br/>
+        Thank you for choosing us.<br/><br/>
+        Best regards,<br/>
+        <span style="font-weight: 600; color: #000000;">Team Name</span>
+    </td>
+</tr>
+`;
+
+const HTML_EMAIL_RULES = `
+# HTML Email Building Rules - MATCH THE ORIGINAL DESIGN EXACTLY
+
+## CRITICAL STYLE SPECIFICATIONS (use these exact values):
+- **Body text**: font-size: 17px; line-height: 26px; color: #333333;
+- **Font stack**: font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+- **Horizontal padding**: Always use 5% (e.g., padding: 32px 5% 24px 5%;)
+- **Emphasized text**: font-weight: 600; color: #000000;
+- **CTA buttons**: FULL WIDTH, background-color: #1904FF (or match the design), padding: 18px 20px; font-size: 16px; font-weight: 600; color: #ffffff; letter-spacing: 0.5px;
+- **Background**: background-color: #ffffff; (or match the design)
+
+## REFERENCE EXAMPLE - Match this quality and style:
+${REFERENCE_HTML_EXAMPLE}
 
 ## Structure Rules
 1. Use ONLY tables for layout - never use divs, flexbox, or grid
 2. All CSS must be inline - no external stylesheets or <style> blocks
-3. Use web-safe fonts: Arial, Helvetica, Georgia, Times New Roman
-4. All tables must have: border="0" cellpadding="0" cellspacing="0"
-5. Max width should be 600px
+3. All tables must have: border="0" cellpadding="0" cellspacing="0"
+4. Content width should be 100% (parent container handles max-width)
 
-## Image Rules
-- All images must use display: block
-- Set explicit width and height attributes
-- Include descriptive alt text
-
-## Text/Typography Rules
-- Use inline styles for all text: font-family, font-size, font-weight, color, line-height
-- Use align attribute AND text-align style for maximum compatibility
-- Common stack: font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-
-## Button/CTA Rules
-Use this exact pattern for buttons:
-<table border="0" cellpadding="0" cellspacing="0" width="100%">
-  <tr>
-    <td align="center">
-      <table border="0" cellpadding="0" cellspacing="0">
-        <tr>
-          <td align="center" style="background-color: #HEXCOLOR; border-radius: 4px;">
-            <a href="LINK_URL" target="_blank" style="display: block; padding: 16px 32px; font-family: Arial, sans-serif; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none;">
-              BUTTON TEXT
-            </a>
-          </td>
-        </tr>
-      </table>
+## CTA Button Pattern (ALWAYS use this exact pattern for buttons):
+<tr>
+    <td style="padding: 0 5% 24px 5%; background-color: #ffffff;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center" style="background-color: #BUTTON_COLOR;">
+                    <a href="LINK_URL" style="display: block; padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; letter-spacing: 0.5px;">BUTTON TEXT</a>
+                </td>
+            </tr>
+        </table>
     </td>
-  </tr>
-</table>
+</tr>
+
+## Text Spacing Guidelines:
+- Top padding after images: 32px
+- Between paragraphs: Use <br/><br/> within a single <td>
+- Bottom padding before buttons: 24px
+- Bottom padding after content sections: 32px
 
 ## DO NOT USE:
 - JavaScript
 - External CSS files or @import
 - Google Fonts or custom fonts
 - CSS position, float, flexbox, or grid
-- box-shadow (unreliable)
+- box-shadow
 - Forms or input elements
+- Centered buttons with fixed width (always use full-width pattern)
 
 ## Output Format
-Return ONLY the raw HTML code for this section - no markdown, no explanation, no code fences.
-The HTML should be a complete table row or set of table rows that can be inserted directly into an email template.
+Return ONLY the raw HTML code - no markdown, no explanation, no code fences.
+The HTML should be table rows that can be inserted directly into an email template.
 `;
+
+async function generateHtml(sliceDataUrl: string, brandUrl: string, sliceIndex: number, totalSlices: number, apiKey: string): Promise<string> {
+  const prompt = `You are an expert HTML email developer. Convert this email design section into flawless HTML email code that EXACTLY matches the visual design.
+
+${HTML_EMAIL_RULES}
+
+CONTEXT:
+- This is slice ${sliceIndex + 1} of ${totalSlices} from an email campaign
+- Brand website: ${brandUrl || 'Not specified'}
+- This slice needs to be converted to pure HTML (not an image)
+
+ANALYZE THE IMAGE CAREFULLY AND:
+1. Identify all text content - copy it EXACTLY as shown
+2. Match colors PRECISELY - use exact hex values from the design
+3. Match spacing EXACTLY - use the padding values from my specifications
+4. For CTAs/buttons: Use the FULL-WIDTH button pattern I provided
+5. Match typography - font sizes, weights, and line heights
+
+CRITICAL: The generated HTML must look IDENTICAL to the original image. Pay attention to:
+- Button width (should be full-width, not centered/narrow)
+- Text alignment and line spacing
+- Padding and margins
+- Color accuracy
+
+Return ONLY the HTML code - no explanation, no markdown code fences, just raw HTML.`;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: sliceDataUrl } }
+          ]
+        }
+      ],
+      max_tokens: 4000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('AI API error:', response.status, errorText);
+    throw new Error('AI HTML generation failed');
+  }
+
+  const aiResponse = await response.json();
+  let htmlContent = aiResponse.choices?.[0]?.message?.content || '';
+  
+  // Clean up the response
+  htmlContent = htmlContent
+    .replace(/^```html?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
+
+  return htmlContent;
+}
+
+async function validateHtml(originalImageUrl: string, generatedHtml: string, apiKey: string): Promise<{ approved: boolean; corrections: string }> {
+  console.log('Validating generated HTML against original design...');
+  
+  const validationPrompt = `You are a quality assurance expert for HTML emails. Compare the original design image with the HTML code provided.
+
+ORIGINAL DESIGN: See the attached image
+
+GENERATED HTML:
+${generatedHtml}
+
+Analyze the HTML and determine if it would render to match the original design. Check for:
+1. Button styling - Is the button full-width or incorrectly narrow/centered?
+2. Text content - Is all text captured correctly?
+3. Spacing - Are paddings and margins appropriate?
+4. Colors - Are colors matching (especially button colors)?
+5. Typography - Font sizes and weights correct?
+
+If the HTML would render correctly matching the design, respond with exactly: APPROVED
+
+If there are issues, respond with specific corrections needed in this format:
+CORRECTIONS:
+- [Issue 1]: [Specific fix needed]
+- [Issue 2]: [Specific fix needed]
+
+Be strict about button width - buttons should be full-width using width="100%" on the table, not narrow centered buttons.`;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: validationPrompt },
+            { type: 'image_url', image_url: { url: originalImageUrl } }
+          ]
+        }
+      ],
+      max_tokens: 1000,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Validation API error, skipping validation');
+    return { approved: true, corrections: '' };
+  }
+
+  const aiResponse = await response.json();
+  const validationResult = aiResponse.choices?.[0]?.message?.content || '';
+  
+  console.log('Validation result:', validationResult);
+
+  if (validationResult.trim().toUpperCase().includes('APPROVED')) {
+    return { approved: true, corrections: '' };
+  }
+
+  return { approved: false, corrections: validationResult };
+}
+
+async function regenerateWithCorrections(
+  sliceDataUrl: string, 
+  previousHtml: string, 
+  corrections: string, 
+  brandUrl: string,
+  sliceIndex: number,
+  totalSlices: number,
+  apiKey: string
+): Promise<string> {
+  console.log('Regenerating HTML with corrections...');
+
+  const prompt = `You are an expert HTML email developer. Your previous HTML generation had issues. Fix them and regenerate.
+
+PREVIOUS HTML (has issues):
+${previousHtml}
+
+CORRECTIONS NEEDED:
+${corrections}
+
+${HTML_EMAIL_RULES}
+
+CONTEXT:
+- This is slice ${sliceIndex + 1} of ${totalSlices} from an email campaign
+- Brand website: ${brandUrl || 'Not specified'}
+
+Look at the original image again and apply the corrections. Pay special attention to:
+- Making buttons FULL-WIDTH using the table pattern with width="100%"
+- Matching exact colors and spacing
+- Using proper padding values (5% horizontal, 32px/24px vertical)
+
+Return ONLY the corrected HTML code - no explanation, no markdown code fences.`;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: sliceDataUrl } }
+          ]
+        }
+      ],
+      max_tokens: 4000,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Regeneration failed, returning previous HTML');
+    return previousHtml;
+  }
+
+  const aiResponse = await response.json();
+  let htmlContent = aiResponse.choices?.[0]?.message?.content || previousHtml;
+  
+  htmlContent = htmlContent
+    .replace(/^```html?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
+
+  return htmlContent;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -87,60 +309,33 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    const prompt = `You are an expert HTML email developer. Convert this email design section into flawless HTML email code.
+    // Phase 1: Generate initial HTML
+    let htmlContent = await generateHtml(sliceDataUrl, brandUrl, sliceIndex, totalSlices, LOVABLE_API_KEY);
+    console.log('Initial HTML generated');
 
-${HTML_EMAIL_RULES}
+    // Phase 2: Validate and refine (max 2 iterations)
+    const MAX_ITERATIONS = 2;
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const validation = await validateHtml(sliceDataUrl, htmlContent, LOVABLE_API_KEY);
+      
+      if (validation.approved) {
+        console.log(`HTML approved after ${i} correction iterations`);
+        break;
+      }
 
-CONTEXT:
-- This is slice ${sliceIndex + 1} of ${totalSlices} from an email campaign
-- Brand website: ${brandUrl || 'Not specified'}
-- This slice needs to be converted to pure HTML (not an image)
-
-ANALYZE THE IMAGE AND:
-1. Identify all text content, colors, fonts, and spacing
-2. Identify any CTAs/buttons and their styling
-3. Identify background colors and any design elements
-4. Create HTML that EXACTLY matches the visual design
-
-Return ONLY the HTML code - no explanation, no markdown code fences, just raw HTML.`;
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: sliceDataUrl } }
-            ]
-          }
-        ],
-        max_tokens: 4000,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI API error:', response.status, errorText);
-      throw new Error('AI HTML generation failed');
+      console.log(`Iteration ${i + 1}: Corrections needed`);
+      htmlContent = await regenerateWithCorrections(
+        sliceDataUrl,
+        htmlContent,
+        validation.corrections,
+        brandUrl,
+        sliceIndex,
+        totalSlices,
+        LOVABLE_API_KEY
+      );
     }
 
-    const aiResponse = await response.json();
-    let htmlContent = aiResponse.choices?.[0]?.message?.content || '';
-    
-    console.log('HTML generated successfully');
-
-    // Clean up the response - remove markdown code fences if present
-    htmlContent = htmlContent
-      .replace(/^```html?\n?/i, '')
-      .replace(/\n?```$/i, '')
-      .trim();
+    console.log('HTML generation complete');
 
     return new Response(
       JSON.stringify({ htmlContent }),
