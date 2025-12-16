@@ -114,8 +114,10 @@ export default function CampaignPage() {
     try {
       const { data, error } = await supabase.functions.invoke('generate-slice-html', {
         body: {
-          imageUrl: slice.imageUrl,
+          sliceDataUrl: slice.imageUrl,
           brandUrl: brand?.websiteUrl || brand?.domain,
+          sliceIndex: index,
+          totalSlices: slices.length,
         }
       });
 
@@ -125,7 +127,7 @@ export default function CampaignPage() {
       updatedSlices[index] = {
         ...updatedSlices[index],
         type: 'html',
-        htmlContent: data.html,
+        htmlContent: data.htmlContent,
       };
       setSlices(updatedSlices);
     } catch (error) {
