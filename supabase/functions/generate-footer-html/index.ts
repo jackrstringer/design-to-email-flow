@@ -7,57 +7,51 @@ const corsHeaders = {
 
 const EMAIL_FOOTER_RULES = `
 You are an expert email developer creating a branded footer for email campaigns.
+Your goal is to create HTML that EXACTLY matches the reference image provided.
 
 CRITICAL REQUIREMENTS:
 1. Use table-based layout (not flexbox/grid) for email compatibility
-2. All styles must be inline (no external CSS except for dark mode media query)
+2. All styles must be inline (no external CSS except for dark mode media query in <style> tag)
 3. Total width must be exactly 600px
 4. Use web-safe fonts: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif
-5. Social icons must be <img> tags with the provided iconUrl
-6. Logo should be centered with max-width: 450px (not full 600px width)
-7. Include dark mode support via @media (prefers-color-scheme: dark)
+5. Social icons must be <img> tags with the provided iconUrl, 32x32px size
+6. Logo should be centered with appropriate max-width (match reference)
+7. Include dark mode support via @media (prefers-color-scheme: dark) in a <style> tag
 
-STRUCTURE:
+WHEN REFERENCE IMAGE IS PROVIDED:
+- Study the reference image PIXEL BY PIXEL
+- Match the EXACT layout structure (what sections, in what order)
+- Match the EXACT colors (background color, text colors, link colors)
+- Match the EXACT spacing (padding top/bottom, gaps between elements)
+- Match the EXACT typography (font sizes, weights, line heights)
+- Match the logo size and positioning relative to other elements
+- Match the social icon arrangement (spacing, alignment)
+- Match any navigation links or text sections
+
+OUTPUT STRUCTURE:
 - Wrap everything in a <tr> element (it will be inserted into an existing table)
 - Use proper <td> cells with explicit widths and padding
-- Logo section: centered, constrained width
-- Social icons: horizontal row, centered, 32x32px icons with 12px gaps
-- Navigation links (if any): centered text links
-- Legal/copyright text: smaller font, muted color, centered
-- Unsubscribe link placeholder: {{ unsubscribe }}
+- Include a <style> block for dark mode only if needed
 
-EXAMPLE OUTPUT STRUCTURE:
-<tr>
-  <td style="padding: 40px 0 0 0;">
-    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
-      <!-- Logo row -->
-      <tr>
-        <td align="center" style="padding: 0 0 24px 0;">
-          <img src="LOGO_URL" alt="Brand" style="max-width: 200px; height: auto; display: block;" />
-        </td>
-      </tr>
-      <!-- Social icons row -->
-      <tr>
-        <td align="center" style="padding: 0 0 24px 0;">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-            <tr>
-              <td style="padding: 0 6px;"><a href="URL"><img src="ICON" width="32" height="32" alt="Platform" style="display: block;" /></a></td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-      <!-- Legal text -->
-      <tr>
-        <td align="center" style="padding: 24px 30px; font-size: 12px; color: #888888; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;">
-          © 2024 Brand Name. All rights reserved.<br>
-          <a href="{{ unsubscribe }}" style="color: #888888;">Unsubscribe</a>
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>
+Return ONLY the HTML code, no explanation or markdown.
+`;
 
-Return ONLY the HTML code, no explanation.
+const VALIDATION_PROMPT = `
+You are validating generated HTML against a reference image.
+
+Compare the HTML (which would render as an email footer) to the reference image.
+List specific discrepancies in these categories:
+1. LAYOUT: Section order, alignment issues
+2. COLORS: Wrong background, text, or link colors (specify exact hex values needed)
+3. SPACING: Incorrect padding, margins, or gaps (specify pixel values)
+4. TYPOGRAPHY: Wrong font sizes, weights, or line heights
+5. SIZING: Logo or icon dimensions don't match
+6. MISSING: Elements in reference but not in HTML
+
+For each issue, provide the SPECIFIC fix needed with exact values.
+
+If the HTML is a close match (>90% accurate), respond with just: "MATCH_GOOD"
+Otherwise, list the issues in a structured format.
 `;
 
 serve(async (req) => {
@@ -73,16 +67,22 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    // Build the prompt
+    // Build the initial prompt
     const socialIconsDescription = socialIcons?.length 
       ? `Social icons to include:\n${socialIcons.map((s: any) => `- ${s.platform}: URL=${s.url}, Icon=${s.iconUrl}`).join('\n')}`
       : 'No social icons provided.';
 
     const colorPalette = brandColors 
-      ? `Brand colors:\n- Primary: ${brandColors.primary}\n- Secondary: ${brandColors.secondary}\n- Accent: ${brandColors.accent || 'none'}\n- Background: ${brandColors.background || '#111111'}\n- Text: ${brandColors.textPrimary || '#ffffff'}`
+      ? `Brand colors (use these EXACT hex values):
+- Primary: ${brandColors.primary}
+- Secondary: ${brandColors.secondary}
+- Accent: ${brandColors.accent || 'none'}
+- Background: ${brandColors.background || '#111111'}
+- Text: ${brandColors.textPrimary || '#ffffff'}
+- Link: ${brandColors.link || brandColors.primary || '#ffffff'}`
       : '';
 
-    const userPrompt = `Create an email footer for "${brandName}" with these specifications:
+    let userPrompt = `Create an email footer for "${brandName}" with these specifications:
 
 ${logoUrl ? `Logo URL: ${logoUrl}` : 'No logo provided - skip logo section'}
 
@@ -90,16 +90,28 @@ ${socialIconsDescription}
 
 ${colorPalette}
 
-The footer should have a dark background (use the brand background color or #111111) with light text.
-Make it elegant and professional.
+`;
 
-${referenceImageUrl ? 'A reference image has been provided - try to match its general layout and style.' : ''}`;
+    if (referenceImageUrl) {
+      userPrompt += `
+IMPORTANT: A reference image is provided. You MUST match this reference EXACTLY:
+- Copy the exact layout structure you see
+- Match all colors precisely (sample hex values from the image)
+- Match all spacing and proportions
+- Match typography sizes and weights
+- This is your PRIMARY source of truth for the design
+`;
+    } else {
+      userPrompt += `
+The footer should have a dark background (use the brand background color or #111111) with light text.
+Make it elegant and professional.`;
+    }
 
     // Build messages with optional image
-    const content: any[] = [{ type: 'text', text: userPrompt }];
+    const content: any[] = [];
     
     if (referenceImageUrl) {
-      content.unshift({
+      content.push({
         type: 'image',
         source: {
           type: 'url',
@@ -107,9 +119,12 @@ ${referenceImageUrl ? 'A reference image has been provided - try to match its ge
         },
       });
     }
+    
+    content.push({ type: 'text', text: userPrompt });
 
-    console.log('Generating footer for:', brandName);
+    console.log('Generating footer for:', brandName, referenceImageUrl ? '(with reference image)' : '(no reference)');
 
+    // PHASE 1: Initial Generation
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -121,12 +136,7 @@ ${referenceImageUrl ? 'A reference image has been provided - try to match its ge
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
         system: EMAIL_FOOTER_RULES,
-        messages: [
-          {
-            role: 'user',
-            content,
-          },
-        ],
+        messages: [{ role: 'user', content }],
       }),
     });
 
@@ -138,11 +148,102 @@ ${referenceImageUrl ? 'A reference image has been provided - try to match its ge
 
     const data = await response.json();
     let html = data.content?.[0]?.text || '';
-
-    // Clean up any markdown formatting
     html = html.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
 
-    console.log('Footer generated successfully');
+    console.log('Initial footer generated');
+
+    // PHASE 2: Auto-refinement loop (only if reference image provided)
+    if (referenceImageUrl) {
+      const MAX_REFINEMENTS = 2;
+      
+      for (let i = 0; i < MAX_REFINEMENTS; i++) {
+        console.log(`Auto-refinement iteration ${i + 1}/${MAX_REFINEMENTS}`);
+        
+        // Validate current HTML against reference
+        const validateContent: any[] = [
+          {
+            type: 'image',
+            source: { type: 'url', url: referenceImageUrl },
+          },
+          {
+            type: 'text',
+            text: `Reference image is shown above. Here is the generated HTML:\n\n${html}\n\nCompare what this HTML would render as to the reference image. List any discrepancies or respond with "MATCH_GOOD" if it's close enough.`,
+          },
+        ];
+
+        const validateResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 2048,
+            system: VALIDATION_PROMPT,
+            messages: [{ role: 'user', content: validateContent }],
+          }),
+        });
+
+        if (!validateResponse.ok) {
+          console.error('Validation API error, skipping refinement');
+          break;
+        }
+
+        const validateData = await validateResponse.json();
+        const validationResult = validateData.content?.[0]?.text || '';
+
+        if (validationResult.includes('MATCH_GOOD')) {
+          console.log('Validation passed - footer matches reference');
+          break;
+        }
+
+        console.log('Discrepancies found, refining...');
+        
+        // Refine based on validation feedback
+        const refineContent: any[] = [
+          {
+            type: 'image',
+            source: { type: 'url', url: referenceImageUrl },
+          },
+          {
+            type: 'text',
+            text: `Current HTML:\n\n${html}\n\nIssues identified:\n${validationResult}\n\nFix ALL these issues to match the reference image exactly. Return only the corrected HTML.`,
+          },
+        ];
+
+        const refineResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4096,
+            system: EMAIL_FOOTER_RULES,
+            messages: [{ role: 'user', content: refineContent }],
+          }),
+        });
+
+        if (!refineResponse.ok) {
+          console.error('Refinement API error, using current HTML');
+          break;
+        }
+
+        const refineData = await refineResponse.json();
+        const refinedHtml = refineData.content?.[0]?.text || '';
+        
+        if (refinedHtml) {
+          html = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+          console.log(`Refinement ${i + 1} complete`);
+        }
+      }
+    }
+
+    console.log('Footer generation complete');
 
     return new Response(
       JSON.stringify({ html }),
