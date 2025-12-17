@@ -44,6 +44,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<string>('');
   const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
   
   // Refinement state
@@ -147,6 +148,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
   const handleGenerateFooter = async () => {
     setIsGenerating(true);
+    setGenerationStatus(referenceImageUrl ? 'Generating footer...' : 'Generating footer...');
+    
     try {
       // Build social icons data with Simple Icons URLs
       const socialIconsData = socialLinks.map(link => ({
@@ -154,6 +157,20 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
         url: link.url,
         iconUrl: getSocialIconUrl(link.platform, iconColor),
       }));
+
+      // Update status to show auto-refinement is happening
+      if (referenceImageUrl) {
+        // Show progressive status updates
+        setTimeout(() => {
+          if (isGenerating) setGenerationStatus('Analyzing reference image...');
+        }, 2000);
+        setTimeout(() => {
+          if (isGenerating) setGenerationStatus('Auto-refining to match reference...');
+        }, 5000);
+        setTimeout(() => {
+          if (isGenerating) setGenerationStatus('Final adjustments...');
+        }, 10000);
+      }
 
       const { data, error } = await supabase.functions.invoke('generate-footer-html', {
         body: {
@@ -176,12 +193,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
       
       setGeneratedHtml(data.html);
       setStep('refine');
-      toast.success('Footer generated!');
+      toast.success('Footer generated and refined!');
     } catch (error) {
       console.error('Generation error:', error);
       toast.error('Failed to generate footer');
     } finally {
       setIsGenerating(false);
+      setGenerationStatus('');
     }
   };
 
@@ -193,10 +211,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
     setIsRefining(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('refine-campaign', {
+      // Use the dedicated footer refinement function
+      const { data, error } = await supabase.functions.invoke('refine-footer-html', {
         body: {
           currentHtml: generatedHtml,
           userRequest: message,
+          referenceImageUrl, // Pass reference image for comparison
           brandContext: {
             name: brand.name,
             domain: brand.domain,
@@ -215,8 +235,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
       if (error) throw error;
 
-      const refinedHtml = data.refinedHtml || data.html;
-      setGeneratedHtml(refinedHtml);
+      const refinedHtml = data.refinedHtml;
+      if (refinedHtml) {
+        setGeneratedHtml(refinedHtml);
+      }
       
       const assistantMessage: ChatMessage = { 
         role: 'assistant', 
@@ -477,9 +499,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
               <>
                 <Loader2 className="w-12 h-12 mx-auto animate-spin text-primary" />
                 <div>
-                  <h3 className="font-medium">Generating your footer...</h3>
+                  <h3 className="font-medium">{generationStatus || 'Generating your footer...'}</h3>
                   <p className="text-sm text-muted-foreground">
-                    AI is creating HTML based on your preferences
+                    {referenceImageUrl 
+                      ? 'AI is analyzing your reference and creating matching HTML'
+                      : 'AI is creating HTML based on your preferences'}
                   </p>
                 </div>
               </>
@@ -489,7 +513,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
                 <div>
                   <h3 className="font-medium">Ready to generate</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    Click below to generate your footer HTML. You can refine it in the next step.
+                    {referenceImageUrl 
+                      ? 'AI will analyze your reference image and auto-refine to match it.'
+                      : 'Click below to generate your footer HTML. You can refine it in the next step.'}
                   </p>
                 </div>
                 <Button onClick={handleGenerateFooter} size="lg">
