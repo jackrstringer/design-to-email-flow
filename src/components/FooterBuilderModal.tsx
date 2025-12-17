@@ -158,19 +158,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
         iconUrl: getSocialIconUrl(link.platform, iconColor),
       }));
 
-      // Update status to show auto-refinement is happening
-      if (referenceImageUrl) {
-        // Show progressive status updates
-        setTimeout(() => {
-          if (isGenerating) setGenerationStatus('Analyzing reference image...');
-        }, 2000);
-        setTimeout(() => {
-          if (isGenerating) setGenerationStatus('Auto-refining to match reference...');
-        }, 5000);
-        setTimeout(() => {
-          if (isGenerating) setGenerationStatus('Final adjustments...');
-        }, 10000);
-      }
+      // Show initial status
+      setGenerationStatus('Generating initial footer design...');
 
       const { data, error } = await supabase.functions.invoke('generate-footer-html', {
         body: {
@@ -191,9 +180,19 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
       if (error) throw error;
       
+      // Show refinement results
+      const { iterations = 0, matchAchieved = false } = data;
+      
       setGeneratedHtml(data.html);
       setStep('refine');
-      toast.success('Footer generated and refined!');
+      
+      if (matchAchieved) {
+        toast.success(`Footer generated! Achieved pixel-perfect match after ${iterations} refinement${iterations === 1 ? '' : 's'}.`);
+      } else if (iterations > 0) {
+        toast.success(`Footer generated after ${iterations} refinement${iterations === 1 ? '' : 's'}. You can further refine via chat.`);
+      } else {
+        toast.success('Footer generated! Use chat to refine further.');
+      }
     } catch (error) {
       console.error('Generation error:', error);
       toast.error('Failed to generate footer');
@@ -217,6 +216,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
           currentHtml: generatedHtml,
           userRequest: message,
           referenceImageUrl, // Pass reference image for comparison
+          logoUrl: lightLogoUrl, // Pass logo URL to enforce logo image usage
           brandContext: {
             name: brand.name,
             domain: brand.domain,

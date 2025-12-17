@@ -12,7 +12,13 @@ Your task is to analyze the current HTML footer and improve it based on:
 1. Visual comparison to the reference image (if provided)
 2. User's specific refinement requests (if provided)
 
-CRITICAL REQUIREMENTS:
+CRITICAL - LOGO HANDLING:
+- The logo MUST ALWAYS be an <img> tag with the provided logo URL
+- NEVER render the brand name or logo as text
+- If the current HTML has text instead of a logo image, REPLACE it with an <img> tag
+- This is NON-NEGOTIABLE
+
+CRITICAL EMAIL REQUIREMENTS:
 1. Use table-based layout (not flexbox/grid) for email compatibility
 2. All styles must be inline (no external CSS except for dark mode media query in <style> tag)
 3. Total width must be exactly 600px
@@ -24,7 +30,7 @@ When comparing to reference image, check for:
 - Layout structure and section ordering
 - Colors (background, text, links) - match EXACT hex values
 - Spacing and padding (top, bottom, between elements)
-- Logo size and positioning
+- Logo size and positioning (MUST be <img> tag)
 - Social icon arrangement and sizing
 - Typography (font sizes, weights, line heights)
 - Overall proportions and visual balance
@@ -38,7 +44,7 @@ serve(async (req) => {
   }
 
   try {
-    const { currentHtml, userRequest, referenceImageUrl, brandContext } = await req.json();
+    const { currentHtml, userRequest, referenceImageUrl, brandContext, logoUrl } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
@@ -50,6 +56,16 @@ serve(async (req) => {
     
     if (userRequest) {
       prompt += `User's refinement request: "${userRequest}"\n\n`;
+    }
+
+    // Add logo enforcement
+    if (logoUrl) {
+      prompt += `CRITICAL LOGO REQUIREMENT:
+The logo MUST be an <img> tag using this exact URL: ${logoUrl}
+Do NOT render the brand name as text - ALWAYS use the logo image.
+If the current HTML has text instead of a logo, REPLACE it with: <img src="${logoUrl}" alt="${brandContext?.name || 'Logo'}" style="display:block; max-width:200px; height:auto; margin:0 auto;">
+
+`;
     }
 
     if (brandContext) {
@@ -75,8 +91,9 @@ When user mentions brand colors like "brand blue" or "primary color", use the ex
 - Spacing and padding (proportions between elements)
 - Typography sizes and weights
 - Overall visual appearance
+- BUT ALWAYS use the provided logo URL as an <img> tag, not text
 
-Make targeted adjustments to match the reference as closely as possible.`;
+Make targeted adjustments to achieve PIXEL-PERFECT matching with the reference.`;
     }
 
     prompt += `\n\nReturn the refined HTML code. Only output the HTML, no explanations.`;
@@ -96,7 +113,7 @@ Make targeted adjustments to match the reference as closely as possible.`;
     
     content.push({ type: 'text', text: prompt });
 
-    console.log('Refining footer HTML', userRequest ? `with request: ${userRequest}` : '(auto-refinement)');
+    console.log('Refining footer HTML', userRequest ? `with request: ${userRequest}` : '(auto-refinement)', logoUrl ? '(with logo URL)' : '(no logo)');
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
