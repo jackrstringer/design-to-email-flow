@@ -161,7 +161,7 @@ export default function CampaignPage() {
     }
   };
 
-  const handleCreateTemplate = async () => {
+  const handleCreateTemplate = async (footer?: string) => {
     const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
     if (!apiKey) {
       toast.error('No Klaviyo API key configured for this brand');
@@ -175,7 +175,7 @@ export default function CampaignPage() {
           slices,
           klaviyoApiKey: apiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
-          footerHtml: (brand as any)?.footerHtml || (brand as any)?.footer_html,
+          footerHtml: footer,
         }
       });
 
@@ -191,7 +191,7 @@ export default function CampaignPage() {
     }
   };
 
-  const handleCreateCampaign = async () => {
+  const handleCreateCampaign = async (footer?: string) => {
     const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
     if (!apiKey) {
       toast.error('No Klaviyo API key configured for this brand');
@@ -205,7 +205,7 @@ export default function CampaignPage() {
           slices,
           klaviyoApiKey: apiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
-          footerHtml: (brand as any)?.footerHtml || (brand as any)?.footer_html,
+          footerHtml: footer,
           mode: 'campaign',
           listId: 'QRLACj',
         }

@@ -40,8 +40,8 @@ interface CampaignStudioProps {
   footerHtml?: string;
   onFooterChange?: (html: string) => void;
   onBack: () => void;
-  onCreateTemplate: () => void;
-  onCreateCampaign: () => void;
+  onCreateTemplate: (footerHtml?: string) => void;
+  onCreateCampaign: (footerHtml?: string) => void;
   onConvertToHtml: (index: number) => Promise<void>;
   isCreating: boolean;
   templateId?: string | null;
@@ -83,6 +83,7 @@ export function CampaignStudio({
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
   const [showAltText, setShowAltText] = useState(false);
+  const [includeFooter, setIncludeFooter] = useState(true);
 
   const hasHtmlSlices = slices.some(s => s.type === 'html');
 
@@ -329,11 +330,26 @@ export function CampaignStudio({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
+              {/* Footer toggle */}
+              <button
+                onClick={() => setIncludeFooter(!includeFooter)}
+                className={cn(
+                  "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md border transition-colors",
+                  includeFooter 
+                    ? "bg-primary/10 border-primary/30 text-primary" 
+                    : "border-border/40 text-muted-foreground/60 hover:text-muted-foreground"
+                )}
+                title={includeFooter ? "Footer will be included" : "Footer will not be included"}
+              >
+                <FileText className="w-3 h-3" />
+                Footer
+              </button>
+              <div className="w-px h-4 bg-border/40" />
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={onCreateTemplate}
+                onClick={() => onCreateTemplate(includeFooter ? footerHtml : undefined)}
                 disabled={isCreating || convertingIndex !== null}
                 className="h-7 text-xs px-2 text-muted-foreground"
               >
@@ -342,7 +358,7 @@ export function CampaignStudio({
               </Button>
               <Button
                 size="sm"
-                onClick={onCreateCampaign}
+                onClick={() => onCreateCampaign(includeFooter ? footerHtml : undefined)}
                 disabled={isCreating || convertingIndex !== null}
                 className="h-7 text-xs px-3"
               >
