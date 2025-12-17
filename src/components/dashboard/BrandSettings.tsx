@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Copy, Check, Key, Pencil, Trash2, Star, ExternalLink, Code, RefreshCw, Type, Upload, Image, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,7 @@ interface BrandSettingsProps {
 }
 
 export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsProps) {
+  const navigate = useNavigate();
   const [footers, setFooters] = useState<BrandFooter[]>([]);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [editApiKey, setEditApiKey] = useState(false);
@@ -1071,6 +1073,15 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         onFooterSaved={() => {
           fetchFooters();
           onBrandChange();
+        }}
+        onOpenStudio={(referenceImageUrl, footerHtml) => {
+          navigate(`/footer-editor/${brand.id}`, {
+            state: {
+              referenceImageUrl,
+              footerHtml,
+              footerName: 'New Footer',
+            }
+          });
         }}
       />
 
