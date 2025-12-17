@@ -20,6 +20,7 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
     html, body {
       margin: 0;
       padding: 0;
+      overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
     }

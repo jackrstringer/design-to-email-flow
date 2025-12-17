@@ -7,26 +7,33 @@ const corsHeaders = {
 
 const EMAIL_FOOTER_RULES = `
 You are an expert email developer creating a branded footer for email campaigns.
-Your goal is to create HTML that EXACTLY matches the reference image provided.
+Your goal is to create HTML that is a PIXEL-PERFECT match of the reference image provided.
 
-CRITICAL REQUIREMENTS:
+CRITICAL - LOGO HANDLING:
+- If a Logo URL is provided, you MUST use it as an <img> tag
+- NEVER render the brand name as text when a logo image URL is given
+- The logo must be: <img src="{provided_logo_url}" alt="{brandName}" style="display:block; max-width:200px; height:auto; margin:0 auto;">
+- Even if the reference image shows text as the logo, REPLACE it with the provided logo image URL
+- This is NON-NEGOTIABLE - always use the logo image, never text
+
+CRITICAL EMAIL REQUIREMENTS:
 1. Use table-based layout (not flexbox/grid) for email compatibility
 2. All styles must be inline (no external CSS except for dark mode media query in <style> tag)
 3. Total width must be exactly 600px
 4. Use web-safe fonts: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif
 5. Social icons must be <img> tags with the provided iconUrl, 32x32px size
-6. Logo should be centered with appropriate max-width (match reference)
-7. Include dark mode support via @media (prefers-color-scheme: dark) in a <style> tag
+6. Include dark mode support via @media (prefers-color-scheme: dark) in a <style> tag
 
-WHEN REFERENCE IMAGE IS PROVIDED:
+PIXEL-PERFECT MATCHING REQUIREMENTS:
+When a reference image is provided, you must match it EXACTLY:
 - Study the reference image PIXEL BY PIXEL
 - Match the EXACT layout structure (what sections, in what order)
-- Match the EXACT colors (background color, text colors, link colors)
-- Match the EXACT spacing (padding top/bottom, gaps between elements)
+- Match the EXACT colors (background color, text colors, link colors - sample hex values from the image)
+- Match the EXACT spacing (padding top/bottom, gaps between elements - measure in pixels)
 - Match the EXACT typography (font sizes, weights, line heights)
-- Match the logo size and positioning relative to other elements
-- Match the social icon arrangement (spacing, alignment)
-- Match any navigation links or text sections
+- Match the social icon arrangement (spacing, alignment, order)
+- Match any navigation links or text sections EXACTLY
+- Match the overall proportions and visual balance
 
 OUTPUT STRUCTURE:
 - Wrap everything in a <tr> element (it will be inserted into an existing table)
@@ -37,21 +44,26 @@ Return ONLY the HTML code, no explanation or markdown.
 `;
 
 const VALIDATION_PROMPT = `
-You are validating generated HTML against a reference image.
+You are performing STRICT validation of generated HTML against a reference image.
+This validation must be EXTREMELY PRECISE - we need PIXEL-PERFECT matching.
 
 Compare the HTML (which would render as an email footer) to the reference image.
-List specific discrepancies in these categories:
-1. LAYOUT: Section order, alignment issues
-2. COLORS: Wrong background, text, or link colors (specify exact hex values needed)
-3. SPACING: Incorrect padding, margins, or gaps (specify pixel values)
-4. TYPOGRAPHY: Wrong font sizes, weights, or line heights
-5. SIZING: Logo or icon dimensions don't match
-6. MISSING: Elements in reference but not in HTML
+Check these categories with EXTREME precision:
 
-For each issue, provide the SPECIFIC fix needed with exact values.
+1. LOGO: Is the logo an <img> tag? Is it the correct size? Is it centered?
+2. LAYOUT: Section order, alignment - is everything in EXACTLY the right position?
+3. COLORS: Background, text, link colors - are they the EXACT hex values from the reference?
+4. SPACING: Padding, margins, gaps - are they EXACTLY matching (within 5px tolerance)?
+5. TYPOGRAPHY: Font sizes, weights, line heights - do they EXACTLY match?
+6. SOCIAL ICONS: Correct size (32x32), correct spacing, correct alignment?
+7. TEXT CONTENT: Does all text match the reference exactly?
 
-If the HTML is a close match (>90% accurate), respond with just: "MATCH_GOOD"
-Otherwise, list the issues in a structured format.
+For each discrepancy found, provide:
+- The specific element with the issue
+- The EXACT fix needed with precise pixel/hex values
+
+CRITICAL: Only respond with "MATCH_GOOD" if the HTML is >98% pixel-perfect.
+If there are ANY visible discrepancies, list them ALL with specific fixes.
 `;
 
 serve(async (req) => {
@@ -69,7 +81,7 @@ serve(async (req) => {
 
     // Build the initial prompt
     const socialIconsDescription = socialIcons?.length 
-      ? `Social icons to include:\n${socialIcons.map((s: any) => `- ${s.platform}: URL=${s.url}, Icon=${s.iconUrl}`).join('\n')}`
+      ? `Social icons to include (use these EXACT URLs as <img> tags):\n${socialIcons.map((s: any) => `- ${s.platform}: Link URL=${s.url}, Icon Image=${s.iconUrl}`).join('\n')}`
       : 'No social icons provided.';
 
     const colorPalette = brandColors 
@@ -84,7 +96,8 @@ serve(async (req) => {
 
     let userPrompt = `Create an email footer for "${brandName}" with these specifications:
 
-${logoUrl ? `Logo URL: ${logoUrl}` : 'No logo provided - skip logo section'}
+${logoUrl ? `LOGO IMAGE URL (MUST USE AS <img> TAG, NOT TEXT): ${logoUrl}
+CRITICAL: Use this exact URL in an <img> tag. Do NOT render the brand name as text.` : 'No logo provided - skip logo section'}
 
 ${socialIconsDescription}
 
@@ -94,11 +107,12 @@ ${colorPalette}
 
     if (referenceImageUrl) {
       userPrompt += `
-IMPORTANT: A reference image is provided. You MUST match this reference EXACTLY:
+IMPORTANT: A reference image is provided. You MUST match this reference PIXEL-PERFECTLY:
 - Copy the exact layout structure you see
 - Match all colors precisely (sample hex values from the image)
-- Match all spacing and proportions
+- Match all spacing and proportions (measure carefully)
 - Match typography sizes and weights
+- BUT ALWAYS use the provided logo URL as an <img> tag, not text
 - This is your PRIMARY source of truth for the design
 `;
     } else {
@@ -152,12 +166,16 @@ Make it elegant and professional.`;
 
     console.log('Initial footer generated');
 
+    let iterations = 0;
+    let matchAchieved = false;
+
     // PHASE 2: Auto-refinement loop (only if reference image provided)
     if (referenceImageUrl) {
-      const MAX_REFINEMENTS = 2;
+      const MAX_REFINEMENTS = 5;
       
       for (let i = 0; i < MAX_REFINEMENTS; i++) {
-        console.log(`Auto-refinement iteration ${i + 1}/${MAX_REFINEMENTS}`);
+        iterations = i + 1;
+        console.log(`Auto-refinement iteration ${iterations}/${MAX_REFINEMENTS}`);
         
         // Validate current HTML against reference
         const validateContent: any[] = [
@@ -167,7 +185,7 @@ Make it elegant and professional.`;
           },
           {
             type: 'text',
-            text: `Reference image is shown above. Here is the generated HTML:\n\n${html}\n\nCompare what this HTML would render as to the reference image. List any discrepancies or respond with "MATCH_GOOD" if it's close enough.`,
+            text: `Reference image is shown above. Here is the generated HTML:\n\n${html}\n\nPerform STRICT validation. The HTML must be >98% pixel-perfect to pass. Check every detail: colors (exact hex), spacing (exact pixels), typography, logo (must be <img> tag not text), social icons. List ALL discrepancies or respond with "MATCH_GOOD" only if near-perfect.`,
           },
         ];
 
@@ -195,11 +213,12 @@ Make it elegant and professional.`;
         const validationResult = validateData.content?.[0]?.text || '';
 
         if (validationResult.includes('MATCH_GOOD')) {
-          console.log('Validation passed - footer matches reference');
+          console.log('Validation passed - footer matches reference (pixel-perfect)');
+          matchAchieved = true;
           break;
         }
 
-        console.log('Discrepancies found, refining...');
+        console.log('Discrepancies found, refining...', validationResult.substring(0, 200));
         
         // Refine based on validation feedback
         const refineContent: any[] = [
@@ -209,7 +228,7 @@ Make it elegant and professional.`;
           },
           {
             type: 'text',
-            text: `Current HTML:\n\n${html}\n\nIssues identified:\n${validationResult}\n\nFix ALL these issues to match the reference image exactly. Return only the corrected HTML.`,
+            text: `Current HTML:\n\n${html}\n\nIssues identified that MUST be fixed:\n${validationResult}\n\n${logoUrl ? `REMINDER: The logo MUST be an <img> tag with src="${logoUrl}" - NEVER render as text.` : ''}\n\nFix ALL these issues to achieve PIXEL-PERFECT match with the reference image. Return only the corrected HTML.`,
           },
         ];
 
@@ -238,15 +257,15 @@ Make it elegant and professional.`;
         
         if (refinedHtml) {
           html = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-          console.log(`Refinement ${i + 1} complete`);
+          console.log(`Refinement ${iterations} complete`);
         }
       }
     }
 
-    console.log('Footer generation complete');
+    console.log('Footer generation complete', { iterations, matchAchieved });
 
     return new Response(
-      JSON.stringify({ html }),
+      JSON.stringify({ html, iterations, matchAchieved }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
