@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
+import { FooterSelector, BrandFooter } from './FooterSelector';
 
 const BASE_WIDTH = 600;
 
@@ -37,8 +38,11 @@ interface CampaignStudioProps {
   brandUrl: string;
   brandContext?: BrandContext;
   brandLinks?: string[];
-  footerHtml?: string;
-  onFooterChange?: (html: string) => void;
+  // Footer props - now with versioning support
+  initialFooterHtml?: string;
+  initialFooterId?: string | null;
+  savedFooters?: BrandFooter[];
+  onSaveFooter?: (name: string, html: string) => Promise<void>;
   onBack: () => void;
   onCreateTemplate: (footerHtml?: string) => void;
   onCreateCampaign: (footerHtml?: string) => void;
@@ -61,8 +65,10 @@ export function CampaignStudio({
   brandUrl,
   brandContext,
   brandLinks = [],
-  footerHtml,
-  onFooterChange,
+  initialFooterHtml,
+  initialFooterId = null,
+  savedFooters = [],
+  onSaveFooter,
   onBack,
   onCreateTemplate,
   onCreateCampaign,
@@ -72,6 +78,11 @@ export function CampaignStudio({
   campaignId,
   onReset,
 }: CampaignStudioProps) {
+  // Local footer state - this is the source of truth for the current footer
+  const [localFooterHtml, setLocalFooterHtml] = useState<string | undefined>(initialFooterHtml);
+  const [selectedFooterId, setSelectedFooterId] = useState<string | null>(initialFooterId);
+  const [originalFooterHtml, setOriginalFooterHtml] = useState<string | undefined>(initialFooterHtml);
+  
   const [convertingIndex, setConvertingIndex] = useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isRefining, setIsRefining] = useState(false);
@@ -85,7 +96,36 @@ export function CampaignStudio({
   const [showAltText, setShowAltText] = useState(false);
   const [includeFooter, setIncludeFooter] = useState(true);
 
+  // Sync footer from props when they change (initial load or external updates)
+  useEffect(() => {
+    setLocalFooterHtml(initialFooterHtml);
+    setOriginalFooterHtml(initialFooterHtml);
+  }, [initialFooterHtml]);
+
+  useEffect(() => {
+    setSelectedFooterId(initialFooterId);
+  }, [initialFooterId]);
+
+  // Check if footer has been modified from original
+  const isFooterModified = localFooterHtml !== originalFooterHtml;
+
   const hasHtmlSlices = slices.some(s => s.type === 'html');
+
+  // Handle footer selection from dropdown
+  const handleSelectFooter = (footer: BrandFooter) => {
+    setLocalFooterHtml(footer.html);
+    setSelectedFooterId(footer.id);
+    setOriginalFooterHtml(footer.html);
+    toast.success(`Switched to "${footer.name}"`);
+  };
+
+  // Handle saving current footer as new version
+  const handleSaveFooter = async (name: string, html: string) => {
+    if (onSaveFooter) {
+      await onSaveFooter(name, html);
+      toast.success(`Footer "${name}" saved`);
+    }
+  };
 
   useEffect(() => {
     const loadSliceHeights = async () => {
@@ -160,7 +200,7 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
-          footerHtml,
+          footerHtml: localFooterHtml, // Use local state
           originalCampaignImageUrl: originalImageUrl,
           conversationHistory: newMessages,
           userRequest: message,
@@ -175,9 +215,9 @@ export function CampaignStudio({
 
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
 
-      // Handle footer updates
-      if (data.updatedFooterHtml && onFooterChange) {
-        onFooterChange(data.updatedFooterHtml);
+      // Handle footer updates - update LOCAL state directly
+      if (data.updatedFooterHtml) {
+        setLocalFooterHtml(data.updatedFooterHtml);
         toast.success('Footer updated');
       }
 
@@ -302,6 +342,19 @@ export function CampaignStudio({
             {includeFooter ? <CheckCircle className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
             <span>Footer</span>
           </button>
+          
+          {/* Footer version selector - only show when footer is included */}
+          {includeFooter && savedFooters.length > 0 && (
+            <FooterSelector
+              savedFooters={savedFooters}
+              currentFooterHtml={localFooterHtml}
+              selectedFooterId={selectedFooterId}
+              onSelectFooter={handleSelectFooter}
+              onSaveFooter={handleSaveFooter}
+              isModified={isFooterModified}
+              disabled={isCreating}
+            />
+          )}
         </div>
         
         <div className="flex items-center gap-3">
@@ -347,7 +400,7 @@ export function CampaignStudio({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onCreateTemplate(includeFooter ? footerHtml : undefined)}
+                onClick={() => onCreateTemplate(includeFooter ? localFooterHtml : undefined)}
                 disabled={isCreating || convertingIndex !== null}
                 className="h-7 text-xs px-2 text-muted-foreground"
               >
@@ -356,7 +409,7 @@ export function CampaignStudio({
               </Button>
               <Button
                 size="sm"
-                onClick={() => onCreateCampaign(includeFooter ? footerHtml : undefined)}
+                onClick={() => onCreateCampaign(includeFooter ? localFooterHtml : undefined)}
                 disabled={isCreating || convertingIndex !== null}
                 className="h-7 text-xs px-3"
               >
@@ -560,11 +613,16 @@ export function CampaignStudio({
               ))}
               
               {/* Footer preview */}
-              {includeFooter && footerHtml && (
+              {includeFooter && localFooterHtml && (
                 <div className="border-t-2 border-dashed border-primary/40 mt-2">
                   <div className="flex items-stretch">
                     <div className="min-w-[320px] w-96 flex-shrink-0 p-4">
-                      <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
+                        {isFooterModified && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">Modified</span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-muted-foreground/60 mt-1">Modify via chat: "change footer background to..."</p>
                     </div>
                     <div 
@@ -572,7 +630,7 @@ export function CampaignStudio({
                       style={{ width: scaledWidth }}
                     >
                       <iframe
-                        srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${footerHtml}</table></body></html>`}
+                        srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml}</table></body></html>`}
                         title="Footer Preview"
                         style={{ 
                           border: 'none', 
@@ -606,7 +664,7 @@ export function CampaignStudio({
                       width: BASE_WIDTH,
                     }}
                   >
-                    <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? footerHtml : undefined} width={BASE_WIDTH} />
+                    <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? localFooterHtml : undefined} width={BASE_WIDTH} />
                   </div>
                 </div>
               </div>
