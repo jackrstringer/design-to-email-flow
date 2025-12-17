@@ -47,17 +47,8 @@ serve(async (req) => {
     }
   </style>` : '';
 
-    // Footer section wrapped in editable region with zero padding
-    const footerSection = footerHtml ? `
-          <tr>
-            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600" style="padding: 0 !important;">
-              <div class="klaviyo-block klaviyo-text-block" style="padding: 0 !important; margin: 0 !important;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="padding: 0; margin: 0;">
-                  ${footerHtml}
-                </table>
-              </div>
-            </td>
-          </tr>` : '';
+    // Footer section - inject directly since footerHtml contains proper <tr> elements
+    const footerSection = footerHtml ? footerHtml : '';
 
     // Build image content - either single image or multiple slices
     let imageContent: string;
