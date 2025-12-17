@@ -32,6 +32,7 @@ serve(async (req) => {
       conversationHistory, 
       userRequest, 
       brandUrl,
+      brandContext,
       mode 
     } = await req.json();
 
@@ -68,6 +69,20 @@ serve(async (req) => {
     const imageSlices = (allSlices as SliceData[]).filter(s => s.type === 'image');
 
     // Build system prompt with full campaign context
+    const brandName = brandContext?.name || '';
+    const brandDomain = brandContext?.domain || '';
+    const brandWebsiteUrl = brandContext?.websiteUrl || '';
+
+    const brandColors = brandContext?.colors || {};
+    const paletteLines = [
+      brandColors.primary ? `- Primary (brand blue): ${brandColors.primary}` : null,
+      brandColors.secondary ? `- Secondary: ${brandColors.secondary}` : null,
+      brandColors.accent ? `- Accent: ${brandColors.accent}` : null,
+      brandColors.background ? `- Background: ${brandColors.background}` : null,
+      brandColors.textPrimary ? `- Text primary: ${brandColors.textPrimary}` : null,
+      brandColors.link ? `- Link: ${brandColors.link}` : null,
+    ].filter(Boolean).join('\n');
+
     const systemPrompt = `You are an expert email HTML developer helping refine campaign templates.
 
 CAMPAIGN CONTEXT:
@@ -77,6 +92,16 @@ CAMPAIGN CONTEXT:
 - Image slices: ${imageSlices.length}
 - Has footer: ${footerHtml ? 'Yes' : 'No'}
 
+BRAND STYLE GUIDE (AUTHORITATIVE):
+${brandName || brandDomain || brandWebsiteUrl ? `- Name: ${brandName || 'Not specified'}\n- Domain: ${brandDomain || 'Not specified'}\n- Website: ${brandWebsiteUrl || 'Not specified'}` : '- Not provided'}
+
+COLOR PALETTE (use EXACT values; do NOT invent new shades):
+${paletteLines || '- Not provided'}
+
+COLOR RULES:
+- If the user asks to “match the brand blue”, “same blue”, or “match the CTA blue”, you MUST use the Primary color exactly (if provided).
+- If Primary is not provided, keep the existing blue already present in the HTML you are editing; do not guess.
+
 CURRENT SLICES:
 ${(allSlices as SliceData[]).map((s, i) => `
 Slice ${i + 1} (${s.type}):
@@ -85,11 +110,7 @@ ${s.type === 'html' ? `- HTML Content:\n\`\`\`html\n${s.htmlContent}\n\`\`\`` : 
 ${s.link ? `- Link: ${s.link}` : ''}
 `).join('\n')}
 
-${footerHtml ? `CURRENT FOOTER HTML:
-\`\`\`html
-${footerHtml}
-\`\`\`
-` : ''}
+${footerHtml ? `CURRENT FOOTER HTML:\n\`\`\`html\n${footerHtml}\n\`\`\`\n` : ''}
 
 YOUR TASK:
 When the user requests changes to HTML slices OR the footer, provide the updated HTML.

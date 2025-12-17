@@ -15,11 +15,27 @@ import { CampaignChat, ChatMessage } from './CampaignChat';
 
 const BASE_WIDTH = 600;
 
+interface BrandContext {
+  name?: string;
+  domain?: string;
+  websiteUrl?: string;
+  colors?: {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+    background?: string;
+    textPrimary?: string;
+    link?: string;
+  };
+  typography?: unknown;
+}
+
 interface CampaignStudioProps {
   slices: ProcessedSlice[];
   onSlicesChange: (slices: ProcessedSlice[]) => void;
   originalImageUrl: string;
   brandUrl: string;
+  brandContext?: BrandContext;
   brandLinks?: string[];
   footerHtml?: string;
   onFooterChange?: (html: string) => void;
@@ -43,6 +59,7 @@ export function CampaignStudio({
   onSlicesChange,
   originalImageUrl,
   brandUrl,
+  brandContext,
   brandLinks = [],
   footerHtml,
   onFooterChange,
@@ -147,6 +164,7 @@ export function CampaignStudio({
           conversationHistory: newMessages,
           userRequest: message,
           brandUrl,
+          brandContext,
           mode: 'chat',
         }
       });
@@ -203,6 +221,7 @@ export function CampaignStudio({
           conversationHistory: newMessages,
           userRequest: 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.',
           brandUrl,
+          brandContext,
           mode: 'auto-refine',
         }
       });
