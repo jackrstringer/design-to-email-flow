@@ -149,7 +149,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
   const handleGenerateFooter = async () => {
     setIsGenerating(true);
-    setGenerationStatus(referenceImageUrl ? 'Generating footer...' : 'Generating footer...');
+    setGenerationStatus('Starting generation...');
     
     try {
       // Build social icons data with Simple Icons URLs
@@ -159,13 +159,20 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
         iconUrl: getSocialIconUrl(link.platform, iconColor),
       }));
 
-      // Show initial status
-      setGenerationStatus('Generating initial footer design...');
+      // Get the Supabase URL for SSE
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-      const { data, error } = await supabase.functions.invoke('generate-footer-html', {
-        body: {
+      const response = await fetch(`${supabaseUrl}/functions/v1/generate-footer-html`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+          'apikey': supabaseKey,
+        },
+        body: JSON.stringify({
           referenceImageUrl,
-          logoUrl: lightLogoUrl, // Use light logo for dark footer backgrounds
+          logoUrl: lightLogoUrl,
           socialIcons: socialIconsData,
           brandName: brand.name,
           brandColors: {
@@ -176,21 +183,68 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
             textPrimary: brand.textPrimaryColor,
             link: brand.linkColor,
           },
-        }
+        }),
       });
 
-      if (error) throw error;
-      
-      // Show refinement results
-      const { iterations = 0, matchAchieved = false } = data;
-      
-      setGeneratedHtml(data.html);
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      // Handle SSE stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let finalHtml = '';
+      let iterations = 0;
+      let matchAchieved = false;
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                // Update status message
+                if (data.message) {
+                  setGenerationStatus(data.message);
+                }
+
+                // Handle completion
+                if (data.status === 'complete') {
+                  finalHtml = data.html;
+                  iterations = data.iterations || 0;
+                  matchAchieved = data.matchAchieved || false;
+                }
+
+                // Handle error
+                if (data.status === 'error') {
+                  throw new Error(data.error);
+                }
+              } catch (parseError) {
+                // Ignore parse errors for incomplete chunks
+              }
+            }
+          }
+        }
+      }
+
+      if (!finalHtml) {
+        throw new Error('No HTML received from generator');
+      }
+
+      setGeneratedHtml(finalHtml);
       setStep('refine');
       
       if (matchAchieved) {
-        toast.success(`Footer generated! Achieved pixel-perfect match after ${iterations} refinement${iterations === 1 ? '' : 's'}.`);
+        toast.success(`Footer generated with pixel-perfect match!`);
       } else if (iterations > 0) {
-        toast.success(`Footer generated after ${iterations} refinement${iterations === 1 ? '' : 's'}. You can further refine via chat.`);
+        toast.success(`Footer generated after ${iterations} refinement${iterations === 1 ? '' : 's'}. You can refine via chat.`);
       } else {
         toast.success('Footer generated! Use chat to refine further.');
       }

@@ -79,22 +79,34 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    // Build the initial prompt
-    const socialIconsDescription = socialIcons?.length 
-      ? `Social icons to include (use these EXACT URLs as <img> tags):\n${socialIcons.map((s: any) => `- ${s.platform}: Link URL=${s.url}, Icon Image=${s.iconUrl}`).join('\n')}`
-      : 'No social icons provided.';
+    // Set up SSE streaming
+    const encoder = new TextEncoder();
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
 
-    const colorPalette = brandColors 
-      ? `Brand colors (use these EXACT hex values):
+    const sendEvent = async (data: object) => {
+      await writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    };
+
+    // Start processing in background
+    (async () => {
+      try {
+        // Build the initial prompt
+        const socialIconsDescription = socialIcons?.length 
+          ? `Social icons to include (use these EXACT URLs as <img> tags):\n${socialIcons.map((s: any) => `- ${s.platform}: Link URL=${s.url}, Icon Image=${s.iconUrl}`).join('\n')}`
+          : 'No social icons provided.';
+
+        const colorPalette = brandColors 
+          ? `Brand colors (use these EXACT hex values):
 - Primary: ${brandColors.primary}
 - Secondary: ${brandColors.secondary}
 - Accent: ${brandColors.accent || 'none'}
 - Background: ${brandColors.background || '#111111'}
 - Text: ${brandColors.textPrimary || '#ffffff'}
 - Link: ${brandColors.link || brandColors.primary || '#ffffff'}`
-      : '';
+          : '';
 
-    let userPrompt = `Create an email footer for "${brandName}" with these specifications:
+        let userPrompt = `Create an email footer for "${brandName}" with these specifications:
 
 ${logoUrl ? `LOGO IMAGE URL (MUST USE AS <img> TAG, NOT TEXT): ${logoUrl}
 CRITICAL: Use this exact URL in an <img> tag. Do NOT render the brand name as text.` : 'No logo provided - skip logo section'}
@@ -105,8 +117,8 @@ ${colorPalette}
 
 `;
 
-    if (referenceImageUrl) {
-      userPrompt += `
+        if (referenceImageUrl) {
+          userPrompt += `
 IMPORTANT: A reference image is provided. You MUST match this reference PIXEL-PERFECTLY:
 - Copy the exact layout structure you see
 - Match all colors precisely (sample hex values from the image)
@@ -115,124 +127,33 @@ IMPORTANT: A reference image is provided. You MUST match this reference PIXEL-PE
 - BUT ALWAYS use the provided logo URL as an <img> tag, not text
 - This is your PRIMARY source of truth for the design
 `;
-    } else {
-      userPrompt += `
+        } else {
+          userPrompt += `
 The footer should have a dark background (use the brand background color or #111111) with light text.
 Make it elegant and professional.`;
-    }
-
-    // Build messages with optional image
-    const content: any[] = [];
-    
-    if (referenceImageUrl) {
-      content.push({
-        type: 'image',
-        source: {
-          type: 'url',
-          url: referenceImageUrl,
-        },
-      });
-    }
-    
-    content.push({ type: 'text', text: userPrompt });
-
-    console.log('Generating footer for:', brandName, referenceImageUrl ? '(with reference image)' : '(no reference)');
-
-    // PHASE 1: Initial Generation
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        system: EMAIL_FOOTER_RULES,
-        messages: [{ role: 'user', content }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Anthropic API error:', response.status, errorText);
-      throw new Error(`API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let html = data.content?.[0]?.text || '';
-    html = html.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-
-    console.log('Initial footer generated');
-
-    let iterations = 0;
-    let matchAchieved = false;
-
-    // PHASE 2: Auto-refinement loop (only if reference image provided)
-    if (referenceImageUrl) {
-      const MAX_REFINEMENTS = 5;
-      
-      for (let i = 0; i < MAX_REFINEMENTS; i++) {
-        iterations = i + 1;
-        console.log(`Auto-refinement iteration ${iterations}/${MAX_REFINEMENTS}`);
-        
-        // Validate current HTML against reference
-        const validateContent: any[] = [
-          {
-            type: 'image',
-            source: { type: 'url', url: referenceImageUrl },
-          },
-          {
-            type: 'text',
-            text: `Reference image is shown above. Here is the generated HTML:\n\n${html}\n\nPerform STRICT validation. The HTML must be >98% pixel-perfect to pass. Check every detail: colors (exact hex), spacing (exact pixels), typography, logo (must be <img> tag not text), social icons. List ALL discrepancies or respond with "MATCH_GOOD" only if near-perfect.`,
-          },
-        ];
-
-        const validateResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2048,
-            system: VALIDATION_PROMPT,
-            messages: [{ role: 'user', content: validateContent }],
-          }),
-        });
-
-        if (!validateResponse.ok) {
-          console.error('Validation API error, skipping refinement');
-          break;
         }
 
-        const validateData = await validateResponse.json();
-        const validationResult = validateData.content?.[0]?.text || '';
-
-        if (validationResult.includes('MATCH_GOOD')) {
-          console.log('Validation passed - footer matches reference (pixel-perfect)');
-          matchAchieved = true;
-          break;
-        }
-
-        console.log('Discrepancies found, refining...', validationResult.substring(0, 200));
+        // Build messages with optional image
+        const content: any[] = [];
         
-        // Refine based on validation feedback
-        const refineContent: any[] = [
-          {
+        if (referenceImageUrl) {
+          content.push({
             type: 'image',
-            source: { type: 'url', url: referenceImageUrl },
-          },
-          {
-            type: 'text',
-            text: `Current HTML:\n\n${html}\n\nIssues identified that MUST be fixed:\n${validationResult}\n\n${logoUrl ? `REMINDER: The logo MUST be an <img> tag with src="${logoUrl}" - NEVER render as text.` : ''}\n\nFix ALL these issues to achieve PIXEL-PERFECT match with the reference image. Return only the corrected HTML.`,
-          },
-        ];
+            source: {
+              type: 'url',
+              url: referenceImageUrl,
+            },
+          });
+        }
+        
+        content.push({ type: 'text', text: userPrompt });
 
-        const refineResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        console.log('Generating footer for:', brandName, referenceImageUrl ? '(with reference image)' : '(no reference)');
+        
+        await sendEvent({ status: 'generating', message: 'Generating initial footer design...' });
+
+        // PHASE 1: Initial Generation
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -243,31 +164,172 @@ Make it elegant and professional.`;
             model: 'claude-sonnet-4-20250514',
             max_tokens: 4096,
             system: EMAIL_FOOTER_RULES,
-            messages: [{ role: 'user', content: refineContent }],
+            messages: [{ role: 'user', content }],
           }),
         });
 
-        if (!refineResponse.ok) {
-          console.error('Refinement API error, using current HTML');
-          break;
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Anthropic API error:', response.status, errorText);
+          throw new Error(`API error: ${response.status}`);
         }
 
-        const refineData = await refineResponse.json();
-        const refinedHtml = refineData.content?.[0]?.text || '';
+        const data = await response.json();
+        let html = data.content?.[0]?.text || '';
+        html = html.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+
+        console.log('Initial footer generated');
+        await sendEvent({ status: 'generated', message: 'Initial footer generated' });
+
+        let iterations = 0;
+        let matchAchieved = false;
+
+        // PHASE 2: Auto-refinement loop (only if reference image provided)
+        if (referenceImageUrl) {
+          const MAX_REFINEMENTS = 2; // Reduced from 5 to prevent timeout
+          let lastValidationIssue = '';
+          
+          for (let i = 0; i < MAX_REFINEMENTS; i++) {
+            iterations = i + 1;
+            console.log(`Auto-refinement iteration ${iterations}/${MAX_REFINEMENTS}`);
+            await sendEvent({ 
+              status: 'validating', 
+              iteration: iterations, 
+              maxIterations: MAX_REFINEMENTS,
+              message: `Validating against reference (${iterations}/${MAX_REFINEMENTS})...` 
+            });
+            
+            // Validate current HTML against reference
+            const validateContent: any[] = [
+              {
+                type: 'image',
+                source: { type: 'url', url: referenceImageUrl },
+              },
+              {
+                type: 'text',
+                text: `Reference image is shown above. Here is the generated HTML:\n\n${html}\n\nPerform STRICT validation. The HTML must be >98% pixel-perfect to pass. Check every detail: colors (exact hex), spacing (exact pixels), typography, logo (must be <img> tag not text), social icons. List ALL discrepancies or respond with "MATCH_GOOD" only if near-perfect.`,
+              },
+            ];
+
+            const validateResponse = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+              },
+              body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 2048,
+                system: VALIDATION_PROMPT,
+                messages: [{ role: 'user', content: validateContent }],
+              }),
+            });
+
+            if (!validateResponse.ok) {
+              console.error('Validation API error, skipping refinement');
+              break;
+            }
+
+            const validateData = await validateResponse.json();
+            const validationResult = validateData.content?.[0]?.text || '';
+
+            if (validationResult.includes('MATCH_GOOD')) {
+              console.log('Validation passed - footer matches reference (pixel-perfect)');
+              matchAchieved = true;
+              await sendEvent({ status: 'matched', message: 'Pixel-perfect match achieved!' });
+              break;
+            }
+
+            // Early exit if same issue found twice
+            const issueHash = validationResult.substring(0, 200);
+            if (issueHash === lastValidationIssue) {
+              console.log('Same issues found twice, stopping refinement');
+              await sendEvent({ status: 'stopped', message: 'Refinement complete (no further improvements possible)' });
+              break;
+            }
+            lastValidationIssue = issueHash;
+
+            console.log('Discrepancies found, refining...', validationResult.substring(0, 200));
+            await sendEvent({ 
+              status: 'refining', 
+              iteration: iterations, 
+              maxIterations: MAX_REFINEMENTS,
+              message: `Applying refinements (${iterations}/${MAX_REFINEMENTS})...` 
+            });
+            
+            // Refine based on validation feedback
+            const refineContent: any[] = [
+              {
+                type: 'image',
+                source: { type: 'url', url: referenceImageUrl },
+              },
+              {
+                type: 'text',
+                text: `Current HTML:\n\n${html}\n\nIssues identified that MUST be fixed:\n${validationResult}\n\n${logoUrl ? `REMINDER: The logo MUST be an <img> tag with src="${logoUrl}" - NEVER render as text.` : ''}\n\nFix ALL these issues to achieve PIXEL-PERFECT match with the reference image. Return only the corrected HTML.`,
+              },
+            ];
+
+            const refineResponse = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+              },
+              body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 4096,
+                system: EMAIL_FOOTER_RULES,
+                messages: [{ role: 'user', content: refineContent }],
+              }),
+            });
+
+            if (!refineResponse.ok) {
+              console.error('Refinement API error, using current HTML');
+              break;
+            }
+
+            const refineData = await refineResponse.json();
+            const refinedHtml = refineData.content?.[0]?.text || '';
+            
+            if (refinedHtml) {
+              html = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
+              console.log(`Refinement ${iterations} complete`);
+            }
+          }
+        }
+
+        console.log('Footer generation complete', { iterations, matchAchieved });
         
-        if (refinedHtml) {
-          html = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-          console.log(`Refinement ${iterations} complete`);
-        }
+        // Send final result
+        await sendEvent({ 
+          status: 'complete', 
+          html, 
+          iterations, 
+          matchAchieved,
+          message: matchAchieved ? 'Footer generated with pixel-perfect match!' : 'Footer generated. You can refine via chat.'
+        });
+        
+      } catch (error) {
+        console.error('Error in stream:', error);
+        await sendEvent({ 
+          status: 'error', 
+          error: error instanceof Error ? error.message : 'Failed to generate footer' 
+        });
+      } finally {
+        await writer.close();
       }
-    }
+    })();
 
-    console.log('Footer generation complete', { iterations, matchAchieved });
-
-    return new Response(
-      JSON.stringify({ html, iterations, matchAchieved }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(stream.readable, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
   } catch (error) {
     console.error('Error generating footer:', error);
     return new Response(
