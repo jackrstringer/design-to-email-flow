@@ -376,7 +376,7 @@ export function CampaignStudio({
                       <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
                         if (open) {
                           setEditingLinkIndex(index);
-                          setLinkSearchValue(slice.link || '');
+                          setLinkSearchValue('');
                         } else {
                           setEditingLinkIndex(null);
                         }
@@ -463,7 +463,7 @@ export function CampaignStudio({
                     ) : (
                       <p 
                         onClick={() => setEditingAltIndex(index)}
-                        className="text-[11px] text-muted-foreground/40 leading-relaxed cursor-pointer hover:text-muted-foreground/60 transition-colors line-clamp-2"
+                        className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
                       >
                         {slice.altText || 'Add description...'}
                       </p>
