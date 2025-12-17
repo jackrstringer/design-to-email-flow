@@ -25,8 +25,8 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
       -webkit-font-smoothing: antialiased;
     }
     .email-container {
-      max-width: 600px;
-      margin: 0 auto;
+      width: 600px;
+      margin: 0;
     }
   </style>
 </head>
