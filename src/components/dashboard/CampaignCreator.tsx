@@ -203,8 +203,9 @@ export function CampaignCreator({
       image.src = dataUrl;
     });
 
-    const maxDim = 2000;
-    const cropHeight = Math.min(img.naturalHeight, 1800);
+    // Reduced dimensions to avoid rate limits (smaller images = fewer tokens)
+    const maxDim = 1200;
+    const cropHeight = Math.min(img.naturalHeight, 800);
 
     const makeCrop = (sourceY: number) => {
       const sourceW = img.naturalWidth;
@@ -230,7 +231,8 @@ export function CampaignCreator({
         canvas.height
       );
 
-      return canvas.toDataURL('image/jpeg', 0.85);
+      // Lower quality JPEG to reduce token usage
+      return canvas.toDataURL('image/jpeg', 0.6);
     };
 
     const top = makeCrop(0);
