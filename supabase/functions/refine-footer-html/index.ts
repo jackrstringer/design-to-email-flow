@@ -6,34 +6,52 @@ const corsHeaders = {
 };
 
 const FOOTER_REFINEMENT_RULES = `
-You are an expert email developer refining a branded footer for email campaigns.
+You are an expert email HTML developer refining footer templates for pixel-perfect email rendering.
 
-Your task is to analyze the current HTML footer and improve it based on:
-1. Visual comparison to the reference image (if provided)
-2. User's specific refinement requests (if provided)
+## STRICT HTML EMAIL RULES - NEVER VIOLATE
 
-CRITICAL - LOGO HANDLING:
+### FORBIDDEN (will break email rendering)
+- NEVER use <div> elements - ALWAYS use <table> and <td>
+- NEVER use CSS margin - Use padding on <td> or spacer rows
+- NEVER use float or display: flex/grid - Use align attribute and nested tables
+- NEVER use external CSS for layout - All styles must be inline
+- NEVER omit width/height on images
+
+### REQUIRED (for email compatibility)
+- ALWAYS use <table role="presentation"> for layout
+- ALWAYS set cellpadding="0" cellspacing="0" border="0" on tables
+- ALWAYS inline all styles
+- ALWAYS include width and height attributes on <img> tags
+- ALWAYS add style="display: block; border: 0;" to images
+- ALWAYS use web-safe fonts: Arial, Helvetica, sans-serif
+- ALWAYS use 600px total width with MSO conditionals for Outlook
+
+## LOGO HANDLING (CRITICAL)
 - The logo MUST ALWAYS be an <img> tag with the provided logo URL
-- NEVER render the brand name or logo as text
-- If the current HTML has text instead of a logo image, REPLACE it with an <img> tag
-- This is NON-NEGOTIABLE
+- NEVER render the brand name as text when logo URL is provided
+- If current HTML has text instead of logo image, REPLACE it with <img>
 
-CRITICAL EMAIL REQUIREMENTS:
-1. Use table-based layout (not flexbox/grid) for email compatibility
-2. All styles must be inline (no external CSS except for dark mode media query in <style> tag)
-3. Total width must be exactly 600px
-4. Use web-safe fonts: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif
-5. Maintain the existing structure unless explicitly asked to change it
-6. Keep all social icons as <img> tags with proper dimensions (32x32px)
+## STRUCTURE TEMPLATE
+\`\`\`html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: {BG};">
+  <tr>
+    <td align="center">
+      <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px;">
+        {CONTENT ROWS}
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+    </td>
+  </tr>
+</table>
+\`\`\`
 
-When comparing to reference image, check for:
-- Layout structure and section ordering
-- Colors (background, text, links) - match EXACT hex values
-- Spacing and padding (top, bottom, between elements)
-- Logo size and positioning (MUST be <img> tag)
-- Social icon arrangement and sizing
+When comparing to reference image, match EXACTLY:
+- Background colors (exact hex values)
+- Spacing/padding (exact pixel values)
 - Typography (font sizes, weights, line heights)
-- Overall proportions and visual balance
+- Social icon size (usually 32x32) and spacing
+- Overall proportions and alignment
 
 Return ONLY the refined HTML code, no explanation or markdown formatting.
 `;
@@ -44,35 +62,55 @@ serve(async (req) => {
   }
 
   try {
-    const { currentHtml, userRequest, referenceImageUrl, brandContext, logoUrl } = await req.json();
+    const { 
+      currentHtml, 
+      userRequest, 
+      referenceImageUrl, 
+      brandContext, 
+      logoUrl,
+      lightLogoUrl,
+      darkLogoUrl 
+    } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
+    // Determine effective logo URL
+    const effectiveLogoUrl = logoUrl || lightLogoUrl || darkLogoUrl;
+
     // Build the refinement prompt
-    let prompt = `Here is the current footer HTML:\n\n${currentHtml}\n\n`;
+    let prompt = `Current footer HTML to refine:
+
+\`\`\`html
+${currentHtml}
+\`\`\`
+
+`;
     
     if (userRequest) {
-      prompt += `User's refinement request: "${userRequest}"\n\n`;
+      prompt += `User's refinement request: "${userRequest}"
+
+`;
     }
 
     // Add logo enforcement
-    if (logoUrl) {
-      prompt += `CRITICAL LOGO REQUIREMENT:
-The logo MUST be an <img> tag using this exact URL: ${logoUrl}
+    if (effectiveLogoUrl) {
+      prompt += `## CRITICAL LOGO REQUIREMENT
+The logo MUST be an <img> tag using this exact URL: ${effectiveLogoUrl}
 Do NOT render the brand name as text - ALWAYS use the logo image.
-If the current HTML has text instead of a logo, REPLACE it with: <img src="${logoUrl}" alt="${brandContext?.name || 'Logo'}" style="display:block; max-width:200px; height:auto; margin:0 auto;">
+If the current HTML has text instead of a logo, REPLACE it with:
+<img src="${effectiveLogoUrl}" alt="${brandContext?.name || 'Logo'}" width="180" height="40" style="display: block; border: 0; margin: 0 auto;">
 
 `;
     }
 
     if (brandContext) {
-      prompt += `Brand context:
-- Name: ${brandContext.name}
-- Domain: ${brandContext.domain}
-- Colors:
+      prompt += `## BRAND STYLE GUIDE
+- Name: ${brandContext.name || 'Not specified'}
+- Domain: ${brandContext.domain || 'Not specified'}
+- Colors (use EXACT hex values):
   - Primary: ${brandContext.colors?.primary || 'N/A'}
   - Secondary: ${brandContext.colors?.secondary || 'N/A'}
   - Accent: ${brandContext.colors?.accent || 'N/A'}
@@ -80,23 +118,28 @@ If the current HTML has text instead of a logo, REPLACE it with: <img src="${log
   - Text: ${brandContext.colors?.textPrimary || '#ffffff'}
   - Link: ${brandContext.colors?.link || brandContext.colors?.primary || '#ffffff'}
 
-When user mentions brand colors like "brand blue" or "primary color", use the exact hex values above.
+When user mentions "brand blue", "primary color", etc., use the exact hex values above.
 `;
     }
 
     if (referenceImageUrl) {
-      prompt += `\nA reference image has been provided. Compare the current HTML rendering to the reference image and ensure the footer matches:
-- The exact layout structure (section arrangement, alignment)
-- Colors (background colors, text colors - match exact hex values visible in the reference)
-- Spacing and padding (proportions between elements)
+      prompt += `
+## REFERENCE IMAGE PROVIDED
+Compare the current HTML to the reference image and ensure the footer matches:
+- Exact layout structure (section arrangement, alignment)
+- Exact colors (background, text - match hex values from reference)
+- Exact spacing and padding (measure proportions)
 - Typography sizes and weights
+- Social icon arrangement and sizing
 - Overall visual appearance
-- BUT ALWAYS use the provided logo URL as an <img> tag, not text
+- BUT: Always use the provided logo URL as <img>, not text
 
-Make targeted adjustments to achieve PIXEL-PERFECT matching with the reference.`;
+Make targeted adjustments to achieve PIXEL-PERFECT matching.`;
     }
 
-    prompt += `\n\nReturn the refined HTML code. Only output the HTML, no explanations.`;
+    prompt += `
+
+Return the refined HTML code. Only output the HTML, no explanations.`;
 
     // Build messages with optional image
     const content: any[] = [];
@@ -113,7 +156,11 @@ Make targeted adjustments to achieve PIXEL-PERFECT matching with the reference.`
     
     content.push({ type: 'text', text: prompt });
 
-    console.log('Refining footer HTML', userRequest ? `with request: ${userRequest}` : '(auto-refinement)', logoUrl ? '(with logo URL)' : '(no logo)');
+    console.log('Refining footer HTML', {
+      hasUserRequest: !!userRequest,
+      hasReference: !!referenceImageUrl,
+      hasLogo: !!effectiveLogoUrl
+    });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -147,7 +194,7 @@ Make targeted adjustments to achieve PIXEL-PERFECT matching with the reference.`
     // Clean up any markdown formatting
     refinedHtml = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
 
-    console.log('Footer refined successfully');
+    console.log('Footer refined successfully, length:', refinedHtml.length);
 
     return new Response(
       JSON.stringify({ refinedHtml }),
