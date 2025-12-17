@@ -542,15 +542,15 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
             </div>
 
             {/* Preview */}
-            <div className="border rounded-lg overflow-hidden bg-white">
+            <div className="border rounded-lg overflow-hidden">
               <div className="text-xs text-muted-foreground px-3 py-1.5 border-b bg-muted/30">
                 Live Preview
               </div>
-            <div className="h-64 overflow-auto">
+              <div className="min-h-[200px] max-h-[500px] overflow-auto">
                 {generatedHtml && (
                   <HtmlPreviewFrame 
                     html={generatedHtml} 
-                    className="w-full h-full"
+                    className="w-full"
                   />
                 )}
               </div>

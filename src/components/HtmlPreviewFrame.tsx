@@ -20,7 +20,7 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
     body {
       margin: 0;
       padding: 0;
-      background-color: #ffffff;
+      background-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
     }
@@ -44,6 +44,14 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
         doc.open();
         doc.write(emailDocument);
         doc.close();
+        
+        // Auto-resize to content height
+        setTimeout(() => {
+          if (iframeRef.current?.contentDocument?.body) {
+            const contentHeight = iframeRef.current.contentDocument.body.scrollHeight;
+            iframeRef.current.style.height = `${contentHeight}px`;
+          }
+        }, 50);
       }
     }
   }, [emailDocument]);
