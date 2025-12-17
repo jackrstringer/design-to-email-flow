@@ -383,15 +383,15 @@ export function CampaignStudio({
                     {/* Row 1: Type toggle + Link + dimensions - all inline */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Pill toggle - Figma style */}
-                      <div className="flex items-center bg-zinc-900 rounded-full p-0.5">
+                      <div className="flex items-center bg-muted/50 border border-border/40 rounded-full p-0.5">
                         <button
                           onClick={() => slice.type === 'html' && toggleSliceType(index)}
                           disabled={convertingIndex !== null || isCreating}
                           className={cn(
                             "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
                             slice.type === 'image' 
-                              ? "bg-zinc-700 text-white" 
-                              : "text-zinc-500 hover:text-zinc-300",
+                              ? "bg-primary/15 text-primary border border-primary/30" 
+                              : "text-muted-foreground/50 hover:text-muted-foreground",
                             (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
                           )}
                           title="Image mode"
@@ -404,8 +404,8 @@ export function CampaignStudio({
                           className={cn(
                             "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
                             slice.type === 'html' 
-                              ? "bg-zinc-700 text-emerald-400" 
-                              : "text-zinc-500 hover:text-zinc-300",
+                              ? "bg-primary/15 text-primary border border-primary/30" 
+                              : "text-muted-foreground/50 hover:text-muted-foreground",
                             (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
                           )}
                           title="HTML mode"
