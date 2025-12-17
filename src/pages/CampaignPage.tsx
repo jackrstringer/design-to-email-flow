@@ -206,7 +206,8 @@ export default function CampaignPage() {
           klaviyoApiKey: apiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
           footerHtml: (brand as any)?.footerHtml || (brand as any)?.footer_html,
-          createCampaign: true,
+          mode: 'campaign',
+          listId: 'QRLACj',
         }
       });
 
