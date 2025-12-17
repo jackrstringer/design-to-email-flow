@@ -733,19 +733,24 @@ export function CampaignStudio({
               <div className="h-full overflow-auto bg-background">
                 <div className="p-6 flex justify-center">
                   {isFooterMode ? (
-                    /* Footer Mode: Footer preview */
+                    /* Footer Mode: Footer preview - full height, no scroll */
                     <div className="flex flex-col items-center gap-4">
                       <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Footer Preview</span>
-                      <div style={{ width: scaledWidth }}>
+                      <div 
+                        style={{ 
+                          width: scaledWidth,
+                          transform: `scale(${zoomLevel / 100})`,
+                          transformOrigin: 'top left'
+                        }}
+                      >
                         <iframe
-                          srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
+                          srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;overflow:visible;height:auto;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
                           title="Footer Preview"
                           style={{ 
                             border: 'none', 
                             width: BASE_WIDTH, 
-                            minHeight: '400px',
-                            transform: `scale(${zoomLevel / 100})`,
-                            transformOrigin: 'top left'
+                            height: '1200px',
+                            display: 'block'
                           }}
                           sandbox="allow-same-origin"
                           className="rounded border border-border/30"
