@@ -21,9 +21,11 @@ import type { SliceType } from '@/types/slice';
 interface PendingCampaign {
   file: File;
   dataUrl: string;
-  matchedBrandId: string | null;
-  detectedBrand: { url: string; name: string } | null;
-  analysisData: any;
+}
+
+interface DetectedBrand {
+  name: string | null;
+  url: string | null;
 }
 
 interface CampaignCreatorProps {
@@ -33,7 +35,7 @@ interface CampaignCreatorProps {
   selectedBrand: Brand | null;
   includeFooter: boolean;
   onIncludeFooterChange: (include: boolean) => void;
-  onBrandDetected: (campaignData: PendingCampaign) => void;
+  onBrandDetected: (detectedBrand: DetectedBrand, campaignData: PendingCampaign) => void;
   onAddBrandClick: () => void;
   isLoading: boolean;
   pendingCampaign: PendingCampaign | null;
@@ -206,43 +208,60 @@ export function CampaignCreator({
       reader.onload = async (e) => {
         const dataUrl = e.target?.result as string;
         
-        // Pass existing brands to AI for intelligent matching
-        const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-email-design', {
-          body: { 
-            imageDataUrl: dataUrl,
-            width: 600,
-            height: 2000,
-            existingBrands: brands.map(b => ({
-              id: b.id,
-              name: b.name,
-              domain: b.domain
-            }))
-          }
-        });
-
-        if (analysisError) {
-          console.error('Analysis error:', analysisError);
-        }
-
-        const campaignData: PendingCampaign = {
-          file,
-          dataUrl,
-          matchedBrandId: analysisData?.matchedBrandId || null,
-          detectedBrand: analysisData?.detectedBrand || null,
-          analysisData
-        };
-
-        if (campaignData.matchedBrandId || campaignData.detectedBrand) {
-          onBrandDetected(campaignData);
-          setIsProcessing(false);
-        } else if (selectedBrand?.klaviyoApiKey) {
-          // No brand detected but we have one selected - go to slice editor
+        // Check if we already have a brand selected
+        if (selectedBrand?.klaviyoApiKey) {
+          // Go directly to slice editor
           setUploadedImageDataUrl(dataUrl);
           setViewState('slice-editor');
           setIsProcessing(false);
+          return;
+        }
+
+        // Use lightweight brand detection
+        const { data: brandData, error: brandError } = await supabase.functions.invoke('detect-brand-from-image', {
+          body: { imageDataUrl: dataUrl }
+        });
+
+        setIsProcessing(false);
+
+        if (brandError) {
+          console.error('Brand detection error:', brandError);
+          toast.error('Failed to detect brand. Please select or add a brand manually.');
+          return;
+        }
+
+        const detectedBrand: DetectedBrand = {
+          name: brandData?.name || null,
+          url: brandData?.url || null,
+        };
+
+        // Check if detected brand matches an existing one
+        if (detectedBrand.url) {
+          let detectedDomain: string;
+          try {
+            detectedDomain = new URL(detectedBrand.url).hostname.replace('www.', '');
+          } catch {
+            detectedDomain = detectedBrand.url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
+          }
+
+          const matchingBrand = brands.find(b => 
+            b.domain.toLowerCase() === detectedDomain.toLowerCase()
+          );
+
+          if (matchingBrand) {
+            // Auto-select matching brand and go to slice editor
+            onBrandSelect(matchingBrand.id);
+            setUploadedImageDataUrl(dataUrl);
+            setViewState('slice-editor');
+            return;
+          }
+        }
+
+        // New brand - show confirmation modal
+        if (detectedBrand.url || detectedBrand.name) {
+          onBrandDetected(detectedBrand, { file, dataUrl });
         } else {
-          toast.error('Could not detect brand. Please select or add a brand first.');
-          setIsProcessing(false);
+          toast.error('Could not detect brand. Please add a brand manually.');
         }
       };
       reader.readAsDataURL(file);
@@ -251,7 +270,7 @@ export function CampaignCreator({
       toast.error('Failed to process image');
       setIsProcessing(false);
     }
-  }, [selectedBrand, brands, onBrandDetected]);
+  }, [selectedBrand, brands, onBrandDetected, onBrandSelect]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -301,7 +320,7 @@ export function CampaignCreator({
                 disabled={isLoading}
               >
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select a brand or drop an image to auto-detect..." />
+                  <SelectValue placeholder="Select a brand..." />
                 </SelectTrigger>
                 <SelectContent>
                   {brands.map((brand) => (
@@ -406,10 +425,10 @@ export function CampaignCreator({
             <Upload className="w-5 h-5 text-muted-foreground" />
           </div>
           <p className="text-sm font-medium mb-1">
-            {isProcessing ? 'Processing...' : 'Drop your campaign image here'}
+            {isProcessing ? 'Detecting brand...' : 'Drop your campaign image here'}
           </p>
           <p className="text-xs text-muted-foreground">
-            PNG or JPG up to 20MB • Brand will be auto-detected
+            PNG or JPG up to 20MB
           </p>
         </div>
       </div>
@@ -418,7 +437,7 @@ export function CampaignCreator({
       {!isLoading && brands.length === 0 && (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-4">
-            No brands configured yet. Drop an image to auto-detect, or add your first brand manually.
+            No brands configured yet. Drop an image to get started.
           </p>
           <Button onClick={onAddBrandClick}>
             <Plus className="w-4 h-4 mr-2" />

@@ -4,7 +4,9 @@ import { BrandsView } from '@/components/dashboard/BrandsView';
 import { BrandSettings } from '@/components/dashboard/BrandSettings';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { NewBrandModal } from '@/components/dashboard/NewBrandModal';
+import { BrandConfirmModal } from '@/components/BrandConfirmModal';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import type { Brand, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -71,9 +73,11 @@ function mapRowToBrand(row: any): Brand {
 interface PendingCampaign {
   file: File;
   dataUrl: string;
-  matchedBrandId: string | null;
-  detectedBrand: { url: string; name: string } | null;
-  analysisData: any;
+}
+
+interface DetectedBrand {
+  name: string | null;
+  url: string | null;
 }
 
 export default function Dashboard() {
@@ -83,9 +87,12 @@ export default function Dashboard() {
   const [includeFooter, setIncludeFooter] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [showNewBrandModal, setShowNewBrandModal] = useState(false);
+  const [showBrandConfirmModal, setShowBrandConfirmModal] = useState(false);
+  const [detectedBrand, setDetectedBrand] = useState<DetectedBrand | null>(null);
   const [pendingBrandDomain, setPendingBrandDomain] = useState<string | null>(null);
   const [settingsBrandId, setSettingsBrandId] = useState<string | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<PendingCampaign | null>(null);
+  const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   
   // Track if we're auto-analyzing a new brand in background
   const backgroundAnalysisRef = useRef<Promise<any> | null>(null);
@@ -117,43 +124,57 @@ export default function Dashboard() {
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || null;
   const settingsBrand = brands.find(b => b.id === settingsBrandId) || null;
 
-  // Called when a campaign image is dropped and brand is detected/matched
-  const handleBrandDetected = useCallback((campaignData: PendingCampaign) => {
-    // If AI matched an existing brand by ID
-    if (campaignData.matchedBrandId) {
-      const existingBrand = brands.find(b => b.id === campaignData.matchedBrandId);
-      if (existingBrand) {
-        setSelectedBrandId(existingBrand.id);
-        setPendingCampaign(campaignData);
-        return;
-      }
-    }
+  // Called when a campaign image is dropped and brand is detected
+  const handleBrandDetected = useCallback((detected: DetectedBrand, campaignData: PendingCampaign) => {
+    setDetectedBrand(detected);
+    setPendingCampaign(campaignData);
+    setShowBrandConfirmModal(true);
+  }, []);
+
+  // Called when user confirms the detected brand URL
+  const handleBrandConfirmed = useCallback(async (url: string) => {
+    setIsAnalyzingBrand(true);
     
-    // New brand detected - extract domain and show modal
-    if (campaignData.detectedBrand?.url) {
+    try {
+      // Extract domain from URL
       let domain: string;
       try {
-        domain = new URL(campaignData.detectedBrand.url).hostname.replace('www.', '');
+        domain = new URL(url).hostname.replace('www.', '');
       } catch {
-        domain = campaignData.detectedBrand.url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
+        domain = url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
       }
       
-      setPendingCampaign(campaignData);
-      setPendingBrandDomain(domain);
-      
-      // Start brand analysis in background
-      backgroundAnalysisRef.current = supabase.functions.invoke('analyze-brand', {
-        body: { websiteUrl: `https://${domain}` }
+      // Run Firecrawl brand analysis
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-brand', {
+        body: { websiteUrl: url }
       });
       
+      if (analysisError) {
+        console.error('Brand analysis error:', analysisError);
+        toast.error('Failed to analyze brand. Please try again.');
+        setIsAnalyzingBrand(false);
+        return;
+      }
+      
+      // Close confirmation modal and open brand creation modal
+      setShowBrandConfirmModal(false);
+      setPendingBrandDomain(domain);
+      backgroundAnalysisRef.current = Promise.resolve({ data: analysisData });
       setShowNewBrandModal(true);
+      
+    } catch (error) {
+      console.error('Error confirming brand:', error);
+      toast.error('Failed to analyze brand');
+    } finally {
+      setIsAnalyzingBrand(false);
     }
-  }, [brands]);
+  }, []);
 
   // Called when user manually wants to add a brand (without pending campaign)
   const handleAddBrandClick = useCallback(() => {
     setPendingBrandDomain(null);
     setPendingCampaign(null);
+    setDetectedBrand(null);
     backgroundAnalysisRef.current = null;
     setShowNewBrandModal(true);
   }, []);
@@ -231,6 +252,16 @@ export default function Dashboard() {
           />
         )}
       </main>
+
+      {/* Brand URL confirmation modal */}
+      <BrandConfirmModal
+        open={showBrandConfirmModal}
+        onOpenChange={setShowBrandConfirmModal}
+        detectedName={detectedBrand?.name || null}
+        detectedUrl={detectedBrand?.url || null}
+        onConfirm={handleBrandConfirmed}
+        isLoading={isAnalyzingBrand}
+      />
 
       <NewBrandModal
         open={showNewBrandModal}
