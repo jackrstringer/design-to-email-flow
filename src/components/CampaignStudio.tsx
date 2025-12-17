@@ -522,11 +522,7 @@ export function CampaignStudio({
                     </div>
                     <div 
                       className="flex-shrink-0 origin-top-left" 
-                      style={{ 
-                        width: scaledWidth,
-                        height: 'auto',
-                        overflow: 'hidden'
-                      }}
+                      style={{ width: scaledWidth }}
                     >
                       <iframe
                         srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${footerHtml}</table></body></html>`}
@@ -534,7 +530,7 @@ export function CampaignStudio({
                         style={{ 
                           border: 'none', 
                           width: BASE_WIDTH, 
-                          minHeight: '400px',
+                          height: '600px',
                           transform: `scale(${zoomLevel / 100})`,
                           transformOrigin: 'top left'
                         }}
