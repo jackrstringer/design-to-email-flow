@@ -195,6 +195,51 @@ export function CampaignCreator({
     setUploadedImageDataUrl(null);
   };
 
+  const createBrandDetectionImages = async (dataUrl: string): Promise<string[]> => {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Failed to load image'));
+      image.src = dataUrl;
+    });
+
+    const maxDim = 2000;
+    const cropHeight = Math.min(img.naturalHeight, 1800);
+
+    const makeCrop = (sourceY: number) => {
+      const sourceW = img.naturalWidth;
+      const sourceH = cropHeight;
+      const scale = Math.min(1, maxDim / sourceW, maxDim / sourceH);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(sourceW * scale));
+      canvas.height = Math.max(1, Math.round(sourceH * scale));
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas not supported');
+
+      ctx.drawImage(
+        img,
+        0,
+        sourceY,
+        sourceW,
+        sourceH,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      return canvas.toDataURL('image/jpeg', 0.85);
+    };
+
+    const top = makeCrop(0);
+    const bottomY = Math.max(0, img.naturalHeight - cropHeight);
+    const bottom = bottomY > 0 ? makeCrop(bottomY) : null;
+
+    return bottom ? [top, bottom] : [top];
+  };
+
   const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       toast.error('Please upload an image file');
@@ -207,19 +252,25 @@ export function CampaignCreator({
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUrl = e.target?.result as string;
-        
-        // Check if we already have a brand selected
+
+        // If we already have a configured brand selected, skip detection
         if (selectedBrand?.klaviyoApiKey) {
-          // Go directly to slice editor
           setUploadedImageDataUrl(dataUrl);
           setViewState('slice-editor');
           setIsProcessing(false);
           return;
         }
 
-        // Use lightweight brand detection
+        let detectionImages: string[];
+        try {
+          detectionImages = await createBrandDetectionImages(dataUrl);
+        } catch (cropErr) {
+          console.error('Failed to prepare detection images:', cropErr);
+          detectionImages = [dataUrl];
+        }
+
         const { data: brandData, error: brandError } = await supabase.functions.invoke('detect-brand-from-image', {
-          body: { imageDataUrl: dataUrl }
+          body: { imageDataUrls: detectionImages }
         });
 
         setIsProcessing(false);
@@ -244,12 +295,11 @@ export function CampaignCreator({
             detectedDomain = detectedBrand.url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
           }
 
-          const matchingBrand = brands.find(b => 
+          const matchingBrand = brands.find(b =>
             b.domain.toLowerCase() === detectedDomain.toLowerCase()
           );
 
           if (matchingBrand) {
-            // Auto-select matching brand and go to slice editor
             onBrandSelect(matchingBrand.id);
             setUploadedImageDataUrl(dataUrl);
             setViewState('slice-editor');
