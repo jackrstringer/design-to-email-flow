@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -32,6 +32,7 @@ interface BrandContext {
 }
 
 interface CampaignStudioProps {
+  mode?: 'campaign' | 'footer';
   slices: ProcessedSlice[];
   onSlicesChange: (slices: ProcessedSlice[]) => void;
   originalImageUrl: string;
@@ -51,6 +52,9 @@ interface CampaignStudioProps {
   templateId?: string | null;
   campaignId?: string | null;
   onReset?: () => void;
+  // Footer editor mode specific
+  footerName?: string;
+  onFooterNameChange?: (name: string) => void;
 }
 
 interface SliceDimensions {
@@ -59,6 +63,7 @@ interface SliceDimensions {
 }
 
 export function CampaignStudio({
+  mode = 'campaign',
   slices,
   onSlicesChange,
   originalImageUrl,
@@ -77,7 +82,10 @@ export function CampaignStudio({
   templateId,
   campaignId,
   onReset,
+  footerName: propFooterName,
+  onFooterNameChange,
 }: CampaignStudioProps) {
+  const isFooterMode = mode === 'footer';
   // Local footer state - this is the source of truth for the current footer
   const [localFooterHtml, setLocalFooterHtml] = useState<string | undefined>(initialFooterHtml);
   const [selectedFooterId, setSelectedFooterId] = useState<string | null>(initialFooterId);
@@ -301,6 +309,17 @@ export function CampaignStudio({
     link.toLowerCase().includes(linkSearchValue.toLowerCase())
   );
 
+  // Footer mode specific state
+  const [localFooterName, setLocalFooterName] = useState(propFooterName || 'New Footer');
+  const [footerSaved, setFooterSaved] = useState(false);
+
+  const handleSaveFooterClick = async () => {
+    if (onSaveFooter && localFooterHtml) {
+      await onSaveFooter(localFooterName, localFooterHtml);
+      setFooterSaved(true);
+    }
+  };
+
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       {/* Minimal Header */}
@@ -315,45 +334,53 @@ export function CampaignStudio({
           >
             {chatExpanded ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
           </button>
-          <span className="text-xs text-muted-foreground/60">{slices.length} slices</span>
-          <button
-            onClick={() => setShowAltText(!showAltText)}
-            className={cn(
-              "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
-              showAltText 
-                ? "text-foreground bg-muted/60" 
-                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
-            )}
-            title="Toggle alt text"
-          >
-            <Type className="w-3.5 h-3.5" />
-            <span>Alt</span>
-          </button>
-          <button
-            onClick={() => setIncludeFooter(!includeFooter)}
-            className={cn(
-              "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
-              includeFooter 
-                ? "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30" 
-                : "text-foreground bg-muted/60"
-            )}
-            title={includeFooter ? "Footer included - click to exclude" : "Footer excluded - click to include"}
-          >
-            {includeFooter ? <CheckCircle className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-            <span>Footer</span>
-          </button>
           
-          {/* Footer version selector - only show when footer is included */}
-          {includeFooter && savedFooters.length > 0 && (
-            <FooterSelector
-              savedFooters={savedFooters}
-              currentFooterHtml={localFooterHtml}
-              selectedFooterId={selectedFooterId}
-              onSelectFooter={handleSelectFooter}
-              onSaveFooter={handleSaveFooter}
-              isModified={isFooterModified}
-              disabled={isCreating}
-            />
+          {/* Show different info based on mode */}
+          {isFooterMode ? (
+            <span className="text-xs text-muted-foreground/60">Footer Editor</span>
+          ) : (
+            <>
+              <span className="text-xs text-muted-foreground/60">{slices.length} slices</span>
+              <button
+                onClick={() => setShowAltText(!showAltText)}
+                className={cn(
+                  "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
+                  showAltText 
+                    ? "text-foreground bg-muted/60" 
+                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+                )}
+                title="Toggle alt text"
+              >
+                <Type className="w-3.5 h-3.5" />
+                <span>Alt</span>
+              </button>
+              <button
+                onClick={() => setIncludeFooter(!includeFooter)}
+                className={cn(
+                  "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
+                  includeFooter 
+                    ? "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30" 
+                    : "text-foreground bg-muted/60"
+                )}
+                title={includeFooter ? "Footer included - click to exclude" : "Footer excluded - click to include"}
+              >
+                {includeFooter ? <CheckCircle className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                <span>Footer</span>
+              </button>
+              
+              {/* Footer version selector - only show when footer is included */}
+              {includeFooter && savedFooters.length > 0 && (
+                <FooterSelector
+                  savedFooters={savedFooters}
+                  currentFooterHtml={localFooterHtml}
+                  selectedFooterId={selectedFooterId}
+                  onSelectFooter={handleSelectFooter}
+                  onSaveFooter={handleSaveFooter}
+                  isModified={isFooterModified}
+                  disabled={isCreating}
+                />
+              )}
+            </>
           )}
         </div>
         
@@ -370,7 +397,42 @@ export function CampaignStudio({
             <span className="text-[10px] text-muted-foreground/50 w-7">{zoomLevel}%</span>
           </div>
           
-          {templateId ? (
+          {/* Footer mode: Save Footer button */}
+          {isFooterMode ? (
+            footerSaved ? (
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-xs text-green-600">
+                  <CheckCircle className="w-3 h-3" />
+                  Saved
+                </span>
+                <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={onBack}>
+                  Done
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={localFooterName}
+                  onChange={(e) => {
+                    setLocalFooterName(e.target.value);
+                    onFooterNameChange?.(e.target.value);
+                  }}
+                  placeholder="Footer name..."
+                  className="h-7 px-2 text-xs border border-border/50 rounded bg-background w-32"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSaveFooterClick}
+                  disabled={isCreating || !localFooterHtml}
+                  className="h-7 text-xs px-3"
+                >
+                  <Save className="w-3 h-3 mr-1" />
+                  Save Footer
+                </Button>
+              </div>
+            )
+          ) : templateId ? (
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1 text-xs text-green-600">
                 <CheckCircle className="w-3 h-3" />
@@ -449,13 +511,25 @@ export function CampaignStudio({
           </>
         )}
 
-        {/* Panel 2: Combined Campaign + Details */}
-        <ResizablePanel defaultSize={hasHtmlSlices ? 45 : (chatExpanded ? 78 : 100)} minSize={35}>
+        {/* Panel 2: Content - Footer mode or Campaign mode */}
+        <ResizablePanel defaultSize={isFooterMode ? 39 : (hasHtmlSlices ? 45 : (chatExpanded ? 78 : 100))} minSize={35}>
           <div className="h-full overflow-auto bg-muted/20">
             <div className="p-6 flex justify-center">
-              <div className="flex flex-col">
-              {/* Stacked slices with inline details */}
-              {slices.map((slice, index) => (
+              {isFooterMode ? (
+                /* Footer Mode: Reference image */
+                <div className="flex flex-col items-center gap-4">
+                  <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Reference Image</span>
+                  <img 
+                    src={originalImageUrl} 
+                    alt="Footer reference"
+                    style={{ width: scaledWidth }}
+                    className="rounded border border-border/30"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                {/* Stacked slices with inline details */}
+                {slices.map((slice, index) => (
                 <div key={index} className="relative flex items-center">
                   {/* Slice separator line - extends from left edge to image */}
                   {index > 0 && (
@@ -646,29 +720,58 @@ export function CampaignStudio({
                 </div>
               )}
               </div>
+              )}
             </div>
           </div>
         </ResizablePanel>
 
-        {/* Panel 3: Preview - only show if HTML slices exist */}
-        {hasHtmlSlices && (
+        {/* Panel 3: Preview - show for HTML slices OR footer mode */}
+        {(hasHtmlSlices || isFooterMode) && (
           <>
             <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
-            <ResizablePanel defaultSize={33} minSize={25}>
+            <ResizablePanel defaultSize={isFooterMode ? 39 : 33} minSize={25}>
               <div className="h-full overflow-auto bg-background">
-                <div className="p-6">
-                  <div 
-                    style={{ 
-                      transform: `scale(${zoomLevel / 100})`, 
-                      transformOrigin: 'top left',
-                      width: BASE_WIDTH,
-                    }}
-                  >
-                    <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? localFooterHtml : undefined} width={BASE_WIDTH} />
-                  </div>
+                <div className="p-6 flex justify-center">
+                  {isFooterMode ? (
+                    /* Footer Mode: Footer preview */
+                    <div className="flex flex-col items-center gap-4">
+                      <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Footer Preview</span>
+                      <div style={{ width: scaledWidth }}>
+                        <iframe
+                          srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
+                          title="Footer Preview"
+                          style={{ 
+                            border: 'none', 
+                            width: BASE_WIDTH, 
+                            minHeight: '400px',
+                            transform: `scale(${zoomLevel / 100})`,
+                            transformOrigin: 'top left'
+                          }}
+                          sandbox="allow-same-origin"
+                          className="rounded border border-border/30"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      style={{ 
+                        transform: `scale(${zoomLevel / 100})`, 
+                        transformOrigin: 'top left',
+                        width: BASE_WIDTH,
+                      }}
+                    >
+                      <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? localFooterHtml : undefined} width={BASE_WIDTH} />
+                    </div>
+                  )}
                 </div>
               </div>
             </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
+    </div>
+  );
+}
           </>
         )}
       </ResizablePanelGroup>

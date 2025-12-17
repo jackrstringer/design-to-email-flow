@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, Image as ImageIcon, Link2, Sparkles, Save, RefreshCw, Check, Copy, X, AlertCircle } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -11,12 +11,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SocialLinksEditor } from './SocialLinksEditor';
-import { RefinementChat, ChatMessage } from './RefinementChat';
-import { HtmlPreviewFrame } from './HtmlPreviewFrame';
 import { getSocialIconUrl } from '@/lib/socialIcons';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 
@@ -25,33 +22,27 @@ interface FooterBuilderModalProps {
   onOpenChange: (open: boolean) => void;
   brand: Brand;
   onFooterSaved: () => void;
+  onOpenStudio?: (referenceImageUrl: string, footerHtml: string) => void;
 }
 
-type Step = 'reference' | 'logos' | 'social' | 'generate' | 'refine';
+type Step = 'reference' | 'logos' | 'social' | 'generate';
 
-export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }: FooterBuilderModalProps) {
+export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
   const [isUploadingReference, setIsUploadingReference] = useState(false);
   
-  // Logo state - track both dark and light logos
+  // Logo state
   const [darkLogoUrl, setDarkLogoUrl] = useState(brand.darkLogoUrl || '');
   const [lightLogoUrl, setLightLogoUrl] = useState(brand.lightLogoUrl || '');
   const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
   
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
   const [iconColor, setIconColor] = useState('ffffff');
-  const [footerName, setFooterName] = useState('Standard Footer');
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
-  const [generatedHtml, setGeneratedHtml] = useState<string | null>(null);
-  
-  // Refinement state
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isRefining, setIsRefining] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +54,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
     setIsUploadingReference(true);
     try {
-      // Convert to base64 and upload to Cloudinary
       const reader = new FileReader();
       reader.onload = async (e) => {
         const base64 = e.target?.result as string;
@@ -115,7 +105,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
       if (error) throw error;
 
-      // Update local state
       if (type === 'dark') {
         setDarkLogoUrl(data.url);
       } else {
@@ -159,7 +148,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
         iconUrl: getSocialIconUrl(link.platform, iconColor),
       }));
 
-      // Get the Supabase URL for SSE
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
@@ -194,8 +182,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let finalHtml = '';
-      let iterations = 0;
-      let matchAchieved = false;
 
       if (reader) {
         while (true) {
@@ -210,19 +196,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
               try {
                 const data = JSON.parse(line.slice(6));
                 
-                // Update status message
                 if (data.message) {
                   setGenerationStatus(data.message);
                 }
 
-                // Handle completion
                 if (data.status === 'complete') {
                   finalHtml = data.html;
-                  iterations = data.iterations || 0;
-                  matchAchieved = data.matchAchieved || false;
                 }
 
-                // Handle error
                 if (data.status === 'error') {
                   throw new Error(data.error);
                 }
@@ -238,15 +219,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
         throw new Error('No HTML received from generator');
       }
 
-      setGeneratedHtml(finalHtml);
-      setStep('refine');
-      
-      if (matchAchieved) {
-        toast.success(`Footer generated with pixel-perfect match!`);
-      } else if (iterations > 0) {
-        toast.success(`Footer generated after ${iterations} refinement${iterations === 1 ? '' : 's'}. You can refine via chat.`);
+      // Hand off to studio for refinement
+      if (onOpenStudio && referenceImageUrl) {
+        onOpenChange(false);
+        onOpenStudio(referenceImageUrl, finalHtml);
       } else {
-        toast.success('Footer generated! Use chat to refine further.');
+        toast.success('Footer generated! Opening editor...');
       }
     } catch (error) {
       console.error('Generation error:', error);
@@ -254,108 +232,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
     } finally {
       setIsGenerating(false);
       setGenerationStatus('');
-    }
-  };
-
-  const handleRefine = async (message: string) => {
-    if (!generatedHtml) return;
-    
-    const userMessage: ChatMessage = { role: 'user', content: message };
-    setMessages(prev => [...prev, userMessage]);
-    setIsRefining(true);
-
-    try {
-      // Use the dedicated footer refinement function
-      const { data, error } = await supabase.functions.invoke('refine-footer-html', {
-        body: {
-          currentHtml: generatedHtml,
-          userRequest: message,
-          referenceImageUrl, // Pass reference image for comparison
-          logoUrl: lightLogoUrl, // Pass logo URL to enforce logo image usage
-          brandContext: {
-            name: brand.name,
-            domain: brand.domain,
-            websiteUrl: brand.websiteUrl,
-            colors: {
-              primary: brand.primaryColor,
-              secondary: brand.secondaryColor,
-              accent: brand.accentColor,
-              background: brand.backgroundColor,
-              textPrimary: brand.textPrimaryColor,
-              link: brand.linkColor,
-            }
-          },
-        }
-      });
-
-      if (error) throw error;
-
-      const refinedHtml = data?.refinedHtml;
-      console.log('Refinement response:', { hasRefinedHtml: !!refinedHtml, htmlLength: refinedHtml?.length });
-      
-      if (refinedHtml && refinedHtml.trim()) {
-        console.log('Setting new generated HTML, first 100 chars:', refinedHtml.substring(0, 100));
-        setGeneratedHtml(refinedHtml);
-        
-        const assistantMessage: ChatMessage = { 
-          role: 'assistant', 
-          content: 'I\'ve updated the footer based on your request. Check the preview to see the changes.' 
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        console.error('No refined HTML in response:', data);
-        const errorMessage: ChatMessage = { 
-          role: 'assistant', 
-          content: 'Sorry, I couldn\'t generate the updated HTML. Please try again.' 
-        };
-        setMessages(prev => [...prev, errorMessage]);
-      }
-    } catch (error) {
-      console.error('Refinement error:', error);
-      toast.error('Failed to refine footer');
-      
-      const errorMessage: ChatMessage = { 
-        role: 'assistant', 
-        content: 'Sorry, I encountered an error. Please try again.' 
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsRefining(false);
-    }
-  };
-
-  const handleSaveFooter = async () => {
-    if (!generatedHtml) return;
-    
-    setIsSaving(true);
-    try {
-      // Save to brand_footers table
-      const { error } = await supabase
-        .from('brand_footers')
-        .insert({
-          brand_id: brand.id,
-          name: footerName,
-          html: generatedHtml,
-          logo_url: lightLogoUrl || null,
-          is_primary: true,
-        });
-
-      if (error) throw error;
-
-      // Update brand.footer_configured
-      await supabase
-        .from('brands')
-        .update({ footer_configured: true })
-        .eq('id', brand.id);
-
-      toast.success('Footer saved successfully!');
-      onFooterSaved();
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Save error:', error);
-      toast.error('Failed to save footer');
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -585,9 +461,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
                 <div>
                   <h3 className="font-medium">Ready to generate</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {referenceImageUrl 
-                      ? 'AI will analyze your reference image and auto-refine to match it.'
-                      : 'Click below to generate your footer HTML. You can refine it in the next step.'}
+                    Click below to generate your footer HTML. You'll be able to refine it in the studio.
                   </p>
                 </div>
                 <Button onClick={handleGenerateFooter} size="lg">
@@ -598,63 +472,15 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
             )}
           </div>
         );
-
-      case 'refine':
-        return (
-          <div className="space-y-4">
-            {/* Footer name input */}
-            <div className="flex items-center gap-3">
-              <Label className="text-sm flex-shrink-0">Footer Name</Label>
-              <Input
-                value={footerName}
-                onChange={(e) => setFooterName(e.target.value)}
-                placeholder="Standard Footer"
-                className="flex-1"
-              />
-            </div>
-
-            {/* Preview */}
-            <div className="border rounded-lg overflow-hidden bg-neutral-900">
-              <div className="text-xs text-muted-foreground px-3 py-1.5 border-b bg-muted/30">
-                Live Preview (600px email width)
-              </div>
-              <div className="flex justify-center py-4 bg-neutral-950">
-                {generatedHtml && (
-                  <div style={{ width: '600px' }}>
-                    <HtmlPreviewFrame 
-                      html={generatedHtml} 
-                      className="w-full"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Chat refinement */}
-            <div className="border rounded-lg">
-              <div className="text-xs text-muted-foreground px-3 py-1.5 border-b bg-muted/30 flex items-center gap-2">
-                <RefreshCw className="w-3 h-3" />
-                Refine with AI
-              </div>
-              <RefinementChat
-                messages={messages}
-                onSendMessage={handleRefine}
-                isLoading={isRefining}
-                className="max-h-48"
-              />
-            </div>
-          </div>
-        );
     }
   };
 
   const canProceed = () => {
     switch (step) {
-      case 'reference': return true; // Optional
-      case 'logos': return !!lightLogoUrl || !!darkLogoUrl; // At least one logo required
+      case 'reference': return true;
+      case 'logos': return !!lightLogoUrl || !!darkLogoUrl;
       case 'social': return true;
       case 'generate': return false;
-      case 'refine': return !!generatedHtml;
     }
   };
 
@@ -664,7 +490,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
       case 'logos': return 'social';
       case 'social': return 'generate';
       case 'generate': return null;
-      case 'refine': return null;
     }
   };
 
@@ -674,7 +499,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
       case 'logos': return 'reference';
       case 'social': return 'logos';
       case 'generate': return 'social';
-      case 'refine': return 'social';
     }
   };
 
@@ -683,15 +507,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
     logos: 'Logos',
     social: 'Social Links',
     generate: 'Generate',
-    refine: 'Refine & Save',
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn(
-        "max-h-[90vh] overflow-hidden flex flex-col",
-        step === 'refine' ? "sm:max-w-3xl" : "sm:max-w-lg"
-      )}>
+      <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Set Up Footer for {brand.name}</DialogTitle>
           <DialogDescription>
@@ -701,16 +521,16 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-1 py-2">
-          {(['reference', 'logos', 'social', 'generate', 'refine'] as Step[]).map((s, i) => (
+          {(['reference', 'logos', 'social', 'generate'] as Step[]).map((s, i) => (
             <div key={s} className="flex items-center">
               <div 
                 className={`w-2 h-2 rounded-full transition-colors ${
                   s === step ? 'bg-primary' : 
-                  (['reference', 'logos', 'social', 'generate', 'refine'].indexOf(s) < ['reference', 'logos', 'social', 'generate', 'refine'].indexOf(step)) 
+                  (['reference', 'logos', 'social', 'generate'].indexOf(s) < ['reference', 'logos', 'social', 'generate'].indexOf(step)) 
                     ? 'bg-primary/40' : 'bg-muted'
                 }`}
               />
-              {i < 4 && <div className="w-6 h-px bg-border mx-1" />}
+              {i < 3 && <div className="w-6 h-px bg-border mx-1" />}
             </div>
           ))}
         </div>
@@ -737,16 +557,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
             Back
           </Button>
 
-          {step === 'refine' ? (
-            <Button onClick={handleSaveFooter} disabled={isSaving || !generatedHtml}>
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
-              Save Footer
-            </Button>
-          ) : step === 'generate' ? (
+          {step === 'generate' ? (
             <Button onClick={handleGenerateFooter} disabled={isGenerating}>
               {isGenerating ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
