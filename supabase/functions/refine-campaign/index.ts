@@ -27,6 +27,7 @@ serve(async (req) => {
   try {
     const { 
       allSlices, 
+      footerHtml,
       originalCampaignImageUrl, 
       conversationHistory, 
       userRequest, 
@@ -55,6 +56,7 @@ serve(async (req) => {
     console.log('Refine campaign request:', { 
       sliceCount: allSlices?.length, 
       mode,
+      hasFooter: !!footerHtml,
       hasHistory: conversationHistory?.length > 0,
       userRequest: userRequest?.substring(0, 100),
       originalImageUrl: originalCampaignImageUrl?.substring(0, 80),
@@ -73,6 +75,7 @@ CAMPAIGN CONTEXT:
 - Total slices: ${allSlices?.length || 0}
 - HTML slices: ${htmlSlices.length}
 - Image slices: ${imageSlices.length}
+- Has footer: ${footerHtml ? 'Yes' : 'No'}
 
 CURRENT SLICES:
 ${(allSlices as SliceData[]).map((s, i) => `
@@ -82,26 +85,39 @@ ${s.type === 'html' ? `- HTML Content:\n\`\`\`html\n${s.htmlContent}\n\`\`\`` : 
 ${s.link ? `- Link: ${s.link}` : ''}
 `).join('\n')}
 
+${footerHtml ? `CURRENT FOOTER HTML:
+\`\`\`html
+${footerHtml}
+\`\`\`
+` : ''}
+
 YOUR TASK:
-When the user requests changes to HTML slices, provide the updated HTML.
+When the user requests changes to HTML slices OR the footer, provide the updated HTML.
 Maintain email-safe HTML: use tables, inline CSS, no flex/grid.
 Keep the existing structure and only modify what's requested.
 
+FOOTER MODIFICATION EXAMPLES:
+- "change footer background to blue" → Update background-color in footer HTML
+- "make footer text larger" → Update font-size in footer styles
+- "remove social icons from footer" → Remove the social icons section
+
 RESPONSE FORMAT:
 1. Briefly describe what you changed
-2. If you modified HTML, include the full updated HTML for each slice you changed
+2. If you modified HTML slices, include the full updated HTML for each slice you changed
+3. If you modified the footer, include the full updated footer HTML
 
 Return your response in this JSON format:
 {
   "message": "Brief description of changes made",
   "updatedSlices": [
-    { "index": 0, "htmlContent": "..." },
-    { "index": 2, "htmlContent": "..." }
-  ]
+    { "index": 0, "htmlContent": "..." }
+  ],
+  "updatedFooterHtml": "..." // Only include if footer was modified
 }
 
 Only include slices in updatedSlices that you actually modified.
-If no HTML changes are needed, return empty updatedSlices array.`;
+Only include updatedFooterHtml if you actually modified the footer.
+If no changes are needed, return empty arrays/null.`;
 
     // Build messages array with conversation history
     const messages = [];
@@ -176,7 +192,7 @@ If no HTML changes are needed, return empty updatedSlices array.`;
     console.log('Claude response length:', responseText.length);
 
     // Try to parse JSON response
-    let result = { message: responseText, updatedSlices: [] };
+    let result = { message: responseText, updatedSlices: [], updatedFooterHtml: null as string | null };
     
     // Look for JSON in the response
     const jsonMatch = responseText.match(/\{[\s\S]*"message"[\s\S]*\}/);
@@ -185,7 +201,8 @@ If no HTML changes are needed, return empty updatedSlices array.`;
         result = JSON.parse(jsonMatch[0]);
         console.log('Parsed JSON result:', { 
           message: result.message?.substring(0, 100),
-          updatedSlicesCount: result.updatedSlices?.length 
+          updatedSlicesCount: result.updatedSlices?.length,
+          hasFooterUpdate: !!result.updatedFooterHtml
         });
       } catch (parseErr) {
         console.warn('Failed to parse JSON from response, using raw text');

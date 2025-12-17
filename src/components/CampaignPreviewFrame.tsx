@@ -3,11 +3,12 @@ import type { ProcessedSlice } from '@/types/slice';
 
 interface CampaignPreviewFrameProps {
   slices: ProcessedSlice[];
+  footerHtml?: string;
   className?: string;
   width?: number;
 }
 
-export function CampaignPreviewFrame({ slices, className, width = 600 }: CampaignPreviewFrameProps) {
+export function CampaignPreviewFrame({ slices, footerHtml, className, width = 600 }: CampaignPreviewFrameProps) {
   // Build the full campaign HTML from all slices
   const campaignHtml = useMemo(() => {
     const sliceHtml = slices.map((slice, index) => {
@@ -25,6 +26,12 @@ export function CampaignPreviewFrame({ slices, className, width = 600 }: Campaig
         return `<tr><td align="center" style="padding: 0;">${content}</td></tr>`;
       }
     }).join('\n');
+
+    // Append footer if provided
+    const footerSection = footerHtml ? `
+      <!-- Footer -->
+      ${footerHtml}
+    ` : '';
 
     return `
 <!DOCTYPE html>
@@ -58,11 +65,12 @@ export function CampaignPreviewFrame({ slices, className, width = 600 }: Campaig
   <div class="email-wrapper">
     <table class="email-container" border="0" cellpadding="0" cellspacing="0" width="${width}" style="width: ${width}px; max-width: ${width}px; margin: 0 auto;">
       ${sliceHtml}
+      ${footerSection}
     </table>
   </div>
 </body>
 </html>`;
-  }, [slices, width]);
+  }, [slices, footerHtml, width]);
 
   // Calculate approximate height based on content
   // Use a large height to ensure full content is visible

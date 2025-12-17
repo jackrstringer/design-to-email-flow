@@ -21,6 +21,8 @@ interface CampaignStudioProps {
   originalImageUrl: string;
   brandUrl: string;
   brandLinks?: string[];
+  footerHtml?: string;
+  onFooterChange?: (html: string) => void;
   onBack: () => void;
   onCreateTemplate: () => void;
   onCreateCampaign: () => void;
@@ -42,6 +44,8 @@ export function CampaignStudio({
   originalImageUrl,
   brandUrl,
   brandLinks = [],
+  footerHtml,
+  onFooterChange,
   onBack,
   onCreateTemplate,
   onCreateCampaign,
@@ -138,6 +142,7 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
+          footerHtml,
           originalCampaignImageUrl: originalImageUrl,
           conversationHistory: newMessages,
           userRequest: message,
@@ -150,6 +155,12 @@ export function CampaignStudio({
       if (data?.error) throw new Error(data.error);
 
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
+
+      // Handle footer updates
+      if (data.updatedFooterHtml && onFooterChange) {
+        onFooterChange(data.updatedFooterHtml);
+        toast.success('Footer updated');
+      }
 
       if (data.updatedSlices && data.updatedSlices.length > 0) {
         const updatedSlices = slices.map((slice, i) => {
@@ -500,6 +511,26 @@ export function CampaignStudio({
                   </div>
                 </div>
               ))}
+              
+              {/* Footer preview */}
+              {footerHtml && (
+                <div className="border-t-2 border-dashed border-primary/40 mt-2">
+                  <div className="flex items-stretch">
+                    <div className="min-w-[320px] w-96 flex-shrink-0 p-4">
+                      <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
+                      <p className="text-[11px] text-muted-foreground/60 mt-1">Modify via chat: "change footer background to..."</p>
+                    </div>
+                    <div className="flex-shrink-0" style={{ width: scaledWidth }}>
+                      <iframe
+                        srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${footerHtml}</table></body></html>`}
+                        title="Footer Preview"
+                        style={{ border: 'none', width: scaledWidth, minHeight: '200px' }}
+                        sandbox="allow-same-origin"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               </div>
             </div>
           </div>
@@ -519,7 +550,7 @@ export function CampaignStudio({
                       width: BASE_WIDTH,
                     }}
                   >
-                    <CampaignPreviewFrame slices={slices} width={BASE_WIDTH} />
+                    <CampaignPreviewFrame slices={slices} footerHtml={footerHtml} width={BASE_WIDTH} />
                   </div>
                 </div>
               </div>
