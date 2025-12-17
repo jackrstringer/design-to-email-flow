@@ -469,8 +469,8 @@ Return ALL HTML sections that need updates, not just one.`;
                       ) : (
                         <Users className="w-3.5 h-3.5" />
                       )}
-                      <span className="max-w-[100px] truncate">
-                        {selectedListName || 'Select list'}
+                      <span>
+                        {selectedListName || 'Select segment'}
                       </span>
                     </button>
                   </PopoverTrigger>
