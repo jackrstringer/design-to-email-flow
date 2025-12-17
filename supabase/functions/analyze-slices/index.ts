@@ -50,7 +50,7 @@ For each slice, provide:
 1. ALT TEXT: Write the actual campaign copy/text visible in the slice, condensed and spoken as if to someone who cannot see it. 
    - For CTAs/buttons: Add "Click to" prefix (e.g., "Click to Schedule Consultation" not just "Schedule Consultation")
    - For hero text: Include the headline copy (e.g., "It's time to get Enhanced")
-   - For logos: Just the brand name (e.g., "Enhanced")
+   - For logos: ONLY the brand name - never say "logo" (e.g., "Enhanced" not "Enhanced logo")
    - Max 100 chars
 
 2. IS CLICKABLE: true if the slice contains a CTA button, product image, or clickable banner
