@@ -271,8 +271,19 @@ export function CampaignCreator({
           detectionImages = [dataUrl];
         }
 
+        // Pass existing brands for AI-based matching
+        const existingBrandsForMatching = brands.map(b => ({
+          id: b.id,
+          name: b.name,
+          domain: b.domain,
+          primaryColor: b.primaryColor
+        }));
+
         const { data: brandData, error: brandError } = await supabase.functions.invoke('detect-brand-from-image', {
-          body: { imageDataUrls: detectionImages }
+          body: { 
+            imageDataUrls: detectionImages,
+            existingBrands: existingBrandsForMatching
+          }
         });
 
         setIsProcessing(false);
@@ -283,33 +294,25 @@ export function CampaignCreator({
           return;
         }
 
-        const detectedBrand: DetectedBrand = {
-          name: brandData?.name || null,
-          url: brandData?.url || null,
-        };
-
-        // Check if detected brand matches an existing one
-        if (detectedBrand.url) {
-          let detectedDomain: string;
-          try {
-            detectedDomain = new URL(detectedBrand.url).hostname.replace('www.', '');
-          } catch {
-            detectedDomain = detectedBrand.url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
-          }
-
-          const matchingBrand = brands.find(b =>
-            b.domain.toLowerCase() === detectedDomain.toLowerCase()
-          );
-
-          if (matchingBrand) {
-            onBrandSelect(matchingBrand.id);
+        // Check if AI matched an existing brand
+        if (brandData?.matchedBrandId) {
+          const matchedBrand = brands.find(b => b.id === brandData.matchedBrandId);
+          if (matchedBrand) {
+            console.log('AI matched existing brand:', matchedBrand.name);
+            onBrandSelect(matchedBrand.id);
             setUploadedImageDataUrl(dataUrl);
             setViewState('slice-editor');
             return;
           }
         }
 
-        // New brand - show confirmation modal
+        // New brand detected
+        const detectedBrand: DetectedBrand = {
+          name: brandData?.name || null,
+          url: brandData?.url || null,
+        };
+
+        // Show confirmation modal for new brand
         if (detectedBrand.url || detectedBrand.name) {
           onBrandDetected(detectedBrand, { file, dataUrl });
         } else {
