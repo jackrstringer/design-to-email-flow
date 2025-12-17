@@ -27,7 +27,7 @@ import { FooterBuilderModal } from '@/components/FooterBuilderModal';
 
 interface BrandSettingsProps {
   brand: Brand;
-  onBack: () => void;
+  onBack?: () => void;
   onBrandChange: () => void;
 }
 
@@ -467,13 +467,10 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   ].filter(Boolean) as { label: string; value: string }[];
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       {/* Header */}
-      <div className="flex items-center justify-between py-6 border-b border-border/30">
+      <div className="flex items-center justify-between pb-6 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
           <div 
             className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold"
             style={{ backgroundColor: brand.primaryColor }}
