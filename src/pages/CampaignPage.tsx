@@ -260,9 +260,15 @@ export default function CampaignPage() {
 
       if (error) throw error;
 
-      setCampaignId(data.campaignId);
       setTemplateId(data.templateId);
-      toast.success('Campaign created successfully!');
+      
+      if (data.campaignId) {
+        setCampaignId(data.campaignId);
+        toast.success('Campaign created successfully!');
+      } else if (data.templateId) {
+        // Campaign creation failed but template was created
+        toast.warning(data.error || 'Campaign creation failed - template created instead');
+      }
     } catch (error) {
       console.error('Error creating campaign:', error);
       toast.error('Failed to create campaign');
