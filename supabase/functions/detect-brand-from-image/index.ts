@@ -41,20 +41,19 @@ serve(async (req) => {
 
     const prompt = `You will be given 1-2 cropped views of the same email campaign (usually header + footer).
 
-TASK: Identify the brand name and the brand's website URL from the email.
+TASK: Identify the brand name and find their official website URL.
 
-Look for:
+Step 1 - Look in the image for:
 - Logo in the header
 - Brand name in header or footer
 - Website URLs anywhere in the email
 - Copyright notice in the footer (e.g., "© 2024 BrandName")
 - Any domain references
 
+Step 2 - If you found a brand name but NO URL in the image, use web search to find their official website homepage.
+
 Return ONLY valid JSON (no markdown, no explanation):
 {"name": "Brand Name", "url": "https://brandwebsite.com"}
-
-If you can identify the brand name but NOT the URL, return the name and set url to null:
-{"name": "Brand Name", "url": null}
 
 If you cannot identify the brand at all, return:
 {"name": null, "url": null}`;
@@ -87,7 +86,12 @@ If you cannot identify the brand at all, return:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 256,
+        max_tokens: 1024,
+        tools: [{
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 3
+        }],
         messages: [{
           role: 'user',
           content: contentParts,
@@ -113,9 +117,22 @@ If you cannot identify the brand at all, return:
     }
 
     const data = await response.json();
-    const content = data.content?.[0]?.text || '';
     
-    console.log('Claude response:', content);
+    console.log('Claude response:', JSON.stringify(data, null, 2));
+
+    // Extract text content from the response (may include tool_use blocks)
+    let content = '';
+    if (Array.isArray(data.content)) {
+      for (const block of data.content) {
+        if (block.type === 'text') {
+          content += block.text;
+        }
+      }
+    } else {
+      content = data.content?.[0]?.text || '';
+    }
+
+    console.log('Extracted text content:', content);
 
     // Parse the JSON response
     let brandInfo: { name: string | null; url: string | null } = { name: null, url: null };
@@ -130,75 +147,16 @@ If you cannot identify the brand at all, return:
       if (urlMatch) {
         brandInfo.url = urlMatch[0].replace(/[",}].*$/, '');
       }
+      // Try to extract name
+      const nameMatch = content.match(/"name"\s*:\s*"([^"]+)"/);
+      if (nameMatch) {
+        brandInfo.name = nameMatch[1];
+      }
     }
 
     // Normalize URL if present
     if (brandInfo.url && !brandInfo.url.startsWith('http://') && !brandInfo.url.startsWith('https://')) {
       brandInfo.url = `https://${brandInfo.url}`;
-    }
-
-    // If we have a brand name but no URL, search the web for the official homepage
-    if (!brandInfo.url && brandInfo.name) {
-      const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
-      if (!FIRECRAWL_API_KEY) {
-        console.warn('FIRECRAWL_API_KEY not configured; cannot search for brand URL');
-      } else {
-        const query = `${brandInfo.name} official website`;
-        console.log('Searching for brand URL via Firecrawl:', query);
-
-        try {
-          const searchResp = await fetch('https://api.firecrawl.dev/v1/search', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ query, limit: 8 }),
-          });
-
-          const searchJson = await searchResp.json();
-
-          const candidates: any[] = Array.isArray(searchJson?.data)
-            ? searchJson.data
-            : (Array.isArray(searchJson?.data?.web) ? searchJson.data.web : []);
-
-          const blockedHosts = new Set([
-            'facebook.com',
-            'instagram.com',
-            'twitter.com',
-            'x.com',
-            'tiktok.com',
-            'linkedin.com',
-            'youtube.com',
-            'pinterest.com',
-            'mail.google.com',
-            'klaviyo.com',
-            'linktr.ee',
-          ]);
-
-          const pick = candidates.find((r) => {
-            const u = r?.url;
-            if (!u || typeof u !== 'string') return false;
-            try {
-              const host = new URL(u).hostname.replace(/^www\./, '');
-              return !blockedHosts.has(host);
-            } catch {
-              return false;
-            }
-          });
-
-          if (pick?.url) {
-            try {
-              brandInfo.url = new URL(pick.url).origin;
-              console.log('Found brand homepage:', brandInfo.url);
-            } catch {
-              // ignore
-            }
-          }
-        } catch (searchErr) {
-          console.error('Firecrawl search failed:', searchErr);
-        }
-      }
     }
 
     console.log('Detected brand:', brandInfo);
