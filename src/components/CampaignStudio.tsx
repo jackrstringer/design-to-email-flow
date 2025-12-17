@@ -346,8 +346,8 @@ export function CampaignStudio({
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
                 <div key={index} className="flex items-stretch border-b border-border/20 last:border-b-0">
-                  {/* Slice details - wider for readability */}
-                  <div className="w-80 flex-shrink-0 p-4 space-y-3">
+                  {/* Slice details - generous width for readability */}
+                  <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3">
                     {/* Row 1: Type toggle + Link + dimensions - all inline */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Compact icon toggle */}
