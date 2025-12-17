@@ -383,12 +383,12 @@ export function CampaignStudio({
                       }}>
                         <PopoverTrigger asChild>
                           {slice.link !== null && slice.link !== '' ? (
-                            <button className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted/60 rounded-md text-xs hover:bg-muted/80 transition-colors">
-                              <Link className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" />
-                              <span className="text-foreground/80 break-all text-left">{slice.link}</span>
+                            <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors">
+                              <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                              <span className="text-foreground break-all text-left font-medium">{slice.link}</span>
                             </button>
                           ) : (
-                            <button className="flex items-center gap-1 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors text-xs">
+                            <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">
                               <Link className="w-3.5 h-3.5" />
                               <span>Add link</span>
                             </button>
