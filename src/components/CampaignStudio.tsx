@@ -482,7 +482,7 @@ Return ALL HTML sections that need updates, not just one.`;
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1 text-xs text-green-600">
                 <CheckCircle className="w-3 h-3" />
-                Created
+                {campaignId ? 'Campaign' : 'Template'} Created
               </span>
               <Button
                 size="sm"
@@ -490,12 +490,12 @@ Return ALL HTML sections that need updates, not just one.`;
                 onClick={() => window.open(
                   campaignId 
                     ? `https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`
-                    : `https://www.klaviyo.com/email-templates`,
+                    : `https://www.klaviyo.com/email-template-editor/template/${templateId}/edit`,
                   '_blank'
                 )}
               >
                 <ExternalLink className="w-3 h-3 mr-1" />
-                Open
+                Open {campaignId ? 'Campaign' : 'Template'}
               </Button>
               {onReset && (
                 <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={onReset}>
