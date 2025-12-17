@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useMemo } from 'react';
 
 interface HtmlPreviewFrameProps {
   html: string;
@@ -6,21 +6,8 @@ interface HtmlPreviewFrameProps {
 }
 
 export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Create a simple hash of the html to use as a key for forcing re-renders
-  const htmlKey = useMemo(() => {
-    let hash = 0;
-    for (let i = 0; i < html.length; i++) {
-      const char = html.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return hash.toString();
-  }, [html]);
-
   // Wrap the HTML snippet in a full email document structure
-  const emailDocument = `
+  const emailDocument = useMemo(() => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -46,35 +33,15 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
     ${html}
   </div>
 </body>
-</html>`;
-
-  useEffect(() => {
-    if (iframeRef.current) {
-      const doc = iframeRef.current.contentDocument;
-      if (doc) {
-        doc.open();
-        doc.write(emailDocument);
-        doc.close();
-        
-        // Auto-resize to content height
-        setTimeout(() => {
-          if (iframeRef.current?.contentDocument?.body) {
-            const contentHeight = iframeRef.current.contentDocument.body.scrollHeight;
-            iframeRef.current.style.height = `${contentHeight}px`;
-          }
-        }, 50);
-      }
-    }
-  }, [emailDocument]);
+</html>`, [html]);
 
   return (
     <iframe
-      key={htmlKey}
-      ref={iframeRef}
+      srcDoc={emailDocument}
       title="HTML Preview"
       className={className}
       sandbox="allow-same-origin"
-      style={{ border: 'none', width: '100%', background: 'transparent' }}
+      style={{ border: 'none', width: '100%', minHeight: '400px', background: 'transparent' }}
     />
   );
 }
