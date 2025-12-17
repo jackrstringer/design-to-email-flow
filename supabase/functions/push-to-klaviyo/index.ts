@@ -34,7 +34,8 @@ serve(async (req) => {
     console.log(`Creating Klaviyo template: ${templateName}`);
     console.log(`Mode: ${mode}, Footer included: ${!!footerHtml}, Slices: ${hasSlices ? slices.length : 0}`);
 
-    // Dark mode CSS for footer
+    // Dark mode CSS for footer - only override text colors, NOT background colors
+    // Background colors are controlled by inline styles to allow AI modifications
     const darkModeCss = footerHtml ? `
   <style type="text/css">
     :root {
@@ -42,7 +43,6 @@ serve(async (req) => {
       supported-color-schemes: light dark;
     }
     @media (prefers-color-scheme: dark) {
-      .darkmode { background-color: #111111 !important; }
       .darkmode-text { color: #ffffff !important; }
     }
   </style>` : '';
