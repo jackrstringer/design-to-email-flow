@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { Brand, BrandFooter, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
 import { ChevronRight } from 'lucide-react';
+import { FooterBuilderModal } from '@/components/FooterBuilderModal';
 
 interface BrandSettingsProps {
   brand: Brand;
@@ -57,6 +58,10 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [ruleName, setRuleName] = useState('');
   const [ruleDescription, setRuleDescription] = useState('');
   const [ruleCode, setRuleCode] = useState('');
+
+  // Footer method selection state
+  const [addFooterMethodOpen, setAddFooterMethodOpen] = useState(false);
+  const [footerBuilderOpen, setFooterBuilderOpen] = useState(false);
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -842,7 +847,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             
             {/* Add footer button as a card */}
             <button 
-              onClick={() => openFooterEditor()}
+              onClick={() => setAddFooterMethodOpen(true)}
               className="h-[200px] rounded-lg border border-dashed border-border/50 flex items-center justify-center text-muted-foreground hover:bg-muted/20 hover:border-border transition-colors"
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -1009,6 +1014,65 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Footer Method Selection Dialog */}
+      <Dialog open={addFooterMethodOpen} onOpenChange={setAddFooterMethodOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Footer</DialogTitle>
+            <DialogDescription>
+              Choose how you want to create your footer
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <button
+              onClick={() => {
+                setAddFooterMethodOpen(false);
+                setFooterBuilderOpen(true);
+              }}
+              className="flex flex-col items-center gap-3 p-6 rounded-lg border border-border/50 hover:border-primary/50 hover:bg-muted/30 transition-colors"
+            >
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <Image className="h-5 w-5 text-primary" />
+              </div>
+              <div className="text-center">
+                <h3 className="font-medium text-sm">Create from Image</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Upload a reference image and we'll generate the HTML
+                </p>
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                setAddFooterMethodOpen(false);
+                openFooterEditor();
+              }}
+              className="flex flex-col items-center gap-3 p-6 rounded-lg border border-border/50 hover:border-primary/50 hover:bg-muted/30 transition-colors"
+            >
+              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                <Code className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="text-center">
+                <h3 className="font-medium text-sm">Upload HTML</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Paste your own footer HTML code directly
+                </p>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Footer Builder Modal */}
+      <FooterBuilderModal
+        open={footerBuilderOpen}
+        onOpenChange={setFooterBuilderOpen}
+        brand={brand}
+        onFooterSaved={() => {
+          fetchFooters();
+          onBrandChange();
+        }}
+      />
 
       {/* Formatting Rules Dialog */}
       <Dialog open={rulesEditorOpen} onOpenChange={setRulesEditorOpen}>
