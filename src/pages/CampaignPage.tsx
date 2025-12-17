@@ -172,7 +172,7 @@ export default function CampaignPage() {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           slices,
-          apiKey: brand.klaviyoApiKey,
+          klaviyoApiKey: brand.klaviyoApiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
           footerHtml: brand.footerHtml,
         }
@@ -201,7 +201,7 @@ export default function CampaignPage() {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           slices,
-          apiKey: brand.klaviyoApiKey,
+          klaviyoApiKey: brand.klaviyoApiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
           footerHtml: brand.footerHtml,
           createCampaign: true,
