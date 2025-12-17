@@ -53,7 +53,10 @@ Look for:
 Return ONLY valid JSON (no markdown, no explanation):
 {"name": "Brand Name", "url": "https://brandwebsite.com"}
 
-If you cannot identify the brand, return:
+If you can identify the brand name but NOT the URL, return the name and set url to null:
+{"name": "Brand Name", "url": null}
+
+If you cannot identify the brand at all, return:
 {"name": null, "url": null}`;
 
     const contentParts: any[] = cleanedImageDataUrls.map((imageDataUrl) => {
@@ -115,7 +118,7 @@ If you cannot identify the brand, return:
     console.log('Claude response:', content);
 
     // Parse the JSON response
-    let brandInfo = { name: null, url: null };
+    let brandInfo: { name: string | null; url: string | null } = { name: null, url: null };
     try {
       // Clean up potential markdown formatting
       const cleanedContent = content.replace(/```json\n?|\n?```/g, '').trim();
@@ -126,6 +129,75 @@ If you cannot identify the brand, return:
       const urlMatch = content.match(/https?:\/\/[^\s"'<>]+/);
       if (urlMatch) {
         brandInfo.url = urlMatch[0].replace(/[",}].*$/, '');
+      }
+    }
+
+    // Normalize URL if present
+    if (brandInfo.url && !brandInfo.url.startsWith('http://') && !brandInfo.url.startsWith('https://')) {
+      brandInfo.url = `https://${brandInfo.url}`;
+    }
+
+    // If we have a brand name but no URL, search the web for the official homepage
+    if (!brandInfo.url && brandInfo.name) {
+      const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+      if (!FIRECRAWL_API_KEY) {
+        console.warn('FIRECRAWL_API_KEY not configured; cannot search for brand URL');
+      } else {
+        const query = `${brandInfo.name} official website`;
+        console.log('Searching for brand URL via Firecrawl:', query);
+
+        try {
+          const searchResp = await fetch('https://api.firecrawl.dev/v1/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query, limit: 8 }),
+          });
+
+          const searchJson = await searchResp.json();
+
+          const candidates: any[] = Array.isArray(searchJson?.data)
+            ? searchJson.data
+            : (Array.isArray(searchJson?.data?.web) ? searchJson.data.web : []);
+
+          const blockedHosts = new Set([
+            'facebook.com',
+            'instagram.com',
+            'twitter.com',
+            'x.com',
+            'tiktok.com',
+            'linkedin.com',
+            'youtube.com',
+            'pinterest.com',
+            'mail.google.com',
+            'klaviyo.com',
+            'linktr.ee',
+          ]);
+
+          const pick = candidates.find((r) => {
+            const u = r?.url;
+            if (!u || typeof u !== 'string') return false;
+            try {
+              const host = new URL(u).hostname.replace(/^www\./, '');
+              return !blockedHosts.has(host);
+            } catch {
+              return false;
+            }
+          });
+
+          if (pick?.url) {
+            try {
+              brandInfo.url = new URL(pick.url).origin;
+              console.log('Found brand homepage:', brandInfo.url);
+            } catch {
+              // ignore
+            }
+          }
+        } catch (searchErr) {
+          console.error('Firecrawl search failed:', searchErr);
+        }
       }
     }
 
