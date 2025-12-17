@@ -32,6 +32,7 @@ export default function CampaignPage() {
   const [slices, setSlices] = useState<ProcessedSlice[]>([]);
   const [originalImageUrl, setOriginalImageUrl] = useState<string>('');
   const [brand, setBrand] = useState<Brand | null>(null);
+  const [footerHtml, setFooterHtml] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -53,6 +54,11 @@ export default function CampaignPage() {
       }));
       setSlices(processedSlices);
       setIsLoading(false);
+      
+      // Fetch primary footer for the brand
+      if (state.brand?.id) {
+        fetchPrimaryFooter(state.brand.id);
+      }
     } else if (id) {
       // Load from database if no state
       loadCampaign();
@@ -60,6 +66,23 @@ export default function CampaignPage() {
       navigate('/');
     }
   }, [id, state]);
+
+  const fetchPrimaryFooter = async (brandId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('brand_footers')
+        .select('html')
+        .eq('brand_id', brandId)
+        .eq('is_primary', true)
+        .single();
+
+      if (!error && data?.html) {
+        setFooterHtml(data.html);
+      }
+    } catch (err) {
+      console.log('No primary footer found');
+    }
+  };
 
   const loadCampaign = async () => {
     if (!id) return;
@@ -75,9 +98,11 @@ export default function CampaignPage() {
 
       setOriginalImageUrl(campaign.original_image_url || '');
       
-      // Parse brand data
+      // Parse brand data and fetch footer
       if (campaign.brands) {
-        setBrand(campaign.brands as unknown as Brand);
+        const brandData = campaign.brands as unknown as Brand;
+        setBrand(brandData);
+        fetchPrimaryFooter(brandData.id);
       }
 
       // Parse blocks from campaign
@@ -233,6 +258,8 @@ export default function CampaignPage() {
       originalImageUrl={originalImageUrl}
       brandUrl={brand?.websiteUrl || brand?.domain || ''}
       brandLinks={brandLinks}
+      footerHtml={footerHtml}
+      onFooterChange={setFooterHtml}
       onBack={handleBack}
       onCreateTemplate={handleCreateTemplate}
       onCreateCampaign={handleCreateCampaign}
