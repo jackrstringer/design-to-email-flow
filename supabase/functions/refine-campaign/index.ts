@@ -33,7 +33,8 @@ serve(async (req) => {
       userRequest, 
       brandUrl,
       brandContext,
-      mode 
+      mode,
+      isFooterMode
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -57,7 +58,9 @@ serve(async (req) => {
     console.log('Refine campaign request:', { 
       sliceCount: allSlices?.length, 
       mode,
+      isFooterMode,
       hasFooter: !!footerHtml,
+      footerHtmlLength: footerHtml?.length,
       hasHistory: conversationHistory?.length > 0,
       userRequest: userRequest?.substring(0, 100),
       originalImageUrl: originalCampaignImageUrl?.substring(0, 80),
@@ -65,8 +68,8 @@ serve(async (req) => {
     });
 
     // Build context about the campaign
-    const htmlSlices = (allSlices as SliceData[]).filter(s => s.type === 'html');
-    const imageSlices = (allSlices as SliceData[]).filter(s => s.type === 'image');
+    const htmlSlices = (allSlices as SliceData[])?.filter(s => s.type === 'html') || [];
+    const imageSlices = (allSlices as SliceData[])?.filter(s => s.type === 'image') || [];
 
     // Build system prompt with full campaign context
     const brandName = brandContext?.name || '';
@@ -83,7 +86,48 @@ serve(async (req) => {
       brandColors.link ? `- Link: ${brandColors.link}` : null,
     ].filter(Boolean).join('\n');
 
-    const systemPrompt = `You are an expert email HTML developer helping refine campaign templates.
+    // Build different system prompts based on mode
+    let systemPrompt: string;
+    
+    if (isFooterMode) {
+      // Footer-only mode - focus entirely on footer HTML
+      systemPrompt = `You are an expert email HTML developer helping refine footer templates.
+
+BRAND STYLE GUIDE:
+${brandName || brandDomain || brandWebsiteUrl ? `- Name: ${brandName || 'Not specified'}\n- Domain: ${brandDomain || 'Not specified'}\n- Website: ${brandWebsiteUrl || 'Not specified'}` : '- Not provided'}
+
+COLOR PALETTE (use EXACT values):
+${paletteLines || '- Not provided'}
+
+CURRENT FOOTER HTML:
+\`\`\`html
+${footerHtml || 'No footer HTML provided'}
+\`\`\`
+
+YOUR TASK:
+You are refining a footer to match the reference image. Compare the current footer HTML to the reference image and make changes to match the visual design.
+
+Focus on:
+- Background colors and gradients
+- Typography (fonts, sizes, weights, colors)
+- Spacing and padding
+- Layout and alignment
+- Social icons positioning
+- Overall visual fidelity to the reference
+
+Maintain email-safe HTML: use tables, inline CSS, no flex/grid.
+
+RESPONSE FORMAT:
+{
+  "message": "Brief description of changes made",
+  "updatedSlices": [],
+  "updatedFooterHtml": "...the complete updated footer HTML..."
+}
+
+CRITICAL: Always return the FULL updated footer HTML in updatedFooterHtml, not just the changed parts.`;
+    } else {
+      // Campaign mode - original system prompt
+      systemPrompt = `You are an expert email HTML developer helping refine campaign templates.
 
 CAMPAIGN CONTEXT:
 - Brand URL: ${brandUrl || 'Not specified'}
@@ -99,16 +143,16 @@ COLOR PALETTE (use EXACT values; do NOT invent new shades):
 ${paletteLines || '- Not provided'}
 
 COLOR RULES:
-- If the user asks to “match the brand blue”, “same blue”, or “match the CTA blue”, you MUST use the Primary color exactly (if provided).
+- If the user asks to "match the brand blue", "same blue", or "match the CTA blue", you MUST use the Primary color exactly (if provided).
 - If Primary is not provided, keep the existing blue already present in the HTML you are editing; do not guess.
 
 CURRENT SLICES:
-${(allSlices as SliceData[]).map((s, i) => `
+${(allSlices as SliceData[])?.map((s, i) => `
 Slice ${i + 1} (${s.type}):
 - Image URL: ${s.imageUrl}
 ${s.type === 'html' ? `- HTML Content:\n\`\`\`html\n${s.htmlContent}\n\`\`\`` : `- Alt text: ${s.altText || 'Not set'}`}
 ${s.link ? `- Link: ${s.link}` : ''}
-`).join('\n')}
+`).join('\n') || 'No slices'}
 
 ${footerHtml ? `CURRENT FOOTER HTML:\n\`\`\`html\n${footerHtml}\n\`\`\`\n` : ''}
 
@@ -123,10 +167,6 @@ FOOTER MODIFICATION EXAMPLES:
 - "remove social icons from footer" → Remove the social icons section
 
 RESPONSE FORMAT:
-1. Briefly describe what you changed
-2. If you modified HTML slices, include the full updated HTML for each slice you changed
-3. If you modified the footer, include the full updated footer HTML
-
 Return your response in this JSON format:
 {
   "message": "Brief description of changes made",
@@ -139,6 +179,7 @@ Return your response in this JSON format:
 Only include slices in updatedSlices that you actually modified.
 Only include updatedFooterHtml if you actually modified the footer.
 If no changes are needed, return empty arrays/null.`;
+    }
 
     // Build messages array with conversation history
     const messages = [];
@@ -158,13 +199,17 @@ If no changes are needed, return empty arrays/null.`;
           },
           {
             type: 'text',
-            text: 'This is the original campaign design that the HTML should match.'
+            text: isFooterMode 
+              ? 'This is the reference footer design that the HTML should match.'
+              : 'This is the original campaign design that the HTML should match.'
           }
         ]
       });
       messages.push({
         role: 'assistant',
-        content: 'I can see the original campaign design. I\'ll use this as reference to ensure the HTML matches the visual styling, colors, spacing, and typography.'
+        content: isFooterMode
+          ? 'I can see the reference footer design. I\'ll use this to ensure the footer HTML matches the visual styling, colors, spacing, and typography.'
+          : 'I can see the original campaign design. I\'ll use this as reference to ensure the HTML matches the visual styling, colors, spacing, and typography.'
       });
     } else {
       console.warn('No valid image URL provided, skipping image context');
@@ -185,7 +230,7 @@ If no changes are needed, return empty arrays/null.`;
       content: userRequest
     });
 
-    console.log('Sending to Claude with', messages.length, 'messages');
+    console.log('Sending to Claude with', messages.length, 'messages, isFooterMode:', isFooterMode);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -223,7 +268,8 @@ If no changes are needed, return empty arrays/null.`;
         console.log('Parsed JSON result:', { 
           message: result.message?.substring(0, 100),
           updatedSlicesCount: result.updatedSlices?.length,
-          hasFooterUpdate: !!result.updatedFooterHtml
+          hasFooterUpdate: !!result.updatedFooterHtml,
+          footerUpdateLength: result.updatedFooterHtml?.length
         });
       } catch (parseErr) {
         console.warn('Failed to parse JSON from response, using raw text');
