@@ -520,11 +520,24 @@ export function CampaignStudio({
                       <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
                       <p className="text-[11px] text-muted-foreground/60 mt-1">Modify via chat: "change footer background to..."</p>
                     </div>
-                    <div className="flex-shrink-0" style={{ width: scaledWidth }}>
+                    <div 
+                      className="flex-shrink-0 origin-top-left" 
+                      style={{ 
+                        width: scaledWidth,
+                        height: 'auto',
+                        overflow: 'hidden'
+                      }}
+                    >
                       <iframe
                         srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${footerHtml}</table></body></html>`}
                         title="Footer Preview"
-                        style={{ border: 'none', width: scaledWidth, minHeight: '200px' }}
+                        style={{ 
+                          border: 'none', 
+                          width: BASE_WIDTH, 
+                          minHeight: '400px',
+                          transform: `scale(${zoomLevel / 100})`,
+                          transformOrigin: 'top left'
+                        }}
                         sandbox="allow-same-origin"
                       />
                     </div>
