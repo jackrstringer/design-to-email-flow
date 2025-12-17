@@ -443,10 +443,6 @@ export function CampaignStudio({
                         </button>
                       )}
 
-                      {/* Dimensions */}
-                      <span className="text-[10px] text-muted-foreground/40 ml-auto">
-                        {sliceDimensions[index] ? `${BASE_WIDTH}×${Math.round(sliceDimensions[index].height)}` : ''}
-                      </span>
                     </div>
 
                     {/* Row 2: Alt text (smaller) */}
