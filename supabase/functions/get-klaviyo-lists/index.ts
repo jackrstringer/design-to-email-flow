@@ -22,10 +22,10 @@ serve(async (req) => {
       );
     }
 
-    console.log('Fetching Klaviyo lists...');
+    console.log('Fetching Klaviyo segments...');
 
-    // Fetch lists from Klaviyo API
-    const response = await fetch('https://a.klaviyo.com/api/lists', {
+    // Fetch segments from Klaviyo API (not lists)
+    const response = await fetch('https://a.klaviyo.com/api/segments', {
       method: 'GET',
       headers: {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
@@ -46,12 +46,12 @@ serve(async (req) => {
     const data = await response.json();
     
     // Transform to simplified format
-    const lists = data.data?.map((list: any) => ({
-      id: list.id,
-      name: list.attributes?.name || 'Unnamed List',
+    const lists = data.data?.map((segment: any) => ({
+      id: segment.id,
+      name: segment.attributes?.name || 'Unnamed Segment',
     })) || [];
 
-    console.log(`Found ${lists.length} lists`);
+    console.log(`Found ${lists.length} segments`);
 
     return new Response(
       JSON.stringify({ lists }),
