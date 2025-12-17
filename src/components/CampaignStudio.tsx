@@ -289,6 +289,19 @@ export function CampaignStudio({
             <Type className="w-3.5 h-3.5" />
             <span>Alt</span>
           </button>
+          <button
+            onClick={() => setIncludeFooter(!includeFooter)}
+            className={cn(
+              "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
+              includeFooter 
+                ? "text-foreground bg-muted/60" 
+                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+            )}
+            title={includeFooter ? "Footer included - click to exclude" : "Footer excluded - click to include"}
+          >
+            {includeFooter ? <CheckCircle className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+            <span>Footer</span>
+          </button>
         </div>
         
         <div className="flex items-center gap-3">
@@ -330,22 +343,7 @@ export function CampaignStudio({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              {/* Footer toggle */}
-              <button
-                onClick={() => setIncludeFooter(!includeFooter)}
-                className={cn(
-                  "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md border transition-colors",
-                  includeFooter 
-                    ? "bg-primary/10 border-primary/30 text-primary" 
-                    : "border-border/40 text-muted-foreground/60 hover:text-muted-foreground"
-                )}
-                title={includeFooter ? "Footer will be included" : "Footer will not be included"}
-              >
-                <FileText className="w-3 h-3" />
-                Footer
-              </button>
-              <div className="w-px h-4 bg-border/40" />
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"
