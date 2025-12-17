@@ -370,7 +370,7 @@ export function CampaignStudio({
               <div className="flex flex-col">
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
-                <div key={index} className="relative flex items-stretch">
+                <div key={index} className="relative flex items-center">
                   {/* Slice separator line - extends from left edge to image */}
                   {index > 0 && (
                     <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
@@ -382,27 +382,41 @@ export function CampaignStudio({
                   <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
                     {/* Row 1: Type toggle + Link + dimensions - all inline */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Compact icon toggle */}
-                      <button
-                        onClick={() => toggleSliceType(index)}
-                        disabled={convertingIndex !== null || isCreating}
-                        className={cn(
-                          "h-6 w-6 rounded flex items-center justify-center transition-colors",
-                          slice.type === 'html' 
-                            ? "bg-primary/10 text-primary" 
-                            : "bg-muted text-muted-foreground hover:bg-muted/80",
-                          (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
-                        )}
-                        title={slice.type === 'html' ? 'HTML (click for image)' : 'Image (click for HTML)'}
-                      >
-                        {convertingIndex === index ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : slice.type === 'html' ? (
-                          <Code2 className="w-3.5 h-3.5" />
-                        ) : (
+                      {/* Pill toggle - Figma style */}
+                      <div className="flex items-center bg-zinc-900 rounded-full p-0.5">
+                        <button
+                          onClick={() => slice.type === 'html' && toggleSliceType(index)}
+                          disabled={convertingIndex !== null || isCreating}
+                          className={cn(
+                            "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                            slice.type === 'image' 
+                              ? "bg-zinc-700 text-white" 
+                              : "text-zinc-500 hover:text-zinc-300",
+                            (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
+                          )}
+                          title="Image mode"
+                        >
                           <Image className="w-3.5 h-3.5" />
-                        )}
-                      </button>
+                        </button>
+                        <button
+                          onClick={() => slice.type === 'image' && toggleSliceType(index)}
+                          disabled={convertingIndex !== null || isCreating}
+                          className={cn(
+                            "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                            slice.type === 'html' 
+                              ? "bg-zinc-700 text-emerald-400" 
+                              : "text-zinc-500 hover:text-zinc-300",
+                            (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
+                          )}
+                          title="HTML mode"
+                        >
+                          {convertingIndex === index ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Code2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
 
                       {/* Link - clickable to edit, or add button */}
                       <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
