@@ -98,6 +98,7 @@ serve(async (req) => {
     // Build context about the campaign
     const htmlSlices = (allSlices as SliceData[])?.filter(s => s.type === 'html') || [];
     const imageSlices = (allSlices as SliceData[])?.filter(s => s.type === 'image') || [];
+    const htmlSliceIndices = (allSlices as SliceData[])?.map((s, i) => s.type === 'html' ? i : -1).filter(i => i !== -1) || [];
 
     // Build system prompt with full campaign context
     const brandName = brandContext?.name || '';
@@ -148,7 +149,7 @@ Refine the footer to match the reference image. Compare the current footer HTML 
 4. Match social icon size and spacing
 5. Ensure logo is <img> tag (not text)
 
-Maintain email-safe HTML: tables only, inline CSS, no flex/grid/div.
+Maintain email-safe HTML: tables only, inline CSS, no flex/grid.
 
 ## RESPONSE FORMAT
 {
@@ -159,27 +160,64 @@ Maintain email-safe HTML: tables only, inline CSS, no flex/grid/div.
 
 CRITICAL: Always return the FULL updated footer HTML in updatedFooterHtml, not just changed parts.`;
     } else {
-      // Campaign mode - original system prompt
+      // Campaign mode - updated with multi-slice context and style consistency
+      
+      // Build the campaign structure description
+      const structureDescription = (allSlices as SliceData[])?.map((s, i) => {
+        const totalSlices = (allSlices as SliceData[]).length;
+        const percentPosition = Math.round((i / totalSlices) * 100);
+        const percentEnd = Math.round(((i + 1) / totalSlices) * 100);
+        return `- Section ${i + 1}: ${s.type.toUpperCase()} (${percentPosition}%-${percentEnd}% of design)`;
+      }).join('\n') || 'No slices';
+      
       systemPrompt = `You are an expert email HTML developer helping refine campaign templates.
 
-CAMPAIGN CONTEXT:
-- Brand URL: ${brandUrl || 'Not specified'}
-- Total slices: ${allSlices?.length || 0}
-- HTML slices: ${htmlSlices.length}
-- Image slices: ${imageSlices.length}
-- Has footer: ${footerHtml ? 'Yes' : 'No'}
+## CAMPAIGN STRUCTURE
+This email campaign consists of ${(allSlices as SliceData[])?.length || 0} vertical sections stacked together:
+${structureDescription}
+${footerHtml ? '- FOOTER: HTML footer at the bottom' : ''}
 
-BRAND STYLE GUIDE (AUTHORITATIVE):
+The sections are stacked VERTICALLY to form the complete email. The original design image shows ALL sections together.
+
+## HTML SLICES IN THIS CAMPAIGN
+${htmlSlices.length > 0 ? `There are ${htmlSlices.length} HTML section(s) at position(s): ${htmlSliceIndices.map(i => `Section ${i + 1}`).join(', ')}` : 'No HTML slices'}
+
+## CRITICAL: STYLE CONSISTENCY ACROSS ALL HTML SECTIONS
+${htmlSlices.length > 1 ? `
+**IMPORTANT**: This campaign has MULTIPLE HTML sections (${htmlSlices.length} total). They MUST be styled consistently:
+
+1. **IDENTICAL TYPOGRAPHY** across all HTML sections:
+   - Same font-family (use web-safe stack)
+   - Same font-sizes for equivalent elements (body text, headings, etc.)
+   - Same line-heights and letter-spacing
+
+2. **IDENTICAL COLOR PALETTE**:
+   - Button colors must match exactly between sections
+   - Text colors must be consistent
+   - Background colors should follow the same scheme
+
+3. **IDENTICAL COMPONENT STYLING**:
+   - Buttons must have the same width, padding, border-radius, colors
+   - Links styled identically
+   - Spacing patterns (padding, gaps) should be consistent
+
+4. **HOLISTIC COMPARISON**:
+   - Compare the ENTIRE rendered email (all sections stacked) to the ENTIRE original design
+   - Changes to one HTML section may require matching changes to other HTML sections
+   - Ensure visual continuity between sections
+` : ''}
+
+## BRAND STYLE GUIDE (AUTHORITATIVE)
 ${brandName || brandDomain || brandWebsiteUrl ? `- Name: ${brandName || 'Not specified'}\n- Domain: ${brandDomain || 'Not specified'}\n- Website: ${brandWebsiteUrl || 'Not specified'}` : '- Not provided'}
 
-COLOR PALETTE (use EXACT values; do NOT invent new shades):
+## COLOR PALETTE (use EXACT values; do NOT invent new shades)
 ${paletteLines || '- Not provided'}
 
 COLOR RULES:
 - If the user asks to "match the brand blue", "same blue", or "match the CTA blue", you MUST use the Primary color exactly (if provided).
 - If Primary is not provided, keep the existing blue already present in the HTML you are editing; do not guess.
 
-CURRENT SLICES:
+## CURRENT SLICES
 ${(allSlices as SliceData[])?.map((s, i) => `
 Slice ${i + 1} (${s.type}):
 - Image URL: ${s.imageUrl}
@@ -189,27 +227,28 @@ ${s.link ? `- Link: ${s.link}` : ''}
 
 ${footerHtml ? `CURRENT FOOTER HTML:\n\`\`\`html\n${footerHtml}\n\`\`\`\n` : ''}
 
-YOUR TASK:
-When the user requests changes to HTML slices OR the footer, provide the updated HTML.
+## YOUR TASK
+When the user requests changes to HTML slices OR the footer:
+1. Analyze the ENTIRE campaign as a whole (all slices stacked vertically)
+2. Compare to the original design image
+3. Make changes that maintain style consistency across ALL HTML sections
+4. Provide updated HTML for ALL sections that need changes (not just one)
+
 Maintain email-safe HTML: use tables, inline CSS, no flex/grid.
-Keep the existing structure and only modify what's requested.
 
-FOOTER MODIFICATION EXAMPLES:
-- "change footer background to blue" → Update background-color in footer HTML
-- "make footer text larger" → Update font-size in footer styles
-- "remove social icons from footer" → Remove the social icons section
-
-RESPONSE FORMAT:
+## RESPONSE FORMAT
 Return your response in this JSON format:
 {
   "message": "Brief description of changes made",
   "updatedSlices": [
-    { "index": 0, "htmlContent": "..." }
+    { "index": 0, "htmlContent": "..." },
+    { "index": 2, "htmlContent": "..." }
   ],
-  "updatedFooterHtml": "..." // Only include if footer was modified
+  "updatedFooterHtml": "...",
+  "styleConsistencyNotes": "All sections now use consistent 17px body text, #XXXX buttons..."
 }
 
-Only include slices in updatedSlices that you actually modified.
+**IMPORTANT**: Return ALL HTML slices that need updates for consistency, not just the one mentioned.
 Only include updatedFooterHtml if you actually modified the footer.
 If no changes are needed, return empty arrays/null.`;
     }
