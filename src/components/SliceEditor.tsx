@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { SliceLine } from './SliceLine';
+import { FooterCutoffHandle } from './FooterCutoffHandle';
 import { Button } from '@/components/ui/button';
 import { Scissors, RotateCcw, ChevronRight, Image, Code } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,7 @@ interface SliceEditorProps {
 
 export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }: SliceEditorProps) {
   const [slicePositions, setSlicePositions] = useState<SlicePosition[]>([]);
+  const [footerCutoff, setFooterCutoff] = useState(100); // 100 = no cutoff
   const [containerHeight, setContainerHeight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -50,6 +52,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     const clickY = e.clientY - rect.top;
     const percentage = (clickY / rect.height) * 100;
     
+    // Don't add slices below the footer cutoff
+    if (percentage >= footerCutoff) return;
+    
     // Don't add if too close to existing line (within 3%)
     const tooClose = slicePositions.some(sp => Math.abs(sp.position - percentage) < 3);
     if (tooClose) return;
@@ -59,7 +64,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       [...prev, { position: percentage, type: 'image' as SliceType }]
         .sort((a, b) => a.position - b.position)
     );
-  }, [slicePositions, isProcessing]);
+  }, [slicePositions, isProcessing, footerCutoff]);
 
   const updatePosition = useCallback((index: number, newPosition: number) => {
     setSlicePositions(prev => {
@@ -90,21 +95,26 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
 
   const resetSlices = useCallback(() => {
     setSlicePositions([]);
+    setFooterCutoff(100);
   }, []);
 
   const handleProcess = () => {
-    // Build positions array (always include 0 and 100 as boundaries)
-    const positions = [0, ...slicePositions.map(sp => sp.position), 100];
+    // Filter out any slice positions that fall at or below the footer cutoff
+    const validSlicePositions = slicePositions.filter(sp => sp.position < footerCutoff);
+    
+    // Build positions array using footerCutoff as the end boundary
+    const positions = [0, ...validSlicePositions.map(sp => sp.position), footerCutoff];
     
     // Build slice types array - one type per slice
-    // First slice type comes from a default, subsequent from the line data
-    const sliceCount = slicePositions.length + 1;
+    const sliceCount = validSlicePositions.length + 1;
     const types: SliceType[] = Array(sliceCount).fill('image');
     
     onProcess(positions, types);
   };
 
-  const sliceCount = slicePositions.length + 1;
+  // Calculate slice count based on valid slices (above footer cutoff)
+  const validSlicePositions = slicePositions.filter(sp => sp.position < footerCutoff);
+  const sliceCount = validSlicePositions.length + 1;
 
   // Calculate slice regions for type toggling
   const sliceRegions = [];
@@ -123,14 +133,14 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
         <div>
           <h3 className="text-lg font-semibold text-foreground">Define Slice Points</h3>
           <p className="text-sm text-muted-foreground">
-            Click on the image to add slice lines. Drag to adjust, click X to remove.
+            Click to add slice lines. Drag up from bottom to exclude footer.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">
             {sliceCount} slice{sliceCount !== 1 ? 's' : ''}
           </span>
-          {slicePositions.length > 0 && (
+          {(slicePositions.length > 0 || footerCutoff < 100) && (
             <Button variant="ghost" size="sm" onClick={resetSlices} disabled={isProcessing}>
               <RotateCcw className="w-4 h-4 mr-1" />
               Reset
@@ -167,6 +177,14 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
             index={index}
           />
         ))}
+
+        {/* Footer cutoff handle */}
+        <FooterCutoffHandle
+          position={footerCutoff}
+          containerHeight={containerHeight}
+          onPositionChange={setFooterCutoff}
+          onReset={() => setFooterCutoff(100)}
+        />
 
         {/* Visual slice preview overlay */}
         {slicePositions.length > 0 && (
