@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Copy, Check, Key, Pencil, Trash2, Star, ExternalLink, Code, RefreshCw, Type } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Plus, Copy, Check, Key, Pencil, Trash2, Star, ExternalLink, Code, RefreshCw, Type, Upload, Image, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [apiKeyValue, setApiKeyValue] = useState(brand.klaviyoApiKey || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
   
   // Footer editor state
   const [footerEditorOpen, setFooterEditorOpen] = useState(false);
@@ -374,6 +375,76 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const handleLogoUpload = useCallback(async (file: File, type: 'dark' | 'light') => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    setUploadingLogo(type);
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const base64 = await base64Promise;
+
+      // Upload to Cloudinary
+      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: {
+          imageData: base64,
+          folder: `brands/${brand.domain}/logos`,
+          publicId: `${type}-logo`,
+        },
+      });
+
+      if (error) throw error;
+
+      // Update brand in database
+      const updateFields = type === 'dark'
+        ? { dark_logo_url: data.url, dark_logo_public_id: data.publicId }
+        : { light_logo_url: data.url, light_logo_public_id: data.publicId };
+
+      const { error: updateError } = await supabase
+        .from('brands')
+        .update(updateFields)
+        .eq('id', brand.id);
+
+      if (updateError) throw updateError;
+
+      toast.success(`${type === 'dark' ? 'Dark' : 'Light'} logo uploaded`);
+      onBrandChange();
+    } catch (error) {
+      console.error('Logo upload error:', error);
+      toast.error('Failed to upload logo');
+    } finally {
+      setUploadingLogo(null);
+    }
+  }, [brand.id, brand.domain, onBrandChange]);
+
+  const handleLogoRemove = useCallback(async (type: 'dark' | 'light') => {
+    try {
+      const updateFields = type === 'dark'
+        ? { dark_logo_url: null, dark_logo_public_id: null }
+        : { light_logo_url: null, light_logo_public_id: null };
+
+      const { error } = await supabase
+        .from('brands')
+        .update(updateFields)
+        .eq('id', brand.id);
+
+      if (error) throw error;
+
+      toast.success('Logo removed');
+      onBrandChange();
+    } catch (error) {
+      toast.error('Failed to remove logo');
+    }
+  }, [brand.id, onBrandChange]);
+
   const maskedApiKey = brand.klaviyoApiKey 
     ? `pk_****${brand.klaviyoApiKey.slice(-4)}` 
     : null;
@@ -503,6 +574,128 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             ))}
           </div>
         )}
+      </div>
+
+      {/* Logos Section */}
+      <div className="py-6 border-b border-border/30">
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Logos</h2>
+        <div className="grid grid-cols-2 gap-6">
+          {/* Dark Logo */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Dark Logo (for light backgrounds)</Label>
+            {brand.darkLogoUrl ? (
+              <div className="relative group rounded-lg border border-border/50 bg-white p-4">
+                <img 
+                  src={brand.darkLogoUrl} 
+                  alt="Dark logo" 
+                  className="max-h-20 max-w-full object-contain mx-auto"
+                />
+                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => copyLink(brand.darkLogoUrl!)}
+                  >
+                    {copiedLink === brand.darkLogoUrl ? (
+                      <Check className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7 text-destructive"
+                    onClick={() => handleLogoRemove('dark')}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center h-24 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors">
+                {uploadingLogo === 'dark' ? (
+                  <span className="text-xs text-muted-foreground">Uploading...</span>
+                ) : (
+                  <>
+                    <Upload className="h-5 w-5 text-muted-foreground mb-1" />
+                    <span className="text-xs text-muted-foreground">Drop or click to upload</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleLogoUpload(file, 'dark');
+                    e.target.value = '';
+                  }}
+                  disabled={uploadingLogo !== null}
+                />
+              </label>
+            )}
+          </div>
+
+          {/* Light Logo */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Light Logo (for dark backgrounds)</Label>
+            {brand.lightLogoUrl ? (
+              <div className="relative group rounded-lg border border-border/50 bg-zinc-900 p-4">
+                <img 
+                  src={brand.lightLogoUrl} 
+                  alt="Light logo" 
+                  className="max-h-20 max-w-full object-contain mx-auto"
+                />
+                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => copyLink(brand.lightLogoUrl!)}
+                  >
+                    {copiedLink === brand.lightLogoUrl ? (
+                      <Check className="h-3 w-3 text-green-600" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7 text-destructive"
+                    onClick={() => handleLogoRemove('light')}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center h-24 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors bg-zinc-900/50">
+                {uploadingLogo === 'light' ? (
+                  <span className="text-xs text-muted-foreground">Uploading...</span>
+                ) : (
+                  <>
+                    <Upload className="h-5 w-5 text-muted-foreground mb-1" />
+                    <span className="text-xs text-muted-foreground">Drop or click to upload</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleLogoUpload(file, 'light');
+                    e.target.value = '';
+                  }}
+                  disabled={uploadingLogo !== null}
+                />
+              </label>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Typography Section */}
