@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, Image as ImageIcon, Link2, Sparkles, Save, RefreshCw, Check, Copy, X } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, Image as ImageIcon, Link2, Sparkles, Save, RefreshCw, Check, Copy, X, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -446,9 +447,16 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground text-center">
-              The light logo will be used in your email footer (dark background)
-            </p>
+            {!lightLogoUrl && !darkLogoUrl ? (
+              <p className="text-xs text-amber-500 text-center flex items-center justify-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Upload at least one logo to continue
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center">
+                The light logo will be used in your email footer (dark background)
+              </p>
+            )}
           </div>
         );
 
@@ -544,14 +552,18 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
             {/* Preview */}
             <div className="border rounded-lg overflow-hidden bg-neutral-900">
               <div className="text-xs text-muted-foreground px-3 py-1.5 border-b bg-muted/30">
-                Live Preview
+                Live Preview (600px email width)
               </div>
-              {generatedHtml && (
-                <HtmlPreviewFrame 
-                  html={generatedHtml} 
-                  className="w-full"
-                />
-              )}
+              <div className="flex justify-center py-4 bg-neutral-950">
+                {generatedHtml && (
+                  <div style={{ width: '600px' }}>
+                    <HtmlPreviewFrame 
+                      html={generatedHtml} 
+                      className="w-full"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Chat refinement */}
@@ -575,7 +587,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
   const canProceed = () => {
     switch (step) {
       case 'reference': return true; // Optional
-      case 'logos': return true; // Optional but encouraged
+      case 'logos': return !!lightLogoUrl || !!darkLogoUrl; // At least one logo required
       case 'social': return true;
       case 'generate': return false;
       case 'refine': return !!generatedHtml;
@@ -612,7 +624,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className={cn(
+        "max-h-[90vh] overflow-hidden flex flex-col",
+        step === 'refine' ? "sm:max-w-3xl" : "sm:max-w-lg"
+      )}>
         <DialogHeader>
           <DialogTitle>Set Up Footer for {brand.name}</DialogTitle>
           <DialogDescription>
