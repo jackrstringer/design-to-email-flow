@@ -39,6 +39,11 @@ export default function CampaignPage() {
   const [initialFooterHtml, setInitialFooterHtml] = useState<string | undefined>();
   const [initialFooterId, setInitialFooterId] = useState<string | null>(null);
   
+  // Klaviyo lists state
+  const [klaviyoLists, setKlaviyoLists] = useState<{ id: string; name: string }[]>([]);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [isLoadingLists, setIsLoadingLists] = useState(false);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -106,6 +111,40 @@ export default function CampaignPage() {
       console.log('No footers found');
     }
   };
+
+  // Fetch Klaviyo lists when brand loads
+  const fetchKlaviyoLists = async (apiKey: string) => {
+    setIsLoadingLists(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
+        body: { klaviyoApiKey: apiKey }
+      });
+
+      if (error) throw error;
+
+      if (data?.lists && data.lists.length > 0) {
+        setKlaviyoLists(data.lists);
+        
+        // Auto-select "Newsletter" if exists, otherwise first list
+        const newsletterList = data.lists.find((l: any) => 
+          l.name.toLowerCase().includes('newsletter')
+        );
+        setSelectedListId(newsletterList?.id || data.lists[0].id);
+      }
+    } catch (err) {
+      console.error('Error fetching Klaviyo lists:', err);
+    } finally {
+      setIsLoadingLists(false);
+    }
+  };
+
+  // Fetch lists when brand is set
+  useEffect(() => {
+    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
+    if (apiKey) {
+      fetchKlaviyoLists(apiKey);
+    }
+  }, [brand]);
 
   // Save new footer version
   const handleSaveFooter = async (name: string, html: string) => {
@@ -245,6 +284,11 @@ export default function CampaignPage() {
       return;
     }
 
+    if (!selectedListId) {
+      toast.error('Please select a list/segment first');
+      return;
+    }
+
     setIsCreating(true);
     try {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
@@ -254,7 +298,7 @@ export default function CampaignPage() {
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
           footerHtml: footer,
           mode: 'campaign',
-          listId: 'QRLACj',
+          listId: selectedListId,
         }
       });
 
@@ -348,6 +392,10 @@ export default function CampaignPage() {
       templateId={templateId}
       campaignId={campaignId}
       onReset={handleReset}
+      klaviyoLists={klaviyoLists}
+      selectedListId={selectedListId}
+      onSelectList={setSelectedListId}
+      isLoadingLists={isLoadingLists}
     />
   );
 }
