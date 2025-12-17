@@ -236,16 +236,26 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
       if (error) throw error;
 
-      const refinedHtml = data.refinedHtml;
-      if (refinedHtml) {
-        setGeneratedHtml(refinedHtml);
-      }
+      const refinedHtml = data?.refinedHtml;
+      console.log('Refinement response:', { hasRefinedHtml: !!refinedHtml, htmlLength: refinedHtml?.length });
       
-      const assistantMessage: ChatMessage = { 
-        role: 'assistant', 
-        content: 'I\'ve updated the footer based on your request. Check the preview to see the changes.' 
-      };
-      setMessages(prev => [...prev, assistantMessage]);
+      if (refinedHtml && refinedHtml.trim()) {
+        console.log('Setting new generated HTML, first 100 chars:', refinedHtml.substring(0, 100));
+        setGeneratedHtml(refinedHtml);
+        
+        const assistantMessage: ChatMessage = { 
+          role: 'assistant', 
+          content: 'I\'ve updated the footer based on your request. Check the preview to see the changes.' 
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        console.error('No refined HTML in response:', data);
+        const errorMessage: ChatMessage = { 
+          role: 'assistant', 
+          content: 'Sorry, I couldn\'t generate the updated HTML. Please try again.' 
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
     } catch (error) {
       console.error('Refinement error:', error);
       toast.error('Failed to refine footer');

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 
 interface HtmlPreviewFrameProps {
   html: string;
@@ -7,6 +7,17 @@ interface HtmlPreviewFrameProps {
 
 export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Create a simple hash of the html to use as a key for forcing re-renders
+  const htmlKey = useMemo(() => {
+    let hash = 0;
+    for (let i = 0; i < html.length; i++) {
+      const char = html.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString();
+  }, [html]);
 
   // Wrap the HTML snippet in a full email document structure
   const emailDocument = `
@@ -58,6 +69,7 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
 
   return (
     <iframe
+      key={htmlKey}
       ref={iframeRef}
       title="HTML Preview"
       className={className}
