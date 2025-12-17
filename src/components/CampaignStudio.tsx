@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2 } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -61,6 +61,7 @@ export function CampaignStudio({
   const [zoomLevel, setZoomLevel] = useState(65);
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
+  const [showAltText, setShowAltText] = useState(false);
 
   const hasHtmlSlices = slices.some(s => s.type === 'html');
 
@@ -244,6 +245,19 @@ export function CampaignStudio({
             {chatExpanded ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5" />}
           </button>
           <span className="text-xs text-muted-foreground/60">{slices.length} slices</span>
+          <button
+            onClick={() => setShowAltText(!showAltText)}
+            className={cn(
+              "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
+              showAltText 
+                ? "text-foreground bg-muted/60" 
+                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+            )}
+            title="Toggle alt text"
+          >
+            <Type className="w-3.5 h-3.5" />
+            <span>Alt</span>
+          </button>
         </div>
         
         <div className="flex items-center gap-3">
@@ -445,24 +459,26 @@ export function CampaignStudio({
 
                     </div>
 
-                    {/* Row 2: Alt text (smaller) */}
-                    {editingAltIndex === index ? (
-                      <textarea
-                        value={slice.altText}
-                        onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                        placeholder="Add description..."
-                        className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                        rows={2}
-                        autoFocus
-                        onBlur={() => setEditingAltIndex(null)}
-                      />
-                    ) : (
-                      <p 
-                        onClick={() => setEditingAltIndex(index)}
-                        className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
-                      >
-                        {slice.altText || 'Add description...'}
-                      </p>
+                    {/* Row 2: Alt text (toggleable) */}
+                    {showAltText && (
+                      editingAltIndex === index ? (
+                        <textarea
+                          value={slice.altText}
+                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                          placeholder="Add description..."
+                          className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                          rows={2}
+                          autoFocus
+                          onBlur={() => setEditingAltIndex(null)}
+                        />
+                      ) : (
+                        <p 
+                          onClick={() => setEditingAltIndex(index)}
+                          className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
+                        >
+                          {slice.altText || 'Add description...'}
+                        </p>
+                      )
                     )}
                   </div>
 
