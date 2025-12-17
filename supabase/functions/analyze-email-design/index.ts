@@ -38,26 +38,42 @@ serve(async (req) => {
       ? `\n\nEXISTING BRANDS IN OUR SYSTEM:
 ${existingBrands.map((b: any) => `- ID: "${b.id}", Name: "${b.name}", Domain: "${b.domain}"`).join('\n')}
 
-IMPORTANT: If this email clearly belongs to one of the existing brands above (based on logo, brand name, domain, colors, or any visual identifiers), return its ID in "matchedBrandId". If it's a new brand not in the list, set "matchedBrandId" to null and provide the detected brand info in "detectedBrand".`
-      : '';
+BRAND MATCHING RULES:
+1. If this email clearly belongs to one of the existing brands above (based on logo, brand name, domain, colors, or any visual identifiers), return its ID in "matchedBrandId".
+2. If it's a new brand NOT in the list above, set "matchedBrandId" to null and EXTRACT the brand info from the email itself:
+   - Look for the brand logo, header text, footer company name
+   - Look for any URLs in the email (website links, social links)
+   - Set "detectedBrand.name" to the company/brand name you see
+   - Set "detectedBrand.url" to the brand's website (e.g., "https://brandname.com")`
+      : `\n\nBRAND DETECTION:
+Since there are no existing brands, you MUST extract the brand information from this email:
+- Look for the brand logo, header text, footer company name, copyright notice
+- Look for any URLs in the email (website links, social links, domain references)
+- Set "detectedBrand.name" to the company/brand name you can identify
+- Set "detectedBrand.url" to the brand's website URL (e.g., "https://brandname.com")
+IMPORTANT: You MUST provide detectedBrand with name and url - examine the email carefully for any brand identifiers.`;
 
-    const userPrompt = `Break this email down into horizontal sections from top to bottom. Footer should be 4 sections: Footer Logo, Footer Nav, Footer Socials, Footer Disclaimer.
+    const userPrompt = `Analyze this email campaign image.
+
+FIRST: Identify the brand. ${brandMatchingContext}
+
+THEN: Break the email down into horizontal sections from top to bottom.
 
 For each section, return:
 - id (short, snake_case)
 - name
 - type: "image" or "code"
 - yStart and yEnd as INTEGERS from 0-100 (100 is the bottom)
+- isFooter: true if this is part of the footer area
 
 Rules:
 - First section must start at 0
 - Last section must end at 100
 - Sections must be contiguous (next yStart = previous yEnd)
-- Split at obvious visual boundaries (background change / separators); don't lump multiple distinct areas into one section
-${brandMatchingContext}
+- Split at obvious visual boundaries
 
-Return JSON only:
-{"matchedBrandId":"uuid-or-null","detectedBrand":{"url":"","name":""},"blocks":[{"id":"header_logo","name":"Header Logo","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
+Return JSON only (no markdown):
+{"matchedBrandId":"uuid-or-null","detectedBrand":{"url":"https://example.com","name":"Brand Name"},"blocks":[{"id":"header_logo","name":"Header Logo","type":"image","yStart":0,"yEnd":5,"isFooter":false}]}`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
