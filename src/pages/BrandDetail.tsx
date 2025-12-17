@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CampaignCard } from '@/components/CampaignCard';
+import { BrandSettings } from '@/components/dashboard/BrandSettings';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { 
@@ -10,10 +11,11 @@ import {
   Edit, 
   ExternalLink, 
   Loader2,
-  Image as ImageIcon 
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { Brand, Campaign, SocialLink } from '@/types/brand-assets';
+import { Brand, Campaign, SocialLink, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
 import { Json } from '@/integrations/supabase/types';
 
 const parseSocialLinks = (json: Json | null): SocialLink[] => {
@@ -31,81 +33,108 @@ const parseBlocks = (json: Json | null): any[] => {
   return json as unknown as any[];
 };
 
+function parseSocialIcons(json: Json | null): Brand['socialIcons'] {
+  if (!json || !Array.isArray(json)) return [];
+  return json as unknown as Brand['socialIcons'];
+}
+
+function parseTypography(json: Json | null): BrandTypography | undefined {
+  if (!json || typeof json !== 'object') return undefined;
+  return json as unknown as BrandTypography;
+}
+
+function parseFormattingRules(json: Json | null): HtmlFormattingRule[] | undefined {
+  if (!json || !Array.isArray(json)) return undefined;
+  return json as unknown as HtmlFormattingRule[];
+}
+
 export default function BrandDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [brand, setBrand] = useState<Brand | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    const fetchBrandAndCampaigns = async () => {
-      if (!id) return;
-      
-      setIsLoading(true);
+  const fetchBrandAndCampaigns = async () => {
+    if (!id) return;
+    
+    setIsLoading(true);
 
-      // Fetch brand
-      const { data: brandData, error: brandError } = await supabase
-        .from('brands')
-        .select('*')
-        .eq('id', id)
-        .single();
+    // Fetch brand
+    const { data: brandData, error: brandError } = await supabase
+      .from('brands')
+      .select('*')
+      .eq('id', id)
+      .single();
 
-      if (brandError) {
-        console.error('Error fetching brand:', brandError);
-        setIsLoading(false);
-        return;
-      }
-
-      const mappedBrand: Brand = {
-        id: brandData.id,
-        name: brandData.name,
-        domain: brandData.domain,
-        websiteUrl: brandData.website_url || undefined,
-        darkLogoUrl: brandData.dark_logo_url || undefined,
-        darkLogoPublicId: brandData.dark_logo_public_id || undefined,
-        lightLogoUrl: brandData.light_logo_url || undefined,
-        lightLogoPublicId: brandData.light_logo_public_id || undefined,
-        primaryColor: brandData.primary_color,
-        secondaryColor: brandData.secondary_color,
-        accentColor: brandData.accent_color || undefined,
-        socialLinks: parseSocialLinks(brandData.social_links),
-        allLinks: parseAllLinks(brandData.all_links),
-        footerConfigured: brandData.footer_configured || false,
-        createdAt: brandData.created_at,
-        updatedAt: brandData.updated_at,
-      };
-
-      setBrand(mappedBrand);
-
-      // Fetch campaigns
-      const { data: campaignsData, error: campaignsError } = await supabase
-        .from('campaigns')
-        .select('*')
-        .eq('brand_id', id)
-        .order('created_at', { ascending: false });
-
-      if (campaignsError) {
-        console.error('Error fetching campaigns:', campaignsError);
-      } else {
-        const mappedCampaigns: Campaign[] = (campaignsData || []).map(c => ({
-          id: c.id,
-          brandId: c.brand_id,
-          name: c.name,
-          originalImageUrl: c.original_image_url || undefined,
-          generatedHtml: c.generated_html || undefined,
-          thumbnailUrl: c.thumbnail_url || undefined,
-          blocks: parseBlocks(c.blocks),
-          status: c.status as Campaign['status'],
-          klaviyoTemplateId: c.klaviyo_template_id || undefined,
-          createdAt: c.created_at,
-          updatedAt: c.updated_at,
-        }));
-        setCampaigns(mappedCampaigns);
-      }
-
+    if (brandError) {
+      console.error('Error fetching brand:', brandError);
       setIsLoading(false);
+      return;
+    }
+
+    const mappedBrand: Brand = {
+      id: brandData.id,
+      name: brandData.name,
+      domain: brandData.domain,
+      websiteUrl: brandData.website_url || undefined,
+      darkLogoUrl: brandData.dark_logo_url || undefined,
+      darkLogoPublicId: brandData.dark_logo_public_id || undefined,
+      lightLogoUrl: brandData.light_logo_url || undefined,
+      lightLogoPublicId: brandData.light_logo_public_id || undefined,
+      primaryColor: brandData.primary_color,
+      secondaryColor: brandData.secondary_color,
+      accentColor: brandData.accent_color || undefined,
+      backgroundColor: brandData.background_color || undefined,
+      textPrimaryColor: brandData.text_primary_color || undefined,
+      linkColor: brandData.link_color || undefined,
+      socialLinks: parseSocialLinks(brandData.social_links),
+      allLinks: parseAllLinks(brandData.all_links),
+      footerHtml: brandData.footer_html || undefined,
+      footerLogoUrl: brandData.footer_logo_url || undefined,
+      footerLogoPublicId: brandData.footer_logo_public_id || undefined,
+      socialIcons: parseSocialIcons(brandData.social_icons),
+      footerConfigured: brandData.footer_configured || false,
+      klaviyoApiKey: brandData.klaviyo_api_key || undefined,
+      typography: parseTypography(brandData.typography),
+      htmlFormattingRules: parseFormattingRules(brandData.html_formatting_rules),
+      createdAt: brandData.created_at,
+      updatedAt: brandData.updated_at,
     };
 
+    setBrand(mappedBrand);
+
+    // Fetch campaigns
+    const { data: campaignsData, error: campaignsError } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('brand_id', id)
+      .order('created_at', { ascending: false });
+
+    if (campaignsError) {
+      console.error('Error fetching campaigns:', campaignsError);
+    } else {
+      const mappedCampaigns: Campaign[] = (campaignsData || []).map(c => ({
+        id: c.id,
+        brandId: c.brand_id,
+        name: c.name,
+        originalImageUrl: c.original_image_url || undefined,
+        generatedHtml: c.generated_html || undefined,
+        thumbnailUrl: c.thumbnail_url || undefined,
+        blocks: parseBlocks(c.blocks),
+        status: c.status as Campaign['status'],
+        klaviyoTemplateId: c.klaviyo_template_id || undefined,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      }));
+      setCampaigns(mappedCampaigns);
+    }
+
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
     fetchBrandAndCampaigns();
   }, [id]);
 
@@ -132,6 +161,22 @@ export default function BrandDetail() {
               Back to Brands
             </Button>
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Show settings view if toggled
+  if (showSettings) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="max-w-6xl mx-auto px-6 py-8">
+          <BrandSettings
+            brand={brand}
+            onBack={() => setShowSettings(false)}
+            onBrandChange={fetchBrandAndCampaigns}
+          />
         </div>
       </div>
     );
@@ -177,7 +222,7 @@ export default function BrandDetail() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm">
+              <Button variant="secondary" size="sm" onClick={() => setShowSettings(true)}>
                 <Edit className="w-4 h-4 mr-2" />
                 Edit Brand
               </Button>
