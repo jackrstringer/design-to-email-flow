@@ -772,9 +772,3 @@ export function CampaignStudio({
     </div>
   );
 }
-          </>
-        )}
-      </ResizablePanelGroup>
-    </div>
-  );
-}
