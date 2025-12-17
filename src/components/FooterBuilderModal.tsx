@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, Image as ImageIcon, Link2, Sparkles, Save, RefreshCw } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, Image as ImageIcon, Link2, Sparkles, Save, RefreshCw, Check, Copy, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -26,13 +26,18 @@ interface FooterBuilderModalProps {
   onFooterSaved: () => void;
 }
 
-type Step = 'reference' | 'logo' | 'social' | 'generate' | 'refine';
+type Step = 'reference' | 'logos' | 'social' | 'generate' | 'refine';
 
 export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
   const [isUploadingReference, setIsUploadingReference] = useState(false);
-  const [logoUrl, setLogoUrl] = useState(brand.lightLogoUrl || '');
+  
+  // Logo state - track both dark and light logos
+  const [darkLogoUrl, setDarkLogoUrl] = useState(brand.darkLogoUrl || '');
+  const [lightLogoUrl, setLightLogoUrl] = useState(brand.lightLogoUrl || '');
+  const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
+  
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
   const [iconColor, setIconColor] = useState('ffffff');
   const [footerName, setFooterName] = useState('Standard Footer');
@@ -82,6 +87,58 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
     }
   }, [brand.domain]);
 
+  const handleLogoUpload = useCallback(async (file: File, type: 'dark' | 'light') => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    setUploadingLogo(type);
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const base64 = await base64Promise;
+
+      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: {
+          imageData: base64,
+          folder: `brands/${brand.domain}/logos`,
+          publicId: `${type}-logo`,
+        },
+      });
+
+      if (error) throw error;
+
+      // Update local state
+      if (type === 'dark') {
+        setDarkLogoUrl(data.url);
+      } else {
+        setLightLogoUrl(data.url);
+      }
+
+      // Save to brand in database
+      const updateFields = type === 'dark'
+        ? { dark_logo_url: data.url, dark_logo_public_id: data.publicId }
+        : { light_logo_url: data.url, light_logo_public_id: data.publicId };
+
+      await supabase
+        .from('brands')
+        .update(updateFields)
+        .eq('id', brand.id);
+
+      toast.success(`${type === 'dark' ? 'Dark' : 'Light'} logo uploaded`);
+    } catch (error) {
+      console.error('Logo upload error:', error);
+      toast.error('Failed to upload logo');
+    } finally {
+      setUploadingLogo(null);
+    }
+  }, [brand.id, brand.domain]);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
@@ -101,7 +158,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
       const { data, error } = await supabase.functions.invoke('generate-footer-html', {
         body: {
           referenceImageUrl,
-          logoUrl,
+          logoUrl: lightLogoUrl, // Use light logo for dark footer backgrounds
           socialIcons: socialIconsData,
           brandName: brand.name,
           brandColors: {
@@ -192,7 +249,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
           brand_id: brand.id,
           name: footerName,
           html: generatedHtml,
-          logo_url: logoUrl || null,
+          logo_url: lightLogoUrl || null,
           is_primary: true,
         });
 
@@ -264,49 +321,112 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
             <Button 
               variant="link" 
               className="w-full text-muted-foreground"
-              onClick={() => setStep('logo')}
+              onClick={() => setStep('logos')}
             >
               Skip - I don't have a reference image
             </Button>
           </div>
         );
 
-      case 'logo':
+      case 'logos':
         return (
           <div className="space-y-4">
-            <div className="text-center space-y-2 py-4">
-              <h3 className="font-medium">Confirm your logo</h3>
+            <div className="text-center space-y-2 py-2">
+              <h3 className="font-medium">Upload your logos</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                We'll use this logo in your footer. For dark backgrounds, use a white/light version.
+                Upload both versions of your logo for use in emails.
               </p>
             </div>
 
-            {logoUrl ? (
-              <div className="bg-zinc-900 rounded-lg p-8 flex items-center justify-center">
-                <img 
-                  src={logoUrl} 
-                  alt="Logo" 
-                  className="max-h-16 max-w-[200px] object-contain"
-                />
+            <div className="grid grid-cols-2 gap-4">
+              {/* Dark Logo */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Dark Logo (for light backgrounds)</Label>
+                {darkLogoUrl ? (
+                  <div className="relative group rounded-lg border border-border/50 bg-white p-4 h-28 flex items-center justify-center">
+                    <img 
+                      src={darkLogoUrl} 
+                      alt="Dark logo" 
+                      className="max-h-16 max-w-full object-contain"
+                    />
+                    <button
+                      onClick={() => setDarkLogoUrl('')}
+                      className="absolute top-2 right-2 p-1 rounded bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center h-28 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors bg-white">
+                    {uploadingLogo === 'dark' ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <>
+                        <Upload className="h-5 w-5 text-muted-foreground mb-1" />
+                        <span className="text-xs text-muted-foreground">Drop or click</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoUpload(file, 'dark');
+                        e.target.value = '';
+                      }}
+                      disabled={uploadingLogo !== null}
+                    />
+                  </label>
+                )}
               </div>
-            ) : (
-              <div className="bg-muted rounded-lg p-8 text-center">
-                <ImageIcon className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No logo uploaded</p>
-              </div>
-            )}
 
-            <div className="space-y-2">
-              <Label className="text-sm">Logo URL</Label>
-              <Input
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder="https://..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Or upload a new logo in Brand Settings
-              </p>
+              {/* Light Logo */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Light Logo (for dark backgrounds)</Label>
+                {lightLogoUrl ? (
+                  <div className="relative group rounded-lg border border-border/50 bg-zinc-900 p-4 h-28 flex items-center justify-center">
+                    <img 
+                      src={lightLogoUrl} 
+                      alt="Light logo" 
+                      className="max-h-16 max-w-full object-contain"
+                    />
+                    <button
+                      onClick={() => setLightLogoUrl('')}
+                      className="absolute top-2 right-2 p-1 rounded bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center h-28 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors bg-zinc-900/50">
+                    {uploadingLogo === 'light' ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <>
+                        <Upload className="h-5 w-5 text-muted-foreground mb-1" />
+                        <span className="text-xs text-muted-foreground">Drop or click</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleLogoUpload(file, 'light');
+                        e.target.value = '';
+                      }}
+                      disabled={uploadingLogo !== null}
+                    />
+                  </label>
+                )}
+              </div>
             </div>
+
+            <p className="text-xs text-muted-foreground text-center">
+              The light logo will be used in your email footer (dark background)
+            </p>
           </div>
         );
 
@@ -431,7 +551,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
   const canProceed = () => {
     switch (step) {
       case 'reference': return true; // Optional
-      case 'logo': return true; // Optional
+      case 'logos': return true; // Optional but encouraged
       case 'social': return true;
       case 'generate': return false;
       case 'refine': return !!generatedHtml;
@@ -440,8 +560,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
   const getNextStep = (): Step | null => {
     switch (step) {
-      case 'reference': return 'logo';
-      case 'logo': return 'social';
+      case 'reference': return 'logos';
+      case 'logos': return 'social';
       case 'social': return 'generate';
       case 'generate': return null;
       case 'refine': return null;
@@ -451,8 +571,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
   const getPrevStep = (): Step | null => {
     switch (step) {
       case 'reference': return null;
-      case 'logo': return 'reference';
-      case 'social': return 'logo';
+      case 'logos': return 'reference';
+      case 'social': return 'logos';
       case 'generate': return 'social';
       case 'refine': return 'social';
     }
@@ -460,7 +580,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
   const stepLabels: Record<Step, string> = {
     reference: 'Reference',
-    logo: 'Logo',
+    logos: 'Logos',
     social: 'Social Links',
     generate: 'Generate',
     refine: 'Refine & Save',
@@ -478,12 +598,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved }:
 
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-1 py-2">
-          {(['reference', 'logo', 'social', 'generate', 'refine'] as Step[]).map((s, i) => (
+          {(['reference', 'logos', 'social', 'generate', 'refine'] as Step[]).map((s, i) => (
             <div key={s} className="flex items-center">
               <div 
                 className={`w-2 h-2 rounded-full transition-colors ${
                   s === step ? 'bg-primary' : 
-                  (['reference', 'logo', 'social', 'generate', 'refine'].indexOf(s) < ['reference', 'logo', 'social', 'generate', 'refine'].indexOf(step)) 
+                  (['reference', 'logos', 'social', 'generate', 'refine'].indexOf(s) < ['reference', 'logos', 'social', 'generate', 'refine'].indexOf(step)) 
                     ? 'bg-primary/40' : 'bg-muted'
                 }`}
               />
