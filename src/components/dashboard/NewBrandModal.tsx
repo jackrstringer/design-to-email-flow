@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { FooterBuilderModal } from '@/components/FooterBuilderModal';
 import type { Brand } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -46,6 +47,10 @@ export function NewBrandModal({
   const [socialLinks, setSocialLinks] = useState<Brand['socialLinks']>([]);
   const [typography, setTypography] = useState<Brand['typography'] | null>(null);
   const [allLinks, setAllLinks] = useState<string[]>([]);
+  
+  // Footer builder state
+  const [showFooterBuilder, setShowFooterBuilder] = useState(false);
+  const [createdBrand, setCreatedBrand] = useState<Brand | null>(null);
 
   // Handle background analysis result when modal opens with initialDomain
   useEffect(() => {
@@ -230,8 +235,9 @@ export function NewBrandModal({
         updatedAt: data.updated_at,
       };
 
-      toast.success('Brand created successfully');
-      onBrandCreated(newBrand);
+      toast.success('Brand created! Now let\'s set up your footer.');
+      setCreatedBrand(newBrand);
+      setShowFooterBuilder(true);
     } catch (error) {
       console.error('Error creating brand:', error);
       toast.error('Failed to create brand');
@@ -240,7 +246,24 @@ export function NewBrandModal({
     }
   };
 
+  const handleFooterSaved = () => {
+    if (createdBrand) {
+      onBrandCreated({ ...createdBrand, footerConfigured: true });
+    }
+    setShowFooterBuilder(false);
+    onOpenChange(false);
+  };
+
+  const handleSkipFooter = () => {
+    if (createdBrand) {
+      onBrandCreated(createdBrand);
+    }
+    setShowFooterBuilder(false);
+    onOpenChange(false);
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -372,5 +395,18 @@ export function NewBrandModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Footer Builder Modal */}
+    {createdBrand && (
+      <FooterBuilderModal
+        open={showFooterBuilder}
+        onOpenChange={(open) => {
+          if (!open) handleSkipFooter();
+        }}
+        brand={createdBrand}
+        onFooterSaved={handleFooterSaved}
+      />
+    )}
+  </>
   );
 }
