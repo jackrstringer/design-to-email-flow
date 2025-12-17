@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { CampaignStudio } from '@/components/CampaignStudio';
 import type { ProcessedSlice } from '@/types/slice';
 import type { Brand } from '@/types/brand-assets';
+import type { BrandFooter } from '@/components/FooterSelector';
 
 interface LocationState {
   imageUrl: string;
@@ -32,7 +33,12 @@ export default function CampaignPage() {
   const [slices, setSlices] = useState<ProcessedSlice[]>([]);
   const [originalImageUrl, setOriginalImageUrl] = useState<string>('');
   const [brand, setBrand] = useState<Brand | null>(null);
-  const [footerHtml, setFooterHtml] = useState<string>('');
+  
+  // Footer versioning state
+  const [savedFooters, setSavedFooters] = useState<BrandFooter[]>([]);
+  const [initialFooterHtml, setInitialFooterHtml] = useState<string | undefined>();
+  const [initialFooterId, setInitialFooterId] = useState<string | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -55,9 +61,9 @@ export default function CampaignPage() {
       setSlices(processedSlices);
       setIsLoading(false);
       
-      // Fetch primary footer for the brand
+      // Fetch all footers for the brand
       if (state.brand?.id) {
-        fetchPrimaryFooter(state.brand.id);
+        fetchBrandFooters(state.brand.id);
       }
     } else if (id) {
       // Load from database if no state
@@ -67,21 +73,62 @@ export default function CampaignPage() {
     }
   }, [id, state]);
 
-  const fetchPrimaryFooter = async (brandId: string) => {
+  // Fetch ALL footers for the brand (not just primary)
+  const fetchBrandFooters = async (brandId: string) => {
     try {
       const { data, error } = await supabase
         .from('brand_footers')
-        .select('html')
+        .select('*')
         .eq('brand_id', brandId)
-        .eq('is_primary', true)
-        .single();
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: false });
 
-      if (!error && data?.html) {
-        setFooterHtml(data.html);
+      if (error) {
+        console.error('Error fetching footers:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        setSavedFooters(data as BrandFooter[]);
+        
+        // Set primary footer as initial
+        const primaryFooter = data.find(f => f.is_primary);
+        if (primaryFooter) {
+          setInitialFooterHtml(primaryFooter.html);
+          setInitialFooterId(primaryFooter.id);
+        } else {
+          // Use first footer if no primary
+          setInitialFooterHtml(data[0].html);
+          setInitialFooterId(data[0].id);
+        }
       }
     } catch (err) {
-      console.log('No primary footer found');
+      console.log('No footers found');
     }
+  };
+
+  // Save new footer version
+  const handleSaveFooter = async (name: string, html: string) => {
+    if (!brand?.id) return;
+    
+    const { data, error } = await supabase
+      .from('brand_footers')
+      .insert({
+        brand_id: brand.id,
+        name,
+        html,
+        is_primary: false,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error('Failed to save footer');
+      throw error;
+    }
+
+    // Refresh footers list
+    await fetchBrandFooters(brand.id);
   };
 
   const loadCampaign = async () => {
@@ -98,11 +145,11 @@ export default function CampaignPage() {
 
       setOriginalImageUrl(campaign.original_image_url || '');
       
-      // Parse brand data and fetch footer
+      // Parse brand data and fetch footers
       if (campaign.brands) {
         const brandData = campaign.brands as unknown as Brand;
         setBrand(brandData);
-        fetchPrimaryFooter(brandData.id);
+        fetchBrandFooters(brandData.id);
       }
 
       // Parse blocks from campaign
@@ -283,8 +330,10 @@ export default function CampaignPage() {
           : undefined
       }
       brandLinks={brandLinks}
-      footerHtml={footerHtml}
-      onFooterChange={setFooterHtml}
+      initialFooterHtml={initialFooterHtml}
+      initialFooterId={initialFooterId}
+      savedFooters={savedFooters}
+      onSaveFooter={handleSaveFooter}
       onBack={handleBack}
       onCreateTemplate={handleCreateTemplate}
       onCreateCampaign={handleCreateCampaign}
