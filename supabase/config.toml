@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.refine-footer-html]
 verify_jwt = false
+
+[functions.get-klaviyo-lists]
+verify_jwt = false

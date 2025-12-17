@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save, Users, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -33,6 +33,11 @@ interface BrandContext {
   darkLogoUrl?: string;
 }
 
+interface KlaviyoList {
+  id: string;
+  name: string;
+}
+
 interface CampaignStudioProps {
   mode?: 'campaign' | 'footer';
   slices: ProcessedSlice[];
@@ -57,6 +62,11 @@ interface CampaignStudioProps {
   // Footer editor mode specific
   footerName?: string;
   onFooterNameChange?: (name: string) => void;
+  // Klaviyo lists
+  klaviyoLists?: KlaviyoList[];
+  selectedListId?: string | null;
+  onSelectList?: (listId: string) => void;
+  isLoadingLists?: boolean;
 }
 
 interface SliceDimensions {
@@ -86,10 +96,16 @@ export function CampaignStudio({
   onReset,
   footerName: propFooterName,
   onFooterNameChange,
+  klaviyoLists = [],
+  selectedListId,
+  onSelectList,
+  isLoadingLists = false,
 }: CampaignStudioProps) {
   const isFooterMode = mode === 'footer';
   // Local footer state - this is the source of truth for the current footer
   const [localFooterHtml, setLocalFooterHtml] = useState<string | undefined>(initialFooterHtml);
+  const [listSelectorOpen, setListSelectorOpen] = useState(false);
+  const [listSearchValue, setListSearchValue] = useState('');
   const [selectedFooterId, setSelectedFooterId] = useState<string | null>(initialFooterId);
   const [originalFooterHtml, setOriginalFooterHtml] = useState<string | undefined>(initialFooterHtml);
   
@@ -355,6 +371,14 @@ Return ALL HTML sections that need updates, not just one.`;
     link.toLowerCase().includes(linkSearchValue.toLowerCase())
   );
 
+  // Filter Klaviyo lists based on search
+  const filteredLists = klaviyoLists.filter(list =>
+    list.name.toLowerCase().includes(listSearchValue.toLowerCase())
+  );
+
+  // Get selected list name
+  const selectedListName = klaviyoLists.find(l => l.id === selectedListId)?.name;
+
   // Footer mode specific state
   const [localFooterName, setLocalFooterName] = useState(propFooterName || 'New Footer');
   const [footerSaved, setFooterSaved] = useState(false);
@@ -425,6 +449,63 @@ Return ALL HTML sections that need updates, not just one.`;
                   isModified={isFooterModified}
                   disabled={isCreating}
                 />
+              )}
+
+              {/* Klaviyo List Selector */}
+              {klaviyoLists.length > 0 && (
+                <Popover open={listSelectorOpen} onOpenChange={setListSelectorOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      className={cn(
+                        "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
+                        selectedListId 
+                          ? "text-muted-foreground/70 hover:text-foreground hover:bg-muted/30" 
+                          : "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                      )}
+                      disabled={isCreating || isLoadingLists}
+                    >
+                      {isLoadingLists ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Users className="w-3.5 h-3.5" />
+                      )}
+                      <span className="max-w-[100px] truncate">
+                        {selectedListName || 'Select list'}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-0" align="start">
+                    <Command>
+                      <CommandInput 
+                        placeholder="Search lists..." 
+                        value={listSearchValue}
+                        onValueChange={setListSearchValue}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No lists found</CommandEmpty>
+                        <CommandGroup>
+                          {filteredLists.map((list) => (
+                            <CommandItem
+                              key={list.id}
+                              value={list.name}
+                              onSelect={() => {
+                                onSelectList?.(list.id);
+                                setListSelectorOpen(false);
+                                setListSearchValue('');
+                              }}
+                              className="flex items-center justify-between"
+                            >
+                              <span className="truncate">{list.name}</span>
+                              {list.id === selectedListId && (
+                                <Check className="w-3.5 h-3.5 text-primary" />
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               )}
             </>
           )}
