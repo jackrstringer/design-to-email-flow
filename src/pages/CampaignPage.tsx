@@ -162,7 +162,8 @@ export default function CampaignPage() {
   };
 
   const handleCreateTemplate = async () => {
-    if (!brand?.klaviyoApiKey) {
+    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
+    if (!apiKey) {
       toast.error('No Klaviyo API key configured for this brand');
       return;
     }
@@ -172,9 +173,9 @@ export default function CampaignPage() {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           slices,
-          klaviyoApiKey: brand.klaviyoApiKey,
+          klaviyoApiKey: apiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
-          footerHtml: brand.footerHtml,
+          footerHtml: (brand as any)?.footerHtml || (brand as any)?.footer_html,
         }
       });
 
@@ -191,7 +192,8 @@ export default function CampaignPage() {
   };
 
   const handleCreateCampaign = async () => {
-    if (!brand?.klaviyoApiKey) {
+    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
+    if (!apiKey) {
       toast.error('No Klaviyo API key configured for this brand');
       return;
     }
@@ -201,9 +203,9 @@ export default function CampaignPage() {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           slices,
-          klaviyoApiKey: brand.klaviyoApiKey,
+          klaviyoApiKey: apiKey,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
-          footerHtml: brand.footerHtml,
+          footerHtml: (brand as any)?.footerHtml || (brand as any)?.footer_html,
           createCampaign: true,
         }
       });
