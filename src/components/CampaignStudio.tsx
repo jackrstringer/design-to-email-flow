@@ -294,8 +294,8 @@ export function CampaignStudio({
             className={cn(
               "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
               includeFooter 
-                ? "text-foreground bg-muted/60" 
-                : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+                ? "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30" 
+                : "text-foreground bg-muted/60"
             )}
             title={includeFooter ? "Footer included - click to exclude" : "Footer excluded - click to include"}
           >
@@ -560,7 +560,7 @@ export function CampaignStudio({
               ))}
               
               {/* Footer preview */}
-              {footerHtml && (
+              {includeFooter && footerHtml && (
                 <div className="border-t-2 border-dashed border-primary/40 mt-2">
                   <div className="flex items-stretch">
                     <div className="min-w-[320px] w-96 flex-shrink-0 p-4">
@@ -606,7 +606,7 @@ export function CampaignStudio({
                       width: BASE_WIDTH,
                     }}
                   >
-                    <CampaignPreviewFrame slices={slices} footerHtml={footerHtml} width={BASE_WIDTH} />
+                    <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? footerHtml : undefined} width={BASE_WIDTH} />
                   </div>
                 </div>
               </div>
