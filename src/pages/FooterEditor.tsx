@@ -158,6 +158,8 @@ export default function FooterEditor() {
           textPrimary: brand.textPrimaryColor,
           link: brand.linkColor,
         },
+        lightLogoUrl: brand.lightLogoUrl,
+        darkLogoUrl: brand.darkLogoUrl,
       }}
       initialFooterHtml={footerHtml}
       onSaveFooter={handleSaveFooter}

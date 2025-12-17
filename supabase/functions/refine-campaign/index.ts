@@ -19,6 +19,28 @@ interface ChatMessage {
   content: string;
 }
 
+const FOOTER_HTML_RULES = `
+## STRICT HTML EMAIL RULES FOR FOOTERS
+
+### FORBIDDEN (will break email rendering)
+- NEVER use <div> elements - ALWAYS use <table> and <td>
+- NEVER use CSS margin - Use padding on <td> or spacer rows
+- NEVER use float or display: flex/grid - Use align attribute and nested tables
+- NEVER omit width/height on images
+
+### REQUIRED (for email compatibility)
+- ALWAYS use <table role="presentation"> for layout
+- ALWAYS set cellpadding="0" cellspacing="0" border="0" on tables
+- ALWAYS inline all styles
+- ALWAYS include width and height attributes on <img> tags
+- ALWAYS add style="display: block; border: 0;" to images
+- ALWAYS use 600px total width
+
+### LOGO HANDLING
+- If logoUrl is provided, logo MUST be an <img> tag
+- NEVER render brand name as text when logo URL exists
+`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -34,7 +56,9 @@ serve(async (req) => {
       brandUrl,
       brandContext,
       mode,
-      isFooterMode
+      isFooterMode,
+      lightLogoUrl,
+      darkLogoUrl
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -55,6 +79,9 @@ serve(async (req) => {
       originalCampaignImageUrl.startsWith('http') && 
       !originalCampaignImageUrl.startsWith('data:');
 
+    // Determine effective logo URL for footers
+    const effectiveLogoUrl = lightLogoUrl || darkLogoUrl;
+
     console.log('Refine campaign request:', { 
       sliceCount: allSlices?.length, 
       mode,
@@ -64,7 +91,8 @@ serve(async (req) => {
       hasHistory: conversationHistory?.length > 0,
       userRequest: userRequest?.substring(0, 100),
       originalImageUrl: originalCampaignImageUrl?.substring(0, 80),
-      isValidImageUrl
+      isValidImageUrl,
+      hasLogoUrl: !!effectiveLogoUrl
     });
 
     // Build context about the campaign
@@ -90,41 +118,46 @@ serve(async (req) => {
     let systemPrompt: string;
     
     if (isFooterMode) {
-      // Footer-only mode - focus entirely on footer HTML
+      // Footer-only mode - focus entirely on footer HTML with strict email rules
       systemPrompt = `You are an expert email HTML developer helping refine footer templates.
 
-BRAND STYLE GUIDE:
+${FOOTER_HTML_RULES}
+
+## BRAND STYLE GUIDE
 ${brandName || brandDomain || brandWebsiteUrl ? `- Name: ${brandName || 'Not specified'}\n- Domain: ${brandDomain || 'Not specified'}\n- Website: ${brandWebsiteUrl || 'Not specified'}` : '- Not provided'}
 
-COLOR PALETTE (use EXACT values):
+## COLOR PALETTE (use EXACT hex values)
 ${paletteLines || '- Not provided'}
 
-CURRENT FOOTER HTML:
+${effectiveLogoUrl ? `## LOGO URL (MUST USE AS <img> TAG)
+Logo URL: ${effectiveLogoUrl}
+CRITICAL: Always use this URL in an <img> tag. NEVER render brand name as text.
+Example: <img src="${effectiveLogoUrl}" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
+` : ''}
+
+## CURRENT FOOTER HTML
 \`\`\`html
 ${footerHtml || 'No footer HTML provided'}
 \`\`\`
 
-YOUR TASK:
-You are refining a footer to match the reference image. Compare the current footer HTML to the reference image and make changes to match the visual design.
+## YOUR TASK
+Refine the footer to match the reference image. Compare the current footer HTML to the reference and:
+1. Match exact background colors (sample hex from reference)
+2. Match exact spacing/padding (measure pixels)
+3. Match typography (font sizes, weights, colors)
+4. Match social icon size and spacing
+5. Ensure logo is <img> tag (not text)
 
-Focus on:
-- Background colors and gradients
-- Typography (fonts, sizes, weights, colors)
-- Spacing and padding
-- Layout and alignment
-- Social icons positioning
-- Overall visual fidelity to the reference
+Maintain email-safe HTML: tables only, inline CSS, no flex/grid/div.
 
-Maintain email-safe HTML: use tables, inline CSS, no flex/grid.
-
-RESPONSE FORMAT:
+## RESPONSE FORMAT
 {
   "message": "Brief description of changes made",
   "updatedSlices": [],
   "updatedFooterHtml": "...the complete updated footer HTML..."
 }
 
-CRITICAL: Always return the FULL updated footer HTML in updatedFooterHtml, not just the changed parts.`;
+CRITICAL: Always return the FULL updated footer HTML in updatedFooterHtml, not just changed parts.`;
     } else {
       // Campaign mode - original system prompt
       systemPrompt = `You are an expert email HTML developer helping refine campaign templates.
@@ -200,7 +233,7 @@ If no changes are needed, return empty arrays/null.`;
           {
             type: 'text',
             text: isFooterMode 
-              ? 'This is the reference footer design that the HTML should match.'
+              ? 'This is the reference footer design that the HTML should match pixel-perfectly.'
               : 'This is the original campaign design that the HTML should match.'
           }
         ]
@@ -208,7 +241,7 @@ If no changes are needed, return empty arrays/null.`;
       messages.push({
         role: 'assistant',
         content: isFooterMode
-          ? 'I can see the reference footer design. I\'ll use this to ensure the footer HTML matches the visual styling, colors, spacing, and typography.'
+          ? 'I can see the reference footer design. I\'ll analyze the exact colors, spacing, typography, and layout to ensure the HTML matches pixel-perfectly.'
           : 'I can see the original campaign design. I\'ll use this as reference to ensure the HTML matches the visual styling, colors, spacing, and typography.'
       });
     } else {

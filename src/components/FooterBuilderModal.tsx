@@ -161,6 +161,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         body: JSON.stringify({
           referenceImageUrl,
           logoUrl: lightLogoUrl,
+          lightLogoUrl: lightLogoUrl,
+          darkLogoUrl: darkLogoUrl,
           socialIcons: socialIconsData,
           brandName: brand.name,
           brandColors: {

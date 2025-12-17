@@ -29,6 +29,8 @@ interface BrandContext {
     link?: string;
   };
   typography?: unknown;
+  lightLogoUrl?: string;
+  darkLogoUrl?: string;
 }
 
 interface CampaignStudioProps {
@@ -216,6 +218,8 @@ export function CampaignStudio({
           brandContext,
           mode: 'chat',
           isFooterMode, // Tell backend this is footer-only mode
+          lightLogoUrl: brandContext?.lightLogoUrl,
+          darkLogoUrl: brandContext?.darkLogoUrl,
         }
       });
 
@@ -277,6 +281,8 @@ export function CampaignStudio({
           brandContext,
           mode: 'auto-refine',
           isFooterMode, // Tell backend this is footer-only mode
+          lightLogoUrl: brandContext?.lightLogoUrl,
+          darkLogoUrl: brandContext?.darkLogoUrl,
         }
       });
 
