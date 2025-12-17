@@ -257,6 +257,28 @@ export default function CampaignPage() {
       onSlicesChange={setSlices}
       originalImageUrl={originalImageUrl}
       brandUrl={brand?.websiteUrl || brand?.domain || ''}
+      brandContext={
+        brand
+          ? {
+              name: (brand as any)?.name,
+              domain: (brand as any)?.domain,
+              websiteUrl:
+                (brand as any)?.websiteUrl ??
+                (brand as any)?.website_url ??
+                (brand as any)?.domain,
+              colors: {
+                primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
+                secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
+                accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
+                background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
+                textPrimary:
+                  (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
+                link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
+              },
+              typography: (brand as any)?.typography,
+            }
+          : undefined
+      }
       brandLinks={brandLinks}
       footerHtml={footerHtml}
       onFooterChange={setFooterHtml}
