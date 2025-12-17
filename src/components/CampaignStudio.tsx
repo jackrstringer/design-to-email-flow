@@ -215,6 +215,7 @@ export function CampaignStudio({
           brandUrl,
           brandContext,
           mode: 'chat',
+          isFooterMode, // Tell backend this is footer-only mode
         }
       });
 
@@ -266,12 +267,16 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
+          footerHtml: localFooterHtml, // Include footer HTML
           originalCampaignImageUrl: originalImageUrl,
           conversationHistory: newMessages,
-          userRequest: 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.',
+          userRequest: isFooterMode 
+            ? 'Compare the footer HTML render to the original reference image. Identify any visual differences and update the footer HTML to match the original design as closely as possible.'
+            : 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.',
           brandUrl,
           brandContext,
           mode: 'auto-refine',
+          isFooterMode, // Tell backend this is footer-only mode
         }
       });
 
@@ -279,6 +284,12 @@ export function CampaignStudio({
       if (data?.error) throw new Error(data.error);
 
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Refinement complete!' }]);
+
+      // Handle footer updates in auto-refine
+      if (data.updatedFooterHtml) {
+        setLocalFooterHtml(data.updatedFooterHtml);
+        toast.success('Footer refined');
+      }
 
       if (data.updatedSlices && data.updatedSlices.length > 0) {
         const updatedSlices = slices.map((slice, i) => {
