@@ -102,6 +102,10 @@ serve(async (req) => {
       .filter((v) => typeof v === 'string' && v.includes(','))
       .slice(0, 2);
 
+    // Get existing brands for intelligent matching
+    const existingBrands: Array<{ id: string; name: string; domain: string; primaryColor?: string }> = 
+      Array.isArray(body?.existingBrands) ? body.existingBrands : [];
+
     if (!cleanedImageDataUrls.length) {
       return new Response(
         JSON.stringify({ error: 'Image data URL is required' }),
@@ -117,9 +121,43 @@ serve(async (req) => {
       );
     }
 
-    console.log('Detecting brand from image...');
+    console.log('Detecting brand from image...', { existingBrandsCount: existingBrands.length });
 
-    const prompt = `You are analyzing an email campaign image to identify the brand.
+    // Build prompt based on whether we have existing brands
+    let prompt: string;
+    
+    if (existingBrands.length > 0) {
+      const brandsList = existingBrands.map(b => 
+        `- ID: "${b.id}", Name: "${b.name}", Domain: ${b.domain}${b.primaryColor ? `, Primary Color: ${b.primaryColor}` : ''}`
+      ).join('\n');
+
+      prompt = `You are analyzing an email campaign image to identify the brand.
+
+EXISTING BRANDS IN SYSTEM:
+${brandsList}
+
+TASK: Identify the brand in this campaign and check if it matches an existing brand.
+
+STEP 1 - Analyze the image for brand identity:
+- Logo in header/footer
+- Brand name text
+- Website URLs or domain references
+- Copyright notices
+- Visual brand elements (colors, typography)
+
+STEP 2 - Compare against existing brands:
+- Match by name (exact or close variation, e.g., "Enhanced" matches "enhanced", "ENHANCED", "Enhanced.")
+- Match by domain (ignore www prefix, e.g., "enhanced.com" matches "www.enhanced.com")
+- Match by visual identity (similar colors, same logo style)
+
+STEP 3 - Return result:
+- If this campaign belongs to an EXISTING brand, return: {"matchedBrandId": "the-uuid-from-list"}
+- If this is a NEW brand, use web search if needed to find official URL, then return: {"name": "Brand Name", "url": "https://brandwebsite.com"}
+- If you cannot identify the brand at all: {"name": null, "url": null}
+
+CRITICAL: Your response must be ONLY a JSON object. No explanation, no markdown, no other text.`;
+    } else {
+      prompt = `You are analyzing an email campaign image to identify the brand.
 
 TASK: Find the brand name and their official website URL.
 
@@ -139,6 +177,7 @@ Output format (nothing else):
 
 If you cannot identify the brand:
 {"name": null, "url": null}`;
+    }
 
     const contentParts: any[] = cleanedImageDataUrls.map((imageDataUrl) => {
       const base64Data = imageDataUrl.split(',')[1];
@@ -197,27 +236,40 @@ If you cannot identify the brand:
     console.log('Extracted text content:', content);
 
     // Parse the JSON response with robust extraction
-    let brandInfo: { name: string | null; url: string | null } = { name: null, url: null };
+    let result: { matchedBrandId?: string; name?: string | null; url?: string | null } = {};
     
+    // Check for matchedBrandId first
+    const matchedIdMatch = content.match(/"matchedBrandId"\s*:\s*"([^"]+)"/);
+    if (matchedIdMatch) {
+      result.matchedBrandId = matchedIdMatch[1];
+      console.log('Matched existing brand:', result.matchedBrandId);
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // No match found, extract name/url for new brand
     const extracted = extractJsonFromText(content);
     if (extracted) {
-      brandInfo = extracted;
+      result.name = extracted.name;
+      result.url = extracted.url;
     }
 
     // Normalize URL if present
-    if (brandInfo.url && !brandInfo.url.startsWith('http://') && !brandInfo.url.startsWith('https://')) {
-      brandInfo.url = `https://${brandInfo.url}`;
+    if (result.url && !result.url.startsWith('http://') && !result.url.startsWith('https://')) {
+      result.url = `https://${result.url}`;
     }
 
     // Clean up URL (remove trailing punctuation)
-    if (brandInfo.url) {
-      brandInfo.url = brandInfo.url.replace(/[.,;:!?)}\]]+$/, '');
+    if (result.url) {
+      result.url = result.url.replace(/[.,;:!?)}\]]+$/, '');
     }
 
-    console.log('Detected brand:', brandInfo);
+    console.log('Detected new brand:', result);
 
     return new Response(
-      JSON.stringify(brandInfo),
+      JSON.stringify(result),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
