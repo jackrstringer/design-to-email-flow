@@ -17,10 +17,9 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <style>
-    body {
+    html, body {
       margin: 0;
       padding: 0;
-      background-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
     }
@@ -62,7 +61,7 @@ export function HtmlPreviewFrame({ html, className }: HtmlPreviewFrameProps) {
       title="HTML Preview"
       className={className}
       sandbox="allow-same-origin"
-      style={{ border: 'none', width: '100%', height: '100%' }}
+      style={{ border: 'none', width: '100%', background: 'transparent' }}
     />
   );
 }
