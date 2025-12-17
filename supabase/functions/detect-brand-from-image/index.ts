@@ -12,9 +12,17 @@ serve(async (req) => {
   }
 
   try {
-    const { imageDataUrl } = await req.json();
+    const body = await req.json();
 
-    if (!imageDataUrl) {
+    const imageDataUrls: string[] = Array.isArray(body?.imageDataUrls)
+      ? body.imageDataUrls
+      : (body?.imageDataUrl ? [body.imageDataUrl] : []);
+
+    const cleanedImageDataUrls = (imageDataUrls || [])
+      .filter((v) => typeof v === 'string' && v.includes(','))
+      .slice(0, 2);
+
+    if (!cleanedImageDataUrls.length) {
       return new Response(
         JSON.stringify({ error: 'Image data URL is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -29,20 +37,15 @@ serve(async (req) => {
       );
     }
 
-    // Extract just the top portion of the image to reduce size
-    // Most brand info is in the header/logo area
-    const base64Data = imageDataUrl.split(',')[1];
-    const mediaType = imageDataUrl.split(';')[0].split(':')[1] || 'image/png';
-
     console.log('Detecting brand from image...');
 
-    const prompt = `Look at this email campaign image and identify the brand.
+    const prompt = `You will be given 1-2 cropped views of the same email campaign (usually header + footer).
 
-TASK: Find the brand name and website URL from this email.
+TASK: Identify the brand name and the brand's website URL from the email.
 
 Look for:
 - Logo in the header
-- Brand name in the header or footer
+- Brand name in header or footer
 - Website URLs anywhere in the email
 - Copyright notice in the footer (e.g., "© 2024 BrandName")
 - Any domain references
@@ -52,6 +55,25 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 If you cannot identify the brand, return:
 {"name": null, "url": null}`;
+
+    const contentParts: any[] = cleanedImageDataUrls.map((imageDataUrl) => {
+      const base64Data = imageDataUrl.split(',')[1];
+      const mediaType = imageDataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+
+      return {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      };
+    });
+
+    contentParts.push({
+      type: 'text',
+      text: prompt,
+    });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -65,20 +87,7 @@ If you cannot identify the brand, return:
         max_tokens: 256,
         messages: [{
           role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64Data,
-              },
-            },
-            {
-              type: 'text',
-              text: prompt,
-            },
-          ],
+          content: contentParts,
         }],
       }),
     });

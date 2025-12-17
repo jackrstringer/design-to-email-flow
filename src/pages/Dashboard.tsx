@@ -132,9 +132,9 @@ export default function Dashboard() {
   }, []);
 
   // Called when user confirms the detected brand URL
-  const handleBrandConfirmed = useCallback(async (url: string) => {
+  const handleBrandConfirmed = useCallback((url: string) => {
     setIsAnalyzingBrand(true);
-    
+
     try {
       // Extract domain from URL
       let domain: string;
@@ -143,28 +143,18 @@ export default function Dashboard() {
       } catch {
         domain = url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
       }
-      
-      // Run Firecrawl brand analysis
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-brand', {
+
+      // Kick off brand analysis in background (NewBrandModal will await it)
+      backgroundAnalysisRef.current = supabase.functions.invoke('analyze-brand', {
         body: { websiteUrl: url }
       });
-      
-      if (analysisError) {
-        console.error('Brand analysis error:', analysisError);
-        toast.error('Failed to analyze brand. Please try again.');
-        setIsAnalyzingBrand(false);
-        return;
-      }
-      
-      // Close confirmation modal and open brand creation modal
+
       setShowBrandConfirmModal(false);
       setPendingBrandDomain(domain);
-      backgroundAnalysisRef.current = Promise.resolve({ data: analysisData });
       setShowNewBrandModal(true);
-      
     } catch (error) {
       console.error('Error confirming brand:', error);
-      toast.error('Failed to analyze brand');
+      toast.error('Failed to start brand analysis');
     } finally {
       setIsAnalyzingBrand(false);
     }

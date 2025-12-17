@@ -33,9 +33,9 @@ export function BrandConfirmModal({
 
   // Reset state when modal opens with new data
   const handleOpenChange = (newOpen: boolean) => {
-    if (newOpen && detectedUrl) {
-      setEditedUrl(detectedUrl);
-      setIsEditing(false);
+    if (newOpen) {
+      setEditedUrl(detectedUrl || '');
+      setIsEditing(!detectedUrl);
     }
     onOpenChange(newOpen);
   };
