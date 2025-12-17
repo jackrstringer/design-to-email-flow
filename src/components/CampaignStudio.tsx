@@ -315,7 +315,7 @@ export function CampaignStudio({
                 onClick={() => window.open(
                   campaignId 
                     ? `https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`
-                    : `https://www.klaviyo.com/email-templates/${templateId}`,
+                    : `https://www.klaviyo.com/email-templates`,
                   '_blank'
                 )}
               >
