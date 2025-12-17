@@ -258,6 +258,33 @@ export function CampaignStudio({
 
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
+    
+    // Build a more comprehensive auto-refine prompt for multi-slice campaigns
+    const htmlSliceCount = slices.filter(s => s.type === 'html').length;
+    const imageSliceCount = slices.filter(s => s.type === 'image').length;
+    
+    let autoRefinePrompt: string;
+    if (isFooterMode) {
+      autoRefinePrompt = 'Compare the footer HTML render to the original reference image. Identify any visual differences and update the footer HTML to match the original design as closely as possible.';
+    } else if (htmlSliceCount > 1) {
+      // Multi-slice HTML campaign - comprehensive prompt
+      autoRefinePrompt = `Analyze the ENTIRE campaign as rendered (${htmlSliceCount} HTML sections + ${imageSliceCount} image sections stacked vertically).
+
+Compare the complete composed email to the original design image. For EACH HTML section:
+1. Identify any visual differences from the corresponding portion of the original design
+2. Check for style INCONSISTENCIES between HTML sections (different fonts, button styles, colors, spacing)
+3. Ensure all HTML sections use IDENTICAL styling for equivalent elements
+
+Provide updated HTML for ALL sections that need changes to:
+- Match the original design pixel-perfectly
+- Use consistent styling across ALL HTML sections
+- Maintain email-safe HTML (tables, inline CSS, no flex/grid)
+
+Return ALL HTML sections that need updates, not just one.`;
+    } else {
+      autoRefinePrompt = 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.';
+    }
+    
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
     setChatMessages(newMessages);
 
@@ -271,16 +298,14 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
-          footerHtml: localFooterHtml, // Include footer HTML
+          footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
           conversationHistory: newMessages,
-          userRequest: isFooterMode 
-            ? 'Compare the footer HTML render to the original reference image. Identify any visual differences and update the footer HTML to match the original design as closely as possible.'
-            : 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.',
+          userRequest: autoRefinePrompt,
           brandUrl,
           brandContext,
           mode: 'auto-refine',
-          isFooterMode, // Tell backend this is footer-only mode
+          isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
         }
@@ -289,7 +314,11 @@ export function CampaignStudio({
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
 
-      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Refinement complete!' }]);
+      const responseMessage = data.styleConsistencyNotes 
+        ? `${data.message || 'Refinement complete!'}\n\nStyle notes: ${data.styleConsistencyNotes}`
+        : data.message || 'Refinement complete!';
+      
+      setChatMessages([...newMessages, { role: 'assistant', content: responseMessage }]);
 
       // Handle footer updates in auto-refine
       if (data.updatedFooterHtml) {
@@ -306,7 +335,7 @@ export function CampaignStudio({
           return slice;
         });
         onSlicesChange(updatedSlices);
-        toast.success('Campaign refined');
+        toast.success(`${data.updatedSlices.length} slice(s) refined`);
       }
     } catch (err) {
       setChatMessages([...newMessages, { 
