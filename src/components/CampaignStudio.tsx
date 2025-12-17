@@ -359,9 +359,16 @@ export function CampaignStudio({
               <div className="flex flex-col">
               {/* Stacked slices with inline details */}
               {slices.map((slice, index) => (
-                <div key={index} className="flex items-stretch border-b border-border/20 last:border-b-0">
+                <div key={index} className="relative flex items-stretch">
+                  {/* Slice separator line - extends from left edge to image */}
+                  {index > 0 && (
+                    <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
+                      <div className="h-px bg-destructive/60 flex-1" />
+                      <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {index + 1}</span>
+                    </div>
+                  )}
                   {/* Slice details - generous width for readability */}
-                  <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3">
+                  <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
                     {/* Row 1: Type toggle + Link + dimensions - all inline */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Compact icon toggle */}
