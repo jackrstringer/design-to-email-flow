@@ -1,6 +1,8 @@
 // Simple Icons CDN utility for fetching social media icons
 // https://simpleicons.org/ - Free SVG icons for popular brands
 
+import { supabase } from '@/integrations/supabase/client';
+
 export type SocialPlatform = 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'youtube' | 'tiktok' | 'pinterest' | 'snapchat' | 'whatsapp' | 'telegram';
 
 // Map platform names to Simple Icons slugs
@@ -46,7 +48,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
 };
 
 /**
- * Get the Simple Icons CDN URL for a social platform icon
+ * Get the Simple Icons CDN URL for a social platform icon (for preview only)
  * @param platform - The social platform name
  * @param color - Hex color without # (default: 'ffffff' for white)
  * @returns CDN URL for the SVG icon
@@ -55,6 +57,76 @@ export function getSocialIconUrl(platform: string, color: string = 'ffffff'): st
   const slug = PLATFORM_SLUGS[platform.toLowerCase()] || platform.toLowerCase();
   const cleanColor = color.replace('#', '');
   return `https://cdn.simpleicons.org/${slug}/${cleanColor}`;
+}
+
+/**
+ * Upload social icon to Cloudinary and return the hosted URL
+ * This should be used for production emails instead of CDN URLs
+ * @param platform - The social platform name
+ * @param color - Hex color without # (default: 'ffffff' for white)
+ * @param brandDomain - Brand domain for organizing uploads
+ * @returns Promise with Cloudinary URL
+ */
+export async function uploadSocialIconToCloudinary(
+  platform: string, 
+  color: string = 'ffffff',
+  brandDomain?: string
+): Promise<{ url: string; publicId: string } | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('upload-social-icon', {
+      body: { platform, color, brandDomain }
+    });
+
+    if (error) {
+      console.error('Error uploading social icon:', error);
+      return null;
+    }
+
+    if (!data.success) {
+      console.error('Social icon upload failed:', data.error);
+      return null;
+    }
+
+    return {
+      url: data.url,
+      publicId: data.publicId,
+    };
+  } catch (err) {
+    console.error('Failed to upload social icon:', err);
+    return null;
+  }
+}
+
+/**
+ * Upload all social icons for a brand and return Cloudinary-hosted URLs
+ * @param socialLinks - Array of social links with platform and url
+ * @param color - Icon color (default: 'ffffff' for white)
+ * @param brandDomain - Brand domain for organizing uploads
+ * @returns Promise with array of social icon data including Cloudinary URLs
+ */
+export async function uploadAllSocialIcons(
+  socialLinks: Array<{ platform: string; url: string }>,
+  color: string = 'ffffff',
+  brandDomain?: string
+): Promise<Array<{ platform: string; url: string; iconUrl: string }>> {
+  const results = await Promise.all(
+    socialLinks.map(async (link) => {
+      const cloudinaryResult = await uploadSocialIconToCloudinary(
+        link.platform,
+        color,
+        brandDomain
+      );
+
+      return {
+        platform: link.platform,
+        url: link.url,
+        // Use Cloudinary URL if upload succeeded, fall back to CDN for preview
+        iconUrl: cloudinaryResult?.url || getSocialIconUrl(link.platform, color),
+      };
+    })
+  );
+
+  return results;
 }
 
 /**
