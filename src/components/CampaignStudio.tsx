@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { toPng } from 'html-to-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -16,6 +17,21 @@ import { FooterSelector, BrandFooter } from './FooterSelector';
 import { getSocialIconUrl } from '@/lib/socialIcons';
 
 const BASE_WIDTH = 600;
+
+// Helper to capture comparison area screenshot
+const captureComparisonScreenshot = async (element: HTMLElement): Promise<string | null> => {
+  try {
+    const dataUrl = await toPng(element, {
+      cacheBust: true,
+      pixelRatio: 1,
+      skipFonts: true,
+    });
+    return dataUrl;
+  } catch (err) {
+    console.error('Screenshot capture failed:', err);
+    return null;
+  }
+};
 
 interface BrandContext {
   name?: string;
@@ -233,8 +249,14 @@ export function CampaignStudio({
     setChatMessages(newMessages);
     setIsRefining(true);
 
-    // Screenshot capture disabled - TODO: implement alternative approach
-    const comparisonScreenshotBase64: string | null = null;
+    // Capture screenshot of comparison area
+    let comparisonScreenshotBase64: string | null = null;
+    if (comparisonAreaRef.current) {
+      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
+      if (comparisonScreenshotBase64) {
+        console.log('Screenshot captured, size:', comparisonScreenshotBase64.length);
+      }
+    }
 
     // Build social icons with white color URLs
     const socialIconsData = brandContext?.socialLinks?.map(link => ({
@@ -309,8 +331,14 @@ export function CampaignStudio({
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
     
-    // Screenshot capture disabled - TODO: implement alternative approach
-    const comparisonScreenshotBase64: string | null = null;
+    // Capture screenshot of comparison area
+    let comparisonScreenshotBase64: string | null = null;
+    if (comparisonAreaRef.current) {
+      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
+      if (comparisonScreenshotBase64) {
+        console.log('Screenshot captured, size:', comparisonScreenshotBase64.length);
+      }
+    }
     
     // Build a more comprehensive auto-refine prompt for multi-slice campaigns
     const htmlSliceCount = slices.filter(s => s.type === 'html').length;
