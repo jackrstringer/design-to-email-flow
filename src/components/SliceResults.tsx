@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Link, Unlink, ExternalLink, ChevronLeft, Rocket, FileText, Image, Code, Loader2, Pencil } from 'lucide-react';
+import { Link, Unlink, ExternalLink, ChevronLeft, Rocket, FileText, Image, Code, Loader2, Pencil, CheckCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ProcessedSlice } from '@/types/slice';
 import { HtmlEditorModal } from './HtmlEditorModal';
@@ -169,16 +169,39 @@ export function SliceResults({
                       )}
 
                       {slice.link && (
-                        <a
-                          href={slice.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 text-muted-foreground hover:text-foreground"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
+                        <>
+                          {/* Link verification status */}
+                          {slice.linkVerified ? (
+                            <div className="flex items-center gap-1 text-green-500" title="Verified via web search">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                            </div>
+                          ) : slice.linkWarning ? (
+                            <div className="flex items-center gap-1 text-amber-500" title={slice.linkWarning}>
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-amber-500" title="Unverified link">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                          <a
+                            href={slice.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-muted-foreground hover:text-foreground"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        </>
                       )}
                     </div>
+                    {/* Link warning message */}
+                    {slice.link && slice.linkWarning && (
+                      <div className="flex items-center gap-1 text-xs text-amber-500">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                        <span>{slice.linkWarning}</span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   /* HTML Content with Edit button */

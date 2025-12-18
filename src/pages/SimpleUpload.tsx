@@ -195,12 +195,13 @@ export default function SimpleUpload() {
         uploadedSlices.push({ imageUrl: data.url, slice: slices[i] });
       }
 
-      // Analyze slices with AI
+      // Analyze slices with AI (with web search grounding)
       setStatus('Analyzing slices with AI...');
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
         body: {
           slices: slices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
-          brandUrl: 'https://www.enhanced.com'
+          brandUrl: 'https://www.enhanced.com',
+          brandDomain: 'enhanced.com' // Pass domain for site: search queries
         }
       });
 
@@ -215,6 +216,8 @@ export default function SimpleUpload() {
         altText: analyses[i]?.altText || `Email section ${i + 1}`,
         link: analyses[i]?.suggestedLink || null,
         isClickable: analyses[i]?.isClickable || false,
+        linkVerified: analyses[i]?.linkVerified || false,
+        linkWarning: analyses[i]?.linkWarning,
         type: 'image' as SliceType
       }));
 
