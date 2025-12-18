@@ -172,9 +172,39 @@ Make targeted adjustments to achieve PIXEL-PERFECT matching.`;
 
 Return the refined HTML code. Only output the HTML, no explanations.`;
 
-    // Build messages with optional image
+    // Build messages with logo images FIRST so Claude can SEE them
     const content: any[] = [];
     
+    // CRITICAL: Show Claude the actual logo images so it knows what they look like
+    if (lightLogoUrl || darkLogoUrl) {
+      content.push({ 
+        type: 'text', 
+        text: '## LOGO IMAGES (LOOK AT THESE - YOU MUST USE ONE AS <img> TAG)\n\nThese are the actual logo images:' 
+      });
+      
+      if (lightLogoUrl) {
+        content.push({
+          type: 'image',
+          source: { type: 'url', url: lightLogoUrl }
+        });
+        content.push({ type: 'text', text: `↑ LIGHT/WHITE LOGO - URL: ${lightLogoUrl}\nUse this for DARK backgrounds.` });
+      }
+      
+      if (darkLogoUrl) {
+        content.push({
+          type: 'image',
+          source: { type: 'url', url: darkLogoUrl }
+        });
+        content.push({ type: 'text', text: `↑ DARK/BLACK LOGO - URL: ${darkLogoUrl}\nUse this for LIGHT backgrounds.` });
+      }
+      
+      content.push({ 
+        type: 'text', 
+        text: '\n---\nUse one of these logos as <img src="...">. NEVER render brand name as text.\n---\n' 
+      });
+    }
+    
+    // Then add reference image
     if (referenceImageUrl) {
       content.push({
         type: 'image',
@@ -183,6 +213,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
           url: referenceImageUrl,
         },
       });
+      content.push({ type: 'text', text: '↑ REFERENCE - Match this but use the logo IMAGE shown above, not text.' });
     }
     
     content.push({ type: 'text', text: prompt });
