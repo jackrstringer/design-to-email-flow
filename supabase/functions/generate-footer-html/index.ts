@@ -31,8 +31,9 @@ Luminance calculation: luminance = (0.299 × R + 0.587 × G + 0.114 × B) / 255
 ## STEP 2: SELECT ASSETS
 
 ### Logo Selection Rule (CRITICAL)
-- If a logoUrl is provided, you MUST use it as an <img> tag
-- NEVER render the brand name as text when a logo image URL is given
+- If ANY logo URL is provided (logoUrl, lightLogoUrl, or darkLogoUrl), the footer MUST include a logo as an <img> tag
+- The logo MUST be a hosted image URL (http/https). NEVER use data URLs.
+- NEVER render the brand name as text in place of the logo
 - Use the exact URL provided - do not modify it
 
 ### Social Icon URLs
@@ -243,7 +244,12 @@ ${socialIcons.map((s: any) => `- ${s.platform}:
 
         // Build logo section with BOTH options clearly labeled
         const hasAnyLogo = logoUrl || lightLogoUrl || darkLogoUrl;
-        const logoSection = hasAnyLogo ? `## AVAILABLE LOGO ASSETS (CRITICAL - USE AS <img> TAGS)
+        const logoSection = hasAnyLogo ? `## AVAILABLE LOGO ASSETS (NON-NEGOTIABLE)
+The footer MUST contain a logo image in the LOGO ROW.
+- It MUST be an <img> tag.
+- It MUST use ONE of the hosted URLs below (http/https).
+- It MUST NOT be rendered as text (no "${brandName || 'Brand'}" text in place of a logo).
+
 ${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
 ${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
 ${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
@@ -257,9 +263,9 @@ ${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
    → USE THE DARK/BLACK LOGO: ${darkLogoUrl || logoUrl || 'not provided'}
 5. ALWAYS use the selected logo as an <img> tag with the EXACT URL provided
 6. NEVER render the brand name as text when a logo URL exists
-7. Example: <img src="[SELECTED_LOGO_URL]" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
+7. REQUIRED: Your HTML must contain <img src="[SELECTED_LOGO_URL]" ...> in the logo row.
 ` : `## LOGO
-No logo provided - skip logo section entirely`;
+No logo provided - cannot generate a footer without a hosted logo image URL.`;
 
         let userPrompt = `Create an email footer for "${brandName || 'Brand'}" with these specifications:
 
