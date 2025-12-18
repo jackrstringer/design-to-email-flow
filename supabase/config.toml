@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.upload-social-icon]
 verify_jwt = false
+
+[functions.generate-email-copy]
+verify_jwt = false
