@@ -265,6 +265,35 @@ If no changes are needed, return empty arrays/null.`;
     // Build messages array with conversation history
     const messages = [];
 
+    // CRITICAL: First show Claude the actual logo images so it knows what they look like
+    if (hasAnyLogo) {
+      const logoContent: any[] = [
+        { type: 'text', text: '## BRAND LOGO IMAGES\n\nThese are the actual logo images you MUST use (as <img> tags, NOT text):' }
+      ];
+      
+      if (lightLogoUrl) {
+        logoContent.push({
+          type: 'image',
+          source: { type: 'url', url: lightLogoUrl }
+        });
+        logoContent.push({ type: 'text', text: `↑ LIGHT/WHITE LOGO - URL: ${lightLogoUrl} (use for dark backgrounds)` });
+      }
+      
+      if (darkLogoUrl) {
+        logoContent.push({
+          type: 'image',
+          source: { type: 'url', url: darkLogoUrl }
+        });
+        logoContent.push({ type: 'text', text: `↑ DARK/BLACK LOGO - URL: ${darkLogoUrl} (use for light backgrounds)` });
+      }
+      
+      messages.push({ role: 'user', content: logoContent });
+      messages.push({ 
+        role: 'assistant', 
+        content: 'I can see the brand logo images. I will use these as <img> tags in the footer, NOT render the brand name as text.' 
+      });
+    }
+
     // Add original design image for context (only if it's a valid URL)
     if (isValidImageUrl) {
       console.log('Adding original image to context:', originalCampaignImageUrl);
@@ -281,7 +310,7 @@ If no changes are needed, return empty arrays/null.`;
           {
             type: 'text',
             text: isFooterMode 
-              ? 'This is the reference footer design that the HTML should match pixel-perfectly.'
+              ? 'This is the reference footer design. NOTE: If this shows brand name as TEXT, IGNORE that and use the logo IMAGE I showed you above instead.'
               : 'This is the original campaign design that the HTML should match.'
           }
         ]
@@ -289,7 +318,7 @@ If no changes are needed, return empty arrays/null.`;
       messages.push({
         role: 'assistant',
         content: isFooterMode
-          ? 'I can see the reference footer design. I\'ll analyze the exact colors, spacing, typography, and layout to ensure the HTML matches pixel-perfectly.'
+          ? 'I can see the reference footer design. I\'ll match the layout, colors, and spacing, but I\'ll use the logo IMAGE you showed me earlier instead of any text logo in the reference.'
           : 'I can see the original campaign design. I\'ll use this as reference to ensure the HTML matches the visual styling, colors, spacing, and typography.'
       });
     } else {

@@ -344,9 +344,39 @@ Create a professional dark footer with:
 `;
         }
 
-        // Build messages with optional image
+        // Build messages with logo images FIRST so Claude can SEE them
         const content: any[] = [];
         
+        // CRITICAL: Show Claude the actual logo images so it knows what they look like
+        if (lightLogoUrl || darkLogoUrl) {
+          content.push({ 
+            type: 'text', 
+            text: '## LOGO IMAGES (LOOK AT THESE - YOU MUST USE ONE AS <img> TAG, NOT TEXT)\n\nThese are the actual logo images. Study them carefully:' 
+          });
+          
+          if (lightLogoUrl) {
+            content.push({
+              type: 'image',
+              source: { type: 'url', url: lightLogoUrl }
+            });
+            content.push({ type: 'text', text: `↑ LIGHT/WHITE LOGO - URL: ${lightLogoUrl}\nUse this for DARK backgrounds.` });
+          }
+          
+          if (darkLogoUrl) {
+            content.push({
+              type: 'image',
+              source: { type: 'url', url: darkLogoUrl }
+            });
+            content.push({ type: 'text', text: `↑ DARK/BLACK LOGO - URL: ${darkLogoUrl}\nUse this for LIGHT backgrounds.` });
+          }
+          
+          content.push({ 
+            type: 'text', 
+            text: '\n---\nYou MUST use one of these logo images above as an <img src="..."> tag. NEVER render the brand name as text.\n---\n' 
+          });
+        }
+        
+        // Then add reference image
         if (referenceImageUrl) {
           content.push({
             type: 'image',
@@ -354,6 +384,10 @@ Create a professional dark footer with:
               type: 'url',
               url: referenceImageUrl,
             },
+          });
+          content.push({ 
+            type: 'text', 
+            text: '↑ REFERENCE FOOTER DESIGN - Match this layout, colors, spacing. BUT replace any text logo with the <img> logo shown above.' 
           });
         }
         
