@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import html2canvas from 'html2canvas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -17,24 +16,6 @@ import { FooterSelector, BrandFooter } from './FooterSelector';
 import { getSocialIconUrl } from '@/lib/socialIcons';
 
 const BASE_WIDTH = 600;
-
-// Helper to capture comparison area screenshot
-const captureComparisonScreenshot = async (element: HTMLElement): Promise<string | null> => {
-  try {
-    const canvas = await html2canvas(element, {
-      useCORS: true,
-      allowTaint: true,
-      scale: 1,
-      logging: false,
-    });
-    return canvas.toDataURL('image/png');
-  } catch (err) {
-    console.error('Screenshot capture failed:', err);
-    return null;
-  }
-};
-
-// Helper to upload screenshot to Cloudinary - no longer needed, sending base64 directly to Claude
 
 interface BrandContext {
   name?: string;
@@ -252,14 +233,8 @@ export function CampaignStudio({
     setChatMessages(newMessages);
     setIsRefining(true);
 
-    // Capture screenshot of comparison area - send base64 directly to Claude
-    let comparisonScreenshotBase64: string | null = null;
-    if (comparisonAreaRef.current) {
-      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
-      if (comparisonScreenshotBase64) {
-        console.log('Comparison screenshot captured, length:', comparisonScreenshotBase64.length);
-      }
-    }
+    // Screenshot capture disabled - TODO: implement alternative approach
+    const comparisonScreenshotBase64: string | null = null;
 
     // Build social icons with white color URLs
     const socialIconsData = brandContext?.socialLinks?.map(link => ({
@@ -334,14 +309,8 @@ export function CampaignStudio({
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
     
-    // Capture screenshot of comparison area - send base64 directly to Claude
-    let comparisonScreenshotBase64: string | null = null;
-    if (comparisonAreaRef.current) {
-      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
-      if (comparisonScreenshotBase64) {
-        console.log('Comparison screenshot captured, length:', comparisonScreenshotBase64.length);
-      }
-    }
+    // Screenshot capture disabled - TODO: implement alternative approach
+    const comparisonScreenshotBase64: string | null = null;
     
     // Build a more comprehensive auto-refine prompt for multi-slice campaigns
     const htmlSliceCount = slices.filter(s => s.type === 'html').length;
