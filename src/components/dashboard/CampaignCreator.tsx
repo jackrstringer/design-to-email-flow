@@ -146,11 +146,12 @@ export function CampaignCreator({
         })
       );
 
-      // Analyze slices with AI for alt text and links
+      // Analyze slices with AI for alt text and links (with web search grounding)
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
         body: {
           slices: uploadedSlices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
           brandUrl: selectedBrand.websiteUrl || `https://${selectedBrand.domain}`,
+          brandDomain: selectedBrand.domain, // Pass domain for site: search queries
           figmaDesignData: figmaDesignData // Pass Figma data if available
         }
       });
@@ -167,6 +168,8 @@ export function CampaignCreator({
           type: slice.type,
           altText: analysis?.altText || `Email section ${index + 1}`,
           link: analysis?.suggestedLink || null,
+          linkVerified: analysis?.linkVerified || false,
+          linkWarning: analysis?.linkWarning,
           html: null,
           figmaDesignData: figmaDesignData, // Attach Figma data for HTML generation
         };
