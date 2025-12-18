@@ -20,6 +20,13 @@ interface BrandColors {
   link?: string;
 }
 
+interface DesignData {
+  colors: string[];
+  fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
+  texts: Array<{ content: string; isUrl: boolean }>;
+  spacing: { paddings: number[]; gaps: number[] };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -28,6 +35,7 @@ serve(async (req) => {
   try {
     const { 
       design,
+      designData,
       exportedImageUrl,
       lightLogoUrl,
       darkLogoUrl,
@@ -53,13 +61,11 @@ serve(async (req) => {
       );
     }
 
-    // Extract useful measurements from Figma design data
-    const figmaMeasurements = extractFigmaMeasurements(design);
-
-    // Build the AI prompt with Figma data + brand context
+    // Build the deterministic prompt with exact Figma values
     const systemPrompt = buildSystemPrompt();
     const userPrompt = buildUserPrompt({
-      figmaMeasurements,
+      designData,
+      design,
       lightLogoUrl,
       darkLogoUrl,
       socialIcons,
@@ -69,84 +75,78 @@ serve(async (req) => {
       brandColors,
     });
 
-    console.log('Calling Claude with Figma design + brand context...');
+    console.log('Calling Claude with EXACT Figma specifications...');
+    console.log('Design data:', JSON.stringify(designData, null, 2));
 
-    // Build messages array with image
-    const messages = [
+    // Build messages array with images
+    const messages: any[] = [
       {
         role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'url',
-              url: exportedImageUrl,
-            },
-          },
-          {
-            type: 'text',
-            text: userPrompt,
-          },
-        ],
+        content: [],
       },
     ];
 
-    // If we have logo URLs, show them to Claude as well
-    if (lightLogoUrl) {
-      messages[0].content.unshift({
-        type: 'image',
-        source: { type: 'url', url: lightLogoUrl },
-      });
-      messages[0].content.unshift({
-        type: 'text',
-        text: 'LIGHT LOGO IMAGE (use on dark backgrounds):',
-      });
-    }
-
+    // Show logos to Claude first so it knows what they look like
     if (darkLogoUrl) {
-      messages[0].content.unshift({
-        type: 'image',
-        source: { type: 'url', url: darkLogoUrl },
-      });
-      messages[0].content.unshift({
-        type: 'text',
-        text: 'DARK LOGO IMAGE (use on light backgrounds):',
-      });
+      messages[0].content.push(
+        { type: 'text', text: 'DARK LOGO IMAGE (use on light backgrounds):' },
+        { type: 'image', source: { type: 'url', url: darkLogoUrl } }
+      );
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8000,
-        system: systemPrompt,
-        messages,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API error:', response.status, errorText);
-      throw new Error(`Claude API error: ${response.status}`);
+    if (lightLogoUrl) {
+      messages[0].content.push(
+        { type: 'text', text: 'LIGHT LOGO IMAGE (use on dark backgrounds):' },
+        { type: 'image', source: { type: 'url', url: lightLogoUrl } }
+      );
     }
 
-    const data = await response.json();
-    const responseText = data.content?.[0]?.text || '';
+    // Add the Figma design image
+    messages[0].content.push(
+      { type: 'text', text: 'FIGMA DESIGN TO REPLICATE:' },
+      { type: 'image', source: { type: 'url', url: exportedImageUrl } }
+    );
 
-    // Extract HTML from Claude's response
-    const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
-    const html = htmlMatch ? htmlMatch[1] : responseText;
+    // Add the detailed prompt
+    messages[0].content.push({ type: 'text', text: userPrompt });
+
+    // Initial generation
+    let html = await callClaude(ANTHROPIC_API_KEY, systemPrompt, messages);
 
     if (!html || html.length < 100) {
       throw new Error('Claude did not return valid HTML');
     }
 
-    console.log('Successfully generated HTML from Figma + AI');
+    // Validation loop - compare generated HTML to reference and refine
+    const maxIterations = 3;
+    for (let i = 0; i < maxIterations; i++) {
+      console.log(`Validation iteration ${i + 1}/${maxIterations}...`);
+      
+      const validationResult = await validateHtml(
+        ANTHROPIC_API_KEY,
+        html,
+        exportedImageUrl,
+        designData
+      );
+
+      if (validationResult.matches) {
+        console.log('HTML matches reference design - validation passed!');
+        break;
+      }
+
+      console.log('Discrepancies found:', validationResult.discrepancies);
+
+      // Refine with specific corrections
+      html = await refineHtml(
+        ANTHROPIC_API_KEY,
+        html,
+        exportedImageUrl,
+        validationResult.discrepancies,
+        designData
+      );
+    }
+
+    console.log('Successfully generated pixel-perfect HTML from Figma');
 
     return new Response(
       JSON.stringify({
@@ -165,107 +165,204 @@ serve(async (req) => {
   }
 });
 
-function extractFigmaMeasurements(design: any): Record<string, any> {
-  if (!design) return {};
-  
-  const measurements: Record<string, any> = {
-    width: design.width,
-    height: design.height,
-    backgroundColor: design.backgroundColor,
-    padding: design.padding,
-    layoutMode: design.layoutMode,
-    itemSpacing: design.itemSpacing,
-  };
+async function callClaude(apiKey: string, systemPrompt: string, messages: any[]): Promise<string> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      system: systemPrompt,
+      messages,
+    }),
+  });
 
-  // Extract typography from text nodes
-  const textStyles: any[] = [];
-  extractTextStyles(design, textStyles);
-  if (textStyles.length > 0) {
-    measurements.typography = textStyles;
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Claude API error:', response.status, errorText);
+    throw new Error(`Claude API error: ${response.status}`);
   }
 
-  // Extract colors used
-  const colors = new Set<string>();
-  extractColors(design, colors);
-  measurements.colorsUsed = Array.from(colors);
+  const data = await response.json();
+  const responseText = data.content?.[0]?.text || '';
 
-  return measurements;
+  // Extract HTML from response
+  const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
+  return htmlMatch ? htmlMatch[1] : responseText;
 }
 
-function extractTextStyles(node: any, styles: any[]) {
-  if (node.type === 'TEXT' && node.fontFamily) {
-    styles.push({
-      text: node.text?.substring(0, 50),
-      fontFamily: node.fontFamily,
-      fontSize: node.fontSize,
-      fontWeight: node.fontWeight,
-      color: node.color,
-      lineHeight: node.lineHeight,
-    });
-  }
-  if (node.children) {
-    for (const child of node.children) {
-      extractTextStyles(child, styles);
-    }
-  }
+async function validateHtml(
+  apiKey: string,
+  html: string,
+  referenceImageUrl: string,
+  designData: DesignData | null
+): Promise<{ matches: boolean; discrepancies: string[] }> {
+  const prompt = `Compare this generated HTML against the reference Figma design.
+
+EXACT SPECIFICATIONS FROM FIGMA:
+${designData ? `
+- Colors: ${designData.colors.join(', ')}
+- Font sizes: ${designData.fonts.map(f => `${f.size}px`).join(', ')}
+- Font weights: ${designData.fonts.map(f => f.weight).join(', ')}
+- Line heights: ${designData.fonts.map(f => `${f.lineHeight}px`).join(', ')}
+- Paddings: ${designData.spacing.paddings.join('px, ')}px
+- Gaps: ${designData.spacing.gaps.join('px, ')}px
+` : 'No exact specifications available'}
+
+GENERATED HTML:
+\`\`\`html
+${html}
+\`\`\`
+
+Check for these specific issues:
+1. Background colors match exactly (check hex values)
+2. Font sizes match exactly (e.g., if Figma says 14px, HTML must be 14px)
+3. Padding/spacing values match exactly
+4. Font weights match (400, 500, 600, 700, etc.)
+5. Text colors match exactly
+6. Layout structure matches (horizontal vs vertical alignment)
+
+Respond with JSON:
+{
+  "matches": true/false,
+  "discrepancies": ["specific issue 1", "specific issue 2", ...]
 }
 
-function extractColors(node: any, colors: Set<string>) {
-  if (node.backgroundColor) colors.add(node.backgroundColor);
-  if (node.color) colors.add(node.color);
-  if (node.borderColor) colors.add(node.borderColor);
-  if (node.children) {
-    for (const child of node.children) {
-      extractColors(child, colors);
-    }
+If matches is true, discrepancies should be empty.
+Be VERY strict - even 1px difference or slightly wrong color is a discrepancy.`;
+
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'url', url: referenceImageUrl } },
+        { type: 'text', text: prompt },
+      ],
+    },
+  ];
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Validation API error');
+    return { matches: false, discrepancies: ['Validation API error'] };
   }
+
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '';
+
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*"matches"[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch (e) {
+    console.error('Failed to parse validation response:', e);
+  }
+
+  return { matches: false, discrepancies: ['Failed to validate'] };
+}
+
+async function refineHtml(
+  apiKey: string,
+  currentHtml: string,
+  referenceImageUrl: string,
+  discrepancies: string[],
+  designData: DesignData | null
+): Promise<string> {
+  const prompt = `Fix these specific issues in the HTML to match the Figma design exactly:
+
+ISSUES TO FIX:
+${discrepancies.map((d, i) => `${i + 1}. ${d}`).join('\n')}
+
+EXACT VALUES TO USE (from Figma):
+${designData ? `
+- Colors: ${designData.colors.join(', ')}
+- Font sizes: ${designData.fonts.map(f => `${f.size}px (weight ${f.weight}, line-height ${f.lineHeight}px)`).join(', ')}
+- Paddings: ${designData.spacing.paddings.join('px, ')}px
+- Gaps between elements: ${designData.spacing.gaps.join('px, ')}px
+` : 'Use values from the reference image'}
+
+CURRENT HTML:
+\`\`\`html
+${currentHtml}
+\`\`\`
+
+Apply the EXACT corrections needed. Do not guess - use the precise values listed above.
+Return ONLY the corrected HTML wrapped in \`\`\`html code blocks.`;
+
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'url', url: referenceImageUrl } },
+        { type: 'text', text: prompt },
+      ],
+    },
+  ];
+
+  return await callClaude(apiKey, buildSystemPrompt(), messages);
 }
 
 function buildSystemPrompt(): string {
-  return `You are an expert email HTML developer. Your task is to create production-ready, email-safe HTML from a Figma design reference image.
+  return `You are an expert email HTML developer creating PIXEL-PERFECT email templates from Figma designs.
 
-## STRICT EMAIL HTML RULES
+## ABSOLUTE RULES - NO EXCEPTIONS
 
-### REQUIRED:
+### USE EXACT VALUES - NO GUESSING
+- If Figma says font-size is 14px, use EXACTLY 14px
+- If Figma says padding is 24px, use EXACTLY 24px  
+- If Figma says color is #1A1A1A, use EXACTLY #1A1A1A
+- NEVER round, estimate, or use "similar" values
+
+### EMAIL-SAFE HTML REQUIREMENTS
 - Use ONLY tables with role="presentation" for layout
 - ALL styles must be inline (no <style> blocks for critical styles)
 - All tables: cellpadding="0" cellspacing="0" border="0"
 - Images: width/height attributes, style="display: block; border: 0;"
 - Web-safe fonts: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif
-- MSO conditionals for Outlook where needed
 
-### PROHIBITED:
+### PROHIBITED
 - NO div elements for layout
 - NO margin CSS property (use padding only)
 - NO float or display: flex
 - NO unitless values
 
-### STRUCTURE:
-Use two-table nesting:
+### STRUCTURE
+Two-table nesting:
 - Outer table: width="100%" with white background (#ffffff)
-- Inner table: width="600" max-width="600px" with content background color
+- Inner table: width="600" max-width="600px" with content background
 
-### LOGO HANDLING:
-- Use <img> tags with the exact logo URLs provided
-- Logo should be centered with max-width constraint
-- Use height="auto" to maintain aspect ratio
+### LOGO HANDLING
+- Use <img> tags with EXACT logo URLs provided
+- Logo centered with max-width constraint
+- height="auto" for aspect ratio
 
-### SOCIAL ICONS:
-- Use the exact iconUrl values provided for each platform
-- Wrap each icon in <a> tag with the platform URL
-- Icons should be 24x24 or similar small size
-
-### LINK ASSIGNMENT:
-You must intelligently match navigation text to the correct URLs from the allLinks array.
-For example:
-- "Shop" → find URL containing /shop or /products
-- "About" → find URL containing /about
-- "Contact" → find URL containing /contact
-- Use websiteUrl as fallback for unmatched items`;
+### SOCIAL ICONS
+- Use EXACT iconUrl values provided
+- Wrap in <a> tag with platform URL
+- 24x24 size`;
 }
 
 interface PromptData {
-  figmaMeasurements: Record<string, any>;
+  designData: DesignData | null;
+  design: any;
   lightLogoUrl?: string;
   darkLogoUrl?: string;
   socialIcons?: SocialIcon[];
@@ -277,7 +374,8 @@ interface PromptData {
 
 function buildUserPrompt(data: PromptData): string {
   const {
-    figmaMeasurements,
+    designData,
+    design,
     lightLogoUrl,
     darkLogoUrl,
     socialIcons,
@@ -287,70 +385,78 @@ function buildUserPrompt(data: PromptData): string {
     brandColors,
   } = data;
 
-  let prompt = `Generate email-safe HTML that matches this Figma footer design exactly.
+  let prompt = `Generate email-safe HTML that matches the Figma footer design EXACTLY.
 
-## FIGMA MEASUREMENTS
-${JSON.stringify(figmaMeasurements, null, 2)}
+## EXACT SPECIFICATIONS FROM FIGMA (USE THESE VALUES - NO GUESSING)
+`;
 
+  if (designData) {
+    prompt += `
+### COLORS (exact hex values - copy these exactly)
+${designData.colors.map(c => `- ${c}`).join('\n')}
+
+### TYPOGRAPHY (exact pixel values - do not round)
+${designData.fonts.map(f => 
+  `- Font: ${f.family}, Size: ${f.size}px, Weight: ${f.weight}, Line-height: ${f.lineHeight}px`
+).join('\n')}
+
+### SPACING (exact pixel values - do not round)
+- Paddings used in design: ${designData.spacing.paddings.length > 0 ? designData.spacing.paddings.join('px, ') + 'px' : 'none detected'}
+- Gaps between elements: ${designData.spacing.gaps.length > 0 ? designData.spacing.gaps.join('px, ') + 'px' : 'none detected'}
+
+### TEXT CONTENT FROM FIGMA
+${designData.texts.slice(0, 30).map(t => `- "${t.content}"${t.isUrl ? ' (URL)' : ''}`).join('\n')}
+`;
+  } else {
+    prompt += `
+No exact specifications provided - analyze the reference image carefully.
+`;
+  }
+
+  // Add design dimensions if available
+  if (design?.width || design?.height) {
+    prompt += `
+### DIMENSIONS
+- Width: ${design.width}px
+- Height: ${design.height}px
+`;
+  }
+
+  prompt += `
 ## BRAND CONTEXT
 - Brand Name: ${brandName || 'Unknown'}
 - Website: ${websiteUrl || 'https://example.com'}
 
-## AVAILABLE LOGOS
-${lightLogoUrl ? `- Light logo (for dark backgrounds): ${lightLogoUrl}` : '- No light logo provided'}
-${darkLogoUrl ? `- Dark logo (for light backgrounds): ${darkLogoUrl}` : '- No dark logo provided'}
+## LOGOS (use these EXACT URLs in <img> tags)
+${lightLogoUrl ? `Light logo (for dark backgrounds): ${lightLogoUrl}` : 'No light logo'}
+${darkLogoUrl ? `Dark logo (for light backgrounds): ${darkLogoUrl}` : 'No dark logo'}
 
-Use the appropriate logo based on the footer's background color (if background is dark, use light logo).
-CRITICAL: Use the EXACT logo URL in an <img> tag. Do NOT render the brand name as text.
-
-Logo HTML example:
-<img src="${lightLogoUrl || darkLogoUrl || ''}" alt="${brandName}" width="150" height="auto" style="display: block; border: 0; max-width: 150px; height: auto;" />`;
+CRITICAL: Use <img src="..."> with the EXACT logo URL. Do NOT render brand name as text.
+`;
 
   if (socialIcons && socialIcons.length > 0) {
     prompt += `
-
-## SOCIAL ICONS (use these exact URLs)
-${socialIcons.map(icon => `- ${icon.platform}: link to ${icon.url}, icon image: ${icon.iconUrl}`).join('\n')}
-
-Each social icon should be:
-<a href="${socialIcons[0]?.url}" style="display: inline-block; margin: 0 8px;">
-  <img src="${socialIcons[0]?.iconUrl}" alt="${socialIcons[0]?.platform}" width="24" height="24" style="display: block; border: 0;" />
-</a>`;
+## SOCIAL ICONS (use these EXACT URLs)
+${socialIcons.map(icon => `- ${icon.platform}: href="${icon.url}" src="${icon.iconUrl}"`).join('\n')}
+`;
   }
 
   if (allLinks && allLinks.length > 0) {
     prompt += `
-
-## AVAILABLE BRAND LINKS (match nav items to these)
+## AVAILABLE LINKS (match navigation text to these URLs)
 ${allLinks.slice(0, 20).map(link => `- ${link}`).join('\n')}
-
-Match navigation text in the design to the most appropriate URL above.`;
-  }
-
-  if (brandColors) {
-    prompt += `
-
-## BRAND COLORS (for reference)
-- Primary: ${brandColors.primary || 'N/A'}
-- Secondary: ${brandColors.secondary || 'N/A'}
-- Accent: ${brandColors.accent || 'N/A'}
-- Background: ${brandColors.background || 'N/A'}
-- Text: ${brandColors.textPrimary || 'N/A'}
-- Link: ${brandColors.link || 'N/A'}`;
+`;
   }
 
   prompt += `
+## CRITICAL INSTRUCTIONS
+1. Use the EXACT color hex values listed above
+2. Use the EXACT font sizes listed above (do not round 14px to 16px)
+3. Use the EXACT padding/gap values listed above
+4. Match the visual layout EXACTLY as shown in the reference image
+5. Every measurement must be PRECISE - this is not an approximation
 
-## TASK
-1. Analyze the Figma design image above
-2. Identify all sections (logo, navigation, social icons, legal text)
-3. Use the EXACT measurements from Figma for colors, spacing, fonts
-4. Assign correct URLs to navigation items from the allLinks array
-5. Use the provided logo URL in an <img> tag
-6. Use the provided social icon URLs exactly
-7. Generate complete, email-safe HTML
-
-Return ONLY the HTML code wrapped in \`\`\`html code blocks.`;
+Return ONLY the complete HTML wrapped in \`\`\`html code blocks.`;
 
   return prompt;
 }
