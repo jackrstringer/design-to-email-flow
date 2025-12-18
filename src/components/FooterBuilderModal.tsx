@@ -165,6 +165,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           darkLogoUrl: darkLogoUrl,
           socialIcons: socialIconsData,
           brandName: brand.name,
+          websiteUrl: brand.websiteUrl || `https://${brand.domain}`,
+          allLinks: brand.allLinks || [],
           brandColors: {
             primary: brand.primaryColor,
             secondary: brand.secondaryColor,
