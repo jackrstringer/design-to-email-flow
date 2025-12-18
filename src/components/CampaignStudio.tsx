@@ -683,7 +683,7 @@ Return updated HTML for ALL sections that need changes.`;
 
       {/* Panel Layout - Chat narrower, content gets more space */}
       {/* Comparison area ref wraps the panels for screenshot capture */}
-      <div ref={comparisonAreaRef} className="flex-1 flex">
+      <div ref={comparisonAreaRef} className="flex-1 flex min-h-0 overflow-hidden">
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (

@@ -10,6 +10,7 @@ import Brands from "./pages/Brands";
 import BrandDetail from "./pages/BrandDetail";
 import OverlayTest from "./pages/OverlayTest";
 import CampaignPage from "./pages/CampaignPage";
+import CampaignSend from "./pages/CampaignSend";
 import FooterEditor from "./pages/FooterEditor";
 import NotFound from "./pages/NotFound";
 
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/brands" element={<Brands />} />
           <Route path="/brands/:id" element={<BrandDetail />} />
           <Route path="/campaign/:id" element={<CampaignPage />} />
+          <Route path="/campaign/:id/send" element={<CampaignSend />} />
           <Route path="/footer-editor/:brandId" element={<FooterEditor />} />
           <Route path="/test-overlay" element={<OverlayTest />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

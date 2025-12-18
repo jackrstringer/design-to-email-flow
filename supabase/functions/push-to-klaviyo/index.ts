@@ -19,7 +19,19 @@ serve(async (req) => {
   }
 
   try {
-    const { imageUrl, templateName, klaviyoApiKey, footerHtml, mode = 'template', listId, slices } = await req.json();
+    const { 
+      imageUrl, 
+      templateName, 
+      klaviyoApiKey, 
+      footerHtml, 
+      mode = 'template', 
+      listId, 
+      slices,
+      includedSegments,
+      excludedSegments,
+      subjectLine,
+      previewText,
+    } = await req.json();
 
     // Support both single image and slices array
     const hasSlices = Array.isArray(slices) && slices.length > 0;
@@ -184,7 +196,16 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Creating campaign with list: ${listId}`);
+    // Use provided segments or fall back to listId
+    const included = includedSegments && includedSegments.length > 0 ? includedSegments : [listId];
+    const excluded = excludedSegments || [];
+    
+    // Use provided subject/preview or defaults
+    const emailSubject = subjectLine || 'Hi there';
+    const emailPreview = previewText || '';
+    
+    console.log(`Creating campaign with included: ${included.join(', ')}, excluded: ${excluded.join(', ')}`);
+    console.log(`Subject: "${emailSubject}", Preview: "${emailPreview}"`);
 
     // Create campaign with campaign-messages inline (required by Klaviyo API)
     const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
@@ -201,8 +222,8 @@ serve(async (req) => {
           attributes: {
             name: templateName,
             audiences: {
-              included: [listId],
-              excluded: []
+              included: included,
+              excluded: excluded
             },
             send_strategy: {
               method: 'immediate'
@@ -219,7 +240,8 @@ serve(async (req) => {
                       channel: 'email',
                       label: templateName,
                       content: {
-                        subject: 'Hi there',
+                        subject: emailSubject,
+                        preview_text: emailPreview,
                         from_email: 'jack@redwood.so',
                         from_label: 'Jack Stringer'
                       }

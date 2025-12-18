@@ -298,41 +298,18 @@ export default function CampaignPage() {
       return;
     }
 
-    if (!selectedListId) {
-      toast.error('Please select a list/segment first');
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
-        body: {
-          slices,
-          klaviyoApiKey: apiKey,
-          templateName: `Campaign ${new Date().toLocaleDateString()}`,
-          footerHtml: footer,
-          mode: 'campaign',
-          listId: selectedListId,
-        }
-      });
-
-      if (error) throw error;
-
-      setTemplateId(data.templateId);
-      
-      if (data.campaignId) {
-        setCampaignId(data.campaignId);
-        toast.success('Campaign created successfully!');
-      } else if (data.templateId) {
-        // Campaign creation failed but template was created
-        toast.warning(data.error || 'Campaign creation failed - template created instead');
+    // Navigate to send page with all campaign data
+    navigate(`/campaign/${id}/send`, {
+      state: {
+        slices,
+        footerHtml: footer,
+        brandName: (brand as any)?.name,
+        brandDomain: (brand as any)?.domain,
+        klaviyoApiKey: apiKey,
+        klaviyoLists,
+        selectedListId,
       }
-    } catch (error) {
-      console.error('Error creating campaign:', error);
-      toast.error('Failed to create campaign');
-    } finally {
-      setIsCreating(false);
-    }
+    });
   };
 
   const handleBack = () => {
