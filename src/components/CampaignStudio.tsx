@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -16,6 +17,42 @@ import { FooterSelector, BrandFooter } from './FooterSelector';
 import { getSocialIconUrl } from '@/lib/socialIcons';
 
 const BASE_WIDTH = 600;
+
+// Helper to capture comparison area screenshot
+const captureComparisonScreenshot = async (element: HTMLElement): Promise<string | null> => {
+  try {
+    const canvas = await html2canvas(element, {
+      useCORS: true,
+      allowTaint: true,
+      scale: 1,
+      logging: false,
+    });
+    return canvas.toDataURL('image/png');
+  } catch (err) {
+    console.error('Screenshot capture failed:', err);
+    return null;
+  }
+};
+
+// Helper to upload screenshot to Cloudinary
+const uploadScreenshotToCloudinary = async (base64Data: string): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      body: { 
+        imageBase64: base64Data,
+        folder: 'comparison-screenshots'
+      }
+    });
+    if (error || !data?.url) {
+      console.error('Cloudinary upload failed:', error);
+      return null;
+    }
+    return data.url;
+  } catch (err) {
+    console.error('Screenshot upload error:', err);
+    return null;
+  }
+};
 
 interface BrandContext {
   name?: string;
@@ -135,6 +172,9 @@ export function CampaignStudio({
   
   // Claude conversation history - persisted across refinements
   const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>([]);
+  
+  // Ref for capturing comparison area screenshot
+  const comparisonAreaRef = useRef<HTMLDivElement>(null);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
@@ -230,6 +270,16 @@ export function CampaignStudio({
     setChatMessages(newMessages);
     setIsRefining(true);
 
+    // Capture screenshot of comparison area
+    let comparisonScreenshotUrl: string | null = null;
+    if (comparisonAreaRef.current) {
+      const base64 = await captureComparisonScreenshot(comparisonAreaRef.current);
+      if (base64) {
+        comparisonScreenshotUrl = await uploadScreenshotToCloudinary(base64);
+        console.log('Comparison screenshot uploaded:', comparisonScreenshotUrl);
+      }
+    }
+
     // Build social icons with white color URLs
     const socialIconsData = brandContext?.socialLinks?.map(link => ({
       platform: link.platform,
@@ -249,11 +299,12 @@ export function CampaignStudio({
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          conversationHistory: claudeConversationHistory, // Pass Claude's conversation history
+          comparisonScreenshotUrl, // Screenshot of side-by-side comparison
+          conversationHistory: claudeConversationHistory,
           userRequest: message,
           brandUrl,
           brandContext,
-          figmaDesignData: normalizedFigmaData, // Pass normalized Figma specs for pixel-perfect refinements
+          figmaDesignData: normalizedFigmaData,
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
@@ -302,30 +353,34 @@ export function CampaignStudio({
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
     
+    // Capture screenshot of comparison area
+    let comparisonScreenshotUrl: string | null = null;
+    if (comparisonAreaRef.current) {
+      const base64 = await captureComparisonScreenshot(comparisonAreaRef.current);
+      if (base64) {
+        comparisonScreenshotUrl = await uploadScreenshotToCloudinary(base64);
+        console.log('Comparison screenshot uploaded:', comparisonScreenshotUrl);
+      }
+    }
+    
     // Build a more comprehensive auto-refine prompt for multi-slice campaigns
     const htmlSliceCount = slices.filter(s => s.type === 'html').length;
     const imageSliceCount = slices.filter(s => s.type === 'image').length;
     
     let autoRefinePrompt: string;
     if (isFooterMode) {
-      autoRefinePrompt = 'Compare the footer HTML render to the original reference image. Identify any visual differences and update the footer HTML to match the original design as closely as possible.';
+      autoRefinePrompt = 'Look at the screenshot I\'m providing - it shows the reference design on the left and the current HTML render on the right. Identify any visual differences and update the HTML to match the reference exactly.';
     } else if (htmlSliceCount > 1) {
-      // Multi-slice HTML campaign - comprehensive prompt
-      autoRefinePrompt = `Analyze the ENTIRE campaign as rendered (${htmlSliceCount} HTML sections + ${imageSliceCount} image sections stacked vertically).
+      autoRefinePrompt = `Look at the screenshot - it shows the original design and current render side by side. Analyze the ENTIRE campaign (${htmlSliceCount} HTML sections + ${imageSliceCount} image sections).
 
-Compare the complete composed email to the original design image. For EACH HTML section:
-1. Identify any visual differences from the corresponding portion of the original design
-2. Check for style INCONSISTENCIES between HTML sections (different fonts, button styles, colors, spacing)
-3. Ensure all HTML sections use IDENTICAL styling for equivalent elements
+For EACH HTML section:
+1. Identify visual differences from the reference
+2. Check for style inconsistencies between sections
+3. Ensure consistent styling across ALL HTML sections
 
-Provide updated HTML for ALL sections that need changes to:
-- Match the original design pixel-perfectly
-- Use consistent styling across ALL HTML sections
-- Maintain email-safe HTML (tables, inline CSS, no flex/grid)
-
-Return ALL HTML sections that need updates, not just one.`;
+Return updated HTML for ALL sections that need changes.`;
     } else {
-      autoRefinePrompt = 'Compare the HTML render to the original design image. Identify any visual differences and update the HTML to match the original design as closely as possible.';
+      autoRefinePrompt = 'Look at the screenshot I\'m providing - it shows the reference design and current HTML render. Identify any visual differences and update the HTML to match the reference.';
     }
     
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
@@ -350,11 +405,12 @@ Return ALL HTML sections that need updates, not just one.`;
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          conversationHistory: claudeConversationHistory, // Pass Claude's conversation history
+          comparisonScreenshotUrl, // Screenshot of side-by-side comparison
+          conversationHistory: claudeConversationHistory,
           userRequest: autoRefinePrompt,
           brandUrl,
           brandContext,
-          figmaDesignData: normalizedFigmaData, // Pass normalized Figma specs for pixel-perfect refinements
+          figmaDesignData: normalizedFigmaData,
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
@@ -371,12 +427,10 @@ Return ALL HTML sections that need updates, not just one.`;
       
       setChatMessages([...newMessages, { role: 'assistant', content: responseMessage }]);
       
-      // Update Claude conversation history if returned
       if (data.conversationHistory) {
         setClaudeConversationHistory(data.conversationHistory);
       }
 
-      // Handle footer updates in auto-refine
       if (data.updatedFooterHtml) {
         setLocalFooterHtml(data.updatedFooterHtml);
         toast.success('Footer refined');
@@ -651,6 +705,8 @@ Return ALL HTML sections that need updates, not just one.`;
       </div>
 
       {/* Panel Layout - Chat narrower, content gets more space */}
+      {/* Comparison area ref wraps the panels for screenshot capture */}
+      <div ref={comparisonAreaRef} className="flex-1 flex">
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (
@@ -941,6 +997,7 @@ Return ALL HTML sections that need updates, not just one.`;
           </>
         )}
       </ResizablePanelGroup>
+      </div>
     </div>
   );
 }

@@ -47,7 +47,8 @@ serve(async (req) => {
     const { 
       allSlices, 
       footerHtml,
-      originalCampaignImageUrl, 
+      originalCampaignImageUrl,
+      comparisonScreenshotUrl, // New: screenshot of side-by-side comparison
       conversationHistory,
       userRequest, 
       brandUrl,
@@ -75,6 +76,9 @@ serve(async (req) => {
       originalCampaignImageUrl.startsWith('http') && 
       !originalCampaignImageUrl.startsWith('data:');
 
+    const isValidScreenshotUrl = comparisonScreenshotUrl && 
+      comparisonScreenshotUrl.startsWith('http');
+
     const hasAnyLogo = lightLogoUrl || darkLogoUrl;
     const hasFigmaData = figmaDesignData && Object.keys(figmaDesignData).length > 0;
 
@@ -86,6 +90,7 @@ serve(async (req) => {
       conversationTurns: conversationHistory?.length || 0,
       userRequest: userRequest?.substring(0, 100),
       hasValidImage: isValidImageUrl,
+      hasComparisonScreenshot: isValidScreenshotUrl,
       hasLogo: hasAnyLogo,
       hasFigmaData
     });
@@ -209,7 +214,7 @@ Return FULL updated HTML for any modified sections.`;
       }
       console.log(`Continuing conversation with ${messages.length} existing turns`);
     } else {
-      // No existing conversation - add reference image as first message
+      // No existing conversation - add reference image as first message if available
       if (isValidImageUrl) {
         messages.push({
           role: 'user',
@@ -225,68 +230,81 @@ Return FULL updated HTML for any modified sections.`;
       }
     }
 
-    // Build enriched user request with current context
-    let enrichedRequest = `## USER REQUEST
+    // If we have a comparison screenshot, add it with the user request
+    // This shows Claude exactly what the user sees - reference and current render side by side
+    if (isValidScreenshotUrl) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'url', url: comparisonScreenshotUrl } },
+          { type: 'text', text: `This screenshot shows the current state - reference design on the LEFT, current HTML render on the RIGHT. Compare them and identify differences.
+
+${userRequest}` }
+        ]
+      });
+    } else {
+      // Fallback to text-only request
+      let enrichedRequest = `## USER REQUEST
 ${userRequest}
 
 ## CURRENT HTML TO MODIFY
 `;
 
-    if (isFooterMode) {
-      enrichedRequest += `\`\`\`html
+      if (isFooterMode) {
+        enrichedRequest += `\`\`\`html
 ${footerHtml || 'No footer HTML provided'}
 \`\`\``;
-    } else {
-      // Include all HTML slices
-      const htmlSlices = (allSlices as SliceData[])?.filter(s => s.type === 'html') || [];
-      if (htmlSlices.length > 0) {
-        enrichedRequest += (allSlices as SliceData[])?.map((s, i) => {
-          if (s.type === 'html') {
-            return `### Slice ${i} (HTML)
+      } else {
+        // Include all HTML slices
+        const htmlSlices = (allSlices as SliceData[])?.filter(s => s.type === 'html') || [];
+        if (htmlSlices.length > 0) {
+          enrichedRequest += (allSlices as SliceData[])?.map((s, i) => {
+            if (s.type === 'html') {
+              return `### Slice ${i} (HTML)
 \`\`\`html
 ${s.htmlContent}
 \`\`\``;
-          }
-          return `### Slice ${i} (Image): ${s.imageUrl}`;
-        }).join('\n\n');
-      }
-      
-      if (footerHtml) {
-        enrichedRequest += `
+            }
+            return `### Slice ${i} (Image): ${s.imageUrl}`;
+          }).join('\n\n');
+        }
+        
+        if (footerHtml) {
+          enrichedRequest += `
 
 ### Footer HTML
 \`\`\`html
 ${footerHtml}
 \`\`\``;
+        }
       }
-    }
 
-    // Add available assets
-    if (hasAnyLogo) {
-      enrichedRequest += `
+      // Add available assets
+      if (hasAnyLogo) {
+        enrichedRequest += `
 
 ## AVAILABLE LOGOS (use as <img> tags, NEVER text)
 ${lightLogoUrl ? `- Light logo (for dark bg): ${lightLogoUrl}` : ''}
 ${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}`;
-    }
+      }
 
-    if (socialIcons?.length > 0) {
-      enrichedRequest += `
+      if (socialIcons?.length > 0) {
+        enrichedRequest += `
 
 ## SOCIAL ICONS (use EXACT URLs)
 ${socialIcons.map((s: any) => `- ${s.platform}: ${s.iconUrl}`).join('\n')}`;
-    }
+      }
 
-    // Add Figma reminder if available
-    if (hasFigmaData) {
-      enrichedRequest += `
+      // Add Figma reminder if available
+      if (hasFigmaData) {
+        enrichedRequest += `
 
 ## IMPORTANT: FIGMA SPECIFICATIONS AVAILABLE
 Use the exact measurements from the FIGMA DESIGN SPECIFICATIONS section in the system prompt for pixel-perfect accuracy.`;
-    }
+      }
 
-    // Add the enriched user request
-    messages.push({ role: 'user', content: enrichedRequest });
+      messages.push({ role: 'user', content: enrichedRequest });
+    }
 
     console.log('Sending to Claude:', {
       totalMessages: messages.length,
