@@ -13,6 +13,7 @@ import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
 import { FooterSelector, BrandFooter } from './FooterSelector';
+import { getSocialIconUrl } from '@/lib/socialIcons';
 
 const BASE_WIDTH = 600;
 
@@ -31,6 +32,10 @@ interface BrandContext {
   typography?: unknown;
   lightLogoUrl?: string;
   darkLogoUrl?: string;
+  socialLinks?: Array<{
+    platform: string;
+    url: string;
+  }>;
 }
 
 interface KlaviyoList {
@@ -216,6 +221,13 @@ export function CampaignStudio({
     setChatMessages(newMessages);
     setIsRefining(true);
 
+    // Build social icons with white color URLs
+    const socialIconsData = brandContext?.socialLinks?.map(link => ({
+      platform: link.platform,
+      url: link.url,
+      iconUrl: getSocialIconUrl(link.platform, 'ffffff'), // White icons
+    })) || [];
+
     try {
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
         body: {
@@ -236,6 +248,7 @@ export function CampaignStudio({
           isFooterMode, // Tell backend this is footer-only mode
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
+          socialIcons: socialIconsData,
         }
       });
 
@@ -304,6 +317,13 @@ Return ALL HTML sections that need updates, not just one.`;
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
     setChatMessages(newMessages);
 
+    // Build social icons with white color URLs
+    const socialIconsData = brandContext?.socialLinks?.map(link => ({
+      platform: link.platform,
+      url: link.url,
+      iconUrl: getSocialIconUrl(link.platform, 'ffffff'), // White icons
+    })) || [];
+
     try {
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
         body: {
@@ -324,6 +344,7 @@ Return ALL HTML sections that need updates, not just one.`;
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
+          socialIcons: socialIconsData,
         }
       });
 
