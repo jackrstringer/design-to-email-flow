@@ -43,23 +43,23 @@ serve(async (req) => {
 
     console.log(`Analyzing ${slices.length} slices for brand: ${brandUrl || 'unknown'}, domain: ${domain}`);
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
     const sliceDescriptions = slices.map((s, i) => `Slice ${i + 1}`).join(', ');
     
     const prompt = `You are analyzing sliced sections of an email marketing campaign image. There are ${slices.length} slices: ${sliceDescriptions}.
 
-IMPORTANT: You have access to Google Search. USE IT to find REAL pages on the brand's website.
+IMPORTANT: You have access to web search. USE IT to find REAL pages on the brand's website.
 
 BRAND WEBSITE: ${brandUrl || 'Unknown'}
 BRAND DOMAIN: ${domain || 'Unknown'}
 
 FOR EACH CLICKABLE SLICE:
 1. Look at the visual content (CTA buttons, product images, headlines, promotional text)
-2. Use Google Search to find the actual page on ${domain} that matches what you see
+2. Use web search to find the actual page on ${domain} that matches what you see
 3. Search queries like: "site:${domain} [product name]" or "site:${domain} [CTA action]"
 4. ONLY suggest links you've verified exist via search
 5. If you can't find a matching page via search, you may suggest a logical path but mark linkVerified: false
@@ -73,7 +73,7 @@ ALT TEXT RULES:
 
 LINK RULES:
 - Use FULL URLs (e.g., "https://${domain}/schedule" not "/schedule")
-- If you found the link via Google Search, set linkVerified: true
+- If you found the link via web search, set linkVerified: true
 - If you couldn't verify but are suggesting a logical path, set linkVerified: false and add linkWarning
 - If a link points outside ${domain}, set linkVerified: false and add linkWarning: "External link - verify this is correct"
 
@@ -91,32 +91,47 @@ Respond in JSON format:
   ]
 }`;
 
-    // Build content array with text and all images
-    const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+    // Build content array with text and all images for Claude
+    const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [
       { type: 'text', text: prompt }
     ];
 
-    // Add each slice image
+    // Add each slice image in Claude's format
     for (const slice of slices) {
-      content.push({
-        type: 'image_url',
-        image_url: { url: slice.dataUrl }
-      });
+      // Extract base64 data and media type from data URL
+      const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (matches) {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: matches[1],
+            data: matches[2]
+          }
+        });
+      }
     }
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        tools: [
+          {
+            type: 'web_search_20250305',
+            name: 'web_search',
+            max_uses: 5,
+          }
+        ],
         messages: [
           { role: 'user', content }
-        ],
-        tools: [{ google_search: {} }], // Enable web search grounding
-        max_tokens: 2000,
+        ]
       }),
     });
 
@@ -140,9 +155,15 @@ Respond in JSON format:
     }
 
     const aiResponse = await response.json();
-    const aiContent = aiResponse.choices?.[0]?.message?.content || '';
     
-    console.log('AI response received');
+    // Claude returns content as an array of blocks - find the text block
+    let aiContent = '';
+    if (aiResponse.content && Array.isArray(aiResponse.content)) {
+      const textBlock = aiResponse.content.find((block: { type: string }) => block.type === 'text');
+      aiContent = textBlock?.text || '';
+    }
+    
+    console.log('Claude response received');
 
     // Parse JSON from AI response
     let analyses: SliceAnalysis[] = [];
