@@ -204,17 +204,23 @@ async function renderHtmlToImage(html: string): Promise<string> {
   return data.url;
 }
 
-// Main visual validation loop
+// Main visual validation loop with CONVERSATION HISTORY
 async function visualValidationLoop(
   apiKey: string,
   initialHtml: string,
   referenceImageUrl: string,
   designData: DesignData | null,
   brandContext: any,
-  fullDesignPrompt: string,  // The complete design specification
+  fullDesignPrompt: string,
   maxIterations: number = 7
 ): Promise<string> {
   let currentHtml = initialHtml;
+  
+  // Initialize conversation history with system context
+  const conversationHistory: any[] = [];
+  
+  // Track previous discrepancies to detect oscillation
+  let previousDiscrepancies: string[] = [];
   
   for (let i = 0; i < maxIterations; i++) {
     console.log(`\n=== Visual comparison iteration ${i + 1}/${maxIterations} ===`);
@@ -223,15 +229,15 @@ async function visualValidationLoop(
       // 1. Render current HTML to image
       const renderedImageUrl = await renderHtmlToImage(currentHtml);
       
-      // 2. Ask Claude to compare side-by-side with FULL design context
+      // 2. Ask Claude to compare side-by-side WITH HISTORY
       const result = await compareImagesWithClaude(
         apiKey,
         referenceImageUrl,
         renderedImageUrl,
         currentHtml,
-        designData,
-        brandContext,
-        fullDesignPrompt  // Pass full context for accurate fixes
+        fullDesignPrompt,
+        conversationHistory,  // Pass and mutate conversation history
+        i  // iteration number for context
       );
       
       if (result.isMatch) {
@@ -242,22 +248,30 @@ async function visualValidationLoop(
       console.log(`Found ${result.discrepancies.length} visual discrepancies:`);
       result.discrepancies.forEach((d, idx) => console.log(`  ${idx + 1}. ${d}`));
       
-      // Check for same issues repeating (early exit)
-      if (i > 0 && result.discrepancies.length > 0) {
-        // If we've been iterating and still have issues, continue with fixes
-        console.log('Applying Claude\'s fixes...');
+      // Check for oscillation (same issues repeating)
+      const sameIssues = result.discrepancies.filter(d => 
+        previousDiscrepancies.some(pd => pd.toLowerCase().includes(d.toLowerCase().slice(0, 30)))
+      );
+      if (sameIssues.length > 0 && i > 2) {
+        console.log(`WARNING: ${sameIssues.length} issues repeating from previous iteration`);
+        // Add explicit instruction to history about avoiding oscillation
+        conversationHistory.push({
+          role: 'user',
+          content: `CRITICAL: You are repeating the same issues. These problems keep coming back: ${sameIssues.join('; ')}. Try a DIFFERENT approach to fix them this time.`
+        });
       }
+      
+      previousDiscrepancies = result.discrepancies;
       
       // 3. Update HTML with Claude's fixes
       currentHtml = result.fixedHtml;
       
     } catch (error) {
       console.error(`Error in iteration ${i + 1}:`, error);
-      // Continue with current HTML if HCTI fails
       if (i === 0) {
-        throw error; // Fail fast on first iteration
+        throw error;
       }
-      break; // Return best effort on subsequent failures
+      break;
     }
   }
   
@@ -265,35 +279,37 @@ async function visualValidationLoop(
   return currentHtml;
 }
 
-// Claude compares both images and provides fixes
+// Claude compares both images with CONVERSATION HISTORY
 async function compareImagesWithClaude(
   apiKey: string,
   referenceUrl: string,
   renderedUrl: string,
   currentHtml: string,
-  designData: DesignData | null,
-  brandContext: any,
-  fullDesignPrompt: string  // Complete design specification with all element details
+  fullDesignPrompt: string,
+  conversationHistory: any[],  // Mutable conversation history
+  iteration: number
 ): Promise<{ isMatch: boolean; discrepancies: string[]; fixedHtml: string }> {
 
-  const prompt = `You are comparing two email footer images for PIXEL-PERFECT matching.
+  // Build the user message for this iteration
+  const userMessage: any = {
+    role: 'user',
+    content: [
+      { type: 'text', text: `=== VISUAL COMPARISON ITERATION ${iteration + 1} ===\n\nREFERENCE IMAGE (what we want to achieve):` },
+      { type: 'image', source: { type: 'url', url: referenceUrl } },
+      { type: 'text', text: 'CURRENT HTML RENDER (what we have now):' },
+      { type: 'image', source: { type: 'url', url: renderedUrl } },
+    ],
+  };
 
-## IMAGE LAYOUT
-- FIRST IMAGE: Original Figma reference design (TARGET - what we want)
-- SECOND IMAGE: Current HTML render (what we have - needs fixes if different)
+  // First iteration: include full context
+  if (iteration === 0) {
+    userMessage.content.push({
+      type: 'text',
+      text: `You are comparing two email footer images for PIXEL-PERFECT matching.
 
 ## IMPORTANT: VIEWPORT RENDERING ARTIFACT
-The HTML render image is captured using a fixed 600px viewport height. This means you may see 
-empty/white space BELOW the actual footer content in the render image. This empty space below 
-the footer is a VIEWPORT ARTIFACT, not an HTML problem - do NOT report it as a discrepancy.
-
-HOWEVER, you MUST still check that:
-- The footer content itself has correct height and proportions
-- Internal padding and spacing within the footer are correct
-- Background color properly fills the footer content area
-- Elements are positioned correctly relative to each other within the footer
-
-Focus on the ACTUAL FOOTER CONTENT, not the canvas/viewport it sits on.
+The HTML render image is captured using a fixed 600px viewport. Empty/white space BELOW 
+the actual footer content is a VIEWPORT ARTIFACT, not an HTML problem - do NOT report it as a discrepancy.
 
 ## YOUR TASK
 1. Compare these images VERY carefully, examining every detail OF THE FOOTER CONTENT
@@ -336,11 +352,44 @@ Is this a visual match (98%+ similarity)?
 If match is false, provide the COMPLETE corrected HTML:
 \`\`\`html
 [Full corrected HTML - include the entire document, not just changed parts]
+\`\`\``
+    });
+  } else {
+    // Subsequent iterations: reference previous context, focus on remaining issues
+    userMessage.content.push({
+      type: 'text',
+      text: `ITERATION ${iteration + 1}: Review your previous fixes. Compare the images again.
+
+## CURRENT HTML (after your previous fixes)
+\`\`\`html
+${currentHtml}
 \`\`\`
 
-Be extremely thorough. Even small differences in spacing, alignment, or colors must be fixed.`;
+## INSTRUCTIONS
+1. Look at both images carefully - what STILL doesn't match?
+2. Remember what you already tried - don't repeat failed approaches
+3. List remaining discrepancies and provide COMPLETE fixed HTML
 
-  console.log('Sending images to Claude for comparison...');
+## RESPONSE FORMAT
+
+<discrepancies>
+1. [Remaining issue - be specific]
+...
+</discrepancies>
+
+<match>true OR false</match>
+
+If match is false:
+\`\`\`html
+[Complete corrected HTML]
+\`\`\``
+    });
+  }
+
+  // Add this message to conversation history
+  conversationHistory.push(userMessage);
+
+  console.log(`Sending iteration ${iteration + 1} to Claude (history length: ${conversationHistory.length})...`);
   console.log('Reference:', referenceUrl);
   console.log('Rendered:', renderedUrl);
 
@@ -354,16 +403,11 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
       max_tokens: 12000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'REFERENCE IMAGE (what we want to achieve):' },
-          { type: 'image', source: { type: 'url', url: referenceUrl } },
-          { type: 'text', text: 'CURRENT HTML RENDER (what we have now):' },
-          { type: 'image', source: { type: 'url', url: renderedUrl } },
-          { type: 'text', text: prompt },
-        ],
-      }],
+      system: `You are an expert email HTML developer performing visual validation. 
+You are in a MULTI-ITERATION refinement loop where you can see your previous attempts.
+Learn from what worked and what didn't. Don't repeat the same mistakes.
+Your goal is to achieve a 98%+ visual match with the reference design.`,
+      messages: conversationHistory,
     }),
   });
 
@@ -375,6 +419,12 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
 
   const data = await response.json();
   const responseText = data.content?.[0]?.text || '';
+
+  // Add Claude's response to history
+  conversationHistory.push({
+    role: 'assistant',
+    content: responseText,
+  });
 
   // Parse the response
   const matchResult = responseText.match(/<match>(true|false)<\/match>/i);
@@ -388,7 +438,7 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
     .map((line: string) => line.replace(/^\d+\.\s*/, '').trim())
     .filter((line: string) => line.length > 0);
   
-  // More robust HTML extraction - handle various markdown formats
+  // More robust HTML extraction
   let fixedHtml = currentHtml;
   const htmlPatterns = [
     /```html\n([\s\S]*?)\n```/,
@@ -401,7 +451,7 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
     const match = responseText.match(pattern);
     if (match?.[1]) {
       fixedHtml = match[1].trim();
-      console.log('HTML extracted successfully using pattern:', pattern.source.slice(0, 20));
+      console.log('HTML extracted successfully');
       break;
     }
   }
@@ -411,7 +461,7 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
     console.log('Response preview:', responseText.slice(0, 500));
   }
 
-  console.log(`Claude comparison result: match=${isMatch}, discrepancies=${discrepancies.length}`);
+  console.log(`Claude comparison result: match=${isMatch}, discrepancies=${discrepancies.length}, history=${conversationHistory.length} messages`);
 
   return { isMatch, discrepancies, fixedHtml };
 }
