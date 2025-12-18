@@ -79,8 +79,8 @@ serve(async (req) => {
       originalCampaignImageUrl.startsWith('http') && 
       !originalCampaignImageUrl.startsWith('data:');
 
-    // Determine effective logo URL for footers
-    const effectiveLogoUrl = lightLogoUrl || darkLogoUrl;
+    // Check if any logo is available
+    const hasAnyLogo = lightLogoUrl || darkLogoUrl;
 
     console.log('Refine campaign request:', { 
       sliceCount: allSlices?.length, 
@@ -92,7 +92,8 @@ serve(async (req) => {
       userRequest: userRequest?.substring(0, 100),
       originalImageUrl: originalCampaignImageUrl?.substring(0, 80),
       isValidImageUrl,
-      hasLogoUrl: !!effectiveLogoUrl
+      hasLightLogo: !!lightLogoUrl,
+      hasDarkLogo: !!darkLogoUrl
     });
 
     // Build context about the campaign
@@ -130,10 +131,18 @@ ${brandName || brandDomain || brandWebsiteUrl ? `- Name: ${brandName || 'Not spe
 ## COLOR PALETTE (use EXACT hex values)
 ${paletteLines || '- Not provided'}
 
-${effectiveLogoUrl ? `## LOGO URL (MUST USE AS <img> TAG)
-Logo URL: ${effectiveLogoUrl}
-CRITICAL: Always use this URL in an <img> tag. NEVER render brand name as text.
-Example: <img src="${effectiveLogoUrl}" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
+${hasAnyLogo ? `## AVAILABLE LOGO ASSETS (CRITICAL - USE AS <img> TAGS)
+${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
+${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
+
+### LOGO SELECTION RULES:
+1. Analyze the footer background color
+2. If background is DARK (luminance < 50%): USE THE LIGHT/WHITE LOGO
+3. If background is LIGHT (luminance >= 50%): USE THE DARK/BLACK LOGO
+4. If user says "white logo", "light logo": Use ${lightLogoUrl || 'light logo not provided'}
+5. If user says "dark logo", "black logo": Use ${darkLogoUrl || 'dark logo not provided'}
+6. ALWAYS use the logo as an <img> tag - NEVER render brand name as text
+7. Example: <img src="[SELECTED_LOGO_URL]" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
 ` : ''}
 
 ## CURRENT FOOTER HTML
