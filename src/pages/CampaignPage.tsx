@@ -122,17 +122,28 @@ export default function CampaignPage() {
 
       if (error) throw error;
 
+      if (data?.transientError) {
+        setKlaviyoLists([]);
+        setSelectedListId(null);
+        toast.error(data.error || 'Unable to load segments right now. Please try again.');
+        return;
+      }
+
       if (data?.lists && data.lists.length > 0) {
         setKlaviyoLists(data.lists);
-        
+
         // Auto-select "Newsletter" if exists, otherwise first list
-        const newsletterList = data.lists.find((l: any) => 
+        const newsletterList = data.lists.find((l: any) =>
           l.name.toLowerCase().includes('newsletter')
         );
         setSelectedListId(newsletterList?.id || data.lists[0].id);
+      } else {
+        setKlaviyoLists([]);
+        setSelectedListId(null);
       }
     } catch (err) {
       console.error('Error fetching Klaviyo lists:', err);
+      toast.error('Unable to load segments right now. Please try again.');
     } finally {
       setIsLoadingLists(false);
     }
