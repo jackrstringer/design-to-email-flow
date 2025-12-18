@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
-import { toPng } from 'html-to-image';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -17,21 +16,6 @@ import { FooterSelector, BrandFooter } from './FooterSelector';
 import { getSocialIconUrl } from '@/lib/socialIcons';
 
 const BASE_WIDTH = 600;
-
-// Helper to capture comparison area screenshot
-const captureComparisonScreenshot = async (element: HTMLElement): Promise<string | null> => {
-  try {
-    const dataUrl = await toPng(element, {
-      cacheBust: true,
-      pixelRatio: 1,
-      skipFonts: true,
-    });
-    return dataUrl;
-  } catch (err) {
-    console.error('Screenshot capture failed:', err);
-    return null;
-  }
-};
 
 interface BrandContext {
   name?: string;
@@ -151,9 +135,6 @@ export function CampaignStudio({
   
   // Claude conversation history - persisted across refinements
   const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>([]);
-  
-  // Ref for capturing comparison area screenshot
-  const comparisonAreaRef = useRef<HTMLDivElement>(null);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
@@ -244,19 +225,48 @@ export function CampaignStudio({
     updateSlice(index, { link: null, isClickable: false });
   };
 
+  // Detect which section the user is targeting from their message
+  const detectTargetSection = (message: string): { type: 'footer' | 'slice' | 'all'; sliceIndex?: number } => {
+    const lowerMessage = message.toLowerCase();
+    
+    // Check for footer references
+    if (lowerMessage.includes('footer') || lowerMessage.includes('unsubscribe') || 
+        lowerMessage.includes('social') || lowerMessage.includes('bottom')) {
+      return { type: 'footer' };
+    }
+    
+    // Check for specific slice references (e.g., "slice 1", "section 2", "first section")
+    const sliceMatch = lowerMessage.match(/(?:slice|section)\s*(\d+)/i);
+    if (sliceMatch) {
+      return { type: 'slice', sliceIndex: parseInt(sliceMatch[1]) - 1 };
+    }
+    
+    // Ordinal references
+    if (lowerMessage.includes('first') || lowerMessage.includes('top') || lowerMessage.includes('hero')) {
+      return { type: 'slice', sliceIndex: 0 };
+    }
+    if (lowerMessage.includes('second')) {
+      return { type: 'slice', sliceIndex: 1 };
+    }
+    if (lowerMessage.includes('third')) {
+      return { type: 'slice', sliceIndex: 2 };
+    }
+    if (lowerMessage.includes('last') && !lowerMessage.includes('footer')) {
+      return { type: 'slice', sliceIndex: slices.length - 1 };
+    }
+    
+    // Default: target all (but still use slice images as references, not full screenshot)
+    return { type: 'all' };
+  };
+
   const handleSendMessage = async (message: string) => {
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }];
     setChatMessages(newMessages);
     setIsRefining(true);
 
-    // Capture screenshot of comparison area
-    let comparisonScreenshotBase64: string | null = null;
-    if (comparisonAreaRef.current) {
-      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
-      if (comparisonScreenshotBase64) {
-        console.log('Screenshot captured, size:', comparisonScreenshotBase64.length);
-      }
-    }
+    // Detect target section from message
+    const target = detectTargetSection(message);
+    console.log('Detected target:', target);
 
     // Build social icons with white color URLs
     const socialIconsData = brandContext?.socialLinks?.map(link => ({
@@ -277,7 +287,7 @@ export function CampaignStudio({
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          comparisonScreenshotBase64, // Base64 screenshot of side-by-side comparison
+          targetSection: target, // NEW: specify which section to target
           conversationHistory: claudeConversationHistory,
           userRequest: message,
           brandUrl,
@@ -331,33 +341,17 @@ export function CampaignStudio({
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
     
-    // Capture screenshot of comparison area
-    let comparisonScreenshotBase64: string | null = null;
-    if (comparisonAreaRef.current) {
-      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
-      if (comparisonScreenshotBase64) {
-        console.log('Screenshot captured, size:', comparisonScreenshotBase64.length);
-      }
-    }
-    
     // Build a more comprehensive auto-refine prompt for multi-slice campaigns
     const htmlSliceCount = slices.filter(s => s.type === 'html').length;
     const imageSliceCount = slices.filter(s => s.type === 'image').length;
     
     let autoRefinePrompt: string;
     if (isFooterMode) {
-      autoRefinePrompt = 'Look at the screenshot I\'m providing - it shows the reference design on the left and the current HTML render on the right. Identify any visual differences and update the HTML to match the reference exactly.';
+      autoRefinePrompt = 'Compare each HTML slice against its reference image and update to match exactly.';
     } else if (htmlSliceCount > 1) {
-      autoRefinePrompt = `Look at the screenshot - it shows the original design and current render side by side. Analyze the ENTIRE campaign (${htmlSliceCount} HTML sections + ${imageSliceCount} image sections).
-
-For EACH HTML section:
-1. Identify visual differences from the reference
-2. Check for style inconsistencies between sections
-3. Ensure consistent styling across ALL HTML sections
-
-Return updated HTML for ALL sections that need changes.`;
+      autoRefinePrompt = `Analyze all ${htmlSliceCount} HTML sections. For each one, compare against its reference image and update to match. Ensure consistent styling across ALL sections.`;
     } else {
-      autoRefinePrompt = 'Look at the screenshot I\'m providing - it shows the reference design and current HTML render. Identify any visual differences and update the HTML to match the reference.';
+      autoRefinePrompt = 'Compare the HTML against the reference image and update to match exactly.';
     }
     
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
@@ -382,7 +376,7 @@ Return updated HTML for ALL sections that need changes.`;
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          comparisonScreenshotBase64, // Base64 screenshot of side-by-side comparison
+          targetSection: { type: 'all' }, // Auto-refine targets all sections
           conversationHistory: claudeConversationHistory,
           userRequest: autoRefinePrompt,
           brandUrl,
@@ -682,8 +676,7 @@ Return updated HTML for ALL sections that need changes.`;
       </div>
 
       {/* Panel Layout - Chat narrower, content gets more space */}
-      {/* Comparison area ref wraps the panels for screenshot capture */}
-      <div ref={comparisonAreaRef} className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (
