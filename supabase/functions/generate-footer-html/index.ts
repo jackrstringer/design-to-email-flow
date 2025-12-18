@@ -8,186 +8,46 @@ const corsHeaders = {
 const EMAIL_FOOTER_RULES = `
 You are an expert email HTML developer that converts footer designs into pixel-perfect HTML code for email templates.
 
-## STEP 1: ANALYZE THE DESIGN
+## STRICT HTML EMAIL RULES - NEVER VIOLATE
 
-### Background Color Detection
-Before anything else, determine the footer's background color luminance:
-- If luminance < 50% (dark background): Use LIGHT/WHITE logo, white text, white social icons
-- If luminance >= 50% (light background): Use DARK/BLACK logo, dark text, dark social icons
+### FORBIDDEN (will break email rendering)
+- NEVER use <div> elements - ALWAYS use <table> and <td>
+- NEVER use CSS margin - Use padding on <td> or spacer rows
+- NEVER use float or display: flex/grid - Use align attribute and nested tables
+- NEVER omit width/height on images
 
-Luminance calculation: luminance = (0.299 × R + 0.587 × G + 0.114 × B) / 255
+### REQUIRED (for email compatibility)
+- ALWAYS use <table role="presentation"> for layout
+- ALWAYS set cellpadding="0" cellspacing="0" border="0" on tables
+- ALWAYS inline all styles
+- ALWAYS include width and height attributes on <img> tags
+- ALWAYS add style="display: block; border: 0;" to images
+- ALWAYS use 600px total width
 
-### Extract These Measurements (in pixels)
-1. Total width - Usually 600px for email
-2. Padding - Top, right, bottom, left (often asymmetric)
-3. Logo width - Target width in pixels (use height: auto to maintain aspect ratio)
-4. Spacing between elements - Gap between logo and nav, nav and social, etc.
-5. Font sizes - Each text element
-6. Icon sizes - Social icons (typically 24-40px)
-7. Icon spacing - Gap between each social icon
-8. Line heights - Especially for disclaimer text
-9. Divider lines - Thickness, color, width, margins
-
-## STEP 2: SELECT ASSETS
-
-### Logo Selection Rule (CRITICAL)
-- If ANY logo URL is provided (logoUrl, lightLogoUrl, or darkLogoUrl), the footer MUST include a logo as an <img> tag
-- The logo MUST be a hosted image URL (http/https). NEVER use data URLs.
-- NEVER render the brand name as text in place of the logo
-- Use the exact URL provided - do not modify it
-
-### Social Icon URLs
-Use the exact iconUrl provided for each social platform.
-
-## STEP 3: GENERATE HTML
-
-### GOLDEN RULES - NEVER VIOLATE THESE
-1. NEVER use <div> - Always <table> and <td>
-2. NEVER use margin - Use padding on <td> or empty spacer rows
-3. NEVER use float or flexbox - Use align attribute and nested tables
-4. ALWAYS inline all styles - No external CSS except dark mode media query
-5. ALWAYS set cellpadding="0" cellspacing="0" border="0" on tables
-6. ALWAYS add role="presentation" to layout tables
-7. ALWAYS include width and height attributes on images
-8. ALWAYS add style="display: block; border: 0;" to images
-9. CRITICAL: Background color MUST be on the INNER 600px table, NOT the outer wrapper
-   - Outer 100% width table: background-color: #ffffff (white)
-   - Inner 600px table: background-color: {actual footer color}
-   - This ensures the footer background only covers the content area, not full email width
+### BACKGROUND COLOR PLACEMENT (CRITICAL)
+- Background color MUST be on the INNER 600px table, NOT the outer wrapper
+- Outer 100% width table: background-color: #ffffff
+- Inner 600px table: background-color: {ACTUAL_FOOTER_COLOR}
 
 ### BASE TEMPLATE STRUCTURE
 \`\`\`html
-<!-- FOOTER START -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
   <tr>
     <td align="center">
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: {BG_COLOR};">
-        
         {LOGO_ROW}
         {NAV_ROWS}
         {SOCIAL_ROW}
         {LEGAL_ROW}
-        
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
     </td>
   </tr>
 </table>
-<!-- FOOTER END -->
 \`\`\`
-
-### LOGO ROW TEMPLATE
-\`\`\`html
-<tr>
-  <td align="center" style="padding: {TOP}px {RIGHT}px {BOTTOM}px {LEFT}px;">
-    <a href="{WEBSITE_URL}" target="_blank" style="text-decoration: none;">
-      <img src="{LOGO_URL}" alt="{BRAND}" width="{W}" style="display: block; border: 0; height: auto; max-width: 100%;">
-    </a>
-  </td>
-</tr>
-\`\`\`
-
-### SOCIAL ICONS ROW TEMPLATE
-\`\`\`html
-<tr>
-  <td align="center" style="padding: {TOP}px 0 {BOTTOM}px 0;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding: 0 {HALF_GAP}px;">
-          <a href="{SOCIAL_URL}" target="_blank">
-            <img src="{ICON_URL}" alt="{PLATFORM}" width="{SIZE}" height="{SIZE}" style="display: block; border: 0;">
-          </a>
-        </td>
-        <!-- Repeat for each platform -->
-      </tr>
-    </table>
-  </td>
-</tr>
-\`\`\`
-
-### LEGAL/DISCLAIMER ROW TEMPLATE
-\`\`\`html
-<tr>
-  <td align="center" style="padding: {TOP}px {SIDE}px {BOTTOM}px {SIDE}px;">
-    <p style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: {SIZE}px; line-height: {LH}px; color: {COLOR}; text-align: center;">
-      {LEGAL_TEXT}
-    </p>
-  </td>
-</tr>
-\`\`\`
-
-## VALIDATION CHECKLIST (Before Returning)
-- [ ] Background color matches design exactly
-- [ ] Correct logo version used (light for dark bg, dark for light bg)
-- [ ] Logo is an <img> tag with width, alt, display:block, border:0, height:auto
-- [ ] All spacing/padding matches design measurements
-- [ ] Font sizes match design
-- [ ] All social platforms included with correct icons
-- [ ] Social icons have correct size and spacing
-- [ ] Legal text styled correctly
-- [ ] No prohibited CSS (div, margin, float, flex)
-- [ ] All images have width, alt attributes (height="auto" for logos, explicit height for icons)
-- [ ] MSO conditionals included for Outlook
-- [ ] role="presentation" on all tables
-- [ ] Total width is exactly 600px
 
 Return ONLY the HTML code, no explanation or markdown formatting.
-`;
-
-const VALIDATION_PROMPT = `
-You are performing STRICT validation of generated HTML against a reference footer image.
-This validation must be EXTREMELY PRECISE for pixel-perfect matching.
-
-Compare the HTML to the reference image and check:
-
-1. LAYOUT STRUCTURE
-   - Section order matches exactly (logo → nav → social → legal)
-   - Alignment (center, left, right) matches reference
-   - Grid/column layouts match if present
-
-2. COLORS (EXACT HEX VALUES)
-   - Background color - sample exact hex from reference
-   - Text colors - primary, secondary, muted
-   - Link colors
-   - Divider/border colors
-
-3. SPACING (EXACT PIXELS)
-   - Top padding of footer
-   - Bottom padding of footer
-   - Side padding
-   - Gap between logo and content below
-   - Gap between sections
-   - Gap between social icons
-
-4. TYPOGRAPHY
-   - Font sizes (measure carefully)
-   - Font weights (400, 500, 600, 700)
-   - Line heights
-   - Letter spacing if visible
-
-5. LOGO
-   - Is it an <img> tag (NOT text)?
-   - Correct size (width/height)
-   - Centered properly
-
-6. SOCIAL ICONS
-   - Correct size (usually 24-40px)
-   - Correct spacing between icons
-   - Correct order
-
-7. LEGAL/DISCLAIMER
-   - Font size (usually 10-12px)
-   - Color (usually muted gray)
-   - Line height
-
-For EACH discrepancy found, provide:
-- Element with issue
-- Current value
-- Required value (exact pixel or hex)
-
-CRITICAL: Only respond with "MATCH_GOOD" if >98% pixel-perfect.
-If ANY visible discrepancies exist, list ALL with specific fixes.
 `;
 
 serve(async (req) => {
@@ -225,199 +85,108 @@ serve(async (req) => {
     // Start processing in background
     (async () => {
       try {
-        // Build social icons description with EXACT URLs - no substitutions allowed
-        const socialIconsDescription = socialIcons?.length 
-          ? `## SOCIAL ICONS - USE EXACT URLS PROVIDED (NO SUBSTITUTIONS)
-
-CRITICAL: You MUST use the EXACT iconUrl values provided below. Do NOT use any other URLs.
-Do NOT use placeholder URLs like "https://example.com/icon.png".
-Do NOT generate your own icon URLs.
-ONLY use the specific iconUrl value provided for each platform.
-
-${socialIcons.map((s: any) => `### ${s.platform.toUpperCase()}
-- Platform link (for <a href>): ${s.url}
-- Icon image URL (for <img src>): ${s.iconUrl}
-- EXACT HTML TO USE:
-  <td style="padding: 0 8px;">
-    <a href="${s.url}" target="_blank" style="text-decoration: none;">
-      <img src="${s.iconUrl}" alt="${s.platform}" width="32" height="32" style="display: block; border: 0;">
-    </a>
-  </td>`).join('\n\n')}
-
-VALIDATION: Your HTML MUST contain these exact image URLs:
-${socialIcons.map((s: any) => `- ${s.iconUrl}`).join('\n')}`
-          : 'No social icons provided.';
-        
-        // Build navigation links section
-        const navigationLinksSection = allLinks?.length
-          ? `## NAVIGATION LINKS (USE FOR TEXT LINKS)
-If the reference shows navigation text links (Shop, About, Contact, etc.), wrap them in <a> tags:
-${allLinks.slice(0, 10).map((link: string) => `- ${link}`).join('\n')}
-
-Navigation link structure: <a href="{URL}" target="_blank" style="color: inherit; text-decoration: none;">{Link Text}</a>`
-          : '';
-
-        // Website URL for logo link
+        // Build brand website URL
         const brandWebsiteUrl = websiteUrl || `https://${brandName?.toLowerCase().replace(/\s+/g, '')}.com`;
-
-        // Build color palette
+        
+        // Build color palette description
         const colorPalette = brandColors 
-          ? `Brand colors (use these EXACT hex values):
-- Primary: ${brandColors.primary || '#ffffff'}
+          ? `- Primary: ${brandColors.primary || '#ffffff'}
 - Secondary: ${brandColors.secondary || '#888888'}
-- Accent: ${brandColors.accent || 'none'}
 - Background: ${brandColors.background || '#111111'}
-- Text Primary: ${brandColors.textPrimary || '#ffffff'}
-- Link: ${brandColors.link || brandColors.primary || '#ffffff'}`
+- Text: ${brandColors.textPrimary || '#ffffff'}`
           : 'Use dark background (#111111) with white text (#ffffff)';
 
-        // Build logo section with BOTH options clearly labeled
+        // Build social icons section
+        const socialIconsSection = socialIcons?.length 
+          ? `## SOCIAL ICONS - USE EXACT URLs PROVIDED
+${socialIcons.map((s: any) => `- ${s.platform}: Link to ${s.url}, Icon: ${s.iconUrl}
+  HTML: <td style="padding: 0 8px;"><a href="${s.url}" target="_blank"><img src="${s.iconUrl}" alt="${s.platform}" width="32" height="32" style="display: block; border: 0;"></a></td>`).join('\n')}`
+          : 'No social icons provided.';
+
+        // Build logo section
         const hasAnyLogo = logoUrl || lightLogoUrl || darkLogoUrl;
-        const logoSection = hasAnyLogo ? `## AVAILABLE LOGO ASSETS (NON-NEGOTIABLE)
-The footer MUST contain a logo image in the LOGO ROW.
-- It MUST be an <img> tag.
-- It MUST use ONE of the hosted URLs below (http/https).
-- It MUST NOT be rendered as text (no "${brandName || 'Brand'}" text in place of a logo).
+        const logoSection = hasAnyLogo ? `## LOGO ASSETS (MUST USE AS <img> TAG)
+${lightLogoUrl ? `- Light/White logo (for dark backgrounds): ${lightLogoUrl}` : ''}
+${darkLogoUrl ? `- Dark/Black logo (for light backgrounds): ${darkLogoUrl}` : ''}
+${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- Logo: ${logoUrl}` : ''}
 
-${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
-${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
-${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
+Logo MUST be an <img> tag. NEVER render brand name as text.
+Select logo based on background luminance (dark bg = light logo, light bg = dark logo).` 
+          : 'No logo provided.';
 
-### LOGO SELECTION RULES (MANDATORY):
-1. First, analyze the footer background color from the reference image
-2. Calculate luminance: luminance = (0.299 × R + 0.587 × G + 0.114 × B) / 255
-3. If background luminance < 50% (DARK background like navy, black, dark blue):
-   → USE THE LIGHT/WHITE LOGO: ${lightLogoUrl || logoUrl || 'not provided'}
-4. If background luminance >= 50% (LIGHT background like white, cream, light gray):
-   → USE THE DARK/BLACK LOGO: ${darkLogoUrl || logoUrl || 'not provided'}
-5. ALWAYS use the selected logo as an <img> tag with the EXACT URL provided
-6. NEVER render the brand name as text when a logo URL exists
-7. REQUIRED: Your HTML must contain <img src="[SELECTED_LOGO_URL]" ...> in the logo row.
-` : `## LOGO
-No logo provided - cannot generate a footer without a hosted logo image URL.`;
+        // Navigation links
+        const navSection = allLinks?.length
+          ? `## NAVIGATION LINKS
+${allLinks.slice(0, 10).map((link: string) => `- ${link}`).join('\n')}`
+          : '';
 
-        let userPrompt = `Create an email footer for "${brandName || 'Brand'}" with these specifications:
+        // Build initial user prompt
+        const initialPrompt = `Create an email footer for "${brandName || 'Brand'}" with these specifications:
 
 ${logoSection}
 
-${socialIconsDescription}
+${socialIconsSection}
 
-${navigationLinksSection}
+${navSection}
 
 ## COLORS
 ${colorPalette}
 
-## CLICKABILITY REQUIREMENTS (CRITICAL - ALL ELEMENTS MUST BE CLICKABLE)
-
-### 1. LOGO - MUST link to brand website
-<a href="${brandWebsiteUrl}" target="_blank" style="text-decoration: none;">
-  <img src="[LOGO_URL]" alt="${brandName || 'Brand'}" width="..." height="..." style="display: block; border: 0;">
-</a>
-Brand Website URL: ${brandWebsiteUrl}
-
-### 2. SOCIAL ICONS - EACH must link to its platform
-Every social icon MUST be wrapped in an <a> tag with href pointing to the social platform URL provided above.
-DO NOT use "#" or "javascript:void(0)" - use the REAL URLs provided.
-
-### 3. NAVIGATION LINKS - Text links must be clickable
-If the footer has navigation text (Shop, About, FAQ, etc.), wrap each in an <a> tag using brand links from above.
-
-## TECHNICAL REQUIREMENTS
-- Total width: exactly 600px
-- Table-based layout only (NO div, NO flexbox, NO float)
+## REQUIREMENTS
+- Total width: 600px
+- Table-based layout only
 - All styles inline
-- Include MSO conditionals for Outlook
-- All images need width, height, alt, style="display:block; border:0;"
-- ALL clickable elements wrapped in <a> tags with real URLs
-`;
+- Logo links to: ${brandWebsiteUrl}
+- All social icons clickable with real URLs
 
-        if (referenceImageUrl) {
-          userPrompt += `
-## REFERENCE IMAGE PROVIDED
-CRITICAL: Match the reference image PIXEL-PERFECTLY:
-1. Study the reference carefully - measure spacing, colors, typography
-2. Match exact background color (sample hex value from image)
-3. Match exact padding/spacing (measure in pixels)
-4. Match exact typography (font sizes, weights, colors)
-5. Match social icon size and spacing exactly
-6. Match overall proportions and visual balance
-7. BUT: Always use the provided logo URL as <img>, not text
-`;
-        } else {
-          userPrompt += `
-## NO REFERENCE IMAGE
-Create a professional dark footer with:
-- Dark background (use brand background color or #111111)
-- Light text (#ffffff or #e5e5e5)
-- Centered layout
-- Logo at top (if provided)
-- Social icons in a row
-- Legal text at bottom
-`;
-        }
+${referenceImageUrl ? `## REFERENCE IMAGE PROVIDED
+Match the reference design pixel-perfectly:
+- Exact background color
+- Exact spacing/padding
+- Exact typography
+- Social icon size and spacing
+BUT: Always use provided logo URL as <img>, not text.` : `## NO REFERENCE
+Create a professional dark footer with centered layout.`}`;
 
-        // Build messages with logo images FIRST so Claude can SEE them
-        const content: any[] = [];
+        // Build initial message content with images
+        const initialContent: any[] = [];
         
-        // CRITICAL: Show Claude the actual logo images so it knows what they look like
+        // Show logo images first
         if (lightLogoUrl || darkLogoUrl) {
-          content.push({ 
-            type: 'text', 
-            text: '## LOGO IMAGES (LOOK AT THESE - YOU MUST USE ONE AS <img> TAG, NOT TEXT)\n\nThese are the actual logo images. Study them carefully:' 
-          });
-          
+          initialContent.push({ type: 'text', text: '## LOGO IMAGES (use as <img> tags)\n' });
           if (lightLogoUrl) {
-            content.push({
-              type: 'image',
-              source: { type: 'url', url: lightLogoUrl }
-            });
-            content.push({ type: 'text', text: `↑ LIGHT/WHITE LOGO - URL: ${lightLogoUrl}\nUse this for DARK backgrounds.` });
+            initialContent.push({ type: 'image', source: { type: 'url', url: lightLogoUrl } });
+            initialContent.push({ type: 'text', text: `↑ Light logo: ${lightLogoUrl}` });
           }
-          
           if (darkLogoUrl) {
-            content.push({
-              type: 'image',
-              source: { type: 'url', url: darkLogoUrl }
-            });
-            content.push({ type: 'text', text: `↑ DARK/BLACK LOGO - URL: ${darkLogoUrl}\nUse this for LIGHT backgrounds.` });
+            initialContent.push({ type: 'image', source: { type: 'url', url: darkLogoUrl } });
+            initialContent.push({ type: 'text', text: `↑ Dark logo: ${darkLogoUrl}` });
           }
-          
-          content.push({ 
-            type: 'text', 
-            text: '\n---\nYou MUST use one of these logo images above as an <img src="..."> tag. NEVER render the brand name as text.\nIMPORTANT: Set logo width to a reasonable value (150-200px) and use height="auto" to maintain aspect ratio. NEVER guess the height value.\n---\n' 
-          });
         }
         
-        // Note: Social icons passed as text in prompt - CDN URLs can't be downloaded by Claude API
-        
-        // Then add reference image
+        // Add reference image
         if (referenceImageUrl) {
-          content.push({
-            type: 'image',
-            source: {
-              type: 'url',
-              url: referenceImageUrl,
-            },
-          });
-          content.push({ 
-            type: 'text', 
-            text: '↑ REFERENCE FOOTER DESIGN - Match this layout, colors, spacing. BUT replace any text logo with the <img> logo shown above, and use the exact social icon URLs shown above.' 
-          });
+          initialContent.push({ type: 'image', source: { type: 'url', url: referenceImageUrl } });
+          initialContent.push({ type: 'text', text: '↑ Reference design to match' });
         }
         
-        content.push({ type: 'text', text: userPrompt });
+        initialContent.push({ type: 'text', text: initialPrompt });
 
-        console.log('Generating footer for:', brandName, {
+        // Initialize conversation history - this will be built up and returned
+        const conversationHistory: any[] = [];
+        
+        console.log('Starting footer generation for:', brandName, {
           hasReference: !!referenceImageUrl,
           hasLightLogo: !!lightLogoUrl,
           hasDarkLogo: !!darkLogoUrl,
-          hasGenericLogo: !!logoUrl,
           socialIconsCount: socialIcons?.length || 0
         });
-        
-        await sendEvent({ status: 'generating', message: 'Analyzing design and generating footer...' });
+
+        await sendEvent({ status: 'generating', message: 'Generating footer...' });
 
         // PHASE 1: Initial Generation
+        conversationHistory.push({ role: 'user', content: initialContent });
+        
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -429,7 +198,7 @@ Create a professional dark footer with:
             model: 'claude-sonnet-4-20250514',
             max_tokens: 4096,
             system: EMAIL_FOOTER_RULES,
-            messages: [{ role: 'user', content }],
+            messages: conversationHistory,
           }),
         });
 
@@ -443,11 +212,11 @@ Create a professional dark footer with:
         let html = data.content?.[0]?.text || '';
         html = html.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
 
+        // Add assistant response to conversation
+        conversationHistory.push({ role: 'assistant', content: html });
+
         console.log('Initial footer generated, length:', html.length);
         await sendEvent({ status: 'generated', message: 'Initial footer generated' });
-
-        let iterations = 0;
-        let matchAchieved = false;
 
         // PHASE 2: Auto-refinement loop (only if reference image provided)
         if (referenceImageUrl) {
@@ -455,39 +224,29 @@ Create a professional dark footer with:
           let lastValidationIssue = '';
           
           for (let i = 0; i < MAX_REFINEMENTS; i++) {
-            iterations = i + 1;
-            console.log(`Auto-refinement iteration ${iterations}/${MAX_REFINEMENTS}`);
+            const iteration = i + 1;
+            console.log(`Auto-refinement iteration ${iteration}/${MAX_REFINEMENTS}`);
             await sendEvent({ 
               status: 'validating', 
-              iteration: iterations, 
+              iteration, 
               maxIterations: MAX_REFINEMENTS,
-              message: `Validating against reference (${iterations}/${MAX_REFINEMENTS})...` 
+              message: `Validating (${iteration}/${MAX_REFINEMENTS})...` 
             });
             
-            // Validate current HTML against reference
-            const validateContent: any[] = [
-              {
-                type: 'image',
-                source: { type: 'url', url: referenceImageUrl },
-              },
-              {
-                type: 'text',
-                text: `Reference image is shown above. Here is the generated HTML:
+            // Continue conversation with validation request
+            const validationRequest = `Now validate the footer you just generated against the reference image.
 
-${html}
+Compare pixel-by-pixel:
+1. Background color - exact hex match?
+2. Spacing/padding - exact pixels?
+3. Typography - font sizes, colors?
+4. Social icons - size, spacing?
+5. Is logo an <img> tag? (this is correct)
 
-Perform STRICT pixel-perfect validation:
-1. Compare colors - are hex values exact matches?
-2. Compare spacing - are pixel values correct?
-3. Compare typography - font sizes, weights, colors?
-4. Compare layout - alignment, structure?
-5. Is logo an <img> tag (this is correct, don't flag as error)?
-6. Social icons - correct size (32x32) and spacing?
+If >98% match, respond with just "MATCH_GOOD".
+Otherwise list ALL discrepancies with specific fixes needed.`;
 
-List ALL discrepancies with exact fixes needed.
-Only respond with "MATCH_GOOD" if >98% perfect.`,
-              },
-            ];
+            conversationHistory.push({ role: 'user', content: validationRequest });
 
             const validateResponse = await fetch('https://api.anthropic.com/v1/messages', {
               method: 'POST',
@@ -499,8 +258,8 @@ Only respond with "MATCH_GOOD" if >98% perfect.`,
               body: JSON.stringify({
                 model: 'claude-sonnet-4-20250514',
                 max_tokens: 2048,
-                system: VALIDATION_PROMPT,
-                messages: [{ role: 'user', content: validateContent }],
+                system: EMAIL_FOOTER_RULES,
+                messages: conversationHistory,
               }),
             });
 
@@ -511,10 +270,11 @@ Only respond with "MATCH_GOOD" if >98% perfect.`,
 
             const validateData = await validateResponse.json();
             const validationResult = validateData.content?.[0]?.text || '';
+            
+            conversationHistory.push({ role: 'assistant', content: validationResult });
 
             if (validationResult.includes('MATCH_GOOD')) {
               console.log('Validation passed - footer matches reference');
-              matchAchieved = true;
               await sendEvent({ status: 'matched', message: 'Pixel-perfect match achieved!' });
               break;
             }
@@ -531,34 +291,23 @@ Only respond with "MATCH_GOOD" if >98% perfect.`,
             console.log('Discrepancies found, refining...');
             await sendEvent({ 
               status: 'refining', 
-              iteration: iterations, 
+              iteration, 
               maxIterations: MAX_REFINEMENTS,
-              message: `Applying refinements (${iterations}/${MAX_REFINEMENTS})...` 
+              message: `Refining (${iteration}/${MAX_REFINEMENTS})...` 
             });
             
-            // Refine based on validation feedback
-            const refineContent: any[] = [
-              {
-                type: 'image',
-                source: { type: 'url', url: referenceImageUrl },
-              },
-              {
-                type: 'text',
-                text: `Current HTML:
+            // Continue conversation with refinement request
+            const refineRequest = `Fix ALL the issues you just identified. Generate the corrected HTML.
 
-${html}
+Remember:
+- Logo MUST be an <img> tag with the URL provided earlier
+- Background color on inner 600px table, not outer wrapper
+- All styles inline
+- Tables only, no div/margin/flex
 
-Issues that MUST be fixed:
-${validationResult}
+Return only the corrected HTML.`;
 
-${hasAnyLogo ? `REMINDER: Logo MUST be an <img> tag using one of these URLs based on background luminance:
-- Light/White logo (for dark backgrounds): ${lightLogoUrl || logoUrl || 'not provided'}
-- Dark/Black logo (for light backgrounds): ${darkLogoUrl || logoUrl || 'not provided'}
-NEVER render brand name as text!` : ''}
-
-Fix ALL issues to achieve pixel-perfect match. Return only the corrected HTML.`,
-              },
-            ];
+            conversationHistory.push({ role: 'user', content: refineRequest });
 
             const refineResponse = await fetch('https://api.anthropic.com/v1/messages', {
               method: 'POST',
@@ -571,7 +320,7 @@ Fix ALL issues to achieve pixel-perfect match. Return only the corrected HTML.`,
                 model: 'claude-sonnet-4-20250514',
                 max_tokens: 4096,
                 system: EMAIL_FOOTER_RULES,
-                messages: [{ role: 'user', content: refineContent }],
+                messages: conversationHistory,
               }),
             });
 
@@ -585,19 +334,20 @@ Fix ALL issues to achieve pixel-perfect match. Return only the corrected HTML.`,
             
             if (refinedHtml) {
               html = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-              console.log(`Refinement ${iterations} complete`);
+              conversationHistory.push({ role: 'assistant', content: html });
+              console.log(`Refinement ${iteration} complete`);
             }
           }
         }
 
-        console.log('Footer generation complete', { iterations, matchAchieved });
+        console.log('Footer generation complete, conversation turns:', conversationHistory.length);
         
+        // Return HTML and conversation history for continuation
         await sendEvent({ 
           status: 'complete', 
-          html, 
-          iterations, 
-          matchAchieved,
-          message: matchAchieved ? 'Footer generated with pixel-perfect match!' : 'Footer generated. You can refine via chat.'
+          html,
+          conversationHistory, // Pass this back so refinements can continue the conversation
+          message: 'Footer generated. You can refine via chat.'
         });
         
       } catch (error) {

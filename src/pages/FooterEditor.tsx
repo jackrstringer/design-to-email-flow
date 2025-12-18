@@ -11,6 +11,7 @@ interface LocationState {
   referenceImageUrl: string;
   footerHtml: string;
   footerName?: string;
+  conversationHistory?: any[];
 }
 
 export default function FooterEditor() {
@@ -24,6 +25,7 @@ export default function FooterEditor() {
   const [footerHtml, setFooterHtml] = useState(state?.footerHtml || '');
   const [footerName, setFooterName] = useState(state?.footerName || 'New Footer');
   const [referenceImageUrl, setReferenceImageUrl] = useState(state?.referenceImageUrl || '');
+  const [conversationHistory] = useState<any[]>(state?.conversationHistory || []);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -171,6 +173,7 @@ export default function FooterEditor() {
       isCreating={isSaving}
       footerName={footerName}
       onFooterNameChange={setFooterName}
+      initialConversationHistory={conversationHistory}
     />
   );
 }

@@ -22,7 +22,7 @@ interface FooterBuilderModalProps {
   onOpenChange: (open: boolean) => void;
   brand: Brand;
   onFooterSaved: () => void;
-  onOpenStudio?: (referenceImageUrl: string, footerHtml: string) => void;
+  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, conversationHistory?: any[]) => void;
 }
 
 type Step = 'reference' | 'logos' | 'social' | 'generate';
@@ -186,6 +186,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let finalHtml = '';
+      let conversationHistory: any[] = [];
 
       if (reader) {
         while (true) {
@@ -206,6 +207,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
                 if (data.status === 'complete') {
                   finalHtml = data.html;
+                  // Capture conversation history for continuation
+                  if (data.conversationHistory) {
+                    conversationHistory = data.conversationHistory;
+                  }
                 }
 
                 if (data.status === 'error') {
@@ -223,10 +228,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         throw new Error('No HTML received from generator');
       }
 
-      // Hand off to studio for refinement
+      // Hand off to studio for refinement, including conversation history
       if (onOpenStudio && referenceImageUrl) {
         onOpenChange(false);
-        onOpenStudio(referenceImageUrl, finalHtml);
+        onOpenStudio(referenceImageUrl, finalHtml, conversationHistory);
       } else {
         toast.success('Footer generated! Opening editor...');
       }
