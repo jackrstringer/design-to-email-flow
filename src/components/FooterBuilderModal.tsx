@@ -201,27 +201,35 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         iconUrl: getSocialIconUrl(link.platform, iconColor),
       }));
 
-      // If using Figma source, use deterministic transformation
+      // If using Figma source, use AI with Figma measurements + brand context
       if (sourceType === 'figma' && figmaData) {
-        setGenerationStatus('Transforming Figma design to email HTML...');
+        setGenerationStatus('Analyzing Figma design with AI...');
         
         const { data, error } = await supabase.functions.invoke('figma-to-email-html', {
           body: {
             design: figmaData.design,
-            logoUrl: lightLogoUrl,
+            exportedImageUrl: figmaData.exportedImageUrl,
             lightLogoUrl: lightLogoUrl,
             darkLogoUrl: darkLogoUrl,
             socialIcons: socialIconsData,
             brandName: brand.name,
             websiteUrl: brand.websiteUrl || `https://${brand.domain}`,
-            imageUrls: figmaData.imageUrls,
+            allLinks: brand.allLinks || [],
+            brandColors: {
+              primary: brand.primaryColor,
+              secondary: brand.secondaryColor,
+              accent: brand.accentColor,
+              background: brand.backgroundColor,
+              textPrimary: brand.textPrimaryColor,
+              link: brand.linkColor,
+            },
           }
         });
 
         if (error) throw error;
         
         if (!data.success || !data.html) {
-          throw new Error('Failed to transform Figma design');
+          throw new Error('Failed to generate HTML from Figma design');
         }
 
         // Hand off to studio for refinement
