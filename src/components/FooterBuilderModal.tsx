@@ -33,8 +33,22 @@ interface FigmaDesignData {
   designData: {
     colors: string[];
     fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
-    texts: Array<{ content: string; isUrl: boolean }>;
+    texts: Array<{ content: string; isUrl: boolean; fontSize?: number; fontWeight?: number; color?: string }>;
     spacing: { paddings: number[]; gaps: number[] };
+    borders: Array<{ color: string; width: number }>;
+    elements: Array<{ 
+      name: string; 
+      width: number; 
+      height: number; 
+      type: string;
+      backgroundColor?: string;
+      borderColor?: string;
+      borderWidth?: number;
+      borderRadius?: number;
+      padding?: { top: number; right: number; bottom: number; left: number };
+      gap?: number;
+    }>;
+    rootDimensions: { width: number; height: number };
   } | null;
   imageUrls: Record<string, string>;
   exportedImageUrl: string | null;

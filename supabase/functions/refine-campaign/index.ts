@@ -111,6 +111,11 @@ serve(async (req) => {
 These measurements come directly from Figma and must be used EXACTLY as specified:
 
 `;
+      // Root dimensions
+      if (figmaDesignData.rootDimensions) {
+        figmaSpecsSection += `### Root Dimensions\n- Width: ${figmaDesignData.rootDimensions.width}px\n- Height: ${figmaDesignData.rootDimensions.height}px\n\n`;
+      }
+
       if (figmaDesignData.colors && figmaDesignData.colors.length > 0) {
         figmaSpecsSection += `### Exact Colors (use these hex values)\n${figmaDesignData.colors.map((c: string) => `- ${c}`).join('\n')}\n\n`;
       }
@@ -118,7 +123,16 @@ These measurements come directly from Figma and must be used EXACTLY as specifie
       if (figmaDesignData.fonts && figmaDesignData.fonts.length > 0) {
         figmaSpecsSection += `### Typography (exact values)\n`;
         figmaDesignData.fonts.forEach((font: any) => {
-          figmaSpecsSection += `- Font: ${font.family}, Size: ${font.size}px, Weight: ${font.weight}, Line Height: ${font.lineHeight}px\n`;
+          figmaSpecsSection += `- Font: ${font.family}, Size: ${font.size}px, Weight: ${font.weight}, Line Height: ${Math.round(font.lineHeight)}px\n`;
+        });
+        figmaSpecsSection += '\n';
+      }
+      
+      // Borders
+      if (figmaDesignData.borders && figmaDesignData.borders.length > 0) {
+        figmaSpecsSection += `### Borders (exact values)\n`;
+        figmaDesignData.borders.forEach((border: any) => {
+          figmaSpecsSection += `- ${border.width}px solid ${border.color}\n`;
         });
         figmaSpecsSection += '\n';
       }
@@ -131,6 +145,20 @@ These measurements come directly from Figma and must be used EXACTLY as specifie
         if (figmaDesignData.spacing.gaps?.length > 0) {
           figmaSpecsSection += `- Gaps used: ${figmaDesignData.spacing.gaps.join('px, ')}px\n`;
         }
+        figmaSpecsSection += '\n';
+      }
+
+      // Element dimensions (top 10 most relevant)
+      if (figmaDesignData.elements && figmaDesignData.elements.length > 0) {
+        figmaSpecsSection += `### Element Dimensions\n`;
+        figmaDesignData.elements.slice(0, 10).forEach((el: any) => {
+          let details = `- ${el.name}: ${el.width}x${el.height}px`;
+          if (el.backgroundColor) details += ` bg:${el.backgroundColor}`;
+          if (el.borderWidth && el.borderColor) details += ` border:${el.borderWidth}px ${el.borderColor}`;
+          if (el.padding) details += ` padding:${el.padding.top}/${el.padding.right}/${el.padding.bottom}/${el.padding.left}`;
+          if (el.gap) details += ` gap:${el.gap}px`;
+          figmaSpecsSection += `${details}\n`;
+        });
         figmaSpecsSection += '\n';
       }
 
