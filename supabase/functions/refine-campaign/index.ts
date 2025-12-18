@@ -14,6 +14,11 @@ interface SliceData {
   link?: string | null;
 }
 
+interface TargetSection {
+  type: 'footer' | 'slice' | 'all';
+  sliceIndex?: number;
+}
+
 const EMAIL_HTML_RULES = `
 You are an expert email HTML developer helping refine email templates.
 
@@ -48,7 +53,7 @@ serve(async (req) => {
       allSlices, 
       footerHtml,
       originalCampaignImageUrl,
-      comparisonScreenshotBase64, // Base64 screenshot of side-by-side comparison
+      targetSection, // NEW: { type: 'footer' | 'slice' | 'all', sliceIndex?: number }
       conversationHistory,
       userRequest, 
       brandUrl,
@@ -72,13 +77,7 @@ serve(async (req) => {
       });
     }
 
-    const isValidImageUrl = originalCampaignImageUrl && 
-      originalCampaignImageUrl.startsWith('http') && 
-      !originalCampaignImageUrl.startsWith('data:');
-
-    // Check if we have a valid base64 screenshot
-    const hasScreenshot = comparisonScreenshotBase64 && 
-      comparisonScreenshotBase64.startsWith('data:image/');
+    const target = (targetSection as TargetSection) || { type: 'all' };
     const hasAnyLogo = lightLogoUrl || darkLogoUrl;
     const hasFigmaData = figmaDesignData && Object.keys(figmaDesignData).length > 0;
 
@@ -86,19 +85,16 @@ serve(async (req) => {
       sliceCount: allSlices?.length, 
       isFooterMode,
       hasFooter: !!footerHtml,
+      targetSection: target,
       hasConversationHistory: conversationHistory?.length > 0,
       conversationTurns: conversationHistory?.length || 0,
       userRequest: userRequest?.substring(0, 100),
-      hasValidImage: isValidImageUrl,
-      hasScreenshot,
-      screenshotLength: comparisonScreenshotBase64?.length || 0,
       hasLogo: hasAnyLogo,
       hasFigmaData
     });
 
     // Build brand context
     const brandName = brandContext?.name || '';
-    const brandWebsiteUrl = brandContext?.websiteUrl || '';
     const brandColors = brandContext?.colors || {};
     
     const colorPalette = [
@@ -117,7 +113,6 @@ serve(async (req) => {
 These measurements come directly from Figma and must be used EXACTLY as specified:
 
 `;
-      // Root dimensions
       if (figmaDesignData.rootDimensions) {
         figmaSpecsSection += `### Root Dimensions\n- Width: ${figmaDesignData.rootDimensions.width}px\n- Height: ${figmaDesignData.rootDimensions.height}px\n\n`;
       }
@@ -134,7 +129,6 @@ These measurements come directly from Figma and must be used EXACTLY as specifie
         figmaSpecsSection += '\n';
       }
       
-      // Borders
       if (figmaDesignData.borders && figmaDesignData.borders.length > 0) {
         figmaSpecsSection += `### Borders (exact values)\n`;
         figmaDesignData.borders.forEach((border: any) => {
@@ -154,7 +148,6 @@ These measurements come directly from Figma and must be used EXACTLY as specifie
         figmaSpecsSection += '\n';
       }
 
-      // Element dimensions (top 10 most relevant)
       if (figmaDesignData.elements && figmaDesignData.elements.length > 0) {
         figmaSpecsSection += `### Element Dimensions\n`;
         figmaDesignData.elements.slice(0, 10).forEach((el: any) => {
@@ -175,11 +168,11 @@ These measurements come directly from Figma and must be used EXACTLY as specifie
         }
       }
 
-      figmaSpecsSection += `CRITICAL: When refining, match these exact values for pixel-perfect results. Do not approximate - use the precise measurements above.
+      figmaSpecsSection += `CRITICAL: When refining, match these exact values for pixel-perfect results.
 `;
     }
 
-    // Build system prompt (lean - just rules)
+    // Build system prompt
     const systemPrompt = `${EMAIL_HTML_RULES}
 ${figmaSpecsSection}
 ## BRAND COLORS (use EXACT values)
@@ -195,7 +188,7 @@ Return JSON:
 
 Return FULL updated HTML for any modified sections.`;
 
-    // Build messages array - CONTINUE existing conversation if provided
+    // Build messages array
     const messages: any[] = [];
     
     // Check if we have existing conversation history to continue
@@ -204,124 +197,140 @@ Return FULL updated HTML for any modified sections.`;
       existingHistory.some((msg: any) => msg.role && msg.content);
     
     if (hasExistingConversation) {
-      // Filter to only include valid conversation messages (not the current request)
-      // Skip any messages that look like our enriched context messages
       for (const msg of existingHistory) {
         if (msg.role === 'user' || msg.role === 'assistant') {
-          // Skip if this is the current request (will be added below with context)
           if (msg.content === userRequest) continue;
           messages.push({ role: msg.role, content: msg.content });
         }
       }
       console.log(`Continuing conversation with ${messages.length} existing turns`);
-    } else {
-      // No existing conversation - add reference image as first message if available
-      if (isValidImageUrl) {
-        messages.push({
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'url', url: originalCampaignImageUrl } },
-            { type: 'text', text: 'This is the original design to match.' }
-          ]
-        });
-        messages.push({
-          role: 'assistant',
-          content: 'I can see the original design. I\'ll match this when making changes.'
-        });
-      }
     }
 
-    // If we have a comparison screenshot (base64), add it with the user request
-    // This shows Claude exactly what the user sees - reference and current render side by side
-    if (hasScreenshot) {
-      // Extract base64 data without the data:image/png;base64, prefix
-      const base64Data = comparisonScreenshotBase64.replace(/^data:image\/\w+;base64,/, '');
-      const mediaType = comparisonScreenshotBase64.match(/^data:(image\/\w+);base64,/)?.[1] || 'image/png';
-      
-      messages.push({
-        role: 'user',
-        content: [
-          { 
-            type: 'image', 
-            source: { 
-              type: 'base64', 
-              media_type: mediaType,
-              data: base64Data 
-            } 
-          },
-          { type: 'text', text: `This screenshot shows the current state - reference design on the LEFT, current HTML render on the RIGHT. Compare them and identify differences.
-
-${userRequest}` }
-        ]
-      });
-    } else {
-      // Fallback to text-only request
-      let enrichedRequest = `## USER REQUEST
+    // Build the user message with targeted slice/footer reference images
+    const slicesArray = allSlices as SliceData[];
+    const contentBlocks: any[] = [];
+    
+    if (target.type === 'footer' || isFooterMode) {
+      // Footer-only refinement - use text mode since footer doesn't have a reference image
+      contentBlocks.push({
+        type: 'text',
+        text: `## USER REQUEST (targeting FOOTER)
 ${userRequest}
 
-## CURRENT HTML TO MODIFY
-`;
-
-      if (isFooterMode) {
-        enrichedRequest += `\`\`\`html
-${footerHtml || 'No footer HTML provided'}
-\`\`\``;
-      } else {
-        // Include all HTML slices
-        const htmlSlices = (allSlices as SliceData[])?.filter(s => s.type === 'html') || [];
-        if (htmlSlices.length > 0) {
-          enrichedRequest += (allSlices as SliceData[])?.map((s, i) => {
-            if (s.type === 'html') {
-              return `### Slice ${i} (HTML)
+## CURRENT FOOTER HTML
 \`\`\`html
-${s.htmlContent}
-\`\`\``;
-            }
-            return `### Slice ${i} (Image): ${s.imageUrl}`;
-          }).join('\n\n');
+${footerHtml || 'No footer HTML provided'}
+\`\`\`
+
+${hasAnyLogo ? `## AVAILABLE LOGOS
+${lightLogoUrl ? `- Light logo (for dark bg): ${lightLogoUrl}` : ''}
+${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}` : ''}
+
+${socialIcons?.length > 0 ? `## SOCIAL ICONS (use EXACT URLs)
+${socialIcons.map((s: any) => `- ${s.platform}: ${s.iconUrl}`).join('\n')}` : ''}`
+      });
+    } else if (target.type === 'slice' && typeof target.sliceIndex === 'number') {
+      // Single slice refinement - include reference image for that slice
+      const targetSlice = slicesArray[target.sliceIndex];
+      
+      if (targetSlice) {
+        // Add reference image for the target slice
+        if (targetSlice.imageUrl && targetSlice.imageUrl.startsWith('http')) {
+          contentBlocks.push({
+            type: 'image',
+            source: { type: 'url', url: targetSlice.imageUrl }
+          });
+          contentBlocks.push({
+            type: 'text',
+            text: `This is the reference image for slice ${target.sliceIndex}. Match this exactly.`
+          });
         }
         
-        if (footerHtml) {
-          enrichedRequest += `
+        contentBlocks.push({
+          type: 'text',
+          text: `## USER REQUEST (targeting Slice ${target.sliceIndex})
+${userRequest}
 
-### Footer HTML
+## CURRENT HTML FOR SLICE ${target.sliceIndex}
+\`\`\`html
+${targetSlice.htmlContent || 'No HTML content yet - this is an image slice'}
+\`\`\``
+        });
+      }
+    } else {
+      // All slices - include reference images for each HTML slice
+      const htmlSlices = slicesArray.filter(s => s.type === 'html');
+      
+      // Add reference images with their slice indices
+      for (let i = 0; i < slicesArray.length; i++) {
+        const slice = slicesArray[i];
+        if (slice.type === 'html' && slice.imageUrl && slice.imageUrl.startsWith('http')) {
+          contentBlocks.push({
+            type: 'image',
+            source: { type: 'url', url: slice.imageUrl }
+          });
+          contentBlocks.push({
+            type: 'text',
+            text: `Reference image for Slice ${i}. Current HTML below.`
+          });
+        }
+      }
+      
+      // Build text content with all HTML
+      let allSlicesText = `## USER REQUEST
+${userRequest}
+
+## CURRENT HTML SLICES
+`;
+      slicesArray.forEach((s, i) => {
+        if (s.type === 'html') {
+          allSlicesText += `### Slice ${i} (HTML)
+\`\`\`html
+${s.htmlContent}
+\`\`\`
+
+`;
+        } else {
+          allSlicesText += `### Slice ${i} (Image): ${s.imageUrl}
+
+`;
+        }
+      });
+
+      if (footerHtml) {
+        allSlicesText += `### Footer HTML
 \`\`\`html
 ${footerHtml}
 \`\`\``;
-        }
       }
 
-      // Add available assets
       if (hasAnyLogo) {
-        enrichedRequest += `
+        allSlicesText += `
 
-## AVAILABLE LOGOS (use as <img> tags, NEVER text)
+## AVAILABLE LOGOS
 ${lightLogoUrl ? `- Light logo (for dark bg): ${lightLogoUrl}` : ''}
 ${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}`;
       }
 
       if (socialIcons?.length > 0) {
-        enrichedRequest += `
+        allSlicesText += `
 
 ## SOCIAL ICONS (use EXACT URLs)
 ${socialIcons.map((s: any) => `- ${s.platform}: ${s.iconUrl}`).join('\n')}`;
       }
 
-      // Add Figma reminder if available
-      if (hasFigmaData) {
-        enrichedRequest += `
-
-## IMPORTANT: FIGMA SPECIFICATIONS AVAILABLE
-Use the exact measurements from the FIGMA DESIGN SPECIFICATIONS section in the system prompt for pixel-perfect accuracy.`;
-      }
-
-      messages.push({ role: 'user', content: enrichedRequest });
+      contentBlocks.push({ type: 'text', text: allSlicesText });
     }
+
+    messages.push({ role: 'user', content: contentBlocks });
 
     console.log('Sending to Claude:', {
       totalMessages: messages.length,
       isFooterMode,
       hasExistingConversation,
+      targetType: target.type,
+      targetSliceIndex: target.sliceIndex,
+      contentBlockCount: contentBlocks.length,
       hasFigmaData
     });
 
