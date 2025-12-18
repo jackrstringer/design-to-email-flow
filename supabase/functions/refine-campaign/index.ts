@@ -52,6 +52,7 @@ serve(async (req) => {
       userRequest, 
       brandUrl,
       brandContext,
+      figmaDesignData,
       isFooterMode,
       lightLogoUrl,
       darkLogoUrl,
@@ -75,6 +76,7 @@ serve(async (req) => {
       !originalCampaignImageUrl.startsWith('data:');
 
     const hasAnyLogo = lightLogoUrl || darkLogoUrl;
+    const hasFigmaData = figmaDesignData && Object.keys(figmaDesignData).length > 0;
 
     console.log('Refine campaign request:', { 
       sliceCount: allSlices?.length, 
@@ -84,7 +86,8 @@ serve(async (req) => {
       conversationTurns: conversationHistory?.length || 0,
       userRequest: userRequest?.substring(0, 100),
       hasValidImage: isValidImageUrl,
-      hasLogo: hasAnyLogo
+      hasLogo: hasAnyLogo,
+      hasFigmaData
     });
 
     // Build brand context
@@ -99,9 +102,52 @@ serve(async (req) => {
       brandColors.textPrimary ? `- Text: ${brandColors.textPrimary}` : null,
     ].filter(Boolean).join('\n');
 
+    // Build Figma design specifications section if available
+    let figmaSpecsSection = '';
+    if (hasFigmaData) {
+      figmaSpecsSection = `
+## FIGMA DESIGN SPECIFICATIONS (AUTHORITATIVE - USE EXACT VALUES)
+
+These measurements come directly from Figma and must be used EXACTLY as specified:
+
+`;
+      if (figmaDesignData.colors && figmaDesignData.colors.length > 0) {
+        figmaSpecsSection += `### Exact Colors (use these hex values)\n${figmaDesignData.colors.map((c: string) => `- ${c}`).join('\n')}\n\n`;
+      }
+      
+      if (figmaDesignData.fonts && figmaDesignData.fonts.length > 0) {
+        figmaSpecsSection += `### Typography (exact values)\n`;
+        figmaDesignData.fonts.forEach((font: any) => {
+          figmaSpecsSection += `- Font: ${font.family}, Size: ${font.size}px, Weight: ${font.weight}, Line Height: ${font.lineHeight}px\n`;
+        });
+        figmaSpecsSection += '\n';
+      }
+      
+      if (figmaDesignData.spacing) {
+        figmaSpecsSection += `### Spacing (exact pixel values)\n`;
+        if (figmaDesignData.spacing.paddings?.length > 0) {
+          figmaSpecsSection += `- Paddings used: ${figmaDesignData.spacing.paddings.join('px, ')}px\n`;
+        }
+        if (figmaDesignData.spacing.gaps?.length > 0) {
+          figmaSpecsSection += `- Gaps used: ${figmaDesignData.spacing.gaps.join('px, ')}px\n`;
+        }
+        figmaSpecsSection += '\n';
+      }
+
+      if (figmaDesignData.texts && figmaDesignData.texts.length > 0) {
+        const urls = figmaDesignData.texts.filter((t: any) => t.isUrl).map((t: any) => t.content);
+        if (urls.length > 0) {
+          figmaSpecsSection += `### URLs detected in design\n${urls.map((u: string) => `- ${u}`).join('\n')}\n\n`;
+        }
+      }
+
+      figmaSpecsSection += `CRITICAL: When refining, match these exact values for pixel-perfect results. Do not approximate - use the precise measurements above.
+`;
+    }
+
     // Build system prompt (lean - just rules)
     const systemPrompt = `${EMAIL_HTML_RULES}
-
+${figmaSpecsSection}
 ## BRAND COLORS (use EXACT values)
 ${colorPalette || 'Not provided'}
 
@@ -203,13 +249,22 @@ ${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}`;
 ${socialIcons.map((s: any) => `- ${s.platform}: ${s.iconUrl}`).join('\n')}`;
     }
 
+    // Add Figma reminder if available
+    if (hasFigmaData) {
+      enrichedRequest += `
+
+## IMPORTANT: FIGMA SPECIFICATIONS AVAILABLE
+Use the exact measurements from the FIGMA DESIGN SPECIFICATIONS section in the system prompt for pixel-perfect accuracy.`;
+    }
+
     // Add the enriched user request
     messages.push({ role: 'user', content: enrichedRequest });
 
     console.log('Sending to Claude:', {
       totalMessages: messages.length,
       isFooterMode,
-      hasExistingConversation
+      hasExistingConversation,
+      hasFigmaData
     });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {

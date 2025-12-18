@@ -22,7 +22,7 @@ interface FooterBuilderModalProps {
   onOpenChange: (open: boolean) => void;
   brand: Brand;
   onFooterSaved: () => void;
-  onOpenStudio?: (referenceImageUrl: string, footerHtml: string) => void;
+  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any) => void;
 }
 
 type Step = 'reference' | 'logos' | 'social' | 'generate';
@@ -234,10 +234,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           throw new Error('Failed to generate HTML from Figma design');
         }
 
-        // Hand off to studio for refinement
+        // Hand off to studio for refinement - include Figma design data
         if (onOpenStudio && referenceImageUrl) {
           onOpenChange(false);
-          onOpenStudio(referenceImageUrl, data.html);
+          onOpenStudio(referenceImageUrl, data.html, figmaData.design);
         } else {
           toast.success('Footer generated from Figma!');
         }

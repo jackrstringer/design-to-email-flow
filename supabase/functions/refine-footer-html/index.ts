@@ -73,6 +73,7 @@ serve(async (req) => {
       userRequest, 
       referenceImageUrl, 
       brandContext, 
+      figmaDesignData,
       logoUrl,
       lightLogoUrl,
       darkLogoUrl,
@@ -88,6 +89,43 @@ serve(async (req) => {
 
     // Check if any logo is available
     const hasAnyLogo = logoUrl || lightLogoUrl || darkLogoUrl;
+    const hasFigmaData = figmaDesignData && Object.keys(figmaDesignData).length > 0;
+
+    // Build Figma design specifications section if available
+    let figmaSpecsSection = '';
+    if (hasFigmaData) {
+      figmaSpecsSection = `
+## FIGMA DESIGN SPECIFICATIONS (AUTHORITATIVE - USE EXACT VALUES)
+
+These measurements come directly from Figma and must be used EXACTLY as specified:
+
+`;
+      if (figmaDesignData.colors && figmaDesignData.colors.length > 0) {
+        figmaSpecsSection += `### Exact Colors (use these hex values)\n${figmaDesignData.colors.map((c: string) => `- ${c}`).join('\n')}\n\n`;
+      }
+      
+      if (figmaDesignData.fonts && figmaDesignData.fonts.length > 0) {
+        figmaSpecsSection += `### Typography (exact values)\n`;
+        figmaDesignData.fonts.forEach((font: any) => {
+          figmaSpecsSection += `- Font: ${font.family}, Size: ${font.size}px, Weight: ${font.weight}, Line Height: ${font.lineHeight}px\n`;
+        });
+        figmaSpecsSection += '\n';
+      }
+      
+      if (figmaDesignData.spacing) {
+        figmaSpecsSection += `### Spacing (exact pixel values)\n`;
+        if (figmaDesignData.spacing.paddings?.length > 0) {
+          figmaSpecsSection += `- Paddings used: ${figmaDesignData.spacing.paddings.join('px, ')}px\n`;
+        }
+        if (figmaDesignData.spacing.gaps?.length > 0) {
+          figmaSpecsSection += `- Gaps used: ${figmaDesignData.spacing.gaps.join('px, ')}px\n`;
+        }
+        figmaSpecsSection += '\n';
+      }
+
+      figmaSpecsSection += `CRITICAL: When refining, match these exact values for pixel-perfect results. Do not approximate - use the precise measurements above.
+`;
+    }
 
     // Build the refinement prompt
     let prompt = `Current footer HTML to refine:
@@ -175,6 +213,14 @@ DO NOT use placeholder links like "#" or "javascript:void(0)".
 `;
     }
 
+    // Add Figma specs reminder
+    if (hasFigmaData) {
+      prompt += `
+## IMPORTANT: FIGMA SPECIFICATIONS AVAILABLE
+Use the exact measurements from the FIGMA DESIGN SPECIFICATIONS in the system instructions for pixel-perfect accuracy.
+`;
+    }
+
     if (referenceImageUrl) {
       prompt += `
 ## REFERENCE IMAGE PROVIDED
@@ -247,7 +293,8 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
       hasReference: !!referenceImageUrl,
       hasLightLogo: !!lightLogoUrl,
       hasDarkLogo: !!darkLogoUrl,
-      hasGenericLogo: !!logoUrl
+      hasGenericLogo: !!logoUrl,
+      hasFigmaData
     });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -260,7 +307,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
-        system: FOOTER_REFINEMENT_RULES,
+        system: FOOTER_REFINEMENT_RULES + figmaSpecsSection,
         messages: [
           {
             role: 'user',

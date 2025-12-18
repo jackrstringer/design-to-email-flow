@@ -22,6 +22,7 @@ interface LocationState {
     link: string | null;
     html?: string | null;
   }>;
+  figmaDesignData?: any;
 }
 
 export default function CampaignPage() {
@@ -33,6 +34,7 @@ export default function CampaignPage() {
   const [slices, setSlices] = useState<ProcessedSlice[]>([]);
   const [originalImageUrl, setOriginalImageUrl] = useState<string>('');
   const [brand, setBrand] = useState<Brand | null>(null);
+  const [figmaDesignData, setFigmaDesignData] = useState<any>(null);
   
   // Footer versioning state
   const [savedFooters, setSavedFooters] = useState<BrandFooter[]>([]);
@@ -54,6 +56,7 @@ export default function CampaignPage() {
       // Initialize from navigation state with processed slices
       setOriginalImageUrl(state.imageUrl);
       setBrand(state.brand);
+      setFigmaDesignData(state.figmaDesignData || null);
       
       const processedSlices: ProcessedSlice[] = state.slices.map((slice) => ({
         imageUrl: slice.imageUrl,
@@ -391,6 +394,7 @@ export default function CampaignPage() {
           : undefined
       }
       brandLinks={brandLinks}
+      figmaDesignData={figmaDesignData}
       initialFooterHtml={initialFooterHtml}
       initialFooterId={initialFooterId}
       savedFooters={savedFooters}
