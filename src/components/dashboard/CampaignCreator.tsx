@@ -15,7 +15,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SliceEditor } from '@/components/SliceEditor';
-import { sliceImage } from '@/lib/imageSlicing';
+import { sliceImage, resizeImageForAI } from '@/lib/imageSlicing';
 import type { Brand } from '@/types/brand-assets';
 import type { SliceType } from '@/types/slice';
 
@@ -146,10 +146,14 @@ export function CampaignCreator({
         })
       );
 
+      // Resize full campaign image for AI context (max 8000px)
+      const resizedFullImage = await resizeImageForAI(uploadedImageDataUrl);
+      
       // Analyze slices with AI for alt text and links (with web search grounding)
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
         body: {
           slices: uploadedSlices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
+          fullCampaignImage: resizedFullImage, // Send full context for better link intelligence
           brandUrl: selectedBrand.websiteUrl || `https://${selectedBrand.domain}`,
           brandDomain: selectedBrand.domain, // Pass domain for site: search queries
           figmaDesignData: figmaDesignData // Pass Figma data if available

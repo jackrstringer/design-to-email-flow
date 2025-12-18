@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SliceEditor } from '@/components/SliceEditor';
 import { CampaignStudio } from '@/components/CampaignStudio';
-import { sliceImage, ImageSlice } from '@/lib/imageSlicing';
+import { sliceImage, ImageSlice, resizeImageForAI } from '@/lib/imageSlicing';
 import type { ProcessedSlice, SliceType } from '@/types/slice';
 const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
 <tr>
@@ -195,11 +195,16 @@ export default function SimpleUpload() {
         uploadedSlices.push({ imageUrl: data.url, slice: slices[i] });
       }
 
+      // Resize full campaign image for AI context (max 8000px)
+      setStatus('Preparing campaign context...');
+      const resizedFullImage = await resizeImageForAI(uploadedImage.dataUrl);
+      
       // Analyze slices with AI (with web search grounding)
       setStatus('Analyzing slices with AI...');
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
         body: {
           slices: slices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
+          fullCampaignImage: resizedFullImage, // Send full context for better link intelligence
           brandUrl: 'https://www.enhanced.com',
           brandDomain: 'enhanced.com' // Pass domain for site: search queries
         }
