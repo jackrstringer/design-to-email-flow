@@ -57,6 +57,14 @@ interface FigmaNode {
   itemSpacing?: number;
 }
 
+// Extracted design data for HTML generation
+interface DesignData {
+  colors: string[];
+  fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
+  texts: Array<{ content: string; isUrl: boolean }>;
+  spacing: { paddings: number[]; gaps: number[] };
+}
+
 function parseFigmaUrl(url: string): { fileKey: string; nodeId: string | null } | null {
   try {
     const urlObj = new URL(url);
@@ -86,6 +94,91 @@ function rgbaToHex(color: FigmaColor): string {
   const g = Math.round(color.g * 255);
   const b = Math.round(color.b * 255);
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+// URL pattern detection
+const urlPattern = /^(https?:\/\/|www\.|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/i;
+
+// Extract all design data from node tree
+function extractDesignData(node: FigmaNode): DesignData {
+  const colors = new Set<string>();
+  const fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }> = [];
+  const texts: Array<{ content: string; isUrl: boolean }> = [];
+  const paddings = new Set<number>();
+  const gaps = new Set<number>();
+  const seenFonts = new Set<string>();
+
+  function traverse(n: FigmaNode) {
+    // Extract colors from fills
+    if (n.fills) {
+      for (const fill of n.fills) {
+        if (fill.type === 'SOLID' && fill.color) {
+          colors.add(rgbaToHex(fill.color));
+        }
+      }
+    }
+
+    // Extract colors from strokes
+    if (n.strokes) {
+      for (const stroke of n.strokes) {
+        if (stroke.type === 'SOLID' && stroke.color) {
+          colors.add(rgbaToHex(stroke.color));
+        }
+      }
+    }
+
+    // Extract text content and font styles
+    if (n.type === 'TEXT' && n.characters) {
+      const content = n.characters.trim();
+      if (content) {
+        texts.push({
+          content,
+          isUrl: urlPattern.test(content)
+        });
+      }
+
+      if (n.style) {
+        const fontKey = `${n.style.fontFamily}-${n.style.fontSize}-${n.style.fontWeight}`;
+        if (!seenFonts.has(fontKey)) {
+          seenFonts.add(fontKey);
+          fonts.push({
+            family: n.style.fontFamily || 'Arial',
+            size: n.style.fontSize || 14,
+            weight: n.style.fontWeight || 400,
+            lineHeight: n.style.lineHeightPx || (n.style.fontSize || 14) * 1.4
+          });
+        }
+      }
+    }
+
+    // Extract spacing from auto-layout
+    if (n.layoutMode) {
+      if (n.paddingTop) paddings.add(n.paddingTop);
+      if (n.paddingRight) paddings.add(n.paddingRight);
+      if (n.paddingBottom) paddings.add(n.paddingBottom);
+      if (n.paddingLeft) paddings.add(n.paddingLeft);
+      if (n.itemSpacing) gaps.add(n.itemSpacing);
+    }
+
+    // Recurse into children
+    if (n.children) {
+      for (const child of n.children) {
+        traverse(child);
+      }
+    }
+  }
+
+  traverse(node);
+
+  return {
+    colors: Array.from(colors),
+    fonts: fonts.sort((a, b) => b.size - a.size), // Sort by size descending
+    texts,
+    spacing: {
+      paddings: Array.from(paddings).sort((a, b) => a - b),
+      gaps: Array.from(gaps).sort((a, b) => a - b)
+    }
+  };
 }
 
 function processNode(node: FigmaNode, parentBox?: { x: number; y: number }): any {
@@ -250,6 +343,10 @@ serve(async (req) => {
 
     // Process the node tree into our simplified format
     const processedDesign = processNode(rootNode);
+    
+    // Extract design data for HTML generation
+    const designData = extractDesignData(rootNode);
+    console.log('Extracted design data:', JSON.stringify(designData, null, 2));
 
     // Collect all image refs for export
     const imageRefs: string[] = [];
@@ -293,6 +390,7 @@ serve(async (req) => {
         fileKey,
         nodeId,
         design: processedDesign,
+        designData, // New: extracted design data for HTML generation
         imageUrls,
         exportedImageUrl,
       }),

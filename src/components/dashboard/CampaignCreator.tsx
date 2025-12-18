@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Plus } from 'lucide-react';
+import { Upload, Plus, Link2, Image } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -28,6 +29,13 @@ interface DetectedBrand {
   url: string | null;
 }
 
+interface FigmaDesignData {
+  colors: string[];
+  fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
+  texts: Array<{ content: string; isUrl: boolean }>;
+  spacing: { paddings: number[]; gaps: number[] };
+}
+
 interface CampaignCreatorProps {
   brands: Brand[];
   selectedBrandId: string | null;
@@ -43,6 +51,7 @@ interface CampaignCreatorProps {
 }
 
 type ViewState = 'upload' | 'slice-editor' | 'processing';
+type SourceType = 'image' | 'figma';
 
 export function CampaignCreator({
   brands,
@@ -63,6 +72,12 @@ export function CampaignCreator({
   const [hasFooters, setHasFooters] = useState(false);
   const [viewState, setViewState] = useState<ViewState>('upload');
   const [uploadedImageDataUrl, setUploadedImageDataUrl] = useState<string | null>(null);
+  
+  // Figma source state
+  const [sourceType, setSourceType] = useState<SourceType>('image');
+  const [figmaUrl, setFigmaUrl] = useState('');
+  const [isFetchingFigma, setIsFetchingFigma] = useState(false);
+  const [figmaDesignData, setFigmaDesignData] = useState<FigmaDesignData | null>(null);
 
   // Check if selected brand has footers
   useEffect(() => {
@@ -135,7 +150,8 @@ export function CampaignCreator({
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
         body: {
           slices: uploadedSlices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
-          brandUrl: selectedBrand.websiteUrl || `https://${selectedBrand.domain}`
+          brandUrl: selectedBrand.websiteUrl || `https://${selectedBrand.domain}`,
+          figmaDesignData: figmaDesignData // Pass Figma data if available
         }
       });
 
@@ -152,19 +168,20 @@ export function CampaignCreator({
           altText: analysis?.altText || `Email section ${index + 1}`,
           link: analysis?.suggestedLink || null,
           html: null,
+          figmaDesignData: figmaDesignData, // Attach Figma data for HTML generation
         };
       });
 
       // Create campaign in database
       const { data: campaign, error: campaignError } = await supabase
         .from('campaigns')
-        .insert({
+        .insert([{
           brand_id: selectedBrand.id,
           name: `Campaign ${new Date().toLocaleDateString()}`,
           original_image_url: originalUpload.url,
           status: 'draft',
-          blocks: processedSlices
-        })
+          blocks: JSON.parse(JSON.stringify(processedSlices))
+        }])
         .select()
         .single();
 
@@ -178,7 +195,8 @@ export function CampaignCreator({
           imageUrl: originalUpload.url,
           brand: selectedBrand,
           includeFooter,
-          slices: processedSlices
+          slices: processedSlices,
+          figmaDesignData, // Pass along for HTML generation
         }
       });
     } catch (error) {
@@ -193,11 +211,68 @@ export function CampaignCreator({
   const handleSliceCancel = () => {
     setViewState('upload');
     setUploadedImageDataUrl(null);
+    setFigmaDesignData(null);
+  };
+
+  const handleFetchFigma = async () => {
+    if (!figmaUrl.trim()) {
+      toast.error('Please enter a Figma URL');
+      return;
+    }
+
+    setIsFetchingFigma(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
+        body: { figmaUrl: figmaUrl.trim() }
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to fetch Figma design');
+      }
+
+      if (!data?.exportedImageUrl) {
+        throw new Error('Could not export Figma design as image');
+      }
+
+      // Fetch the exported PNG and convert to data URL
+      const imageResponse = await fetch(data.exportedImageUrl);
+      const blob = await imageResponse.blob();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      // Store the extracted design data for later use
+      if (data.designData) {
+        setFigmaDesignData(data.designData);
+        console.log('Figma design data extracted:', data.designData);
+      }
+
+      // If we have a configured brand, go directly to slice editor
+      if (selectedBrand?.klaviyoApiKey) {
+        setUploadedImageDataUrl(dataUrl);
+        setViewState('slice-editor');
+        toast.success('Figma design loaded! Add slice lines to continue.');
+      } else {
+        // Need to detect/select brand first
+        toast.info('Please select a brand to continue');
+        setUploadedImageDataUrl(dataUrl);
+      }
+
+    } catch (error) {
+      console.error('Figma fetch error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch Figma design');
+    } finally {
+      setIsFetchingFigma(false);
+    }
   };
 
   const createBrandDetectionImages = async (dataUrl: string): Promise<string[]> => {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
+      const image = document.createElement('img');
       image.onload = () => resolve(image);
       image.onerror = () => reject(new Error('Failed to load image'));
       image.src = dataUrl;
@@ -454,39 +529,103 @@ export function CampaignCreator({
         </div>
       </div>
 
-      {/* Upload zone */}
-      <div
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        className={`
-          relative rounded-xl border-2 border-dashed transition-all duration-200 cursor-pointer
-          ${isDragging 
-            ? 'border-primary bg-primary/5' 
-            : 'border-border/60 hover:border-primary/50 hover:bg-muted/30'
-          }
-          ${isProcessing ? 'pointer-events-none opacity-60' : ''}
-        `}
-      >
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          disabled={isProcessing}
-        />
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-            <Upload className="w-5 h-5 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium mb-1">
-            {isProcessing ? 'Detecting brand...' : 'Drop your campaign image here'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            PNG or JPG up to 20MB
-          </p>
-        </div>
+      {/* Source selection tabs */}
+      <div className="flex gap-2 p-1 bg-muted/50 rounded-lg w-fit mx-auto">
+        <button
+          onClick={() => setSourceType('image')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            sourceType === 'image'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Image className="w-4 h-4" />
+          Upload Image
+        </button>
+        <button
+          onClick={() => setSourceType('figma')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            sourceType === 'figma'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Link2 className="w-4 h-4" />
+          Paste Figma Link
+        </button>
       </div>
+
+      {/* Figma URL input */}
+      {sourceType === 'figma' && (
+        <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-muted-foreground">Figma URL</Label>
+            <div className="flex gap-2">
+              <Input
+                value={figmaUrl}
+                onChange={(e) => setFigmaUrl(e.target.value)}
+                placeholder="https://www.figma.com/design/..."
+                className="flex-1"
+                disabled={isFetchingFigma}
+              />
+              <Button
+                onClick={handleFetchFigma}
+                disabled={isFetchingFigma || !figmaUrl.trim()}
+              >
+                {isFetchingFigma ? 'Fetching...' : 'Fetch'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Paste a Figma frame URL. Make sure the frame is accessible (public or shared).
+            </p>
+          </div>
+          
+          {figmaDesignData && (
+            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+              <p className="text-sm text-green-800 font-medium">Design data extracted</p>
+              <p className="text-xs text-green-600 mt-1">
+                {figmaDesignData.colors.length} colors, {figmaDesignData.fonts.length} font styles
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Upload zone - only show for image source */}
+      {sourceType === 'image' && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`
+            relative rounded-xl border-2 border-dashed transition-all duration-200 cursor-pointer
+            ${isDragging 
+              ? 'border-primary bg-primary/5' 
+              : 'border-border/60 hover:border-primary/50 hover:bg-muted/30'
+            }
+            ${isProcessing ? 'pointer-events-none opacity-60' : ''}
+          `}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            disabled={isProcessing}
+          />
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Upload className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium mb-1">
+              {isProcessing ? 'Detecting brand...' : 'Drop your campaign image here'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              PNG or JPG up to 20MB
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Empty state when no brands */}
       {!isLoading && brands.length === 0 && (
