@@ -20,7 +20,7 @@ Luminance calculation: luminance = (0.299 × R + 0.587 × G + 0.114 × B) / 255
 ### Extract These Measurements (in pixels)
 1. Total width - Usually 600px for email
 2. Padding - Top, right, bottom, left (often asymmetric)
-3. Logo dimensions - Exact width/height
+3. Logo width - Target width in pixels (use height: auto to maintain aspect ratio)
 4. Spacing between elements - Gap between logo and nav, nav and social, etc.
 5. Font sizes - Each text element
 6. Icon sizes - Social icons (typically 24-40px)
@@ -82,7 +82,7 @@ Use the exact iconUrl provided for each social platform.
 <tr>
   <td align="center" style="padding: {TOP}px {RIGHT}px {BOTTOM}px {LEFT}px;">
     <a href="{WEBSITE_URL}" target="_blank" style="text-decoration: none;">
-      <img src="{LOGO_URL}" alt="{BRAND}" width="{W}" height="{H}" style="display: block; border: 0;">
+      <img src="{LOGO_URL}" alt="{BRAND}" width="{W}" style="display: block; border: 0; height: auto; max-width: 100%;">
     </a>
   </td>
 </tr>
@@ -120,14 +120,14 @@ Use the exact iconUrl provided for each social platform.
 ## VALIDATION CHECKLIST (Before Returning)
 - [ ] Background color matches design exactly
 - [ ] Correct logo version used (light for dark bg, dark for light bg)
-- [ ] Logo is an <img> tag with width, height, alt, display:block, border:0
+- [ ] Logo is an <img> tag with width, alt, display:block, border:0, height:auto
 - [ ] All spacing/padding matches design measurements
 - [ ] Font sizes match design
 - [ ] All social platforms included with correct icons
 - [ ] Social icons have correct size and spacing
 - [ ] Legal text styled correctly
 - [ ] No prohibited CSS (div, margin, float, flex)
-- [ ] All images have width, height, alt attributes
+- [ ] All images have width, alt attributes (height="auto" for logos, explicit height for icons)
 - [ ] MSO conditionals included for Outlook
 - [ ] role="presentation" on all tables
 - [ ] Total width is exactly 600px
@@ -384,7 +384,7 @@ Create a professional dark footer with:
           
           content.push({ 
             type: 'text', 
-            text: '\n---\nYou MUST use one of these logo images above as an <img src="..."> tag. NEVER render the brand name as text.\n---\n' 
+            text: '\n---\nYou MUST use one of these logo images above as an <img src="..."> tag. NEVER render the brand name as text.\nIMPORTANT: Set logo width to a reasonable value (150-200px) and use height="auto" to maintain aspect ratio. NEVER guess the height value.\n---\n' 
           });
         }
         
