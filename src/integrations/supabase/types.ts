@@ -195,6 +195,44 @@ export type Database = {
           },
         ]
       }
+      segment_presets: {
+        Row: {
+          brand_id: string
+          created_at: string
+          excluded_segments: Json
+          id: string
+          included_segments: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string
+          excluded_segments?: Json
+          id?: string
+          included_segments?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string
+          excluded_segments?: Json
+          id?: string
+          included_segments?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "segment_presets_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

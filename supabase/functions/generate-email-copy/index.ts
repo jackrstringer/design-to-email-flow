@@ -11,35 +11,31 @@ serve(async (req) => {
   }
 
   try {
-    const { slices, brandContext, existingFavorites, subjectCount = 10, previewCount = 10 } = await req.json();
+    const { slices, brandContext, existingFavorites, pairCount = 10 } = await req.json();
     
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    console.log(`Generating ${subjectCount} subject lines and ${previewCount} preview texts for ${brandContext?.name || 'brand'}`);
+    console.log(`Generating ${pairCount} SL/PT pairs for ${brandContext?.name || 'brand'}`);
 
     // Build context from slices
     const sliceContext = (slices || [])
       .map((s: any, i: number) => `Section ${i + 1}: ${s.altText || 'No description'}${s.link ? ` (links to: ${s.link})` : ''}`)
       .join('\n');
 
-    // Build favorites context
-    const favoriteSubjects = (existingFavorites || [])
-      .filter((f: any) => f.type === 'subject')
-      .map((f: any) => f.text);
-    const favoritePreviews = (existingFavorites || [])
-      .filter((f: any) => f.type === 'preview')
-      .map((f: any) => f.text);
+    // Build favorites context - now expecting pairs
+    const favoritePairs = (existingFavorites || [])
+      .filter((f: any) => f.subjectLine && f.previewText)
+      .map((f: any) => `- Subject: "${f.subjectLine}" | Preview: "${f.previewText}"`);
 
-    const favoriteContext = favoriteSubjects.length > 0 || favoritePreviews.length > 0
-      ? `\n\nThe user has favorited these options - generate NEW variations that match their style and tone:
-${favoriteSubjects.length > 0 ? `Favorite subject lines:\n${favoriteSubjects.map((s: string) => `- "${s}"`).join('\n')}` : ''}
-${favoritePreviews.length > 0 ? `Favorite preview texts:\n${favoritePreviews.map((s: string) => `- "${s}"`).join('\n')}` : ''}`
+    const favoriteContext = favoritePairs.length > 0
+      ? `\n\nThe user has favorited these SL/PT pairs - generate NEW pairs that match their style and tone:
+${favoritePairs.join('\n')}`
       : '';
 
-    const prompt = `You are an expert email copywriter. Generate engaging email subject lines and preview texts for this email campaign.
+    const prompt = `You are an expert email copywriter. Generate engaging email subject line and preview text PAIRS for this email campaign. Each pair should work together harmoniously.
 
 BRAND: ${brandContext?.name || 'Unknown brand'}${brandContext?.domain ? ` (${brandContext.domain})` : ''}
 
@@ -49,18 +45,21 @@ ${favoriteContext}
 
 REQUIREMENTS:
 - Subject lines should be 4-8 words, attention-grabbing, create curiosity or urgency
-- Preview texts should be 8-15 words, complement the subject line, provide additional context
+- Preview texts should be 8-15 words, COMPLEMENT the subject line, provide additional context
+- Each pair should feel like they belong together - the preview text should extend or tease what the subject line promises
 - Mix styles: some with emojis (1-2 max), some without
 - Vary the tone: some playful, some direct, some curious
 - Be brand-appropriate
 - DO NOT use generic phrases like "Don't miss out" or "Limited time"
 
-Generate EXACTLY ${subjectCount} subject lines and ${previewCount} preview texts.
+Generate EXACTLY ${pairCount} subject line + preview text pairs.
 
 Respond in this exact JSON format:
 {
-  "subjectLines": ["subject 1", "subject 2", ...],
-  "previewTexts": ["preview 1", "preview 2", ...]
+  "pairs": [
+    { "subjectLine": "subject 1", "previewText": "preview text that complements subject 1" },
+    { "subjectLine": "subject 2", "previewText": "preview text that complements subject 2" }
+  ]
 }`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -89,7 +88,7 @@ Respond in this exact JSON format:
     console.log('Raw response:', content.substring(0, 500));
 
     // Parse JSON from response
-    let result = { subjectLines: [] as string[], previewTexts: [] as string[] };
+    let result = { pairs: [] as Array<{ subjectLine: string; previewText: string }> };
     
     try {
       // Try to extract JSON from the response
@@ -101,12 +100,14 @@ Respond in this exact JSON format:
       console.error('JSON parse error:', parseErr);
       // Fallback: generate simple defaults
       result = {
-        subjectLines: Array(subjectCount).fill(0).map((_, i) => `Email Campaign Subject ${i + 1}`),
-        previewTexts: Array(previewCount).fill(0).map((_, i) => `Preview text for your email campaign ${i + 1}`),
+        pairs: Array(pairCount).fill(0).map((_, i) => ({
+          subjectLine: `Email Campaign Subject ${i + 1}`,
+          previewText: `Preview text for your email campaign ${i + 1}`,
+        })),
       };
     }
 
-    console.log(`Generated ${result.subjectLines?.length || 0} subjects and ${result.previewTexts?.length || 0} previews`);
+    console.log(`Generated ${result.pairs?.length || 0} pairs`);
 
     return new Response(
       JSON.stringify(result),
