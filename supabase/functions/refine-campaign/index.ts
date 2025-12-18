@@ -295,31 +295,7 @@ If no changes are needed, return empty arrays/null.`;
       });
     }
 
-    // Show Claude the actual social icons so it knows what they look like
-    if (socialIcons?.length) {
-      const socialContent: any[] = [
-        { type: 'text', text: '## SOCIAL ICON IMAGES (USE THESE EXACT URLs)\n\nThese are the social icons you MUST use:' }
-      ];
-      
-      for (const icon of socialIcons) {
-        if (icon.iconUrl) {
-          socialContent.push({
-            type: 'image',
-            source: { type: 'url', url: icon.iconUrl }
-          });
-          socialContent.push({
-            type: 'text',
-            text: `↑ ${icon.platform.toUpperCase()} ICON\n- Icon URL: ${icon.iconUrl}\n- Link URL: ${icon.url}`
-          });
-        }
-      }
-      
-      messages.push({ role: 'user', content: socialContent });
-      messages.push({ 
-        role: 'assistant', 
-        content: 'I can see the social icons. I will use the EXACT iconUrl values provided for each platform.' 
-      });
-    }
+    // Note: Social icons passed as text in system prompt - CDN URLs can't be downloaded by Claude API
 
     // Add original design image for context (only if it's a valid URL)
     if (isValidImageUrl) {
