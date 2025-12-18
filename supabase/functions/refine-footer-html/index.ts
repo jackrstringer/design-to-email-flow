@@ -83,8 +83,8 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    // Determine effective logo URL
-    const effectiveLogoUrl = logoUrl || lightLogoUrl || darkLogoUrl;
+    // Check if any logo is available
+    const hasAnyLogo = logoUrl || lightLogoUrl || darkLogoUrl;
 
     // Build the refinement prompt
     let prompt = `Current footer HTML to refine:
@@ -101,13 +101,21 @@ ${currentHtml}
 `;
     }
 
-    // Add logo enforcement
-    if (effectiveLogoUrl) {
-      prompt += `## CRITICAL LOGO REQUIREMENT
-The logo MUST be an <img> tag using this exact URL: ${effectiveLogoUrl}
-Do NOT render the brand name as text - ALWAYS use the logo image.
-If the current HTML has text instead of a logo, REPLACE it with:
-<img src="${effectiveLogoUrl}" alt="${brandContext?.name || 'Logo'}" width="180" height="40" style="display: block; border: 0; margin: 0 auto;">
+    // Add logo section with BOTH options clearly labeled
+    if (hasAnyLogo) {
+      prompt += `## AVAILABLE LOGO ASSETS (CRITICAL - USE AS <img> TAGS)
+${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
+${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
+${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
+
+### LOGO SELECTION RULES:
+1. Analyze the footer background color
+2. If background is DARK (luminance < 50%): USE THE LIGHT/WHITE LOGO
+3. If background is LIGHT (luminance >= 50%): USE THE DARK/BLACK LOGO
+4. If user says "white logo", "light logo": Use ${lightLogoUrl || logoUrl || 'light logo'}
+5. If user says "dark logo", "black logo": Use ${darkLogoUrl || logoUrl || 'dark logo'}
+6. ALWAYS use the logo as an <img> tag - NEVER render brand name as text
+7. Example: <img src="[SELECTED_LOGO_URL]" alt="${brandContext?.name || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
 
 `;
     }
@@ -165,7 +173,9 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
     console.log('Refining footer HTML', {
       hasUserRequest: !!userRequest,
       hasReference: !!referenceImageUrl,
-      hasLogo: !!effectiveLogoUrl
+      hasLightLogo: !!lightLogoUrl,
+      hasDarkLogo: !!darkLogoUrl,
+      hasGenericLogo: !!logoUrl
     });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {

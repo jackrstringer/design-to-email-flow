@@ -222,10 +222,6 @@ serve(async (req) => {
     // Start processing in background
     (async () => {
       try {
-        // Determine which logo to use based on background luminance
-        // For dark backgrounds (most common in footers), use light logo
-        const effectiveLogoUrl = logoUrl || lightLogoUrl || darkLogoUrl;
-        
         // Build social icons description with exact URLs
         const socialIconsDescription = socialIcons?.length 
           ? `Social icons to include (use these EXACT URLs as <img> tags with 32x32px dimensions):
@@ -245,14 +241,29 @@ ${socialIcons.map((s: any) => `- ${s.platform}:
 - Link: ${brandColors.link || brandColors.primary || '#ffffff'}`
           : 'Use dark background (#111111) with white text (#ffffff)';
 
+        // Build logo section with BOTH options clearly labeled
+        const hasAnyLogo = logoUrl || lightLogoUrl || darkLogoUrl;
+        const logoSection = hasAnyLogo ? `## AVAILABLE LOGO ASSETS (CRITICAL - USE AS <img> TAGS)
+${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
+${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
+${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
+
+### LOGO SELECTION RULES (MANDATORY):
+1. First, analyze the footer background color from the reference image
+2. Calculate luminance: luminance = (0.299 × R + 0.587 × G + 0.114 × B) / 255
+3. If background luminance < 50% (DARK background like navy, black, dark blue):
+   → USE THE LIGHT/WHITE LOGO: ${lightLogoUrl || logoUrl || 'not provided'}
+4. If background luminance >= 50% (LIGHT background like white, cream, light gray):
+   → USE THE DARK/BLACK LOGO: ${darkLogoUrl || logoUrl || 'not provided'}
+5. ALWAYS use the selected logo as an <img> tag with the EXACT URL provided
+6. NEVER render the brand name as text when a logo URL exists
+7. Example: <img src="[SELECTED_LOGO_URL]" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
+` : `## LOGO
+No logo provided - skip logo section entirely`;
+
         let userPrompt = `Create an email footer for "${brandName || 'Brand'}" with these specifications:
 
-## LOGO (CRITICAL - MUST USE AS <img> TAG)
-${effectiveLogoUrl 
-  ? `Logo URL: ${effectiveLogoUrl}
-You MUST use this exact URL in an <img> tag. NEVER render the brand name as text.
-Example: <img src="${effectiveLogoUrl}" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">`
-  : 'No logo provided - skip logo section entirely'}
+${logoSection}
 
 ## SOCIAL ICONS
 ${socialIconsDescription}
@@ -310,7 +321,9 @@ Create a professional dark footer with:
 
         console.log('Generating footer for:', brandName, {
           hasReference: !!referenceImageUrl,
-          hasLogo: !!effectiveLogoUrl,
+          hasLightLogo: !!lightLogoUrl,
+          hasDarkLogo: !!darkLogoUrl,
+          hasGenericLogo: !!logoUrl,
           socialIconsCount: socialIcons?.length || 0
         });
         
@@ -450,7 +463,10 @@ ${html}
 Issues that MUST be fixed:
 ${validationResult}
 
-${effectiveLogoUrl ? `REMINDER: Logo MUST be <img src="${effectiveLogoUrl}" ...> - NEVER text` : ''}
+${hasAnyLogo ? `REMINDER: Logo MUST be an <img> tag using one of these URLs based on background luminance:
+- Light/White logo (for dark backgrounds): ${lightLogoUrl || logoUrl || 'not provided'}
+- Dark/Black logo (for light backgrounds): ${darkLogoUrl || logoUrl || 'not provided'}
+NEVER render brand name as text!` : ''}
 
 Fix ALL issues to achieve pixel-perfect match. Return only the corrected HTML.`,
               },
