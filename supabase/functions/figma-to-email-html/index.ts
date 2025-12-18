@@ -144,7 +144,8 @@ serve(async (req) => {
       html,
       exportedImageUrl,
       designData,
-      { brandName, websiteUrl, socialIcons, allLinks },
+      { brandName, websiteUrl, socialIcons, allLinks, lightLogoUrl, darkLogoUrl },
+      userPrompt,  // Pass the FULL design prompt for accurate fixes
       7  // Max iterations
     );
 
@@ -210,6 +211,7 @@ async function visualValidationLoop(
   referenceImageUrl: string,
   designData: DesignData | null,
   brandContext: any,
+  fullDesignPrompt: string,  // The complete design specification
   maxIterations: number = 7
 ): Promise<string> {
   let currentHtml = initialHtml;
@@ -221,14 +223,15 @@ async function visualValidationLoop(
       // 1. Render current HTML to image
       const renderedImageUrl = await renderHtmlToImage(currentHtml);
       
-      // 2. Ask Claude to compare side-by-side
+      // 2. Ask Claude to compare side-by-side with FULL design context
       const result = await compareImagesWithClaude(
         apiKey,
         referenceImageUrl,
         renderedImageUrl,
         currentHtml,
         designData,
-        brandContext
+        brandContext,
+        fullDesignPrompt  // Pass full context for accurate fixes
       );
       
       if (result.isMatch) {
@@ -269,18 +272,9 @@ async function compareImagesWithClaude(
   renderedUrl: string,
   currentHtml: string,
   designData: DesignData | null,
-  brandContext: any
+  brandContext: any,
+  fullDesignPrompt: string  // Complete design specification with all element details
 ): Promise<{ isMatch: boolean; discrepancies: string[]; fixedHtml: string }> {
-  
-  const designSpecs = designData ? `
-## FIGMA SPECS (use these exact values for corrections)
-- Colors: ${designData.colors.join(', ')}
-- Font sizes: ${designData.fonts.map(f => f.size + 'px').join(', ')}
-- Borders: ${designData.borders.map(b => b.width + 'px ' + b.color).join(', ')}
-- Padding values: ${designData.spacing.paddings.join('px, ')}px
-- Gap values: ${designData.spacing.gaps.join('px, ')}px
-- Root dimensions: ${designData.rootDimensions.width}x${designData.rootDimensions.height}px
-` : '';
 
   const prompt = `You are comparing two email footer images for PIXEL-PERFECT matching.
 
@@ -319,7 +313,8 @@ Focus on the ACTUAL FOOTER CONTENT, not the canvas/viewport it sits on.
 - Border presence, color, and width
 - Padding around content sections
 
-${designSpecs}
+## COMPLETE DESIGN SPECIFICATION (use these EXACT values for corrections)
+${fullDesignPrompt}
 
 ## CURRENT HTML
 \`\`\`html
