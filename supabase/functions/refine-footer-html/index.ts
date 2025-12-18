@@ -75,7 +75,10 @@ serve(async (req) => {
       brandContext, 
       logoUrl,
       lightLogoUrl,
-      darkLogoUrl 
+      darkLogoUrl,
+      websiteUrl,
+      allLinks,
+      socialIcons
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -133,6 +136,20 @@ ${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
   - Link: ${brandContext.colors?.link || brandContext.colors?.primary || '#ffffff'}
 
 When user mentions "brand blue", "primary color", etc., use the exact hex values above.
+
+## CLICKABILITY REQUIREMENTS (CRITICAL)
+ALL interactive elements MUST be wrapped in <a> tags with REAL URLs:
+
+1. LOGO must link to: ${websiteUrl || brandContext?.websiteUrl || `https://${brandContext?.domain}` || '#'}
+   Structure: <a href="[WEBSITE_URL]" target="_blank"><img src="..." /></a>
+
+2. SOCIAL ICONS - each must link to its platform URL
+${socialIcons?.length ? socialIcons.map((s: any) => `   - ${s.platform}: <a href="${s.url}" target="_blank"><img src="${s.iconUrl}" .../></a>`).join('\n') : '   (Use provided social icon URLs)'}
+
+3. NAVIGATION LINKS - text links must use brand URLs
+${allLinks?.length ? `Available links:\n${allLinks.slice(0, 8).map((link: string) => `   - ${link}`).join('\n')}` : ''}
+
+DO NOT use placeholder links like "#" or "javascript:void(0)".
 `;
     }
 

@@ -203,7 +203,9 @@ serve(async (req) => {
       darkLogoUrl,
       socialIcons, 
       brandName, 
-      brandColors 
+      brandColors,
+      websiteUrl,
+      allLinks
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -223,13 +225,28 @@ serve(async (req) => {
     // Start processing in background
     (async () => {
       try {
-        // Build social icons description with exact URLs
+        // Build social icons description with exact URLs - emphasize clickability
         const socialIconsDescription = socialIcons?.length 
-          ? `Social icons to include (use these EXACT URLs as <img> tags with 32x32px dimensions):
-${socialIcons.map((s: any) => `- ${s.platform}: 
-  - Link to: ${s.url}
-  - Icon image URL (MUST USE): ${s.iconUrl}`).join('\n')}`
+          ? `## SOCIAL ICONS (MUST BE CLICKABLE <a> TAGS)
+Each social icon MUST be wrapped in an <a> tag linking to its platform URL.
+
+${socialIcons.map((s: any) => `- ${s.platform}:
+  - LINK URL (wrap in <a href="...">): ${s.url}
+  - ICON IMAGE URL (use in <img src="...">): ${s.iconUrl}
+  - REQUIRED STRUCTURE: <a href="${s.url}" target="_blank"><img src="${s.iconUrl}" width="32" height="32" alt="${s.platform}" style="display: block; border: 0;"></a>`).join('\n\n')}`
           : 'No social icons provided.';
+        
+        // Build navigation links section
+        const navigationLinksSection = allLinks?.length
+          ? `## NAVIGATION LINKS (USE FOR TEXT LINKS)
+If the reference shows navigation text links (Shop, About, Contact, etc.), wrap them in <a> tags:
+${allLinks.slice(0, 10).map((link: string) => `- ${link}`).join('\n')}
+
+Navigation link structure: <a href="{URL}" target="_blank" style="color: inherit; text-decoration: none;">{Link Text}</a>`
+          : '';
+
+        // Website URL for logo link
+        const brandWebsiteUrl = websiteUrl || `https://${brandName?.toLowerCase().replace(/\s+/g, '')}.com`;
 
         // Build color palette
         const colorPalette = brandColors 
@@ -271,18 +288,35 @@ No logo provided - cannot generate a footer without a hosted logo image URL.`;
 
 ${logoSection}
 
-## SOCIAL ICONS
 ${socialIconsDescription}
+
+${navigationLinksSection}
 
 ## COLORS
 ${colorPalette}
 
-## REQUIREMENTS
+## CLICKABILITY REQUIREMENTS (CRITICAL - ALL ELEMENTS MUST BE CLICKABLE)
+
+### 1. LOGO - MUST link to brand website
+<a href="${brandWebsiteUrl}" target="_blank" style="text-decoration: none;">
+  <img src="[LOGO_URL]" alt="${brandName || 'Brand'}" width="..." height="..." style="display: block; border: 0;">
+</a>
+Brand Website URL: ${brandWebsiteUrl}
+
+### 2. SOCIAL ICONS - EACH must link to its platform
+Every social icon MUST be wrapped in an <a> tag with href pointing to the social platform URL provided above.
+DO NOT use "#" or "javascript:void(0)" - use the REAL URLs provided.
+
+### 3. NAVIGATION LINKS - Text links must be clickable
+If the footer has navigation text (Shop, About, FAQ, etc.), wrap each in an <a> tag using brand links from above.
+
+## TECHNICAL REQUIREMENTS
 - Total width: exactly 600px
 - Table-based layout only (NO div, NO flexbox, NO float)
 - All styles inline
 - Include MSO conditionals for Outlook
 - All images need width, height, alt, style="display:block; border:0;"
+- ALL clickable elements wrapped in <a> tags with real URLs
 `;
 
         if (referenceImageUrl) {
