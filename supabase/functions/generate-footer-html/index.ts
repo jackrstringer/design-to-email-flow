@@ -342,11 +342,10 @@ Return only the corrected HTML.`;
 
         console.log('Footer generation complete, conversation turns:', conversationHistory.length);
         
-        // Return HTML and conversation history for continuation
+        // Return just the HTML - refinements will reconstruct context inline
         await sendEvent({ 
           status: 'complete', 
           html,
-          conversationHistory, // Pass this back so refinements can continue the conversation
           message: 'Footer generated. You can refine via chat.'
         });
         

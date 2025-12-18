@@ -72,8 +72,6 @@ interface CampaignStudioProps {
   selectedListId?: string | null;
   onSelectList?: (listId: string) => void;
   isLoadingLists?: boolean;
-  // Initial Claude conversation history (from footer generation)
-  initialConversationHistory?: any[];
 }
 
 interface SliceDimensions {
@@ -107,7 +105,6 @@ export function CampaignStudio({
   selectedListId,
   onSelectList,
   isLoadingLists = false,
-  initialConversationHistory = [],
 }: CampaignStudioProps) {
   const isFooterMode = mode === 'footer';
   // Local footer state - this is the source of truth for the current footer
@@ -130,8 +127,8 @@ export function CampaignStudio({
   const [showAltText, setShowAltText] = useState(false);
   const [includeFooter, setIncludeFooter] = useState(true);
   
-  // Claude conversation history - persisted across refinements, initialized from props
-  const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>(initialConversationHistory);
+  // Claude conversation history - persisted across refinements
+  const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>([]);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {

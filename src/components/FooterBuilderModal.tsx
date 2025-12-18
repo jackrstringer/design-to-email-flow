@@ -22,7 +22,7 @@ interface FooterBuilderModalProps {
   onOpenChange: (open: boolean) => void;
   brand: Brand;
   onFooterSaved: () => void;
-  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, conversationHistory?: any[]) => void;
+  onOpenStudio?: (referenceImageUrl: string, footerHtml: string) => void;
 }
 
 type Step = 'reference' | 'logos' | 'social' | 'generate';
@@ -186,7 +186,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let finalHtml = '';
-      let conversationHistory: any[] = [];
 
       if (reader) {
         while (true) {
@@ -197,29 +196,25 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           const lines = text.split('\n');
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                
-                if (data.message) {
-                  setGenerationStatus(data.message);
-                }
-
-                if (data.status === 'complete') {
-                  finalHtml = data.html;
-                  // Capture conversation history for continuation
-                  if (data.conversationHistory) {
-                    conversationHistory = data.conversationHistory;
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  
+                  if (data.message) {
+                    setGenerationStatus(data.message);
                   }
-                }
 
-                if (data.status === 'error') {
-                  throw new Error(data.error);
+                  if (data.status === 'complete') {
+                    finalHtml = data.html;
+                  }
+
+                  if (data.status === 'error') {
+                    throw new Error(data.error);
+                  }
+                } catch (parseError) {
+                  console.error('SSE parse error:', parseError, 'line:', line.substring(0, 100));
                 }
-              } catch (parseError) {
-                // Ignore parse errors for incomplete chunks
               }
-            }
           }
         }
       }
@@ -228,10 +223,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         throw new Error('No HTML received from generator');
       }
 
-      // Hand off to studio for refinement, including conversation history
+      // Hand off to studio for refinement
       if (onOpenStudio && referenceImageUrl) {
         onOpenChange(false);
-        onOpenStudio(referenceImageUrl, finalHtml, conversationHistory);
+        onOpenStudio(referenceImageUrl, finalHtml);
       } else {
         toast.success('Footer generated! Opening editor...');
       }

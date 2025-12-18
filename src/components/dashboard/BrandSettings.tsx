@@ -1071,13 +1071,12 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           fetchFooters();
           onBrandChange();
         }}
-        onOpenStudio={(referenceImageUrl, footerHtml, conversationHistory) => {
+        onOpenStudio={(referenceImageUrl, footerHtml) => {
           navigate(`/footer-editor/${brand.id}`, {
             state: {
               referenceImageUrl,
               footerHtml,
               footerName: 'New Footer',
-              conversationHistory,
             }
           });
         }}
