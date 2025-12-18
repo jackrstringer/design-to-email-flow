@@ -6,6 +6,71 @@ export interface ImageSlice {
   width: number;
 }
 
+const MAX_AI_DIMENSION = 8000;
+
+/**
+ * Resize an image if either dimension exceeds the max limit for AI processing
+ * Maintains aspect ratio and returns original if within limits
+ */
+export async function resizeImageForAI(
+  imageDataUrl: string,
+  maxDimension: number = MAX_AI_DIMENSION
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      const { naturalWidth, naturalHeight } = img;
+      
+      // Check if resize is needed
+      if (naturalWidth <= maxDimension && naturalHeight <= maxDimension) {
+        resolve(imageDataUrl); // Return original if within limits
+        return;
+      }
+      
+      console.log(`Resizing image from ${naturalWidth}x${naturalHeight} for AI processing`);
+      
+      // Calculate new dimensions maintaining aspect ratio
+      let newWidth = naturalWidth;
+      let newHeight = naturalHeight;
+      
+      if (naturalWidth > naturalHeight) {
+        // Width is the limiting factor
+        if (naturalWidth > maxDimension) {
+          newWidth = maxDimension;
+          newHeight = Math.round((naturalHeight * maxDimension) / naturalWidth);
+        }
+      } else {
+        // Height is the limiting factor
+        if (naturalHeight > maxDimension) {
+          newHeight = maxDimension;
+          newWidth = Math.round((naturalWidth * maxDimension) / naturalHeight);
+        }
+      }
+      
+      console.log(`Resized to ${newWidth}x${newHeight}`);
+      
+      // Resize using canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0, newWidth, newHeight);
+      resolve(canvas.toDataURL('image/jpeg', 0.85)); // Use JPEG for smaller size
+    };
+    
+    img.onerror = () => reject(new Error('Failed to load image for resizing'));
+    img.src = imageDataUrl;
+  });
+}
+
 /**
  * Slice an image into multiple parts based on Y-axis percentages
  * @param imageDataUrl - Base64 data URL of the image
