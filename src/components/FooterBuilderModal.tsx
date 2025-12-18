@@ -30,6 +30,12 @@ type SourceType = 'image' | 'figma' | null;
 
 interface FigmaDesignData {
   design: any;
+  designData: {
+    colors: string[];
+    fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
+    texts: Array<{ content: string; isUrl: boolean }>;
+    spacing: { paddings: number[]; gaps: number[] };
+  } | null;
   imageUrls: Record<string, string>;
   exportedImageUrl: string | null;
 }
@@ -113,6 +119,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       setFigmaData({
         design: data.design,
+        designData: data.designData || null,
         imageUrls: data.imageUrls || {},
         exportedImageUrl: data.exportedImageUrl,
       });
@@ -210,6 +217,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         const { data, error } = await supabase.functions.invoke('figma-to-email-html', {
           body: {
             design: figmaData.design,
+            designData: figmaData.designData,
             exportedImageUrl: figmaData.exportedImageUrl,
             lightLogoUrl: lightLogoUrl,
             darkLogoUrl: darkLogoUrl,
@@ -234,10 +242,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           throw new Error('Failed to generate HTML from Figma design');
         }
 
-        // Hand off to studio for refinement - include Figma design data
+        // Hand off to studio for refinement - include full Figma data (design + designData)
         if (onOpenStudio && referenceImageUrl) {
           onOpenChange(false);
-          onOpenStudio(referenceImageUrl, data.html, figmaData.design);
+          onOpenStudio(referenceImageUrl, data.html, { design: figmaData.design, designData: figmaData.designData });
         } else {
           toast.success('Footer generated from Figma!');
         }

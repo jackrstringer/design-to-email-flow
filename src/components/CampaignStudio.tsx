@@ -110,6 +110,9 @@ export function CampaignStudio({
   isLoadingLists = false,
 }: CampaignStudioProps) {
   const isFooterMode = mode === 'footer';
+  
+  // Normalize figmaDesignData - extract designData if nested, otherwise use as-is
+  const normalizedFigmaData = figmaDesignData?.designData || figmaDesignData;
   // Local footer state - this is the source of truth for the current footer
   const [localFooterHtml, setLocalFooterHtml] = useState<string | undefined>(initialFooterHtml);
   const [listSelectorOpen, setListSelectorOpen] = useState(false);
@@ -250,7 +253,7 @@ export function CampaignStudio({
           userRequest: message,
           brandUrl,
           brandContext,
-          figmaDesignData, // Pass Figma specs for pixel-perfect refinements
+          figmaDesignData: normalizedFigmaData, // Pass normalized Figma specs for pixel-perfect refinements
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
@@ -351,7 +354,7 @@ Return ALL HTML sections that need updates, not just one.`;
           userRequest: autoRefinePrompt,
           brandUrl,
           brandContext,
-          figmaDesignData, // Pass Figma specs for pixel-perfect refinements
+          figmaDesignData: normalizedFigmaData, // Pass normalized Figma specs for pixel-perfect refinements
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
