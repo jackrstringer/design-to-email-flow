@@ -225,15 +225,27 @@ serve(async (req) => {
     // Start processing in background
     (async () => {
       try {
-        // Build social icons description with exact URLs - emphasize clickability
+        // Build social icons description with EXACT URLs - no substitutions allowed
         const socialIconsDescription = socialIcons?.length 
-          ? `## SOCIAL ICONS (MUST BE CLICKABLE <a> TAGS)
-Each social icon MUST be wrapped in an <a> tag linking to its platform URL.
+          ? `## SOCIAL ICONS - USE EXACT URLS PROVIDED (NO SUBSTITUTIONS)
 
-${socialIcons.map((s: any) => `- ${s.platform}:
-  - LINK URL (wrap in <a href="...">): ${s.url}
-  - ICON IMAGE URL (use in <img src="...">): ${s.iconUrl}
-  - REQUIRED STRUCTURE: <a href="${s.url}" target="_blank"><img src="${s.iconUrl}" width="32" height="32" alt="${s.platform}" style="display: block; border: 0;"></a>`).join('\n\n')}`
+CRITICAL: You MUST use the EXACT iconUrl values provided below. Do NOT use any other URLs.
+Do NOT use placeholder URLs like "https://example.com/icon.png".
+Do NOT generate your own icon URLs.
+ONLY use the specific iconUrl value provided for each platform.
+
+${socialIcons.map((s: any) => `### ${s.platform.toUpperCase()}
+- Platform link (for <a href>): ${s.url}
+- Icon image URL (for <img src>): ${s.iconUrl}
+- EXACT HTML TO USE:
+  <td style="padding: 0 8px;">
+    <a href="${s.url}" target="_blank" style="text-decoration: none;">
+      <img src="${s.iconUrl}" alt="${s.platform}" width="32" height="32" style="display: block; border: 0;">
+    </a>
+  </td>`).join('\n\n')}
+
+VALIDATION: Your HTML MUST contain these exact image URLs:
+${socialIcons.map((s: any) => `- ${s.iconUrl}`).join('\n')}`
           : 'No social icons provided.';
         
         // Build navigation links section
@@ -376,6 +388,32 @@ Create a professional dark footer with:
           });
         }
         
+        // Show Claude the actual social icons so it knows what they look like
+        if (socialIcons?.length) {
+          content.push({
+            type: 'text',
+            text: '## SOCIAL ICON IMAGES (USE THESE EXACT URLs)\n\nThese are the social icons you MUST use. Use the EXACT URLs provided:'
+          });
+          
+          for (const icon of socialIcons) {
+            if (icon.iconUrl) {
+              content.push({
+                type: 'image',
+                source: { type: 'url', url: icon.iconUrl }
+              });
+              content.push({
+                type: 'text',
+                text: `↑ ${icon.platform.toUpperCase()} ICON\n- Icon URL (use in <img src>): ${icon.iconUrl}\n- Link URL (use in <a href>): ${icon.url}`
+              });
+            }
+          }
+          
+          content.push({
+            type: 'text',
+            text: '\n---\nUse the EXACT iconUrl values above. Do NOT substitute with any other URLs.\n---\n'
+          });
+        }
+        
         // Then add reference image
         if (referenceImageUrl) {
           content.push({
@@ -387,7 +425,7 @@ Create a professional dark footer with:
           });
           content.push({ 
             type: 'text', 
-            text: '↑ REFERENCE FOOTER DESIGN - Match this layout, colors, spacing. BUT replace any text logo with the <img> logo shown above.' 
+            text: '↑ REFERENCE FOOTER DESIGN - Match this layout, colors, spacing. BUT replace any text logo with the <img> logo shown above, and use the exact social icon URLs shown above.' 
           });
         }
         

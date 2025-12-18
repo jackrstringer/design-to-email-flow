@@ -58,7 +58,8 @@ serve(async (req) => {
       mode,
       isFooterMode,
       lightLogoUrl,
-      darkLogoUrl
+      darkLogoUrl,
+      socialIcons
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -291,6 +292,32 @@ If no changes are needed, return empty arrays/null.`;
       messages.push({ 
         role: 'assistant', 
         content: 'I can see the brand logo images. I will use these as <img> tags in the footer, NOT render the brand name as text.' 
+      });
+    }
+
+    // Show Claude the actual social icons so it knows what they look like
+    if (socialIcons?.length) {
+      const socialContent: any[] = [
+        { type: 'text', text: '## SOCIAL ICON IMAGES (USE THESE EXACT URLs)\n\nThese are the social icons you MUST use:' }
+      ];
+      
+      for (const icon of socialIcons) {
+        if (icon.iconUrl) {
+          socialContent.push({
+            type: 'image',
+            source: { type: 'url', url: icon.iconUrl }
+          });
+          socialContent.push({
+            type: 'text',
+            text: `↑ ${icon.platform.toUpperCase()} ICON\n- Icon URL: ${icon.iconUrl}\n- Link URL: ${icon.url}`
+          });
+        }
+      }
+      
+      messages.push({ role: 'user', content: socialContent });
+      messages.push({ 
+        role: 'assistant', 
+        content: 'I can see the social icons. I will use the EXACT iconUrl values provided for each platform.' 
       });
     }
 
