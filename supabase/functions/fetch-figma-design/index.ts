@@ -33,7 +33,9 @@ interface FigmaNode {
     color?: FigmaColor;
   }>;
   strokeWeight?: number;
+  strokeAlign?: string;
   cornerRadius?: number;
+  rectangleCornerRadii?: number[];
   characters?: string;
   style?: {
     fontFamily?: string;
@@ -55,34 +57,41 @@ interface FigmaNode {
   paddingTop?: number;
   paddingBottom?: number;
   itemSpacing?: number;
+  counterAxisSpacing?: number;
+  primaryAxisAlignItems?: string;
+  counterAxisAlignItems?: string;
 }
 
-// Extracted design data for HTML generation
+// Enhanced design data for HTML generation
 interface DesignData {
   colors: string[];
   fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
-  texts: Array<{ content: string; isUrl: boolean }>;
+  texts: Array<{ content: string; isUrl: boolean; fontSize?: number; fontWeight?: number; color?: string }>;
   spacing: { paddings: number[]; gaps: number[] };
+  borders: Array<{ color: string; width: number }>;
+  elements: Array<{ 
+    name: string; 
+    width: number; 
+    height: number; 
+    type: string;
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    borderRadius?: number;
+    padding?: { top: number; right: number; bottom: number; left: number };
+    gap?: number;
+  }>;
+  rootDimensions: { width: number; height: number };
 }
 
 function parseFigmaUrl(url: string): { fileKey: string; nodeId: string | null } | null {
   try {
     const urlObj = new URL(url);
-    
-    // Match patterns:
-    // https://www.figma.com/design/ABC123/FileName?node-id=1-234
-    // https://www.figma.com/file/ABC123/FileName?node-id=1-234
-    // https://www.figma.com/proto/ABC123/FileName?node-id=1-234
     const pathMatch = urlObj.pathname.match(/\/(design|file|proto)\/([a-zA-Z0-9]+)/);
-    
     if (!pathMatch) return null;
-    
     const fileKey = pathMatch[2];
     const nodeIdParam = urlObj.searchParams.get('node-id');
-    
-    // Convert node-id format: "1-234" -> "1:234" (Figma API format)
     const nodeId = nodeIdParam ? nodeIdParam.replace('-', ':') : null;
-    
     return { fileKey, nodeId };
   } catch {
     return null;
@@ -96,17 +105,32 @@ function rgbaToHex(color: FigmaColor): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-// URL pattern detection
 const urlPattern = /^(https?:\/\/|www\.|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/i;
 
-// Extract all design data from node tree
+// ENHANCED: Extract ALL design data from node tree
 function extractDesignData(node: FigmaNode): DesignData {
   const colors = new Set<string>();
   const fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }> = [];
-  const texts: Array<{ content: string; isUrl: boolean }> = [];
+  const texts: Array<{ content: string; isUrl: boolean; fontSize?: number; fontWeight?: number; color?: string }> = [];
   const paddings = new Set<number>();
   const gaps = new Set<number>();
   const seenFonts = new Set<string>();
+  
+  // NEW: Borders and elements arrays
+  const borders: Array<{ color: string; width: number }> = [];
+  const seenBorders = new Set<string>();
+  const elements: Array<{ 
+    name: string; 
+    width: number; 
+    height: number; 
+    type: string;
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    borderRadius?: number;
+    padding?: { top: number; right: number; bottom: number; left: number };
+    gap?: number;
+  }> = [];
 
   function traverse(n: FigmaNode) {
     // Extract colors from fills
@@ -118,11 +142,24 @@ function extractDesignData(node: FigmaNode): DesignData {
       }
     }
 
-    // Extract colors from strokes
-    if (n.strokes) {
+    // Extract colors from strokes AND borders
+    if (n.strokes && n.strokes.length > 0) {
       for (const stroke of n.strokes) {
         if (stroke.type === 'SOLID' && stroke.color) {
-          colors.add(rgbaToHex(stroke.color));
+          const strokeColor = rgbaToHex(stroke.color);
+          colors.add(strokeColor);
+          
+          // Extract border info
+          if (n.strokeWeight && n.strokeWeight > 0) {
+            const borderKey = `${strokeColor}-${n.strokeWeight}`;
+            if (!seenBorders.has(borderKey)) {
+              seenBorders.add(borderKey);
+              borders.push({
+                color: strokeColor,
+                width: n.strokeWeight
+              });
+            }
+          }
         }
       }
     }
@@ -131,9 +168,20 @@ function extractDesignData(node: FigmaNode): DesignData {
     if (n.type === 'TEXT' && n.characters) {
       const content = n.characters.trim();
       if (content) {
+        let textColor: string | undefined;
+        if (n.fills && n.fills.length > 0) {
+          const textFill = n.fills.find(f => f.type === 'SOLID' && f.color);
+          if (textFill?.color) {
+            textColor = rgbaToHex(textFill.color);
+          }
+        }
+        
         texts.push({
           content,
-          isUrl: urlPattern.test(content)
+          isUrl: urlPattern.test(content),
+          fontSize: n.style?.fontSize,
+          fontWeight: n.style?.fontWeight,
+          color: textColor
         });
       }
 
@@ -151,13 +199,62 @@ function extractDesignData(node: FigmaNode): DesignData {
       }
     }
 
-    // Extract spacing from auto-layout
-    if (n.layoutMode) {
-      if (n.paddingTop) paddings.add(n.paddingTop);
-      if (n.paddingRight) paddings.add(n.paddingRight);
-      if (n.paddingBottom) paddings.add(n.paddingBottom);
-      if (n.paddingLeft) paddings.add(n.paddingLeft);
-      if (n.itemSpacing) gaps.add(n.itemSpacing);
+    // Extract spacing from auto-layout AND non-auto-layout elements
+    if (n.paddingTop !== undefined) paddings.add(n.paddingTop);
+    if (n.paddingRight !== undefined) paddings.add(n.paddingRight);
+    if (n.paddingBottom !== undefined) paddings.add(n.paddingBottom);
+    if (n.paddingLeft !== undefined) paddings.add(n.paddingLeft);
+    if (n.itemSpacing !== undefined) gaps.add(n.itemSpacing);
+    if (n.counterAxisSpacing !== undefined) gaps.add(n.counterAxisSpacing);
+
+    // Extract element dimensions and properties
+    if (n.absoluteBoundingBox && n.name) {
+      const element: typeof elements[0] = {
+        name: n.name,
+        width: Math.round(n.absoluteBoundingBox.width),
+        height: Math.round(n.absoluteBoundingBox.height),
+        type: n.type
+      };
+
+      // Add background color
+      if (n.fills && n.fills.length > 0) {
+        const solidFill = n.fills.find(f => f.type === 'SOLID' && f.color);
+        if (solidFill?.color) {
+          element.backgroundColor = rgbaToHex(solidFill.color);
+        }
+      }
+
+      // Add border info
+      if (n.strokes && n.strokes.length > 0 && n.strokeWeight) {
+        const solidStroke = n.strokes.find(s => s.type === 'SOLID' && s.color);
+        if (solidStroke?.color) {
+          element.borderColor = rgbaToHex(solidStroke.color);
+          element.borderWidth = n.strokeWeight;
+        }
+      }
+
+      // Add border radius
+      if (n.cornerRadius) {
+        element.borderRadius = n.cornerRadius;
+      }
+
+      // Add padding
+      if (n.paddingTop !== undefined || n.paddingRight !== undefined || 
+          n.paddingBottom !== undefined || n.paddingLeft !== undefined) {
+        element.padding = {
+          top: n.paddingTop || 0,
+          right: n.paddingRight || 0,
+          bottom: n.paddingBottom || 0,
+          left: n.paddingLeft || 0
+        };
+      }
+
+      // Add gap/spacing
+      if (n.itemSpacing) {
+        element.gap = n.itemSpacing;
+      }
+
+      elements.push(element);
     }
 
     // Recurse into children
@@ -170,14 +267,23 @@ function extractDesignData(node: FigmaNode): DesignData {
 
   traverse(node);
 
+  // Get root dimensions
+  const rootDimensions = {
+    width: node.absoluteBoundingBox?.width || 600,
+    height: node.absoluteBoundingBox?.height || 400
+  };
+
   return {
     colors: Array.from(colors),
-    fonts: fonts.sort((a, b) => b.size - a.size), // Sort by size descending
+    fonts: fonts.sort((a, b) => b.size - a.size),
     texts,
     spacing: {
-      paddings: Array.from(paddings).sort((a, b) => a - b),
-      gaps: Array.from(gaps).sort((a, b) => a - b)
-    }
+      paddings: Array.from(paddings).filter(p => p > 0).sort((a, b) => a - b),
+      gaps: Array.from(gaps).filter(g => g > 0).sort((a, b) => a - b)
+    },
+    borders,
+    elements,
+    rootDimensions
   };
 }
 
@@ -237,7 +343,6 @@ function processNode(node: FigmaNode, parentBox?: { x: number; y: number }): any
       processed.lineHeight = node.style.lineHeightPx || (node.style.fontSize || 14) * 1.4;
     }
 
-    // Text color from fills
     if (node.fills && node.fills.length > 0) {
       const textFill = node.fills.find(f => f.type === 'SOLID' && f.color);
       if (textFill?.color) {
@@ -248,7 +353,7 @@ function processNode(node: FigmaNode, parentBox?: { x: number; y: number }): any
 
   // Auto-layout properties
   if (node.layoutMode) {
-    processed.layoutMode = node.layoutMode; // HORIZONTAL, VERTICAL, NONE
+    processed.layoutMode = node.layoutMode;
     processed.padding = {
       top: node.paddingTop || 0,
       right: node.paddingRight || 0,
@@ -301,7 +406,6 @@ serve(async (req) => {
       );
     }
 
-    // Fetch file/node data from Figma API
     let apiUrl = `https://api.figma.com/v1/files/${fileKey}`;
     if (nodeId) {
       apiUrl += `/nodes?ids=${encodeURIComponent(nodeId)}`;
@@ -310,9 +414,7 @@ serve(async (req) => {
     console.log('Fetching Figma data:', apiUrl);
 
     const figmaResponse = await fetch(apiUrl, {
-      headers: {
-        'X-Figma-Token': FIGMA_TOKEN,
-      },
+      headers: { 'X-Figma-Token': FIGMA_TOKEN },
     });
 
     if (!figmaResponse.ok) {
@@ -326,7 +428,6 @@ serve(async (req) => {
 
     const figmaData = await figmaResponse.json();
     
-    // Extract the root node
     let rootNode: FigmaNode;
     if (nodeId && figmaData.nodes) {
       rootNode = figmaData.nodes[nodeId]?.document;
@@ -341,12 +442,18 @@ serve(async (req) => {
       );
     }
 
-    // Process the node tree into our simplified format
     const processedDesign = processNode(rootNode);
-    
-    // Extract design data for HTML generation
     const designData = extractDesignData(rootNode);
-    console.log('Extracted design data:', JSON.stringify(designData, null, 2));
+    
+    console.log('Extracted design data:', JSON.stringify({
+      colorCount: designData.colors.length,
+      fontCount: designData.fonts.length,
+      borderCount: designData.borders.length,
+      elementCount: designData.elements.length,
+      rootDimensions: designData.rootDimensions,
+      paddings: designData.spacing.paddings,
+      gaps: designData.spacing.gaps,
+    }, null, 2));
 
     // Collect all image refs for export
     const imageRefs: string[] = [];
@@ -356,7 +463,6 @@ serve(async (req) => {
     };
     collectImageRefs(processedDesign);
 
-    // If there are images, fetch their URLs
     let imageUrls: Record<string, string> = {};
     if (imageRefs.length > 0) {
       const imagesUrl = `https://api.figma.com/v1/files/${fileKey}/images`;
@@ -370,7 +476,6 @@ serve(async (req) => {
       }
     }
 
-    // Also export node as PNG for reference
     let exportedImageUrl: string | null = null;
     if (nodeId) {
       const exportUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=2`;
@@ -390,7 +495,7 @@ serve(async (req) => {
         fileKey,
         nodeId,
         design: processedDesign,
-        designData, // New: extracted design data for HTML generation
+        designData,
         imageUrls,
         exportedImageUrl,
       }),

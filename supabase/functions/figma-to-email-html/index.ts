@@ -23,8 +23,22 @@ interface BrandColors {
 interface DesignData {
   colors: string[];
   fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
-  texts: Array<{ content: string; isUrl: boolean }>;
+  texts: Array<{ content: string; isUrl: boolean; fontSize?: number; fontWeight?: number; color?: string }>;
   spacing: { paddings: number[]; gaps: number[] };
+  borders: Array<{ color: string; width: number }>;
+  elements: Array<{ 
+    name: string; 
+    width: number; 
+    height: number; 
+    type: string;
+    backgroundColor?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    borderRadius?: number;
+    padding?: { top: number; right: number; bottom: number; left: number };
+    gap?: number;
+  }>;
+  rootDimensions: { width: number; height: number };
 }
 
 serve(async (req) => {
@@ -61,7 +75,7 @@ serve(async (req) => {
       );
     }
 
-    // Build the deterministic prompt with exact Figma values
+    // Build prompts with COMPLETE Figma specifications
     const systemPrompt = buildSystemPrompt();
     const userPrompt = buildUserPrompt({
       designData,
@@ -75,8 +89,15 @@ serve(async (req) => {
       brandColors,
     });
 
-    console.log('Calling Claude with EXACT Figma specifications...');
-    console.log('Design data:', JSON.stringify(designData, null, 2));
+    console.log('Calling Claude with COMPLETE Figma design tree...');
+    console.log('Design data summary:', JSON.stringify({
+      colors: designData?.colors?.length || 0,
+      fonts: designData?.fonts?.length || 0,
+      borders: designData?.borders?.length || 0,
+      elements: designData?.elements?.length || 0,
+      paddings: designData?.spacing?.paddings || [],
+      gaps: designData?.spacing?.gaps || [],
+    }, null, 2));
 
     // Build messages array with images
     const messages: any[] = [
@@ -86,7 +107,7 @@ serve(async (req) => {
       },
     ];
 
-    // Show logos to Claude first so it knows what they look like
+    // Show logos to Claude first
     if (darkLogoUrl) {
       messages[0].content.push(
         { type: 'text', text: 'DARK LOGO IMAGE (use on light backgrounds):' },
@@ -103,7 +124,7 @@ serve(async (req) => {
 
     // Add the Figma design image
     messages[0].content.push(
-      { type: 'text', text: 'FIGMA DESIGN TO REPLICATE:' },
+      { type: 'text', text: 'FIGMA DESIGN TO REPLICATE EXACTLY:' },
       { type: 'image', source: { type: 'url', url: exportedImageUrl } }
     );
 
@@ -117,24 +138,19 @@ serve(async (req) => {
       throw new Error('Claude did not return valid HTML');
     }
 
-    // Validation loop - compare generated HTML to reference and refine
+    // Structural validation loop
     const maxIterations = 3;
     for (let i = 0; i < maxIterations; i++) {
-      console.log(`Validation iteration ${i + 1}/${maxIterations}...`);
+      console.log(`Structural validation iteration ${i + 1}/${maxIterations}...`);
       
-      const validationResult = await validateHtml(
-        ANTHROPIC_API_KEY,
-        html,
-        exportedImageUrl,
-        designData
-      );
+      const validationResult = validateHtmlStructurally(html, designData);
 
       if (validationResult.matches) {
-        console.log('HTML matches reference design - validation passed!');
+        console.log('HTML passes structural validation!');
         break;
       }
 
-      console.log('Discrepancies found:', validationResult.discrepancies);
+      console.log('Structural issues found:', validationResult.discrepancies);
 
       // Refine with specific corrections
       html = await refineHtml(
@@ -146,7 +162,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('Successfully generated pixel-perfect HTML from Figma');
+    console.log('Successfully generated HTML from Figma');
 
     return new Response(
       JSON.stringify({
@@ -190,93 +206,79 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
   const data = await response.json();
   const responseText = data.content?.[0]?.text || '';
 
-  // Extract HTML from response
   const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
   return htmlMatch ? htmlMatch[1] : responseText;
 }
 
-async function validateHtml(
-  apiKey: string,
+// STRUCTURAL validation - check HTML against Figma specs deterministically
+function validateHtmlStructurally(
   html: string,
-  referenceImageUrl: string,
   designData: DesignData | null
-): Promise<{ matches: boolean; discrepancies: string[] }> {
-  const prompt = `Compare this generated HTML against the reference Figma design.
-
-EXACT SPECIFICATIONS FROM FIGMA:
-${designData ? `
-- Colors: ${designData.colors.join(', ')}
-- Font sizes: ${designData.fonts.map(f => `${f.size}px`).join(', ')}
-- Font weights: ${designData.fonts.map(f => f.weight).join(', ')}
-- Line heights: ${designData.fonts.map(f => `${f.lineHeight}px`).join(', ')}
-- Paddings: ${designData.spacing.paddings.join('px, ')}px
-- Gaps: ${designData.spacing.gaps.join('px, ')}px
-` : 'No exact specifications available'}
-
-GENERATED HTML:
-\`\`\`html
-${html}
-\`\`\`
-
-Check for these specific issues:
-1. Background colors match exactly (check hex values)
-2. Font sizes match exactly (e.g., if Figma says 14px, HTML must be 14px)
-3. Padding/spacing values match exactly
-4. Font weights match (400, 500, 600, 700, etc.)
-5. Text colors match exactly
-6. Layout structure matches (horizontal vs vertical alignment)
-
-Respond with JSON:
-{
-  "matches": true/false,
-  "discrepancies": ["specific issue 1", "specific issue 2", ...]
-}
-
-If matches is true, discrepancies should be empty.
-Be VERY strict - even 1px difference or slightly wrong color is a discrepancy.`;
-
-  const messages = [
-    {
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'url', url: referenceImageUrl } },
-        { type: 'text', text: prompt },
-      ],
-    },
-  ];
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages,
-    }),
-  });
-
-  if (!response.ok) {
-    console.error('Validation API error');
-    return { matches: false, discrepancies: ['Validation API error'] };
+): { matches: boolean; discrepancies: string[] } {
+  const discrepancies: string[] = [];
+  
+  if (!designData) {
+    return { matches: true, discrepancies: [] };
   }
 
-  const data = await response.json();
-  const text = data.content?.[0]?.text || '';
+  const htmlLower = html.toLowerCase();
 
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*"matches"[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+  // Check background colors are present
+  for (const color of designData.colors) {
+    const colorLower = color.toLowerCase();
+    // Allow both with and without spaces around colons
+    if (!htmlLower.includes(colorLower) && 
+        !htmlLower.includes(colorLower.replace('#', ''))) {
+      // Only flag if it's a prominent color (in elements)
+      const usedInElements = designData.elements.some(
+        e => e.backgroundColor?.toLowerCase() === colorLower || 
+             e.borderColor?.toLowerCase() === colorLower
+      );
+      if (usedInElements) {
+        discrepancies.push(`Missing color ${color} - should be present in HTML`);
+      }
     }
-  } catch (e) {
-    console.error('Failed to parse validation response:', e);
   }
 
-  return { matches: false, discrepancies: ['Failed to validate'] };
+  // Check font sizes are present
+  for (const font of designData.fonts) {
+    const sizeStr = `${font.size}px`;
+    if (!html.includes(`font-size: ${sizeStr}`) && 
+        !html.includes(`font-size:${sizeStr}`)) {
+      discrepancies.push(`Missing font-size: ${sizeStr} - Figma specifies this exact size`);
+    }
+  }
+
+  // Check borders are present
+  for (const border of designData.borders) {
+    const borderWidthStr = `${border.width}px`;
+    if (!html.includes(borderWidthStr) || !htmlLower.includes('border')) {
+      discrepancies.push(`Missing border: ${border.width}px ${border.color}`);
+    }
+  }
+
+  // Check padding values
+  for (const padding of designData.spacing.paddings) {
+    if (padding > 0 && padding <= 100) {
+      const paddingStr = `${padding}px`;
+      if (!html.includes(`padding: ${paddingStr}`) && 
+          !html.includes(`padding:${paddingStr}`) &&
+          !html.includes(`padding-top: ${paddingStr}`) &&
+          !html.includes(`padding-bottom: ${paddingStr}`) &&
+          !html.includes(`padding-left: ${paddingStr}`) &&
+          !html.includes(`padding-right: ${paddingStr}`)) {
+        // Only flag commonly used padding values
+        if (designData.spacing.paddings.filter(p => p === padding).length > 0) {
+          discrepancies.push(`Consider using padding: ${paddingStr} from Figma specs`);
+        }
+      }
+    }
+  }
+
+  return {
+    matches: discrepancies.length === 0,
+    discrepancies: discrepancies.slice(0, 5) // Limit to top 5 issues
+  };
 }
 
 async function refineHtml(
@@ -286,26 +288,40 @@ async function refineHtml(
   discrepancies: string[],
   designData: DesignData | null
 ): Promise<string> {
-  const prompt = `Fix these specific issues in the HTML to match the Figma design exactly:
+  const prompt = `Fix these SPECIFIC issues in the HTML to match the Figma design EXACTLY:
 
-ISSUES TO FIX:
+## ISSUES TO FIX
 ${discrepancies.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 
-EXACT VALUES TO USE (from Figma):
+## EXACT VALUES FROM FIGMA (use these precisely)
 ${designData ? `
-- Colors: ${designData.colors.join(', ')}
-- Font sizes: ${designData.fonts.map(f => `${f.size}px (weight ${f.weight}, line-height ${f.lineHeight}px)`).join(', ')}
-- Paddings: ${designData.spacing.paddings.join('px, ')}px
-- Gaps between elements: ${designData.spacing.gaps.join('px, ')}px
+### COLORS
+${designData.colors.map(c => `- ${c}`).join('\n')}
+
+### FONT SIZES
+${designData.fonts.map(f => `- ${f.size}px (weight: ${f.weight}, line-height: ${Math.round(f.lineHeight)}px)`).join('\n')}
+
+### BORDERS
+${designData.borders.map(b => `- ${b.width}px solid ${b.color}`).join('\n')}
+
+### PADDING VALUES
+${designData.spacing.paddings.map(p => `- ${p}px`).join('\n')}
+
+### GAP VALUES  
+${designData.spacing.gaps.map(g => `- ${g}px`).join('\n')}
+
+### ELEMENT DIMENSIONS
+${designData.elements.slice(0, 10).map(e => 
+  `- ${e.name}: ${e.width}x${e.height}px${e.backgroundColor ? ` bg:${e.backgroundColor}` : ''}${e.borderWidth ? ` border:${e.borderWidth}px ${e.borderColor}` : ''}`
+).join('\n')}
 ` : 'Use values from the reference image'}
 
-CURRENT HTML:
+## CURRENT HTML TO FIX
 \`\`\`html
 ${currentHtml}
 \`\`\`
 
-Apply the EXACT corrections needed. Do not guess - use the precise values listed above.
-Return ONLY the corrected HTML wrapped in \`\`\`html code blocks.`;
+Apply the EXACT corrections. Return ONLY the corrected HTML wrapped in \`\`\`html code blocks.`;
 
   const messages = [
     {
@@ -323,41 +339,52 @@ Return ONLY the corrected HTML wrapped in \`\`\`html code blocks.`;
 function buildSystemPrompt(): string {
   return `You are an expert email HTML developer creating PIXEL-PERFECT email templates from Figma designs.
 
-## ABSOLUTE RULES - NO EXCEPTIONS
+## CRITICAL: USE EXACT FIGMA VALUES
 
-### USE EXACT VALUES - NO GUESSING
-- If Figma says font-size is 14px, use EXACTLY 14px
-- If Figma says padding is 24px, use EXACTLY 24px  
-- If Figma says color is #1A1A1A, use EXACTLY #1A1A1A
-- NEVER round, estimate, or use "similar" values
+You will be given EXACT measurements from Figma:
+- EXACT colors (hex values)
+- EXACT font sizes (in pixels)
+- EXACT padding values (in pixels)
+- EXACT gap/spacing values (in pixels)
+- EXACT border widths and colors
+- EXACT element dimensions
 
-### EMAIL-SAFE HTML REQUIREMENTS
-- Use ONLY tables with role="presentation" for layout
-- ALL styles must be inline (no <style> blocks for critical styles)
+USE THESE VALUES PRECISELY. Do NOT round, estimate, or substitute.
+
+## EMAIL-SAFE HTML REQUIREMENTS
+
+### REQUIRED
+- Tables with role="presentation" for ALL layout
+- ALL styles inline (no <style> blocks)
 - All tables: cellpadding="0" cellspacing="0" border="0"
-- Images: width/height attributes, style="display: block; border: 0;"
+- Images: width/height attributes + style="display: block; border: 0;"
 - Web-safe fonts: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif
 
 ### PROHIBITED
 - NO div elements for layout
-- NO margin CSS property (use padding only)
-- NO float or display: flex
+- NO margin CSS (use padding only)
+- NO float or flex
 - NO unitless values
 
 ### STRUCTURE
-Two-table nesting:
-- Outer table: width="100%" with white background (#ffffff)
-- Inner table: width="600" max-width="600px" with content background
+\`\`\`html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: [CONTENT_BG];">
+        <!-- Content here -->
+      </table>
+    </td>
+  </tr>
+</table>
+\`\`\`
 
-### LOGO HANDLING
-- Use <img> tags with EXACT logo URLs provided
-- Logo centered with max-width constraint
-- height="auto" for aspect ratio
+### LOGOS
+Use <img> tags with EXACT URLs provided. Never render brand name as text.
+Logo should have height="auto" and max-width constraint.
 
 ### SOCIAL ICONS
-- Use EXACT iconUrl values provided
-- Wrap in <a> tag with platform URL
-- 24x24 size`;
+Use EXACT iconUrl values provided. Size: 24x24px.`;
 }
 
 interface PromptData {
@@ -370,6 +397,49 @@ interface PromptData {
   brandName?: string;
   allLinks?: string[];
   brandColors?: BrandColors;
+}
+
+// Format the design tree for Claude to understand structure
+function formatDesignTree(node: any, depth: number = 0, maxDepth: number = 4): string {
+  if (depth > maxDepth) return '';
+  
+  const indent = '  '.repeat(depth);
+  let output = '';
+  
+  output += `${indent}${node.name || 'unnamed'} (${node.type})\n`;
+  
+  if (node.width && node.height) {
+    output += `${indent}  Size: ${Math.round(node.width)}x${Math.round(node.height)}px\n`;
+  }
+  if (node.backgroundColor) {
+    output += `${indent}  Background: ${node.backgroundColor}\n`;
+  }
+  if (node.borderColor && node.borderWidth) {
+    output += `${indent}  Border: ${node.borderWidth}px ${node.borderColor}\n`;
+  }
+  if (node.fontSize) {
+    output += `${indent}  Font: ${node.fontSize}px, weight ${node.fontWeight || 400}\n`;
+  }
+  if (node.padding) {
+    output += `${indent}  Padding: ${node.padding.top}/${node.padding.right}/${node.padding.bottom}/${node.padding.left}px\n`;
+  }
+  if (node.itemSpacing) {
+    output += `${indent}  Gap: ${node.itemSpacing}px\n`;
+  }
+  if (node.text) {
+    output += `${indent}  Text: "${node.text.substring(0, 50)}${node.text.length > 50 ? '...' : ''}"\n`;
+  }
+  if (node.color) {
+    output += `${indent}  Color: ${node.color}\n`;
+  }
+  
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      output += formatDesignTree(child, depth + 1, maxDepth);
+    }
+  }
+  
+  return output;
 }
 
 function buildUserPrompt(data: PromptData): string {
@@ -387,38 +457,66 @@ function buildUserPrompt(data: PromptData): string {
 
   let prompt = `Generate email-safe HTML that matches the Figma footer design EXACTLY.
 
-## EXACT SPECIFICATIONS FROM FIGMA (USE THESE VALUES - NO GUESSING)
+## COMPLETE FIGMA DESIGN TREE
+\`\`\`
+${design ? formatDesignTree(design) : 'Design tree not available'}
+\`\`\`
+
 `;
 
   if (designData) {
-    prompt += `
-### COLORS (exact hex values - copy these exactly)
+    prompt += `## EXACT SPECIFICATIONS FROM FIGMA (MANDATORY - NO GUESSING)
+
+### ROOT DIMENSIONS
+- Width: ${designData.rootDimensions.width}px
+- Height: ${designData.rootDimensions.height}px
+
+### COLORS (use these EXACT hex values)
 ${designData.colors.map(c => `- ${c}`).join('\n')}
 
-### TYPOGRAPHY (exact pixel values - do not round)
+### TYPOGRAPHY (use these EXACT pixel values)
 ${designData.fonts.map(f => 
-  `- Font: ${f.family}, Size: ${f.size}px, Weight: ${f.weight}, Line-height: ${f.lineHeight}px`
-).join('\n')}
+  `- Font-family: ${f.family}
+   Font-size: ${f.size}px
+   Font-weight: ${f.weight}
+   Line-height: ${Math.round(f.lineHeight)}px`
+).join('\n\n')}
 
-### SPACING (exact pixel values - do not round)
-- Paddings used in design: ${designData.spacing.paddings.length > 0 ? designData.spacing.paddings.join('px, ') + 'px' : 'none detected'}
-- Gaps between elements: ${designData.spacing.gaps.length > 0 ? designData.spacing.gaps.join('px, ') + 'px' : 'none detected'}
+### BORDERS (use these EXACT values)
+${designData.borders.length > 0 
+  ? designData.borders.map(b => `- ${b.width}px solid ${b.color}`).join('\n')
+  : '- No borders detected'}
 
-### TEXT CONTENT FROM FIGMA
-${designData.texts.slice(0, 30).map(t => `- "${t.content}"${t.isUrl ? ' (URL)' : ''}`).join('\n')}
-`;
-  } else {
-    prompt += `
-No exact specifications provided - analyze the reference image carefully.
-`;
-  }
+### PADDING VALUES (use these EXACT values)
+${designData.spacing.paddings.length > 0
+  ? designData.spacing.paddings.map(p => `- ${p}px`).join('\n')
+  : '- No specific padding values detected'}
 
-  // Add design dimensions if available
-  if (design?.width || design?.height) {
-    prompt += `
-### DIMENSIONS
-- Width: ${design.width}px
-- Height: ${design.height}px
+### GAP/SPACING VALUES (use these EXACT values)
+${designData.spacing.gaps.length > 0
+  ? designData.spacing.gaps.map(g => `- ${g}px`).join('\n')
+  : '- No specific gap values detected'}
+
+### ELEMENT DETAILS
+${designData.elements.slice(0, 15).map(e => {
+  let details = `- ${e.name}: ${e.width}x${e.height}px`;
+  if (e.backgroundColor) details += `\n    Background: ${e.backgroundColor}`;
+  if (e.borderColor && e.borderWidth) details += `\n    Border: ${e.borderWidth}px ${e.borderColor}`;
+  if (e.borderRadius) details += `\n    Border-radius: ${e.borderRadius}px`;
+  if (e.padding) details += `\n    Padding: ${e.padding.top}/${e.padding.right}/${e.padding.bottom}/${e.padding.left}px`;
+  if (e.gap) details += `\n    Gap: ${e.gap}px`;
+  return details;
+}).join('\n')}
+
+### TEXT CONTENT WITH STYLES
+${designData.texts.slice(0, 25).map(t => {
+  let details = `- "${t.content}"`;
+  if (t.fontSize) details += ` (${t.fontSize}px`;
+  if (t.fontWeight) details += `, weight ${t.fontWeight}`;
+  if (t.color) details += `, color: ${t.color}`;
+  if (t.fontSize || t.fontWeight || t.color) details += ')';
+  return details;
+}).join('\n')}
 `;
   }
 
@@ -428,16 +526,18 @@ No exact specifications provided - analyze the reference image carefully.
 - Website: ${websiteUrl || 'https://example.com'}
 
 ## LOGOS (use these EXACT URLs in <img> tags)
-${lightLogoUrl ? `Light logo (for dark backgrounds): ${lightLogoUrl}` : 'No light logo'}
-${darkLogoUrl ? `Dark logo (for light backgrounds): ${darkLogoUrl}` : 'No dark logo'}
+${lightLogoUrl ? `Light logo (for dark backgrounds): <img src="${lightLogoUrl}" alt="${brandName} logo" height="auto" style="display: block; border: 0; max-width: 180px;" />` : 'No light logo'}
+${darkLogoUrl ? `Dark logo (for light backgrounds): <img src="${darkLogoUrl}" alt="${brandName} logo" height="auto" style="display: block; border: 0; max-width: 180px;" />` : 'No dark logo'}
 
-CRITICAL: Use <img src="..."> with the EXACT logo URL. Do NOT render brand name as text.
+CRITICAL: Copy the <img> tag EXACTLY as shown above. Do NOT render brand name as text.
 `;
 
   if (socialIcons && socialIcons.length > 0) {
     prompt += `
-## SOCIAL ICONS (use these EXACT URLs)
-${socialIcons.map(icon => `- ${icon.platform}: href="${icon.url}" src="${icon.iconUrl}"`).join('\n')}
+## SOCIAL ICONS (use these EXACT URLs and dimensions)
+${socialIcons.map(icon => `- ${icon.platform}:
+    Link: ${icon.url}
+    Icon: <img src="${icon.iconUrl}" alt="${icon.platform}" width="24" height="24" style="display: block; border: 0;" />`).join('\n')}
 `;
   }
 
@@ -449,12 +549,13 @@ ${allLinks.slice(0, 20).map(link => `- ${link}`).join('\n')}
   }
 
   prompt += `
-## CRITICAL INSTRUCTIONS
-1. Use the EXACT color hex values listed above
-2. Use the EXACT font sizes listed above (do not round 14px to 16px)
-3. Use the EXACT padding/gap values listed above
-4. Match the visual layout EXACTLY as shown in the reference image
-5. Every measurement must be PRECISE - this is not an approximation
+## CRITICAL REQUIREMENTS
+
+1. USE EXACT VALUES - Every color, font-size, padding, and gap must match Figma PRECISELY
+2. Do NOT round 14px to 16px or 24px to 20px - use the EXACT pixel values
+3. Match the visual structure EXACTLY as shown in the reference image
+4. Use the provided logo <img> tags - do NOT render brand name as text
+5. Maintain ALL spacing between elements as specified
 
 Return ONLY the complete HTML wrapped in \`\`\`html code blocks.`;
 
