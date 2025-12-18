@@ -5,312 +5,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface FigmaDesignNode {
-  id: string;
-  name: string;
-  type: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  backgroundColor?: string;
-  backgroundOpacity?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  borderRadius?: number;
-  text?: string;
-  fontFamily?: string;
-  fontSize?: number;
-  fontWeight?: number;
-  textAlign?: string;
-  letterSpacing?: number;
-  lineHeight?: number;
-  color?: string;
-  imageRef?: string;
-  layoutMode?: string;
-  padding?: { top: number; right: number; bottom: number; left: number };
-  itemSpacing?: number;
-  children?: FigmaDesignNode[];
+interface SocialIcon {
+  platform: string;
+  url: string;
+  iconUrl: string;
 }
 
-interface TransformOptions {
-  logoUrl?: string;
-  lightLogoUrl?: string;
-  darkLogoUrl?: string;
-  socialIcons?: Array<{ platform: string; url: string; iconUrl: string }>;
-  websiteUrl?: string;
-  brandName?: string;
-  imageUrls?: Record<string, string>;
-}
-
-// Web-safe font mapping
-const fontFamilyMap: Record<string, string> = {
-  'Inter': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  'Roboto': 'Roboto, -apple-system, BlinkMacSystemFont, Arial, sans-serif',
-  'Open Sans': '"Open Sans", -apple-system, BlinkMacSystemFont, Arial, sans-serif',
-  'Lato': 'Lato, -apple-system, BlinkMacSystemFont, Arial, sans-serif',
-  'Montserrat': 'Montserrat, -apple-system, BlinkMacSystemFont, Arial, sans-serif',
-  'Poppins': 'Poppins, -apple-system, BlinkMacSystemFont, Arial, sans-serif',
-  'SF Pro Display': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  'SF Pro Text': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  'Helvetica Neue': '"Helvetica Neue", Helvetica, Arial, sans-serif',
-  'Arial': 'Arial, Helvetica, sans-serif',
-  'Georgia': 'Georgia, "Times New Roman", Times, serif',
-  'Times New Roman': '"Times New Roman", Times, Georgia, serif',
-};
-
-function getWebSafeFont(font: string): string {
-  return fontFamilyMap[font] || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
-}
-
-function generateInlineStyles(node: FigmaDesignNode): string {
-  const styles: string[] = [];
-  
-  if (node.backgroundColor) {
-    const opacity = node.backgroundOpacity ?? 1;
-    if (opacity < 1) {
-      // Convert hex to rgba
-      const hex = node.backgroundColor.replace('#', '');
-      const r = parseInt(hex.slice(0, 2), 16);
-      const g = parseInt(hex.slice(2, 4), 16);
-      const b = parseInt(hex.slice(4, 6), 16);
-      styles.push(`background-color: rgba(${r}, ${g}, ${b}, ${opacity})`);
-    } else {
-      styles.push(`background-color: ${node.backgroundColor}`);
-    }
-  }
-  
-  if (node.borderColor && node.borderWidth) {
-    styles.push(`border: ${node.borderWidth}px solid ${node.borderColor}`);
-  }
-  
-  if (node.borderRadius) {
-    styles.push(`border-radius: ${node.borderRadius}px`);
-  }
-  
-  if (node.color) {
-    styles.push(`color: ${node.color}`);
-  }
-  
-  if (node.fontFamily) {
-    styles.push(`font-family: ${getWebSafeFont(node.fontFamily)}`);
-  }
-  
-  if (node.fontSize) {
-    styles.push(`font-size: ${node.fontSize}px`);
-  }
-  
-  if (node.fontWeight) {
-    styles.push(`font-weight: ${node.fontWeight}`);
-  }
-  
-  if (node.textAlign) {
-    styles.push(`text-align: ${node.textAlign}`);
-  }
-  
-  if (node.lineHeight) {
-    styles.push(`line-height: ${node.lineHeight}px`);
-  }
-  
-  if (node.letterSpacing) {
-    styles.push(`letter-spacing: ${node.letterSpacing}px`);
-  }
-  
-  return styles.join('; ');
-}
-
-function isLogoNode(node: FigmaDesignNode): boolean {
-  const name = node.name.toLowerCase();
-  return name.includes('logo') || name.includes('brand');
-}
-
-function isSocialIconsContainer(node: FigmaDesignNode): boolean {
-  const name = node.name.toLowerCase();
-  return name.includes('social') || name.includes('icons');
-}
-
-function isNavLinks(node: FigmaDesignNode): boolean {
-  const name = node.name.toLowerCase();
-  return name.includes('nav') || name.includes('links') || name.includes('menu');
-}
-
-function isLegalText(node: FigmaDesignNode): boolean {
-  const name = node.name.toLowerCase();
-  const text = node.text?.toLowerCase() || '';
-  return name.includes('legal') || name.includes('copyright') || name.includes('footer-text') ||
-    text.includes('©') || text.includes('unsubscribe') || text.includes('privacy') || text.includes('terms');
-}
-
-function transformNodeToHtml(node: FigmaDesignNode, options: TransformOptions, depth: number = 0): string {
-  const indent = '  '.repeat(depth);
-  
-  // Handle text nodes
-  if (node.type === 'TEXT' && node.text) {
-    const styles = generateInlineStyles(node);
-    
-    // Check if it's a link (contains URL or certain keywords)
-    const isLink = node.text.includes('http') || 
-      ['unsubscribe', 'privacy', 'terms', 'contact'].some(kw => 
-        node.text!.toLowerCase().includes(kw)
-      );
-    
-    if (isLink) {
-      const href = node.text.includes('http') ? node.text : '#';
-      return `${indent}<a href="${href}" style="${styles}; text-decoration: none;">${node.text}</a>`;
-    }
-    
-    return `${indent}<span style="${styles}">${node.text}</span>`;
-  }
-  
-  // Handle logo placeholder
-  if (isLogoNode(node) && options.lightLogoUrl) {
-    const logoUrl = options.lightLogoUrl;
-    const maxWidth = Math.min(node.width, 180);
-    return `${indent}<img src="${logoUrl}" alt="${options.brandName || 'Logo'}" width="${maxWidth}" height="auto" style="display: block; border: 0; max-width: ${maxWidth}px; height: auto;" />`;
-  }
-  
-  // Handle social icons container
-  if (isSocialIconsContainer(node) && options.socialIcons && options.socialIcons.length > 0) {
-    const iconsHtml = options.socialIcons.map(icon => 
-      `<a href="${icon.url}" style="display: inline-block; margin: 0 8px;"><img src="${icon.iconUrl}" alt="${icon.platform}" width="24" height="24" style="display: block; border: 0;" /></a>`
-    ).join('\n');
-    
-    return `${indent}<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto;">
-${indent}  <tr>
-${indent}    <td style="text-align: center;">
-${iconsHtml}
-${indent}    </td>
-${indent}  </tr>
-${indent}</table>`;
-  }
-  
-  // Handle image nodes with imageRef
-  if (node.imageRef && options.imageUrls?.[node.imageRef]) {
-    const imageUrl = options.imageUrls[node.imageRef];
-    return `${indent}<img src="${imageUrl}" alt="${node.name}" width="${Math.round(node.width)}" height="${Math.round(node.height)}" style="display: block; border: 0;" />`;
-  }
-  
-  // Handle container nodes (FRAME, GROUP, COMPONENT, etc.)
-  if (node.children && node.children.length > 0) {
-    const containerStyles = generateInlineStyles(node);
-    const paddingStyles = node.padding 
-      ? `padding: ${node.padding.top}px ${node.padding.right}px ${node.padding.bottom}px ${node.padding.left}px;`
-      : '';
-    
-    // Determine layout direction
-    const isHorizontal = node.layoutMode === 'HORIZONTAL';
-    const itemSpacing = node.itemSpacing || 0;
-    
-    // Sort children by position
-    const sortedChildren = [...node.children].sort((a, b) => {
-      if (isHorizontal) return a.x - b.x;
-      return a.y - b.y;
-    });
-    
-    const childrenHtml = sortedChildren
-      .map(child => transformNodeToHtml(child, options, depth + 3))
-      .filter(html => html.trim())
-      .join('\n');
-    
-    if (!childrenHtml.trim()) return '';
-    
-    // Wrap in table structure
-    if (isHorizontal) {
-      // Horizontal layout - single row with multiple cells
-      const cells = sortedChildren
-        .map((child, i) => {
-          const cellHtml = transformNodeToHtml(child, options, depth + 4);
-          if (!cellHtml.trim()) return '';
-          const spacing = i > 0 ? `padding-left: ${itemSpacing}px;` : '';
-          return `${indent}      <td style="vertical-align: top; ${spacing}">\n${cellHtml}\n${indent}      </td>`;
-        })
-        .filter(html => html.trim())
-        .join('\n');
-      
-      return `${indent}<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="${containerStyles} ${paddingStyles}">
-${indent}  <tr>
-${cells}
-${indent}  </tr>
-${indent}</table>`;
-    } else {
-      // Vertical layout - multiple rows
-      const rows = sortedChildren
-        .map((child, i) => {
-          const cellHtml = transformNodeToHtml(child, options, depth + 4);
-          if (!cellHtml.trim()) return '';
-          const spacing = i > 0 ? `padding-top: ${itemSpacing}px;` : '';
-          return `${indent}  <tr>
-${indent}    <td style="${spacing}">
-${cellHtml}
-${indent}    </td>
-${indent}  </tr>`;
-        })
-        .filter(html => html.trim())
-        .join('\n');
-      
-      return `${indent}<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="${containerStyles} ${paddingStyles}">
-${rows}
-${indent}</table>`;
-    }
-  }
-  
-  // Empty node
-  return '';
-}
-
-function generateEmailHtml(design: FigmaDesignNode, options: TransformOptions): string {
-  const rootBgColor = design.backgroundColor || '#ffffff';
-  const contentWidth = Math.min(design.width, 600);
-  
-  const contentHtml = transformNodeToHtml(design, options, 4);
-  
-  return `<!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="x-apple-disable-message-reformatting">
-  <meta name="format-detection" content="telephone=no, address=no, email=no, date=no">
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
-  <title>Footer</title>
-  <!--[if mso]>
-  <noscript>
-    <xml>
-      <o:OfficeDocumentSettings>
-        <o:PixelsPerInch>96</o:PixelsPerInch>
-      </o:OfficeDocumentSettings>
-    </xml>
-  </noscript>
-  <style>
-    table { border-collapse: collapse; }
-    td { font-family: Arial, sans-serif; }
-  </style>
-  <![endif]-->
-  <style>
-    :root { color-scheme: light dark; }
-    @media (prefers-color-scheme: dark) {
-      .dark-mode-text { color: #ffffff !important; }
-    }
-  </style>
-</head>
-<body style="margin: 0; padding: 0; background-color: #ffffff; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #ffffff;">
-    <tr>
-      <td align="center" style="padding: 0;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${contentWidth}" style="max-width: ${contentWidth}px; background-color: ${rootBgColor};">
-          <tr>
-            <td style="padding: 0;">
-${contentHtml}
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+interface BrandColors {
+  primary?: string;
+  secondary?: string;
+  accent?: string;
+  background?: string;
+  textPrimary?: string;
+  link?: string;
 }
 
 serve(async (req) => {
@@ -320,34 +27,126 @@ serve(async (req) => {
 
   try {
     const { 
-      design, 
-      logoUrl,
+      design,
+      exportedImageUrl,
       lightLogoUrl,
       darkLogoUrl,
       socialIcons,
       websiteUrl,
       brandName,
-      imageUrls 
+      allLinks,
+      brandColors,
     } = await req.json();
     
-    if (!design) {
+    if (!exportedImageUrl) {
       return new Response(
-        JSON.stringify({ error: 'design data is required' }),
+        JSON.stringify({ error: 'exportedImageUrl is required for AI analysis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const options: TransformOptions = {
-      logoUrl,
-      lightLogoUrl: lightLogoUrl || logoUrl,
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'ANTHROPIC_API_KEY is not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Extract useful measurements from Figma design data
+    const figmaMeasurements = extractFigmaMeasurements(design);
+
+    // Build the AI prompt with Figma data + brand context
+    const systemPrompt = buildSystemPrompt();
+    const userPrompt = buildUserPrompt({
+      figmaMeasurements,
+      lightLogoUrl,
       darkLogoUrl,
       socialIcons,
       websiteUrl,
       brandName,
-      imageUrls,
-    };
+      allLinks,
+      brandColors,
+    });
 
-    const html = generateEmailHtml(design, options);
+    console.log('Calling Claude with Figma design + brand context...');
+
+    // Build messages array with image
+    const messages = [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'url',
+              url: exportedImageUrl,
+            },
+          },
+          {
+            type: 'text',
+            text: userPrompt,
+          },
+        ],
+      },
+    ];
+
+    // If we have logo URLs, show them to Claude as well
+    if (lightLogoUrl) {
+      messages[0].content.unshift({
+        type: 'image',
+        source: { type: 'url', url: lightLogoUrl },
+      });
+      messages[0].content.unshift({
+        type: 'text',
+        text: 'LIGHT LOGO IMAGE (use on dark backgrounds):',
+      });
+    }
+
+    if (darkLogoUrl) {
+      messages[0].content.unshift({
+        type: 'image',
+        source: { type: 'url', url: darkLogoUrl },
+      });
+      messages[0].content.unshift({
+        type: 'text',
+        text: 'DARK LOGO IMAGE (use on light backgrounds):',
+      });
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Claude API error:', response.status, errorText);
+      throw new Error(`Claude API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.content?.[0]?.text || '';
+
+    // Extract HTML from Claude's response
+    const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
+    const html = htmlMatch ? htmlMatch[1] : responseText;
+
+    if (!html || html.length < 100) {
+      throw new Error('Claude did not return valid HTML');
+    }
+
+    console.log('Successfully generated HTML from Figma + AI');
 
     return new Response(
       JSON.stringify({
@@ -358,10 +157,200 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error transforming Figma to HTML:', error);
+    console.error('Error in figma-to-email-html:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
+
+function extractFigmaMeasurements(design: any): Record<string, any> {
+  if (!design) return {};
+  
+  const measurements: Record<string, any> = {
+    width: design.width,
+    height: design.height,
+    backgroundColor: design.backgroundColor,
+    padding: design.padding,
+    layoutMode: design.layoutMode,
+    itemSpacing: design.itemSpacing,
+  };
+
+  // Extract typography from text nodes
+  const textStyles: any[] = [];
+  extractTextStyles(design, textStyles);
+  if (textStyles.length > 0) {
+    measurements.typography = textStyles;
+  }
+
+  // Extract colors used
+  const colors = new Set<string>();
+  extractColors(design, colors);
+  measurements.colorsUsed = Array.from(colors);
+
+  return measurements;
+}
+
+function extractTextStyles(node: any, styles: any[]) {
+  if (node.type === 'TEXT' && node.fontFamily) {
+    styles.push({
+      text: node.text?.substring(0, 50),
+      fontFamily: node.fontFamily,
+      fontSize: node.fontSize,
+      fontWeight: node.fontWeight,
+      color: node.color,
+      lineHeight: node.lineHeight,
+    });
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      extractTextStyles(child, styles);
+    }
+  }
+}
+
+function extractColors(node: any, colors: Set<string>) {
+  if (node.backgroundColor) colors.add(node.backgroundColor);
+  if (node.color) colors.add(node.color);
+  if (node.borderColor) colors.add(node.borderColor);
+  if (node.children) {
+    for (const child of node.children) {
+      extractColors(child, colors);
+    }
+  }
+}
+
+function buildSystemPrompt(): string {
+  return `You are an expert email HTML developer. Your task is to create production-ready, email-safe HTML from a Figma design reference image.
+
+## STRICT EMAIL HTML RULES
+
+### REQUIRED:
+- Use ONLY tables with role="presentation" for layout
+- ALL styles must be inline (no <style> blocks for critical styles)
+- All tables: cellpadding="0" cellspacing="0" border="0"
+- Images: width/height attributes, style="display: block; border: 0;"
+- Web-safe fonts: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif
+- MSO conditionals for Outlook where needed
+
+### PROHIBITED:
+- NO div elements for layout
+- NO margin CSS property (use padding only)
+- NO float or display: flex
+- NO unitless values
+
+### STRUCTURE:
+Use two-table nesting:
+- Outer table: width="100%" with white background (#ffffff)
+- Inner table: width="600" max-width="600px" with content background color
+
+### LOGO HANDLING:
+- Use <img> tags with the exact logo URLs provided
+- Logo should be centered with max-width constraint
+- Use height="auto" to maintain aspect ratio
+
+### SOCIAL ICONS:
+- Use the exact iconUrl values provided for each platform
+- Wrap each icon in <a> tag with the platform URL
+- Icons should be 24x24 or similar small size
+
+### LINK ASSIGNMENT:
+You must intelligently match navigation text to the correct URLs from the allLinks array.
+For example:
+- "Shop" → find URL containing /shop or /products
+- "About" → find URL containing /about
+- "Contact" → find URL containing /contact
+- Use websiteUrl as fallback for unmatched items`;
+}
+
+interface PromptData {
+  figmaMeasurements: Record<string, any>;
+  lightLogoUrl?: string;
+  darkLogoUrl?: string;
+  socialIcons?: SocialIcon[];
+  websiteUrl?: string;
+  brandName?: string;
+  allLinks?: string[];
+  brandColors?: BrandColors;
+}
+
+function buildUserPrompt(data: PromptData): string {
+  const {
+    figmaMeasurements,
+    lightLogoUrl,
+    darkLogoUrl,
+    socialIcons,
+    websiteUrl,
+    brandName,
+    allLinks,
+    brandColors,
+  } = data;
+
+  let prompt = `Generate email-safe HTML that matches this Figma footer design exactly.
+
+## FIGMA MEASUREMENTS
+${JSON.stringify(figmaMeasurements, null, 2)}
+
+## BRAND CONTEXT
+- Brand Name: ${brandName || 'Unknown'}
+- Website: ${websiteUrl || 'https://example.com'}
+
+## AVAILABLE LOGOS
+${lightLogoUrl ? `- Light logo (for dark backgrounds): ${lightLogoUrl}` : '- No light logo provided'}
+${darkLogoUrl ? `- Dark logo (for light backgrounds): ${darkLogoUrl}` : '- No dark logo provided'}
+
+Use the appropriate logo based on the footer's background color (if background is dark, use light logo).
+CRITICAL: Use the EXACT logo URL in an <img> tag. Do NOT render the brand name as text.
+
+Logo HTML example:
+<img src="${lightLogoUrl || darkLogoUrl || ''}" alt="${brandName}" width="150" height="auto" style="display: block; border: 0; max-width: 150px; height: auto;" />`;
+
+  if (socialIcons && socialIcons.length > 0) {
+    prompt += `
+
+## SOCIAL ICONS (use these exact URLs)
+${socialIcons.map(icon => `- ${icon.platform}: link to ${icon.url}, icon image: ${icon.iconUrl}`).join('\n')}
+
+Each social icon should be:
+<a href="${socialIcons[0]?.url}" style="display: inline-block; margin: 0 8px;">
+  <img src="${socialIcons[0]?.iconUrl}" alt="${socialIcons[0]?.platform}" width="24" height="24" style="display: block; border: 0;" />
+</a>`;
+  }
+
+  if (allLinks && allLinks.length > 0) {
+    prompt += `
+
+## AVAILABLE BRAND LINKS (match nav items to these)
+${allLinks.slice(0, 20).map(link => `- ${link}`).join('\n')}
+
+Match navigation text in the design to the most appropriate URL above.`;
+  }
+
+  if (brandColors) {
+    prompt += `
+
+## BRAND COLORS (for reference)
+- Primary: ${brandColors.primary || 'N/A'}
+- Secondary: ${brandColors.secondary || 'N/A'}
+- Accent: ${brandColors.accent || 'N/A'}
+- Background: ${brandColors.background || 'N/A'}
+- Text: ${brandColors.textPrimary || 'N/A'}
+- Link: ${brandColors.link || 'N/A'}`;
+  }
+
+  prompt += `
+
+## TASK
+1. Analyze the Figma design image above
+2. Identify all sections (logo, navigation, social icons, legal text)
+3. Use the EXACT measurements from Figma for colors, spacing, fonts
+4. Assign correct URLs to navigation items from the allLinks array
+5. Use the provided logo URL in an <img> tag
+6. Use the provided social icon URLs exactly
+7. Generate complete, email-safe HTML
+
+Return ONLY the HTML code wrapped in \`\`\`html code blocks.`;
+
+  return prompt;
+}
