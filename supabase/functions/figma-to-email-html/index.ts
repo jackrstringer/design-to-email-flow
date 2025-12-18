@@ -357,7 +357,7 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 12000,
       messages: [{
         role: 'user',
@@ -430,7 +430,7 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 8000,
       system: systemPrompt,
       messages,
