@@ -48,7 +48,7 @@ serve(async (req) => {
       allSlices, 
       footerHtml,
       originalCampaignImageUrl,
-      comparisonScreenshotUrl, // New: screenshot of side-by-side comparison
+      comparisonScreenshotBase64, // Base64 screenshot of side-by-side comparison
       conversationHistory,
       userRequest, 
       brandUrl,
@@ -76,9 +76,9 @@ serve(async (req) => {
       originalCampaignImageUrl.startsWith('http') && 
       !originalCampaignImageUrl.startsWith('data:');
 
-    const isValidScreenshotUrl = comparisonScreenshotUrl && 
-      comparisonScreenshotUrl.startsWith('http');
-
+    // Check if we have a valid base64 screenshot
+    const hasScreenshot = comparisonScreenshotBase64 && 
+      comparisonScreenshotBase64.startsWith('data:image/');
     const hasAnyLogo = lightLogoUrl || darkLogoUrl;
     const hasFigmaData = figmaDesignData && Object.keys(figmaDesignData).length > 0;
 
@@ -90,7 +90,8 @@ serve(async (req) => {
       conversationTurns: conversationHistory?.length || 0,
       userRequest: userRequest?.substring(0, 100),
       hasValidImage: isValidImageUrl,
-      hasComparisonScreenshot: isValidScreenshotUrl,
+      hasScreenshot,
+      screenshotLength: comparisonScreenshotBase64?.length || 0,
       hasLogo: hasAnyLogo,
       hasFigmaData
     });
@@ -230,13 +231,24 @@ Return FULL updated HTML for any modified sections.`;
       }
     }
 
-    // If we have a comparison screenshot, add it with the user request
+    // If we have a comparison screenshot (base64), add it with the user request
     // This shows Claude exactly what the user sees - reference and current render side by side
-    if (isValidScreenshotUrl) {
+    if (hasScreenshot) {
+      // Extract base64 data without the data:image/png;base64, prefix
+      const base64Data = comparisonScreenshotBase64.replace(/^data:image\/\w+;base64,/, '');
+      const mediaType = comparisonScreenshotBase64.match(/^data:(image\/\w+);base64,/)?.[1] || 'image/png';
+      
       messages.push({
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'url', url: comparisonScreenshotUrl } },
+          { 
+            type: 'image', 
+            source: { 
+              type: 'base64', 
+              media_type: mediaType,
+              data: base64Data 
+            } 
+          },
           { type: 'text', text: `This screenshot shows the current state - reference design on the LEFT, current HTML render on the RIGHT. Compare them and identify differences.
 
 ${userRequest}` }
