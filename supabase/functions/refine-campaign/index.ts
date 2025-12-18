@@ -40,7 +40,12 @@ You are an expert email HTML developer helping refine email templates.
 
 ### LOGO/SOCIAL ICONS
 - Logos MUST be <img> tags with provided URLs, NEVER text
-- Social icons MUST use the exact iconUrl provided (white icons from CDN)
+- Social icons: Use the URL pattern provided to generate ANY color icon
+
+### SOCIAL ICON COLOR RULE
+When changing background colors, UPDATE social icon URLs to use appropriate contrasting colors:
+- Dark background → Use light colored icons (ffffff, f0f0f0, etc.)
+- Light background → Use dark colored icons (000000, 333333, etc.)
 `;
 
 serve(async (req) => {
@@ -226,8 +231,21 @@ ${hasAnyLogo ? `## AVAILABLE LOGOS
 ${lightLogoUrl ? `- Light logo (for dark bg): ${lightLogoUrl}` : ''}
 ${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}` : ''}
 
-${socialIcons?.length > 0 ? `## SOCIAL ICONS (use EXACT URLs)
-${socialIcons.map((s: any) => `- ${s.platform}: ${s.iconUrl}`).join('\n')}` : ''}`
+${socialIcons?.platforms?.length > 0 ? `## SOCIAL ICONS - DYNAMIC COLOR SYSTEM
+URL Pattern: ${socialIcons.urlPattern}
+
+Available platforms:
+${socialIcons.platforms.map((s: any) => `- ${s.platform} (slug: "${s.slug}", links to: ${s.profileUrl})`).join('\n')}
+
+Examples (replace {slug} and {hexColor}):
+- White Instagram: https://cdn.simpleicons.org/instagram/ffffff
+- Black Facebook: https://cdn.simpleicons.org/facebook/000000  
+- Red YouTube: https://cdn.simpleicons.org/youtube/ff0000
+- Any color: Use any 6-character hex code WITHOUT the #
+
+IMPORTANT: Choose icon colors that contrast with background:
+- Dark background → Light icons (ffffff, f5f5f5, etc.)
+- Light/white background → Dark icons (000000, 1a1a1a, etc.)` : ''}`
       });
     } else if (target.type === 'slice' && typeof target.sliceIndex === 'number') {
       // Single slice refinement - include reference image for that slice
@@ -312,11 +330,17 @@ ${lightLogoUrl ? `- Light logo (for dark bg): ${lightLogoUrl}` : ''}
 ${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}`;
       }
 
-      if (socialIcons?.length > 0) {
+      if (socialIcons?.platforms?.length > 0) {
         allSlicesText += `
 
-## SOCIAL ICONS (use EXACT URLs)
-${socialIcons.map((s: any) => `- ${s.platform}: ${s.iconUrl}`).join('\n')}`;
+## SOCIAL ICONS - DYNAMIC COLOR SYSTEM
+URL Pattern: ${socialIcons.urlPattern}
+
+Available platforms:
+${socialIcons.platforms.map((s: any) => `- ${s.platform} (slug: "${s.slug}", links to: ${s.profileUrl})`).join('\n')}
+
+Examples: https://cdn.simpleicons.org/instagram/ffffff (white), https://cdn.simpleicons.org/facebook/000000 (black)
+Use any 6-char hex color. Match icon color to background contrast.`;
       }
 
       contentBlocks.push({ type: 'text', text: allSlicesText });

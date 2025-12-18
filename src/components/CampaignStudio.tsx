@@ -13,7 +13,7 @@ import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
 import { FooterSelector, BrandFooter } from './FooterSelector';
-import { getSocialIconUrl } from '@/lib/socialIcons';
+import { PLATFORM_SLUGS } from '@/lib/socialIcons';
 
 const BASE_WIDTH = 600;
 
@@ -268,12 +268,15 @@ export function CampaignStudio({
     const target = detectTargetSection(message);
     console.log('Detected target:', target);
 
-    // Build social icons with white color URLs
-    const socialIconsData = brandContext?.socialLinks?.map(link => ({
-      platform: link.platform,
-      url: link.url,
-      iconUrl: getSocialIconUrl(link.platform, 'ffffff'), // White icons
-    })) || [];
+    // Build social icons data with URL pattern (Claude can use any color)
+    const socialIconsData = {
+      urlPattern: 'https://cdn.simpleicons.org/{slug}/{hexColorWithoutHash}',
+      platforms: brandContext?.socialLinks?.map(link => ({
+        platform: link.platform,
+        slug: PLATFORM_SLUGS[link.platform.toLowerCase()] || link.platform.toLowerCase(),
+        profileUrl: link.url,
+      })) || [],
+    };
 
     try {
       const { data, error } = await supabase.functions.invoke('refine-campaign', {
@@ -357,12 +360,15 @@ export function CampaignStudio({
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
     setChatMessages(newMessages);
 
-    // Build social icons with white color URLs
-    const socialIconsData = brandContext?.socialLinks?.map(link => ({
-      platform: link.platform,
-      url: link.url,
-      iconUrl: getSocialIconUrl(link.platform, 'ffffff'), // White icons
-    })) || [];
+    // Build social icons data with URL pattern (Claude can use any color)
+    const socialIconsData = {
+      urlPattern: 'https://cdn.simpleicons.org/{slug}/{hexColorWithoutHash}',
+      platforms: brandContext?.socialLinks?.map(link => ({
+        platform: link.platform,
+        slug: PLATFORM_SLUGS[link.platform.toLowerCase()] || link.platform.toLowerCase(),
+        profileUrl: link.url,
+      })) || [],
+    };
 
     try {
       const { data, error } = await supabase.functions.invoke('refine-campaign', {

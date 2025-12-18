@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 export type SocialPlatform = 'facebook' | 'instagram' | 'twitter' | 'linkedin' | 'youtube' | 'tiktok' | 'pinterest' | 'snapchat' | 'whatsapp' | 'telegram';
 
 // Map platform names to Simple Icons slugs
-const PLATFORM_SLUGS: Record<string, string> = {
+export const PLATFORM_SLUGS: Record<string, string> = {
   facebook: 'facebook',
   instagram: 'instagram',
   twitter: 'x',
