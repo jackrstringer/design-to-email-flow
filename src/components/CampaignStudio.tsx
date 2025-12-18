@@ -72,6 +72,8 @@ interface CampaignStudioProps {
   selectedListId?: string | null;
   onSelectList?: (listId: string) => void;
   isLoadingLists?: boolean;
+  // Initial Claude conversation history (from footer generation)
+  initialConversationHistory?: any[];
 }
 
 interface SliceDimensions {
@@ -105,6 +107,7 @@ export function CampaignStudio({
   selectedListId,
   onSelectList,
   isLoadingLists = false,
+  initialConversationHistory = [],
 }: CampaignStudioProps) {
   const isFooterMode = mode === 'footer';
   // Local footer state - this is the source of truth for the current footer
@@ -126,6 +129,9 @@ export function CampaignStudio({
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
   const [showAltText, setShowAltText] = useState(false);
   const [includeFooter, setIncludeFooter] = useState(true);
+  
+  // Claude conversation history - persisted across refinements, initialized from props
+  const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>(initialConversationHistory);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
@@ -238,14 +244,13 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
-          footerHtml: localFooterHtml, // Use local state
+          footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          conversationHistory: newMessages,
+          conversationHistory: claudeConversationHistory, // Pass Claude's conversation history
           userRequest: message,
           brandUrl,
           brandContext,
-          mode: 'chat',
-          isFooterMode, // Tell backend this is footer-only mode
+          isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
           socialIcons: socialIconsData,
@@ -256,8 +261,13 @@ export function CampaignStudio({
       if (data?.error) throw new Error(data.error);
 
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
+      
+      // Update Claude conversation history if returned
+      if (data.conversationHistory) {
+        setClaudeConversationHistory(data.conversationHistory);
+      }
 
-      // Handle footer updates - update LOCAL state directly
+      // Handle footer updates
       if (data.updatedFooterHtml) {
         setLocalFooterHtml(data.updatedFooterHtml);
         toast.success('Footer updated');
@@ -336,11 +346,10 @@ Return ALL HTML sections that need updates, not just one.`;
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          conversationHistory: newMessages,
+          conversationHistory: claudeConversationHistory, // Pass Claude's conversation history
           userRequest: autoRefinePrompt,
           brandUrl,
           brandContext,
-          mode: 'auto-refine',
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
@@ -356,6 +365,11 @@ Return ALL HTML sections that need updates, not just one.`;
         : data.message || 'Refinement complete!';
       
       setChatMessages([...newMessages, { role: 'assistant', content: responseMessage }]);
+      
+      // Update Claude conversation history if returned
+      if (data.conversationHistory) {
+        setClaudeConversationHistory(data.conversationHistory);
+      }
 
       // Handle footer updates in auto-refine
       if (data.updatedFooterHtml) {
