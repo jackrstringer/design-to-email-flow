@@ -388,31 +388,7 @@ Create a professional dark footer with:
           });
         }
         
-        // Show Claude the actual social icons so it knows what they look like
-        if (socialIcons?.length) {
-          content.push({
-            type: 'text',
-            text: '## SOCIAL ICON IMAGES (USE THESE EXACT URLs)\n\nThese are the social icons you MUST use. Use the EXACT URLs provided:'
-          });
-          
-          for (const icon of socialIcons) {
-            if (icon.iconUrl) {
-              content.push({
-                type: 'image',
-                source: { type: 'url', url: icon.iconUrl }
-              });
-              content.push({
-                type: 'text',
-                text: `↑ ${icon.platform.toUpperCase()} ICON\n- Icon URL (use in <img src>): ${icon.iconUrl}\n- Link URL (use in <a href>): ${icon.url}`
-              });
-            }
-          }
-          
-          content.push({
-            type: 'text',
-            text: '\n---\nUse the EXACT iconUrl values above. Do NOT substitute with any other URLs.\n---\n'
-          });
-        }
+        // Note: Social icons passed as text in prompt - CDN URLs can't be downloaded by Claude API
         
         // Then add reference image
         if (referenceImageUrl) {
