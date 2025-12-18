@@ -34,25 +34,7 @@ const captureComparisonScreenshot = async (element: HTMLElement): Promise<string
   }
 };
 
-// Helper to upload screenshot to Cloudinary
-const uploadScreenshotToCloudinary = async (base64Data: string): Promise<string | null> => {
-  try {
-    const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
-      body: { 
-        imageBase64: base64Data,
-        folder: 'comparison-screenshots'
-      }
-    });
-    if (error || !data?.url) {
-      console.error('Cloudinary upload failed:', error);
-      return null;
-    }
-    return data.url;
-  } catch (err) {
-    console.error('Screenshot upload error:', err);
-    return null;
-  }
-};
+// Helper to upload screenshot to Cloudinary - no longer needed, sending base64 directly to Claude
 
 interface BrandContext {
   name?: string;
@@ -270,13 +252,12 @@ export function CampaignStudio({
     setChatMessages(newMessages);
     setIsRefining(true);
 
-    // Capture screenshot of comparison area
-    let comparisonScreenshotUrl: string | null = null;
+    // Capture screenshot of comparison area - send base64 directly to Claude
+    let comparisonScreenshotBase64: string | null = null;
     if (comparisonAreaRef.current) {
-      const base64 = await captureComparisonScreenshot(comparisonAreaRef.current);
-      if (base64) {
-        comparisonScreenshotUrl = await uploadScreenshotToCloudinary(base64);
-        console.log('Comparison screenshot uploaded:', comparisonScreenshotUrl);
+      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
+      if (comparisonScreenshotBase64) {
+        console.log('Comparison screenshot captured, length:', comparisonScreenshotBase64.length);
       }
     }
 
@@ -299,7 +280,7 @@ export function CampaignStudio({
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          comparisonScreenshotUrl, // Screenshot of side-by-side comparison
+          comparisonScreenshotBase64, // Base64 screenshot of side-by-side comparison
           conversationHistory: claudeConversationHistory,
           userRequest: message,
           brandUrl,
@@ -353,13 +334,12 @@ export function CampaignStudio({
   const handleAutoRefine = async () => {
     setIsAutoRefining(true);
     
-    // Capture screenshot of comparison area
-    let comparisonScreenshotUrl: string | null = null;
+    // Capture screenshot of comparison area - send base64 directly to Claude
+    let comparisonScreenshotBase64: string | null = null;
     if (comparisonAreaRef.current) {
-      const base64 = await captureComparisonScreenshot(comparisonAreaRef.current);
-      if (base64) {
-        comparisonScreenshotUrl = await uploadScreenshotToCloudinary(base64);
-        console.log('Comparison screenshot uploaded:', comparisonScreenshotUrl);
+      comparisonScreenshotBase64 = await captureComparisonScreenshot(comparisonAreaRef.current);
+      if (comparisonScreenshotBase64) {
+        console.log('Comparison screenshot captured, length:', comparisonScreenshotBase64.length);
       }
     }
     
@@ -405,7 +385,7 @@ Return updated HTML for ALL sections that need changes.`;
           })),
           footerHtml: localFooterHtml,
           originalCampaignImageUrl: originalImageUrl,
-          comparisonScreenshotUrl, // Screenshot of side-by-side comparison
+          comparisonScreenshotBase64, // Base64 screenshot of side-by-side comparison
           conversationHistory: claudeConversationHistory,
           userRequest: autoRefinePrompt,
           brandUrl,
