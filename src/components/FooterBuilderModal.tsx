@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SocialLinksEditor } from './SocialLinksEditor';
-import { getSocialIconUrl } from '@/lib/socialIcons';
+import { getSocialIconUrl, uploadAllSocialIcons } from '@/lib/socialIcons';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 
 interface FooterBuilderModalProps {
@@ -191,15 +191,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const handleGenerateFooter = async () => {
     setIsGenerating(true);
-    setGenerationStatus('Starting generation...');
+    setGenerationStatus('Uploading social icons to Cloudinary...');
     
     try {
-      // Build social icons data with Simple Icons URLs
-      const socialIconsData = socialLinks.map(link => ({
-        platform: link.platform,
-        url: link.url,
-        iconUrl: getSocialIconUrl(link.platform, iconColor),
-      }));
+      // Upload all social icons to Cloudinary for reliable email rendering
+      const socialIconsData = await uploadAllSocialIcons(
+        socialLinks,
+        iconColor,
+        brand.domain
+      );
+      
+      console.log('Social icons uploaded to Cloudinary:', socialIconsData);
 
       // If using Figma source, use AI with Figma measurements + brand context
       if (sourceType === 'figma' && figmaData) {
