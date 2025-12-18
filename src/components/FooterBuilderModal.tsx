@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles, Figma, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -26,11 +26,24 @@ interface FooterBuilderModalProps {
 }
 
 type Step = 'reference' | 'logos' | 'social' | 'generate';
+type SourceType = 'image' | 'figma' | null;
+
+interface FigmaDesignData {
+  design: any;
+  imageUrls: Record<string, string>;
+  exportedImageUrl: string | null;
+}
 
 export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
+  const [sourceType, setSourceType] = useState<SourceType>(null);
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
   const [isUploadingReference, setIsUploadingReference] = useState(false);
+  
+  // Figma state
+  const [figmaUrl, setFigmaUrl] = useState('');
+  const [isFetchingFigma, setIsFetchingFigma] = useState(false);
+  const [figmaData, setFigmaData] = useState<FigmaDesignData | null>(null);
   
   // Logo state
   const [darkLogoUrl, setDarkLogoUrl] = useState(brand.darkLogoUrl || '');
@@ -68,6 +81,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         if (error) throw error;
         
         setReferenceImageUrl(data.url);
+        setSourceType('image');
         toast.success('Reference image uploaded');
       };
       reader.readAsDataURL(file);
@@ -78,6 +92,45 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       setIsUploadingReference(false);
     }
   }, [brand.domain]);
+
+  const handleFetchFigma = useCallback(async () => {
+    if (!figmaUrl.trim()) {
+      toast.error('Please enter a Figma URL');
+      return;
+    }
+
+    setIsFetchingFigma(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
+        body: { figmaUrl }
+      });
+
+      if (error) throw error;
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch Figma design');
+      }
+
+      setFigmaData({
+        design: data.design,
+        imageUrls: data.imageUrls || {},
+        exportedImageUrl: data.exportedImageUrl,
+      });
+      setSourceType('figma');
+      
+      // Use the exported image as reference for the studio
+      if (data.exportedImageUrl) {
+        setReferenceImageUrl(data.exportedImageUrl);
+      }
+      
+      toast.success('Figma design fetched successfully');
+    } catch (error) {
+      console.error('Figma fetch error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch Figma design');
+    } finally {
+      setIsFetchingFigma(false);
+    }
+  }, [figmaUrl]);
 
   const handleLogoUpload = useCallback(async (file: File, type: 'dark' | 'light') => {
     if (!file.type.startsWith('image/')) {
@@ -148,6 +201,40 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         iconUrl: getSocialIconUrl(link.platform, iconColor),
       }));
 
+      // If using Figma source, use deterministic transformation
+      if (sourceType === 'figma' && figmaData) {
+        setGenerationStatus('Transforming Figma design to email HTML...');
+        
+        const { data, error } = await supabase.functions.invoke('figma-to-email-html', {
+          body: {
+            design: figmaData.design,
+            logoUrl: lightLogoUrl,
+            lightLogoUrl: lightLogoUrl,
+            darkLogoUrl: darkLogoUrl,
+            socialIcons: socialIconsData,
+            brandName: brand.name,
+            websiteUrl: brand.websiteUrl || `https://${brand.domain}`,
+            imageUrls: figmaData.imageUrls,
+          }
+        });
+
+        if (error) throw error;
+        
+        if (!data.success || !data.html) {
+          throw new Error('Failed to transform Figma design');
+        }
+
+        // Hand off to studio for refinement
+        if (onOpenStudio && referenceImageUrl) {
+          onOpenChange(false);
+          onOpenStudio(referenceImageUrl, data.html);
+        } else {
+          toast.success('Footer generated from Figma!');
+        }
+        return;
+      }
+
+      // Otherwise use AI vision-based generation
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
@@ -245,52 +332,178 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         return (
           <div className="space-y-4">
             <div className="text-center space-y-2 py-4">
-              <h3 className="font-medium">Upload a reference image</h3>
+              <h3 className="font-medium">Choose your source</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Upload a screenshot of your existing email footer so we can match the layout and style.
+                Upload a screenshot or paste a Figma link to match the layout and style.
               </p>
             </div>
 
-            <div
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-border/60 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
-            >
-              {isUploadingReference ? (
-                <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
-              ) : referenceImageUrl ? (
-                <div className="space-y-3">
+            {/* Source selection cards */}
+            {!sourceType && (
+              <div className="grid grid-cols-2 gap-4">
+                {/* Image upload option */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-border/60 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                >
+                  {isUploadingReference ? (
+                    <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                        <Image className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">Upload Image</p>
+                        <p className="text-xs text-muted-foreground">Drop or click</p>
+                      </div>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleReferenceUpload(e.target.files[0])}
+                  />
+                </div>
+
+                {/* Figma link option */}
+                <div
+                  onClick={() => setSourceType('figma')}
+                  className="border-2 border-dashed border-border/60 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                >
+                  <div className="space-y-3">
+                    <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                      <Figma className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">Figma Link</p>
+                      <p className="text-xs text-muted-foreground">Paste prototype</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Figma URL input */}
+            {sourceType === 'figma' && !figmaData && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSourceType(null)}
+                    className="h-8 px-2"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Label className="text-sm font-medium">Paste Figma link</Label>
+                </div>
+                <Input
+                  placeholder="https://www.figma.com/design/..."
+                  value={figmaUrl}
+                  onChange={(e) => setFigmaUrl(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Copy the link to a specific frame or component in Figma
+                </p>
+                <Button 
+                  onClick={handleFetchFigma} 
+                  disabled={isFetchingFigma || !figmaUrl.trim()}
+                  className="w-full"
+                >
+                  {isFetchingFigma ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Figma className="w-4 h-4 mr-2" />
+                      Fetch Design
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Show fetched Figma preview */}
+            {sourceType === 'figma' && figmaData && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Figma className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">Figma design loaded</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFigmaData(null);
+                      setSourceType(null);
+                      setFigmaUrl('');
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                {figmaData.exportedImageUrl && (
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <img 
+                      src={figmaData.exportedImageUrl} 
+                      alt="Figma design preview" 
+                      className="w-full"
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground text-center">
+                  {figmaData.design?.name || 'Design ready for conversion'}
+                </p>
+              </div>
+            )}
+
+            {/* Show uploaded image preview */}
+            {sourceType === 'image' && referenceImageUrl && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Image className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">Image uploaded</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setReferenceImageUrl(null);
+                      setSourceType(null);
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="rounded-lg border border-border overflow-hidden">
                   <img 
                     src={referenceImageUrl} 
                     alt="Reference" 
-                    className="max-h-48 mx-auto rounded-md"
+                    className="w-full max-h-48 object-contain"
                   />
-                  <p className="text-xs text-muted-foreground">Click or drop to replace</p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    Drag & drop or click to upload
-                  </p>
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleReferenceUpload(e.target.files[0])}
-              />
-            </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Click next to continue
+                </p>
+              </div>
+            )}
 
             <Button 
               variant="link" 
               className="w-full text-muted-foreground"
               onClick={() => setStep('logos')}
             >
-              Skip - I don't have a reference image
+              Skip - I don't have a reference
             </Button>
           </div>
         );
@@ -453,9 +666,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 <div>
                   <h3 className="font-medium">{generationStatus || 'Generating your footer...'}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {referenceImageUrl 
-                      ? 'AI is analyzing your reference and creating matching HTML'
-                      : 'AI is creating HTML based on your preferences'}
+                    {sourceType === 'figma'
+                      ? 'Converting Figma design to email-safe HTML'
+                      : referenceImageUrl 
+                        ? 'AI is analyzing your reference and creating matching HTML'
+                        : 'AI is creating HTML based on your preferences'}
                   </p>
                 </div>
               </>
@@ -465,12 +680,23 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 <div>
                   <h3 className="font-medium">Ready to generate</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    Click below to generate your footer HTML. You'll be able to refine it in the studio.
+                    {sourceType === 'figma'
+                      ? 'Your Figma design will be converted to email-safe HTML'
+                      : 'Click below to generate your footer HTML. You\'ll be able to refine it in the studio.'}
                   </p>
                 </div>
                 <Button onClick={handleGenerateFooter} size="lg">
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Generate Footer
+                  {sourceType === 'figma' ? (
+                    <>
+                      <Figma className="w-4 h-4 mr-2" />
+                      Convert from Figma
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate Footer
+                    </>
+                  )}
                 </Button>
               </>
             )}
@@ -481,7 +707,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const canProceed = () => {
     switch (step) {
-      case 'reference': return true;
+      case 'reference': return sourceType !== null || true; // Can always skip
       case 'logos': return !!lightLogoUrl || !!darkLogoUrl;
       case 'social': return true;
       case 'generate': return false;
@@ -565,10 +791,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             <Button onClick={handleGenerateFooter} disabled={isGenerating}>
               {isGenerating ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : sourceType === 'figma' ? (
+                <Figma className="w-4 h-4 mr-2" />
               ) : (
                 <Sparkles className="w-4 h-4 mr-2" />
               )}
-              Generate
+              {sourceType === 'figma' ? 'Convert' : 'Generate'}
             </Button>
           ) : (
             <Button

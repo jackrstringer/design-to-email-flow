@@ -38,3 +38,9 @@ verify_jwt = false
 
 [functions.get-klaviyo-lists]
 verify_jwt = false
+
+[functions.fetch-figma-design]
+verify_jwt = false
+
+[functions.figma-to-email-html]
+verify_jwt = false
