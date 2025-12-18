@@ -138,31 +138,17 @@ serve(async (req) => {
       throw new Error('Claude did not return valid HTML');
     }
 
-    // Structural validation loop
-    const maxIterations = 3;
-    for (let i = 0; i < maxIterations; i++) {
-      console.log(`Structural validation iteration ${i + 1}/${maxIterations}...`);
-      
-      const validationResult = validateHtmlStructurally(html, designData);
+    // Visual validation loop - TRUE side-by-side comparison
+    html = await visualValidationLoop(
+      ANTHROPIC_API_KEY,
+      html,
+      exportedImageUrl,
+      designData,
+      { brandName, websiteUrl, socialIcons, allLinks },
+      7  // Max iterations
+    );
 
-      if (validationResult.matches) {
-        console.log('HTML passes structural validation!');
-        break;
-      }
-
-      console.log('Structural issues found:', validationResult.discrepancies);
-
-      // Refine with specific corrections
-      html = await refineHtml(
-        ANTHROPIC_API_KEY,
-        html,
-        exportedImageUrl,
-        validationResult.discrepancies,
-        designData
-      );
-    }
-
-    console.log('Successfully generated HTML from Figma');
+    console.log('Successfully generated HTML from Figma with visual validation');
 
     return new Response(
       JSON.stringify({
@@ -180,6 +166,227 @@ serve(async (req) => {
     );
   }
 });
+
+// Render HTML to screenshot using HCTI
+async function renderHtmlToImage(html: string): Promise<string> {
+  const HCTI_USER_ID = Deno.env.get('HCTI_USER_ID');
+  const HCTI_API_KEY = Deno.env.get('HCTI_API_KEY');
+  
+  if (!HCTI_USER_ID || !HCTI_API_KEY) {
+    throw new Error('HCTI credentials not configured');
+  }
+  
+  console.log('Rendering HTML to screenshot via HCTI...');
+  
+  const response = await fetch('https://hcti.io/v1/image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Basic ${btoa(`${HCTI_USER_ID}:${HCTI_API_KEY}`)}`,
+    },
+    body: JSON.stringify({
+      html: html,
+      css: '',
+      viewport_width: 600,
+      viewport_height: 1200,
+    }),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('HCTI error:', response.status, errorText);
+    throw new Error(`HCTI error: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  console.log('HCTI screenshot URL:', data.url);
+  return data.url;
+}
+
+// Main visual validation loop
+async function visualValidationLoop(
+  apiKey: string,
+  initialHtml: string,
+  referenceImageUrl: string,
+  designData: DesignData | null,
+  brandContext: any,
+  maxIterations: number = 7
+): Promise<string> {
+  let currentHtml = initialHtml;
+  
+  for (let i = 0; i < maxIterations; i++) {
+    console.log(`\n=== Visual comparison iteration ${i + 1}/${maxIterations} ===`);
+    
+    try {
+      // 1. Render current HTML to image
+      const renderedImageUrl = await renderHtmlToImage(currentHtml);
+      
+      // 2. Ask Claude to compare side-by-side
+      const result = await compareImagesWithClaude(
+        apiKey,
+        referenceImageUrl,
+        renderedImageUrl,
+        currentHtml,
+        designData,
+        brandContext
+      );
+      
+      if (result.isMatch) {
+        console.log(`✓ Visual match achieved at iteration ${i + 1}!`);
+        return currentHtml;
+      }
+      
+      console.log(`Found ${result.discrepancies.length} visual discrepancies:`);
+      result.discrepancies.forEach((d, idx) => console.log(`  ${idx + 1}. ${d}`));
+      
+      // Check for same issues repeating (early exit)
+      if (i > 0 && result.discrepancies.length > 0) {
+        // If we've been iterating and still have issues, continue with fixes
+        console.log('Applying Claude\'s fixes...');
+      }
+      
+      // 3. Update HTML with Claude's fixes
+      currentHtml = result.fixedHtml;
+      
+    } catch (error) {
+      console.error(`Error in iteration ${i + 1}:`, error);
+      // Continue with current HTML if HCTI fails
+      if (i === 0) {
+        throw error; // Fail fast on first iteration
+      }
+      break; // Return best effort on subsequent failures
+    }
+  }
+  
+  console.log('Max iterations reached - returning best effort');
+  return currentHtml;
+}
+
+// Claude compares both images and provides fixes
+async function compareImagesWithClaude(
+  apiKey: string,
+  referenceUrl: string,
+  renderedUrl: string,
+  currentHtml: string,
+  designData: DesignData | null,
+  brandContext: any
+): Promise<{ isMatch: boolean; discrepancies: string[]; fixedHtml: string }> {
+  
+  const designSpecs = designData ? `
+## FIGMA SPECS (use these exact values for corrections)
+- Colors: ${designData.colors.join(', ')}
+- Font sizes: ${designData.fonts.map(f => f.size + 'px').join(', ')}
+- Borders: ${designData.borders.map(b => b.width + 'px ' + b.color).join(', ')}
+- Padding values: ${designData.spacing.paddings.join('px, ')}px
+- Gap values: ${designData.spacing.gaps.join('px, ')}px
+- Root dimensions: ${designData.rootDimensions.width}x${designData.rootDimensions.height}px
+` : '';
+
+  const prompt = `You are comparing two email footer images for PIXEL-PERFECT matching.
+
+## IMAGE LAYOUT
+- FIRST IMAGE: Original Figma reference design (TARGET - what we want)
+- SECOND IMAGE: Current HTML render (what we have - needs fixes if different)
+
+## YOUR TASK
+1. Compare these images VERY carefully, examining every detail
+2. Identify ALL visual differences between them
+3. If differences exist, generate CORRECTED HTML that fixes every discrepancy
+
+## CRITICAL COMPARISON POINTS
+- Background colors (exact hex match, width of colored areas)
+- Navigation layout (grid vs columns, number of items per row)
+- Text alignment (centered vs left/right aligned)
+- Spacing between elements (vertical and horizontal gaps)
+- Divider lines (presence, position, thickness, color, length)
+- Typography (font size, weight, line-height, color)
+- Social icon spacing, size, and alignment
+- Logo size, positioning, and surrounding space
+- Overall proportions and vertical rhythm
+- Border presence, color, and width
+- Padding around content sections
+
+${designSpecs}
+
+## CURRENT HTML
+\`\`\`html
+${currentHtml}
+\`\`\`
+
+## RESPONSE FORMAT
+
+First, list ALL visual differences you observe:
+<discrepancies>
+1. [Specific issue - be VERY detailed about what's wrong and what it should be]
+2. [Another specific issue]
+...
+</discrepancies>
+
+Is this a visual match (98%+ similarity)?
+<match>true OR false</match>
+
+If match is false, provide the COMPLETE corrected HTML:
+\`\`\`html
+[Full corrected HTML - include the entire document, not just changed parts]
+\`\`\`
+
+Be extremely thorough. Even small differences in spacing, alignment, or colors must be fixed.`;
+
+  console.log('Sending images to Claude for comparison...');
+  console.log('Reference:', referenceUrl);
+  console.log('Rendered:', renderedUrl);
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 12000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'REFERENCE IMAGE (what we want to achieve):' },
+          { type: 'image', source: { type: 'url', url: referenceUrl } },
+          { type: 'text', text: 'CURRENT HTML RENDER (what we have now):' },
+          { type: 'image', source: { type: 'url', url: renderedUrl } },
+          { type: 'text', text: prompt },
+        ],
+      }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Claude comparison error:', response.status, errorText);
+    throw new Error(`Claude API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const responseText = data.content?.[0]?.text || '';
+
+  // Parse the response
+  const matchResult = responseText.match(/<match>(true|false)<\/match>/i);
+  const isMatch = matchResult?.[1]?.toLowerCase() === 'true';
+  
+  const discrepanciesMatch = responseText.match(/<discrepancies>([\s\S]*?)<\/discrepancies>/i);
+  const discrepanciesText = discrepanciesMatch?.[1] || '';
+  const discrepancies = discrepanciesText
+    .split('\n')
+    .filter((line: string) => line.trim().match(/^\d+\./))
+    .map((line: string) => line.replace(/^\d+\.\s*/, '').trim())
+    .filter((line: string) => line.length > 0);
+  
+  const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
+  const fixedHtml = htmlMatch?.[1] || currentHtml;
+
+  console.log(`Claude comparison result: match=${isMatch}, discrepancies=${discrepancies.length}`);
+
+  return { isMatch, discrepancies, fixedHtml };
+}
 
 async function callClaude(apiKey: string, systemPrompt: string, messages: any[]): Promise<string> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -208,132 +415,6 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
 
   const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
   return htmlMatch ? htmlMatch[1] : responseText;
-}
-
-// STRUCTURAL validation - check HTML against Figma specs deterministically
-function validateHtmlStructurally(
-  html: string,
-  designData: DesignData | null
-): { matches: boolean; discrepancies: string[] } {
-  const discrepancies: string[] = [];
-  
-  if (!designData) {
-    return { matches: true, discrepancies: [] };
-  }
-
-  const htmlLower = html.toLowerCase();
-
-  // Check background colors are present
-  for (const color of designData.colors) {
-    const colorLower = color.toLowerCase();
-    // Allow both with and without spaces around colons
-    if (!htmlLower.includes(colorLower) && 
-        !htmlLower.includes(colorLower.replace('#', ''))) {
-      // Only flag if it's a prominent color (in elements)
-      const usedInElements = designData.elements.some(
-        e => e.backgroundColor?.toLowerCase() === colorLower || 
-             e.borderColor?.toLowerCase() === colorLower
-      );
-      if (usedInElements) {
-        discrepancies.push(`Missing color ${color} - should be present in HTML`);
-      }
-    }
-  }
-
-  // Check font sizes are present
-  for (const font of designData.fonts) {
-    const sizeStr = `${font.size}px`;
-    if (!html.includes(`font-size: ${sizeStr}`) && 
-        !html.includes(`font-size:${sizeStr}`)) {
-      discrepancies.push(`Missing font-size: ${sizeStr} - Figma specifies this exact size`);
-    }
-  }
-
-  // Check borders are present
-  for (const border of designData.borders) {
-    const borderWidthStr = `${border.width}px`;
-    if (!html.includes(borderWidthStr) || !htmlLower.includes('border')) {
-      discrepancies.push(`Missing border: ${border.width}px ${border.color}`);
-    }
-  }
-
-  // Check padding values
-  for (const padding of designData.spacing.paddings) {
-    if (padding > 0 && padding <= 100) {
-      const paddingStr = `${padding}px`;
-      if (!html.includes(`padding: ${paddingStr}`) && 
-          !html.includes(`padding:${paddingStr}`) &&
-          !html.includes(`padding-top: ${paddingStr}`) &&
-          !html.includes(`padding-bottom: ${paddingStr}`) &&
-          !html.includes(`padding-left: ${paddingStr}`) &&
-          !html.includes(`padding-right: ${paddingStr}`)) {
-        // Only flag commonly used padding values
-        if (designData.spacing.paddings.filter(p => p === padding).length > 0) {
-          discrepancies.push(`Consider using padding: ${paddingStr} from Figma specs`);
-        }
-      }
-    }
-  }
-
-  return {
-    matches: discrepancies.length === 0,
-    discrepancies: discrepancies.slice(0, 5) // Limit to top 5 issues
-  };
-}
-
-async function refineHtml(
-  apiKey: string,
-  currentHtml: string,
-  referenceImageUrl: string,
-  discrepancies: string[],
-  designData: DesignData | null
-): Promise<string> {
-  const prompt = `Fix these SPECIFIC issues in the HTML to match the Figma design EXACTLY:
-
-## ISSUES TO FIX
-${discrepancies.map((d, i) => `${i + 1}. ${d}`).join('\n')}
-
-## EXACT VALUES FROM FIGMA (use these precisely)
-${designData ? `
-### COLORS
-${designData.colors.map(c => `- ${c}`).join('\n')}
-
-### FONT SIZES
-${designData.fonts.map(f => `- ${f.size}px (weight: ${f.weight}, line-height: ${Math.round(f.lineHeight)}px)`).join('\n')}
-
-### BORDERS
-${designData.borders.map(b => `- ${b.width}px solid ${b.color}`).join('\n')}
-
-### PADDING VALUES
-${designData.spacing.paddings.map(p => `- ${p}px`).join('\n')}
-
-### GAP VALUES  
-${designData.spacing.gaps.map(g => `- ${g}px`).join('\n')}
-
-### ELEMENT DIMENSIONS
-${designData.elements.slice(0, 10).map(e => 
-  `- ${e.name}: ${e.width}x${e.height}px${e.backgroundColor ? ` bg:${e.backgroundColor}` : ''}${e.borderWidth ? ` border:${e.borderWidth}px ${e.borderColor}` : ''}`
-).join('\n')}
-` : 'Use values from the reference image'}
-
-## CURRENT HTML TO FIX
-\`\`\`html
-${currentHtml}
-\`\`\`
-
-Apply the EXACT corrections. Return ONLY the corrected HTML wrapped in \`\`\`html code blocks.`;
-
-  const messages = [
-    {
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'url', url: referenceImageUrl } },
-        { type: 'text', text: prompt },
-      ],
-    },
-  ];
-
-  return await callClaude(apiKey, buildSystemPrompt(), messages);
 }
 
 function buildSystemPrompt(): string {
