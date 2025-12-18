@@ -259,6 +259,20 @@ export function CampaignStudio({
     return { type: 'all' };
   };
 
+  // Convert Cloudinary social icon URLs to SimpleIcons CDN URLs
+  // so Claude can dynamically change colors
+  const convertToSimpleIconsUrls = (html: string): string => {
+    if (!html) return html;
+    
+    // Pattern to match Cloudinary social icon URLs
+    const cloudinaryPattern = /https:\/\/res\.cloudinary\.com\/[^"'\s]+\/social-icons\/([a-z]+)-([a-f0-9]{6})\.png/gi;
+    
+    return html.replace(cloudinaryPattern, (match, platform, color) => {
+      const slug = PLATFORM_SLUGS[platform.toLowerCase()] || platform.toLowerCase();
+      return `https://cdn.simpleicons.org/${slug}/${color}`;
+    });
+  };
+
   const handleSendMessage = async (message: string) => {
     const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }];
     setChatMessages(newMessages);
@@ -288,7 +302,7 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
-          footerHtml: localFooterHtml,
+          footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
           originalCampaignImageUrl: originalImageUrl,
           targetSection: target, // NEW: specify which section to target
           conversationHistory: claudeConversationHistory,
@@ -380,7 +394,7 @@ export function CampaignStudio({
             altText: s.altText,
             link: s.link,
           })),
-          footerHtml: localFooterHtml,
+          footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
           originalCampaignImageUrl: originalImageUrl,
           targetSection: { type: 'all' }, // Auto-refine targets all sections
           conversationHistory: claudeConversationHistory,
