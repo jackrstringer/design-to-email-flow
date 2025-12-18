@@ -65,6 +65,20 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Klaviyo API error:', response.status, errorText);
+
+      // If Klaviyo is temporarily down (Cloudflare 5xx), don't bubble a 5xx to the client.
+      // Returning non-2xx makes supabase.functions.invoke throw and can blank-screen the app.
+      if (response.status >= 502 && response.status <= 504) {
+        return new Response(
+          JSON.stringify({
+            lists: [],
+            transientError: true,
+            error: `Klaviyo temporarily unavailable (${response.status}). Please retry.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       return new Response(
         JSON.stringify({ error: `Klaviyo API error: ${response.status}` }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -89,9 +103,15 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error fetching Klaviyo lists:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch lists';
+
+    // Return a 200 so the client can handle transient failures without crashing.
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        lists: [],
+        transientError: true,
+        error: errorMessage,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
