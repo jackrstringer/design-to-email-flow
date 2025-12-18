@@ -257,9 +257,66 @@ export function CampaignCreator({
         setViewState('slice-editor');
         toast.success('Figma design loaded! Add slice lines to continue.');
       } else {
-        // Need to detect/select brand first
-        toast.info('Please select a brand to continue');
-        setUploadedImageDataUrl(dataUrl);
+        // Run brand auto-detection on the Figma export
+        toast.info('Detecting brand...');
+        
+        let detectionImages: string[];
+        try {
+          detectionImages = await createBrandDetectionImages(dataUrl);
+        } catch (cropErr) {
+          console.error('Failed to prepare detection images:', cropErr);
+          detectionImages = [dataUrl];
+        }
+
+        // Pass existing brands for AI-based matching
+        const existingBrandsForMatching = brands.map(b => ({
+          id: b.id,
+          name: b.name,
+          domain: b.domain,
+          primaryColor: b.primaryColor
+        }));
+
+        const { data: brandData, error: brandError } = await supabase.functions.invoke('detect-brand-from-image', {
+          body: { 
+            imageDataUrls: detectionImages,
+            existingBrands: existingBrandsForMatching
+          }
+        });
+
+        if (brandError) {
+          console.error('Brand detection error:', brandError);
+          toast.error('Failed to detect brand. Please select or add a brand manually.');
+          setUploadedImageDataUrl(dataUrl);
+          return;
+        }
+
+        // Check if AI matched an existing brand
+        if (brandData?.matchedBrandId) {
+          const matchedBrand = brands.find(b => b.id === brandData.matchedBrandId);
+          if (matchedBrand) {
+            console.log('AI matched existing brand:', matchedBrand.name);
+            onBrandSelect(matchedBrand.id);
+            setUploadedImageDataUrl(dataUrl);
+            setViewState('slice-editor');
+            toast.success(`Figma design loaded! Brand "${matchedBrand.name}" detected.`);
+            return;
+          }
+        }
+
+        // New brand detected - show confirmation modal
+        const detectedBrand: DetectedBrand = {
+          name: brandData?.name || null,
+          url: brandData?.url || null,
+        };
+
+        if (detectedBrand.url || detectedBrand.name) {
+          // Create a fake file for the pending campaign flow
+          const fakeFile = new File([blob], 'figma-export.png', { type: 'image/png' });
+          onBrandDetected(detectedBrand, { file: fakeFile, dataUrl });
+        } else {
+          toast.error('Could not detect brand. Please select or add a brand manually.');
+          setUploadedImageDataUrl(dataUrl);
+        }
       }
 
     } catch (error) {

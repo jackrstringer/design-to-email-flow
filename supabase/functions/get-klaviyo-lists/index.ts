@@ -6,6 +6,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // Retry on 502, 503, 504 (transient gateway errors)
+      if (response.status >= 502 && response.status <= 504 && attempt < maxRetries) {
+        console.log(`Klaviyo API returned ${response.status}, retrying (attempt ${attempt}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.log(`Fetch attempt ${attempt} failed:`, lastError.message);
+      
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+  }
+  
+  throw lastError || new Error('All retry attempts failed');
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -24,8 +52,8 @@ serve(async (req) => {
 
     console.log('Fetching Klaviyo segments...');
 
-    // Fetch segments from Klaviyo API (not lists)
-    const response = await fetch('https://a.klaviyo.com/api/segments', {
+    // Fetch segments from Klaviyo API with retry logic
+    const response = await fetchWithRetry('https://a.klaviyo.com/api/segments', {
       method: 'GET',
       headers: {
         'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
