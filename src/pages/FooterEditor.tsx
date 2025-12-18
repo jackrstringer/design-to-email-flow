@@ -11,6 +11,7 @@ interface LocationState {
   referenceImageUrl: string;
   footerHtml: string;
   footerName?: string;
+  figmaDesignData?: any;
 }
 
 export default function FooterEditor() {
@@ -24,6 +25,7 @@ export default function FooterEditor() {
   const [footerHtml, setFooterHtml] = useState(state?.footerHtml || '');
   const [footerName, setFooterName] = useState(state?.footerName || 'New Footer');
   const [referenceImageUrl] = useState(state?.referenceImageUrl || '');
+  const [figmaDesignData] = useState(state?.figmaDesignData || null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -162,6 +164,7 @@ export default function FooterEditor() {
         darkLogoUrl: brand.darkLogoUrl,
         socialLinks: brand.socialLinks,
       }}
+      figmaDesignData={figmaDesignData}
       initialFooterHtml={footerHtml}
       onSaveFooter={handleSaveFooter}
       onBack={handleBack}

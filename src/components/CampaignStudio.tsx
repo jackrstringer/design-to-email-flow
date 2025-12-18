@@ -51,6 +51,8 @@ interface CampaignStudioProps {
   brandUrl: string;
   brandContext?: BrandContext;
   brandLinks?: string[];
+  // Figma design data for pixel-perfect refinements
+  figmaDesignData?: any;
   // Footer props - now with versioning support
   initialFooterHtml?: string;
   initialFooterId?: string | null;
@@ -87,6 +89,7 @@ export function CampaignStudio({
   brandUrl,
   brandContext,
   brandLinks = [],
+  figmaDesignData,
   initialFooterHtml,
   initialFooterId = null,
   savedFooters = [],
@@ -247,6 +250,7 @@ export function CampaignStudio({
           userRequest: message,
           brandUrl,
           brandContext,
+          figmaDesignData, // Pass Figma specs for pixel-perfect refinements
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
@@ -347,6 +351,7 @@ Return ALL HTML sections that need updates, not just one.`;
           userRequest: autoRefinePrompt,
           brandUrl,
           brandContext,
+          figmaDesignData, // Pass Figma specs for pixel-perfect refinements
           isFooterMode,
           lightLogoUrl: brandContext?.lightLogoUrl,
           darkLogoUrl: brandContext?.darkLogoUrl,
