@@ -10,8 +10,14 @@ import { ChevronLeft, Send, RefreshCw, Heart, Check, Pencil, Loader2, ExternalLi
 import { cn } from '@/lib/utils';
 import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import type { ProcessedSlice } from '@/types/slice';
-import data from '@emoji-mart/data';
-import Picker from '@emoji-mart/react';
+
+// Simple emoji list for quick access
+const POPULAR_EMOJIS = [
+  '🔥', '✨', '💫', '⭐', '🎉', '🚀', '💥', '🎯', '💪', '👀',
+  '❤️', '💜', '💙', '💚', '🧡', '💛', '🖤', '🤍', '💖', '💕',
+  '🛍️', '🎁', '💰', '🏷️', '📦', '✅', '🆕', '⚡', '🔔', '📣',
+  '😍', '🤩', '😎', '🥳', '👏', '🙌', '💃', '🕺', '👋', '🤝',
+];
 
 interface LocationState {
   slices: ProcessedSlice[];
@@ -640,14 +646,18 @@ function CopyOptionCard({
                   <Smile className="w-4 h-4" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Picker
-                  data={data}
-                  onEmojiSelect={(emoji: any) => onAddEmoji(emoji.native)}
-                  theme="light"
-                  previewPosition="none"
-                  skinTonePosition="none"
-                />
+              <PopoverContent className="w-64 p-2" align="start">
+                <div className="grid grid-cols-10 gap-1">
+                  {POPULAR_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => onAddEmoji(emoji)}
+                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
               </PopoverContent>
             </Popover>
           </div>
