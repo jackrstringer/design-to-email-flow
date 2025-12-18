@@ -26,6 +26,12 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
 - ALWAYS use web-safe fonts: Arial, Helvetica, sans-serif
 - ALWAYS use 600px total width with MSO conditionals for Outlook
 
+## CRITICAL: BACKGROUND COLOR PLACEMENT
+- Background color MUST be on the INNER 600px table, NOT the outer 100% width wrapper
+- Outer table: style="background-color: #ffffff;" (white - matches email body)
+- Inner 600px table: style="background-color: {FOOTER_COLOR};" (the actual footer color)
+- This ensures footer background only covers the centered content area
+
 ## LOGO HANDLING (CRITICAL)
 - The logo MUST ALWAYS be an <img> tag with the provided logo URL
 - NEVER render the brand name as text when logo URL is provided
@@ -33,11 +39,11 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
 
 ## STRUCTURE TEMPLATE
 \`\`\`html
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: {BG};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
   <tr>
     <td align="center">
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: {BG};">
         {CONTENT ROWS}
       </table>
       <!--[if mso]></td></tr></table><![endif]-->

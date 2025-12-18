@@ -49,15 +49,19 @@ Use the exact iconUrl provided for each social platform.
 6. ALWAYS add role="presentation" to layout tables
 7. ALWAYS include width and height attributes on images
 8. ALWAYS add style="display: block; border: 0;" to images
+9. CRITICAL: Background color MUST be on the INNER 600px table, NOT the outer wrapper
+   - Outer 100% width table: background-color: #ffffff (white)
+   - Inner 600px table: background-color: {actual footer color}
+   - This ensures the footer background only covers the content area, not full email width
 
 ### BASE TEMPLATE STRUCTURE
 \`\`\`html
 <!-- FOOTER START -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: {BG_COLOR};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
   <tr>
     <td align="center">
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: {BG_COLOR};">
         
         {LOGO_ROW}
         {NAV_ROWS}
