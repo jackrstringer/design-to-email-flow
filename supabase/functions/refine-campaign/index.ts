@@ -159,6 +159,28 @@ ${darkLogoUrl ? `### DARK/BLACK LOGO (for LIGHT backgrounds):
 6. This is NON-NEGOTIABLE - text logos are FORBIDDEN when img URLs are provided
 ` : ''}
 
+${(socialIcons && Array.isArray(socialIcons) && socialIcons.length > 0) ? `## PRE-CONSTRUCTED SOCIAL ICON HTML - COPY EXACTLY
+
+**CRITICAL**: Use these EXACT <img> URLs from Simple Icons CDN. Do NOT use any other icon sources or brand colors.
+
+${socialIcons.map((s: any) => `### ${(s.platform || '').toUpperCase()}
+Link URL: ${s.url}
+EXACT HTML TO USE:
+\`\`\`html
+<td style="padding: 0 8px;">
+  <a href="${s.url}" target="_blank" style="text-decoration: none;">
+    <img src="${s.iconUrl}" alt="${s.platform}" width="32" height="32" style="display: block; border: 0;">
+  </a>
+</td>
+\`\`\``).join('\n\n')}
+
+### SOCIAL ICON RULES (NON-NEGOTIABLE):
+1. Use the EXACT iconUrl values above (white icons from cdn.simpleicons.org)
+2. Do NOT use brand-colored icons (no orange Instagram, no blue Facebook)
+3. All icons MUST be white (#ffffff) to match dark footer backgrounds
+4. Copy the HTML structure EXACTLY - only adjust width/height if needed
+` : ''}
+
 ## CURRENT FOOTER HTML
 \`\`\`html
 ${footerHtml || 'No footer HTML provided'}
