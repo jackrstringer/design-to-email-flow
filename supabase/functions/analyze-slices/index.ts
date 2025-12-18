@@ -156,11 +156,24 @@ Respond in JSON format:
 
     const aiResponse = await response.json();
     
-    // Claude returns content as an array of blocks - find the text block
+    // Claude with web search returns multiple content blocks - we need to find ALL text blocks
+    // and concatenate them, as the JSON response may come after tool use blocks
     let aiContent = '';
     if (aiResponse.content && Array.isArray(aiResponse.content)) {
-      const textBlock = aiResponse.content.find((block: { type: string }) => block.type === 'text');
-      aiContent = textBlock?.text || '';
+      // Log all block types for debugging
+      const blockTypes = aiResponse.content.map((b: { type: string }) => b.type);
+      console.log('Claude response block types:', blockTypes);
+      
+      // Collect all text blocks - the final JSON is usually in the last text block
+      const textBlocks = aiResponse.content.filter((block: { type: string }) => block.type === 'text');
+      if (textBlocks.length > 0) {
+        // Use the last text block as it contains the final response after web searches
+        aiContent = textBlocks[textBlocks.length - 1].text || '';
+      }
+      console.log('Extracted text content length:', aiContent.length);
+      console.log('Text content preview:', aiContent.substring(0, 500));
+    } else {
+      console.error('Unexpected response format:', JSON.stringify(aiResponse).substring(0, 500));
     }
     
     console.log('Claude response received');
@@ -168,10 +181,20 @@ Respond in JSON format:
     // Parse JSON from AI response
     let analyses: SliceAnalysis[] = [];
     try {
-      // Extract JSON from response (might be wrapped in markdown)
-      const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+      // Extract JSON from response (might be wrapped in markdown code blocks)
+      let jsonMatch = aiContent.match(/```json\s*([\s\S]*?)```/);
+      let jsonStr = jsonMatch ? jsonMatch[1] : null;
+      
+      // If no markdown code block, try to find raw JSON
+      if (!jsonStr) {
+        jsonMatch = aiContent.match(/\{[\s\S]*\}/);
+        jsonStr = jsonMatch ? jsonMatch[0] : null;
+      }
+      
+      console.log('JSON string found:', jsonStr ? 'yes' : 'no');
+      
+      if (jsonStr) {
+        const parsed = JSON.parse(jsonStr);
         analyses = parsed.slices || [];
         
         // Ensure indices are correct and validate links
