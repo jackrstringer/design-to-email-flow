@@ -37,7 +37,100 @@ const REFERENCE_HTML_EXAMPLE = `
 </tr>
 `;
 
-const HTML_EMAIL_RULES = `
+interface FigmaDesignData {
+  colors: string[];
+  fonts: Array<{ family: string; size: number; weight: number; lineHeight: number }>;
+  texts: Array<{ content: string; isUrl: boolean }>;
+  spacing: { paddings: number[]; gaps: number[] };
+}
+
+function buildHtmlEmailRules(figmaData?: FigmaDesignData): string {
+  // If we have Figma data, use exact measurements
+  if (figmaData && figmaData.colors.length > 0) {
+    const primaryFont = figmaData.fonts[0];
+    const bodyFont = figmaData.fonts.find(f => f.size >= 14 && f.size <= 18) || primaryFont;
+    const buttonFont = figmaData.fonts.find(f => f.weight >= 600) || primaryFont;
+    
+    // Find likely background and text colors
+    const lightColors = figmaData.colors.filter(c => {
+      const hex = c.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      return (r + g + b) / 3 > 200;
+    });
+    const darkColors = figmaData.colors.filter(c => {
+      const hex = c.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      return (r + g + b) / 3 < 100;
+    });
+    const accentColors = figmaData.colors.filter(c => !lightColors.includes(c) && !darkColors.includes(c));
+
+    return `
+# HTML Email Building Rules - USE EXACT FIGMA MEASUREMENTS
+
+## EXACT COLORS FROM DESIGN (use these hex values):
+${figmaData.colors.map(c => `- ${c}`).join('\n')}
+
+Likely usage:
+- Background: ${lightColors[0] || '#ffffff'}
+- Text: ${darkColors[0] || '#333333'}
+- CTA/Accent: ${accentColors[0] || figmaData.colors[0] || '#1904FF'}
+
+## EXACT FONTS FROM DESIGN:
+${figmaData.fonts.map(f => `- ${f.family}, ${f.size}px, weight ${f.weight}, line-height ${Math.round(f.lineHeight)}px`).join('\n')}
+
+Primary body text: font-size: ${bodyFont?.size || 17}px; line-height: ${Math.round(bodyFont?.lineHeight || 26)}px;
+Button text: font-size: ${buttonFont?.size || 16}px; font-weight: ${buttonFont?.weight || 600};
+
+## EXACT SPACING FROM DESIGN:
+- Paddings used: ${figmaData.spacing.paddings.join('px, ') || '32'}px
+- Gaps used: ${figmaData.spacing.gaps.join('px, ') || '24'}px
+
+## Font Stack (use this for all text):
+font-family: ${primaryFont?.family ? `'${primaryFont.family}', ` : ''}-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+
+## REFERENCE EXAMPLE - Match this structure:
+${REFERENCE_HTML_EXAMPLE}
+
+## Structure Rules
+1. Use ONLY tables for layout - never use divs, flexbox, or grid
+2. All CSS must be inline - no external stylesheets or <style> blocks
+3. All tables must have: border="0" cellpadding="0" cellspacing="0"
+4. Content width should be 100% (parent container handles max-width)
+
+## CTA Button Pattern (ALWAYS use this exact pattern for buttons):
+<tr>
+    <td style="padding: 0 5% 24px 5%; background-color: ${lightColors[0] || '#ffffff'};">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+                <td align="center" style="background-color: ${accentColors[0] || '#1904FF'};">
+                    <a href="LINK_URL" style="display: block; padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: ${buttonFont?.size || 16}px; font-weight: ${buttonFont?.weight || 600}; color: #ffffff; text-decoration: none; letter-spacing: 0.5px;">BUTTON TEXT</a>
+                </td>
+            </tr>
+        </table>
+    </td>
+</tr>
+
+## DO NOT USE:
+- JavaScript
+- External CSS files or @import
+- Google Fonts or custom fonts
+- CSS position, float, flexbox, or grid
+- box-shadow
+- Forms or input elements
+- Centered buttons with fixed width (always use full-width pattern)
+
+## Output Format
+Return ONLY the raw HTML code - no markdown, no explanation, no code fences.
+The HTML should be table rows that can be inserted directly into an email template.
+`;
+  }
+
+  // Fallback to default rules
+  return `
 # HTML Email Building Rules - MATCH THE ORIGINAL DESIGN EXACTLY
 
 ## CRITICAL STYLE SPECIFICATIONS (use these exact values):
@@ -89,11 +182,31 @@ ${REFERENCE_HTML_EXAMPLE}
 Return ONLY the raw HTML code - no markdown, no explanation, no code fences.
 The HTML should be table rows that can be inserted directly into an email template.
 `;
+}
 
-async function generateHtml(sliceDataUrl: string, brandUrl: string, sliceIndex: number, totalSlices: number, apiKey: string): Promise<string> {
+async function generateHtml(
+  sliceDataUrl: string, 
+  brandUrl: string, 
+  sliceIndex: number, 
+  totalSlices: number, 
+  apiKey: string,
+  figmaData?: FigmaDesignData
+): Promise<string> {
+  const htmlRules = buildHtmlEmailRules(figmaData);
+  
+  const figmaContext = figmaData ? `
+IMPORTANT: You have access to EXACT design measurements from Figma:
+- Use the exact hex colors provided
+- Use the exact font sizes and weights provided
+- Use the exact spacing values provided
+Do NOT guess - use the values from the design data.
+` : '';
+
   const prompt = `You are an expert HTML email developer. Convert this email design section into flawless HTML email code that EXACTLY matches the visual design.
 
-${HTML_EMAIL_RULES}
+${htmlRules}
+
+${figmaContext}
 
 CONTEXT:
 - This is slice ${sliceIndex + 1} of ${totalSlices} from an email campaign
@@ -102,10 +215,10 @@ CONTEXT:
 
 ANALYZE THE IMAGE CAREFULLY AND:
 1. Identify all text content - copy it EXACTLY as shown
-2. Match colors PRECISELY - use exact hex values from the design
+2. Match colors PRECISELY - use exact hex values from the design${figmaData ? ' (provided above)' : ''}
 3. Match spacing EXACTLY - use the padding values from my specifications
 4. For CTAs/buttons: Use the FULL-WIDTH button pattern I provided
-5. Match typography - font sizes, weights, and line heights
+5. Match typography - font sizes, weights, and line heights${figmaData ? ' (use exact values provided)' : ''}
 
 CRITICAL: The generated HTML must look IDENTICAL to the original image. Pay attention to:
 - Button width (should be full-width, not centered/narrow)
@@ -225,9 +338,12 @@ async function regenerateWithCorrections(
   brandUrl: string,
   sliceIndex: number,
   totalSlices: number,
-  apiKey: string
+  apiKey: string,
+  figmaData?: FigmaDesignData
 ): Promise<string> {
   console.log('Regenerating HTML with corrections...');
+  
+  const htmlRules = buildHtmlEmailRules(figmaData);
 
   const prompt = `You are an expert HTML email developer. Your previous HTML generation had issues. Fix them and regenerate.
 
@@ -237,7 +353,7 @@ ${previousHtml}
 CORRECTIONS NEEDED:
 ${corrections}
 
-${HTML_EMAIL_RULES}
+${htmlRules}
 
 CONTEXT:
 - This is slice ${sliceIndex + 1} of ${totalSlices} from an email campaign
@@ -245,7 +361,7 @@ CONTEXT:
 
 Look at the original image again and apply the corrections. Pay special attention to:
 - Making buttons FULL-WIDTH using the table pattern with width="100%"
-- Matching exact colors and spacing
+- Matching exact colors and spacing${figmaData ? ' (use the exact values from Figma provided above)' : ''}
 - Using proper padding values (5% horizontal, 32px/24px vertical)
 
 Return ONLY the corrected HTML code - no explanation, no markdown code fences.`;
@@ -293,7 +409,7 @@ serve(async (req) => {
   }
 
   try {
-    const { sliceDataUrl, brandUrl, sliceIndex, totalSlices } = await req.json();
+    const { sliceDataUrl, brandUrl, sliceIndex, totalSlices, figmaDesignData } = await req.json();
 
     if (!sliceDataUrl) {
       return new Response(
@@ -303,14 +419,17 @@ serve(async (req) => {
     }
 
     console.log(`Generating HTML for slice ${sliceIndex + 1} of ${totalSlices}`);
+    if (figmaDesignData) {
+      console.log('Using Figma design data for exact measurements');
+    }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Phase 1: Generate initial HTML
-    let htmlContent = await generateHtml(sliceDataUrl, brandUrl, sliceIndex, totalSlices, LOVABLE_API_KEY);
+    // Phase 1: Generate initial HTML (with Figma data if available)
+    let htmlContent = await generateHtml(sliceDataUrl, brandUrl, sliceIndex, totalSlices, LOVABLE_API_KEY, figmaDesignData);
     console.log('Initial HTML generated');
 
     // Phase 2: Validate and refine (max 2 iterations)
@@ -331,7 +450,8 @@ serve(async (req) => {
         brandUrl,
         sliceIndex,
         totalSlices,
-        LOVABLE_API_KEY
+        LOVABLE_API_KEY,
+        figmaDesignData
       );
     }
 
