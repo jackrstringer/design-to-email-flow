@@ -104,21 +104,43 @@ ${currentHtml}
 `;
     }
 
-    // Add logo section with BOTH options clearly labeled
+    // Add logo section with PRE-CONSTRUCTED img tags
     if (hasAnyLogo) {
-      prompt += `## AVAILABLE LOGO ASSETS (CRITICAL - USE AS <img> TAGS)
-${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
-${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
-${logoUrl && !lightLogoUrl && !darkLogoUrl ? `- **LOGO**: ${logoUrl}` : ''}
+      const brandName = brandContext?.name || 'Logo';
+      const brandWebsite = websiteUrl || brandContext?.websiteUrl || `https://${brandContext?.domain}` || '#';
+      
+      prompt += `## PRE-CONSTRUCTED LOGO IMG TAGS - COPY EXACTLY
 
-### LOGO SELECTION RULES:
-1. Analyze the footer background color
-2. If background is DARK (luminance < 50%): USE THE LIGHT/WHITE LOGO
-3. If background is LIGHT (luminance >= 50%): USE THE DARK/BLACK LOGO
-4. If user says "white logo", "light logo": Use ${lightLogoUrl || logoUrl || 'light logo'}
-5. If user says "dark logo", "black logo": Use ${darkLogoUrl || logoUrl || 'dark logo'}
-6. ALWAYS use the logo as an <img> tag - NEVER render brand name as text
-7. Example: <img src="[SELECTED_LOGO_URL]" alt="${brandContext?.name || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
+**CRITICAL**: You MUST use ONE of these EXACT img tags. Copy-paste it exactly. DO NOT render the brand name as text under ANY circumstances.
+
+${lightLogoUrl ? `### LIGHT/WHITE LOGO (for DARK backgrounds):
+\`\`\`html
+<a href="${brandWebsite}" target="_blank" style="text-decoration: none;">
+  <img src="${lightLogoUrl}" alt="${brandName}" width="180" style="display: block; border: 0; height: auto; max-width: 100%;">
+</a>
+\`\`\`` : ''}
+
+${darkLogoUrl ? `### DARK/BLACK LOGO (for LIGHT backgrounds):
+\`\`\`html
+<a href="${brandWebsite}" target="_blank" style="text-decoration: none;">
+  <img src="${darkLogoUrl}" alt="${brandName}" width="180" style="display: block; border: 0; height: auto; max-width: 100%;">
+</a>
+\`\`\`` : ''}
+
+${logoUrl && !lightLogoUrl && !darkLogoUrl ? `### LOGO:
+\`\`\`html
+<a href="${brandWebsite}" target="_blank" style="text-decoration: none;">
+  <img src="${logoUrl}" alt="${brandName}" width="180" style="display: block; border: 0; height: auto; max-width: 100%;">
+</a>
+\`\`\`` : ''}
+
+### LOGO RULES (NON-NEGOTIABLE):
+1. If footer background is DARK → copy the LIGHT LOGO img tag above EXACTLY
+2. If footer background is LIGHT → copy the DARK LOGO img tag above EXACTLY
+3. COPY THE IMG TAG EXACTLY - only adjust width if needed (keep height: auto)
+4. NEVER TYPE THE BRAND NAME AS TEXT - the logo MUST be an <img> element
+5. Even if the reference image shows text, REPLACE IT with the img tag above
+6. This is NON-NEGOTIABLE - text logos are FORBIDDEN when img URLs are provided
 
 `;
     }
@@ -200,7 +222,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
       
       content.push({ 
         type: 'text', 
-        text: '\n---\nUse one of these logos as <img src="...">. NEVER render brand name as text.\n---\n' 
+        text: '\n---\nCOPY the exact <img> tag from the prompt above. NEVER render brand name as text. Even if the reference shows text, REPLACE it with the img tag.\n---\n' 
       });
     }
     
@@ -215,7 +237,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
           url: referenceImageUrl,
         },
       });
-      content.push({ type: 'text', text: '↑ REFERENCE - Match this but use the logo IMAGE and social icon URLs shown above.' });
+      content.push({ type: 'text', text: '↑ REFERENCE - Match layout/colors/spacing but IGNORE any text logo. Copy the exact <img> tag from the prompt instead.' });
     }
     
     content.push({ type: 'text', text: prompt });

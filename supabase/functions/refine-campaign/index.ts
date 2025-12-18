@@ -132,18 +132,31 @@ ${brandName || brandDomain || brandWebsiteUrl ? `- Name: ${brandName || 'Not spe
 ## COLOR PALETTE (use EXACT hex values)
 ${paletteLines || '- Not provided'}
 
-${hasAnyLogo ? `## AVAILABLE LOGO ASSETS (CRITICAL - USE AS <img> TAGS)
-${lightLogoUrl ? `- **LIGHT/WHITE LOGO** (USE FOR DARK BACKGROUNDS): ${lightLogoUrl}` : ''}
-${darkLogoUrl ? `- **DARK/BLACK LOGO** (USE FOR LIGHT BACKGROUNDS): ${darkLogoUrl}` : ''}
+${hasAnyLogo ? `## PRE-CONSTRUCTED LOGO IMG TAGS - COPY EXACTLY
 
-### LOGO SELECTION RULES:
-1. Analyze the footer background color
-2. If background is DARK (luminance < 50%): USE THE LIGHT/WHITE LOGO
-3. If background is LIGHT (luminance >= 50%): USE THE DARK/BLACK LOGO
-4. If user says "white logo", "light logo": Use ${lightLogoUrl || 'light logo not provided'}
-5. If user says "dark logo", "black logo": Use ${darkLogoUrl || 'dark logo not provided'}
-6. ALWAYS use the logo as an <img> tag - NEVER render brand name as text
-7. Example: <img src="[SELECTED_LOGO_URL]" alt="${brandName || 'Logo'}" width="180" height="40" style="display: block; border: 0;">
+**CRITICAL**: You MUST use ONE of these EXACT img tags. Copy-paste it exactly. DO NOT render the brand name as text under ANY circumstances.
+
+${lightLogoUrl ? `### LIGHT/WHITE LOGO (for DARK backgrounds):
+\`\`\`html
+<a href="${brandWebsiteUrl || '#'}" target="_blank" style="text-decoration: none;">
+  <img src="${lightLogoUrl}" alt="${brandName || 'Logo'}" width="180" style="display: block; border: 0; height: auto; max-width: 100%;">
+</a>
+\`\`\`` : ''}
+
+${darkLogoUrl ? `### DARK/BLACK LOGO (for LIGHT backgrounds):
+\`\`\`html
+<a href="${brandWebsiteUrl || '#'}" target="_blank" style="text-decoration: none;">
+  <img src="${darkLogoUrl}" alt="${brandName || 'Logo'}" width="180" style="display: block; border: 0; height: auto; max-width: 100%;">
+</a>
+\`\`\`` : ''}
+
+### LOGO RULES (NON-NEGOTIABLE):
+1. If footer background is DARK → copy the LIGHT LOGO img tag above EXACTLY
+2. If footer background is LIGHT → copy the DARK LOGO img tag above EXACTLY
+3. COPY THE IMG TAG EXACTLY - only adjust width if needed (keep height: auto)
+4. NEVER TYPE THE BRAND NAME AS TEXT - the logo MUST be an <img> element
+5. Even if the reference image shows text, REPLACE IT with the img tag above
+6. This is NON-NEGOTIABLE - text logos are FORBIDDEN when img URLs are provided
 ` : ''}
 
 ## CURRENT FOOTER HTML
@@ -291,7 +304,7 @@ If no changes are needed, return empty arrays/null.`;
       messages.push({ role: 'user', content: logoContent });
       messages.push({ 
         role: 'assistant', 
-        content: 'I can see the brand logo images. I will use these as <img> tags in the footer, NOT render the brand name as text.' 
+        content: 'I can see the brand logo images. I will COPY the exact <img> tag from the system prompt. I will NEVER render the brand name as text - even if the reference shows text, I will replace it with the img tag.' 
       });
     }
 
@@ -313,7 +326,7 @@ If no changes are needed, return empty arrays/null.`;
           {
             type: 'text',
             text: isFooterMode 
-              ? 'This is the reference footer design. NOTE: If this shows brand name as TEXT, IGNORE that and use the logo IMAGE I showed you above instead.'
+              ? 'This is the reference footer design. WARNING: If this shows brand name as TEXT (styled typography), you MUST COMPLETELY IGNORE that. Copy the exact <img> tag from the system prompt instead. The brand name must ONLY appear as an <img> element, NEVER as text.'
               : 'This is the original campaign design that the HTML should match.'
           }
         ]
@@ -321,7 +334,7 @@ If no changes are needed, return empty arrays/null.`;
       messages.push({
         role: 'assistant',
         content: isFooterMode
-          ? 'I can see the reference footer design. I\'ll match the layout, colors, and spacing, but I\'ll use the logo IMAGE you showed me earlier instead of any text logo in the reference.'
+          ? 'I understand. I will COPY the exact <img> tag from the system prompt for the logo. Even though the reference shows text, I will REPLACE it with the img tag. I will match layout, colors, and spacing from the reference but the logo MUST be an <img> element.'
           : 'I can see the original campaign design. I\'ll use this as reference to ensure the HTML matches the visual styling, colors, spacing, and typography.'
       });
     } else {
