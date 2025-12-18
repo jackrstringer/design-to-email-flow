@@ -188,7 +188,7 @@ async function renderHtmlToImage(html: string): Promise<string> {
       html: html,
       css: '',
       viewport_width: 600,
-      viewport_height: 1200,
+      viewport_height: 600, // Reduced from 1200 to minimize viewport artifact
     }),
   });
   
@@ -288,9 +288,22 @@ async function compareImagesWithClaude(
 - FIRST IMAGE: Original Figma reference design (TARGET - what we want)
 - SECOND IMAGE: Current HTML render (what we have - needs fixes if different)
 
+## IMPORTANT: VIEWPORT RENDERING ARTIFACT
+The HTML render image is captured using a fixed 600px viewport height. This means you may see 
+empty/white space BELOW the actual footer content in the render image. This empty space below 
+the footer is a VIEWPORT ARTIFACT, not an HTML problem - do NOT report it as a discrepancy.
+
+HOWEVER, you MUST still check that:
+- The footer content itself has correct height and proportions
+- Internal padding and spacing within the footer are correct
+- Background color properly fills the footer content area
+- Elements are positioned correctly relative to each other within the footer
+
+Focus on the ACTUAL FOOTER CONTENT, not the canvas/viewport it sits on.
+
 ## YOUR TASK
-1. Compare these images VERY carefully, examining every detail
-2. Identify ALL visual differences between them
+1. Compare these images VERY carefully, examining every detail OF THE FOOTER CONTENT
+2. Identify ALL visual differences between them (excluding viewport whitespace below)
 3. If differences exist, generate CORRECTED HTML that fixes every discrepancy
 
 ## CRITICAL COMPARISON POINTS
@@ -302,7 +315,7 @@ async function compareImagesWithClaude(
 - Typography (font size, weight, line-height, color)
 - Social icon spacing, size, and alignment
 - Logo size, positioning, and surrounding space
-- Overall proportions and vertical rhythm
+- Overall proportions and vertical rhythm WITHIN the footer
 - Border presence, color, and width
 - Padding around content sections
 
@@ -315,7 +328,7 @@ ${currentHtml}
 
 ## RESPONSE FORMAT
 
-First, list ALL visual differences you observe:
+First, list ALL visual differences you observe (excluding viewport whitespace artifact):
 <discrepancies>
 1. [Specific issue - be VERY detailed about what's wrong and what it should be]
 2. [Another specific issue]
@@ -380,8 +393,28 @@ Be extremely thorough. Even small differences in spacing, alignment, or colors m
     .map((line: string) => line.replace(/^\d+\.\s*/, '').trim())
     .filter((line: string) => line.length > 0);
   
-  const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
-  const fixedHtml = htmlMatch?.[1] || currentHtml;
+  // More robust HTML extraction - handle various markdown formats
+  let fixedHtml = currentHtml;
+  const htmlPatterns = [
+    /```html\n([\s\S]*?)\n```/,
+    /```html\s*([\s\S]*?)\s*```/i,
+    /```\n(<!DOCTYPE[\s\S]*?)\n```/,
+    /```(<!DOCTYPE[\s\S]*?)```/,
+  ];
+
+  for (const pattern of htmlPatterns) {
+    const match = responseText.match(pattern);
+    if (match?.[1]) {
+      fixedHtml = match[1].trim();
+      console.log('HTML extracted successfully using pattern:', pattern.source.slice(0, 20));
+      break;
+    }
+  }
+
+  if (fixedHtml === currentHtml && !isMatch) {
+    console.warn('WARNING: Claude reported issues but no HTML was extracted!');
+    console.log('Response preview:', responseText.slice(0, 500));
+  }
 
   console.log(`Claude comparison result: match=${isMatch}, discrepancies=${discrepancies.length}`);
 
