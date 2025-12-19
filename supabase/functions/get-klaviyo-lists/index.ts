@@ -50,53 +50,83 @@ serve(async (req) => {
       );
     }
 
-    console.log('Fetching Klaviyo segments...');
+    console.log('Fetching all Klaviyo segments with pagination...');
 
-    // Fetch segments from Klaviyo API with retry logic
-    const response = await fetchWithRetry('https://a.klaviyo.com/api/segments', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-        'accept': 'application/json',
-        'revision': '2025-01-15',
-      },
-    });
+    // Fetch ALL segments using cursor-based pagination
+    let allSegments: Array<{ id: string; name: string }> = [];
+    let nextCursor: string | null = null;
+    let pageCount = 0;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Klaviyo API error:', response.status, errorText);
+    do {
+      pageCount++;
+      const url = new URL('https://a.klaviyo.com/api/segments');
+      url.searchParams.set('page[size]', '100'); // Max page size
+      if (nextCursor) {
+        url.searchParams.set('page[cursor]', nextCursor);
+      }
 
-      // If Klaviyo is temporarily down (Cloudflare 5xx), don't bubble a 5xx to the client.
-      // Returning non-2xx makes supabase.functions.invoke throw and can blank-screen the app.
-      if (response.status >= 502 && response.status <= 504) {
+      console.log(`Fetching page ${pageCount}...`);
+
+      const response = await fetchWithRetry(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+          'accept': 'application/json',
+          'revision': '2025-01-15',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Klaviyo API error:', response.status, errorText);
+
+        // If Klaviyo is temporarily down (Cloudflare 5xx), don't bubble a 5xx to the client.
+        if (response.status >= 502 && response.status <= 504) {
+          return new Response(
+            JSON.stringify({
+              lists: allSegments, // Return what we have so far
+              transientError: true,
+              error: `Klaviyo temporarily unavailable (${response.status}). Partial results returned.`,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         return new Response(
-          JSON.stringify({
-            lists: [],
-            transientError: true,
-            error: `Klaviyo temporarily unavailable (${response.status}). Please retry.`,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: `Klaviyo API error: ${response.status}` }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      return new Response(
-        JSON.stringify({ error: `Klaviyo API error: ${response.status}` }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+      const data = await response.json();
 
-    const data = await response.json();
-    
-    // Transform to simplified format
-    const lists = data.data?.map((segment: any) => ({
-      id: segment.id,
-      name: segment.attributes?.name || 'Unnamed Segment',
-    })) || [];
+      // Add segments from this page
+      const pageSegments = data.data?.map((segment: any) => ({
+        id: segment.id,
+        name: segment.attributes?.name || 'Unnamed Segment',
+      })) || [];
 
-    console.log(`Found ${lists.length} segments`);
+      allSegments = [...allSegments, ...pageSegments];
+      console.log(`Page ${pageCount}: fetched ${pageSegments.length} segments (total: ${allSegments.length})`);
+
+      // Get next page cursor from links.next URL
+      if (data.links?.next) {
+        try {
+          const nextUrl = new URL(data.links.next);
+          nextCursor = nextUrl.searchParams.get('page[cursor]');
+        } catch {
+          nextCursor = null;
+        }
+      } else {
+        nextCursor = null;
+      }
+
+    } while (nextCursor);
+
+    console.log(`Finished fetching all segments: ${allSegments.length} total across ${pageCount} pages`);
 
     return new Response(
-      JSON.stringify({ lists }),
+      JSON.stringify({ lists: allSegments }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
