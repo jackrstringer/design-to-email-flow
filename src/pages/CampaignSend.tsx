@@ -574,7 +574,7 @@ export default function CampaignSend() {
                         Add segment
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
+                    <PopoverContent className="w-80 p-2" align="start">
                       <div className="relative mb-2">
                         <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                         <Input
@@ -585,8 +585,8 @@ export default function CampaignSend() {
                           autoFocus
                         />
                       </div>
-                      <ScrollArea className="max-h-72">
-                        <div className="space-y-0.5">
+                      <ScrollArea className="h-72">
+                        <div className="space-y-0.5 pr-3">
                           {filteredIncludeLists.length === 0 ? (
                             <p className="text-xs text-muted-foreground py-2 text-center">No segments available</p>
                           ) : (
@@ -599,7 +599,7 @@ export default function CampaignSend() {
                                 }}
                                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-muted/80 text-foreground transition-colors"
                               >
-                                <span className="truncate">{list.name}</span>
+                                {list.name}
                               </button>
                             ))
                           )}
@@ -637,7 +637,7 @@ export default function CampaignSend() {
                         Add segment
                       </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
+                    <PopoverContent className="w-80 p-2" align="start">
                       <div className="relative mb-2">
                         <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                         <Input
@@ -648,8 +648,8 @@ export default function CampaignSend() {
                           autoFocus
                         />
                       </div>
-                      <ScrollArea className="max-h-72">
-                        <div className="space-y-0.5">
+                      <ScrollArea className="h-72">
+                        <div className="space-y-0.5 pr-3">
                           {filteredExcludeLists.length === 0 ? (
                             <p className="text-xs text-muted-foreground py-2 text-center">No segments available</p>
                           ) : (
@@ -662,7 +662,7 @@ export default function CampaignSend() {
                                 }}
                                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-muted/80 text-foreground transition-colors"
                               >
-                                <span className="truncate">{list.name}</span>
+                                {list.name}
                               </button>
                             ))
                           )}
