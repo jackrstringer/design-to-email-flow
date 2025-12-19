@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -838,6 +838,13 @@ function CopyItemCard({
   emojiPickerOpen,
   onEmojiPickerToggle,
 }: CopyItemCardProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const emojiOpenRef = useRef(emojiPickerOpen);
+
+  useEffect(() => {
+    emojiOpenRef.current = emojiPickerOpen;
+  }, [emojiPickerOpen]);
+
   return (
     <div
       className={cn(
@@ -846,11 +853,8 @@ function CopyItemCard({
           ? "border-primary bg-primary/5"
           : "border-border/40 hover:border-border"
       )}
-      onClick={(e) => {
-        // If clicking on the text area and not editing, start editing
-        if (!item.isEditing) {
-          onSelect();
-        }
+      onClick={() => {
+        if (!item.isEditing) onSelect();
       }}
     >
       {/* Selection indicator */}
@@ -862,11 +866,15 @@ function CopyItemCard({
 
       {/* Favorite button */}
       <button
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite();
+        }}
         className={cn(
           "flex-shrink-0 p-0.5 rounded transition-colors mt-0.5",
-          item.isFavorite 
-            ? "text-red-500" 
+          item.isFavorite
+            ? "text-red-500"
             : "text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100"
         )}
         title={item.isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -875,21 +883,26 @@ function CopyItemCard({
       </button>
 
       {/* Text content - click to edit */}
-      <div 
+      <div
         className="flex-1 min-w-0"
         onClick={(e) => {
           e.stopPropagation();
-          if (!item.isEditing) {
-            onStartEdit();
-          }
+          if (!item.isEditing) onStartEdit();
         }}
       >
         {item.isEditing ? (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Input
+              ref={inputRef}
               value={item.text}
               onChange={(e) => onUpdateText(e.target.value)}
-              onBlur={onStopEdit}
+              onBlur={() => {
+                // Delay close so clicking the emoji trigger doesn't immediately end editing
+                window.setTimeout(() => {
+                  if (emojiOpenRef.current) return;
+                  onStopEdit();
+                }, 75);
+              }}
               onKeyDown={(e) => e.key === 'Enter' && onStopEdit()}
               autoFocus
               className="text-sm h-8 pr-8"
@@ -897,19 +910,33 @@ function CopyItemCard({
             <Popover open={emojiPickerOpen} onOpenChange={onEmojiPickerToggle}>
               <PopoverTrigger asChild>
                 <button
+                  type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  data-emoji-trigger
                   onMouseDown={(e) => e.preventDefault()}
+                  aria-label="Add emoji"
                 >
                   <Smile className="w-3.5 h-3.5" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
+              <PopoverContent
+                className="w-64 p-2 z-50"
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <div className="grid grid-cols-10 gap-1">
                   {POPULAR_EMOJIS.map((emoji) => (
                     <button
+                      type="button"
                       key={emoji}
-                      onMouseDown={(e) => { e.preventDefault(); onAddEmoji(emoji); }}
                       className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onAddEmoji(emoji);
+                        requestAnimationFrame(() => inputRef.current?.focus());
+                      }}
+                      aria-label={`Insert ${emoji}`}
                     >
                       {emoji}
                     </button>
@@ -919,10 +946,12 @@ function CopyItemCard({
             </Popover>
           </div>
         ) : (
-          <p className={cn(
-            "text-sm leading-snug",
-            type === 'sl' ? "font-medium" : "text-muted-foreground"
-          )}>
+          <p
+            className={cn(
+              "text-sm leading-snug",
+              type === 'sl' ? "font-medium" : "text-muted-foreground"
+            )}
+          >
             {item.text}
           </p>
         )}
