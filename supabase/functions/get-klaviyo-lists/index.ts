@@ -59,10 +59,10 @@ serve(async (req) => {
 
     do {
       pageCount++;
-      // Build URL manually since URLSearchParams encodes brackets incorrectly for Klaviyo
-      let urlStr = 'https://a.klaviyo.com/api/segments?page%5Bsize%5D=100';
+      // Klaviyo Segments API doesn't support page[size], only page[cursor]
+      let urlStr = 'https://a.klaviyo.com/api/segments';
       if (nextCursor) {
-        urlStr += `&page%5Bcursor%5D=${encodeURIComponent(nextCursor)}`;
+        urlStr += `?page%5Bcursor%5D=${encodeURIComponent(nextCursor)}`;
       }
 
       console.log(`Fetching page ${pageCount}...`);
