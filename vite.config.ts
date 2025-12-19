@@ -15,4 +15,12 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: ['emoji-mart', '@emoji-mart/data', '@emoji-mart/react'],
+  },
+  build: {
+    commonjsOptions: {
+      include: [/emoji-mart/, /node_modules/],
+    },
+  },
 }));
