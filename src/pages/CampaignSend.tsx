@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronLeft, Send, RefreshCw, Heart, Check, Pencil, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2 } from 'lucide-react';
+import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import type { ProcessedSlice } from '@/types/slice';
@@ -811,147 +811,119 @@ function PairCard({
         </div>
       )}
 
-      {/* Favorite indicator */}
-      {pair.isFavorite && (
-        <Heart className="absolute top-2 left-2 w-3 h-3 text-red-500 fill-current" />
-      )}
+      {/* Favorite indicator - click to toggle */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+        className={cn(
+          "absolute top-2 left-2 p-0.5 rounded transition-colors",
+          pair.isFavorite 
+            ? "text-red-500" 
+            : "text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100"
+        )}
+        title={pair.isFavorite ? "Remove from favorites" : "Add to favorites"}
+      >
+        <Heart className={cn("w-3 h-3", pair.isFavorite && "fill-current")} />
+      </button>
 
-      {/* Subject Line (left) */}
+      {/* Subject Line (left) - click to edit */}
       <div 
         className={cn(
-          "flex-1 p-3 border-r border-border/30",
+          "flex-1 p-3 pl-6 border-r border-border/30",
           slOverride && "ring-2 ring-primary ring-inset"
         )}
-        onClick={onSelectSL}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStartEdit('sl');
+        }}
       >
         {pair.isEditingSL ? (
-          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Input
               value={pair.subjectLine}
               onChange={(e) => onUpdateText('sl', e.target.value)}
-              onBlur={() => onStopEdit('sl')}
+              onBlur={() => { onStopEdit('sl'); }}
               onKeyDown={(e) => e.key === 'Enter' && onStopEdit('sl')}
               autoFocus
-              className="text-sm h-8"
+              className="text-sm h-8 pr-8"
             />
+            <Popover open={emojiPickerOpen === 'sl'} onOpenChange={() => onEmojiPickerToggle('sl')}>
+              <PopoverTrigger asChild>
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <Smile className="w-3.5 h-3.5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
+                <div className="grid grid-cols-10 gap-1">
+                  {POPULAR_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onMouseDown={(e) => { e.preventDefault(); onAddEmoji('sl', emoji); }}
+                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         ) : (
           <p className="text-sm font-medium leading-snug">{pair.subjectLine}</p>
         )}
       </div>
 
-      {/* Preview Text (right) */}
+      {/* Preview Text (right) - click to edit */}
       <div 
         className={cn(
           "flex-1 p-3",
           ptOverride && "ring-2 ring-primary ring-inset"
         )}
-        onClick={onSelectPT}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStartEdit('pt');
+        }}
       >
         {pair.isEditingPT ? (
-          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Input
               value={pair.previewText}
               onChange={(e) => onUpdateText('pt', e.target.value)}
-              onBlur={() => onStopEdit('pt')}
+              onBlur={() => { onStopEdit('pt'); }}
               onKeyDown={(e) => e.key === 'Enter' && onStopEdit('pt')}
               autoFocus
-              className="text-sm h-8"
+              className="text-sm h-8 pr-8"
             />
+            <Popover open={emojiPickerOpen === 'pt'} onOpenChange={() => onEmojiPickerToggle('pt')}>
+              <PopoverTrigger asChild>
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <Smile className="w-3.5 h-3.5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
+                <div className="grid grid-cols-10 gap-1">
+                  {POPULAR_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onMouseDown={(e) => { e.preventDefault(); onAddEmoji('pt', emoji); }}
+                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground leading-snug">{pair.previewText}</p>
         )}
       </div>
-
-      {/* Actions on hover - now includes PT edit button and emoji buttons outside edit mode */}
-      {!pair.isEditingSL && !pair.isEditingPT && (
-        <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Edit SL button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onStartEdit('sl'); }}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            title="Edit subject line"
-          >
-            <Pencil className="w-3 h-3" />
-          </button>
-          
-          {/* Edit PT button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onStartEdit('pt'); }}
-            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            title="Edit preview text"
-          >
-            <Pencil className="w-3 h-3" />
-          </button>
-          
-          {/* Emoji for SL */}
-          <Popover open={emojiPickerOpen === 'sl'} onOpenChange={() => onEmojiPickerToggle('sl')}>
-            <PopoverTrigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                title="Add emoji to subject"
-              >
-                <Smile className="w-3 h-3" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
-              <div className="grid grid-cols-10 gap-1">
-                {POPULAR_EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={(e) => { e.stopPropagation(); onAddEmoji('sl', emoji); }}
-                    className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          
-          {/* Emoji for PT */}
-          <Popover open={emojiPickerOpen === 'pt'} onOpenChange={() => onEmojiPickerToggle('pt')}>
-            <PopoverTrigger asChild>
-              <button
-                onClick={(e) => e.stopPropagation()}
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                title="Add emoji to preview"
-              >
-                <Smile className="w-3 h-3" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
-              <div className="grid grid-cols-10 gap-1">
-                {POPULAR_EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={(e) => { e.stopPropagation(); onAddEmoji('pt', emoji); }}
-                    className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          
-          {/* Favorite button */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-            className={cn(
-              "p-1 rounded transition-colors",
-              pair.isFavorite 
-                ? "text-red-500 hover:text-red-600" 
-                : "text-muted-foreground hover:text-red-500"
-            )}
-            title={pair.isFavorite ? "Remove from favorites" : "Add to favorites"}
-          >
-            <Heart className={cn("w-3 h-3", pair.isFavorite && "fill-current")} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
