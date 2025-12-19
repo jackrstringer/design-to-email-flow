@@ -59,15 +59,15 @@ serve(async (req) => {
 
     do {
       pageCount++;
-      const url = new URL('https://a.klaviyo.com/api/segments');
-      url.searchParams.set('page[size]', '100'); // Max page size
+      // Build URL manually since URLSearchParams encodes brackets incorrectly for Klaviyo
+      let urlStr = 'https://a.klaviyo.com/api/segments?page%5Bsize%5D=100';
       if (nextCursor) {
-        url.searchParams.set('page[cursor]', nextCursor);
+        urlStr += `&page%5Bcursor%5D=${encodeURIComponent(nextCursor)}`;
       }
 
       console.log(`Fetching page ${pageCount}...`);
 
-      const response = await fetchWithRetry(url.toString(), {
+      const response = await fetchWithRetry(urlStr, {
         method: 'GET',
         headers: {
           'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
