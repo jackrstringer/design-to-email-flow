@@ -11,14 +11,8 @@ import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smil
 import { cn } from '@/lib/utils';
 import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import type { ProcessedSlice } from '@/types/slice';
-
-// Simple emoji list for quick access
-const POPULAR_EMOJIS = [
-  '🔥', '✨', '💫', '⭐', '🎉', '🚀', '💥', '🎯', '💪', '👀',
-  '❤️', '💜', '💙', '💚', '🧡', '💛', '🖤', '🤍', '💖', '💕',
-  '🛍️', '🎁', '💰', '🏷️', '📦', '✅', '🆕', '⚡', '🔔', '📣',
-  '😍', '🤩', '😎', '🥳', '👏', '🙌', '💃', '🕺', '👋', '🤝',
-];
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 
 interface LocationState {
   slices: ProcessedSlice[];
@@ -920,28 +914,24 @@ function CopyItemCard({
                 </button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-64 p-2 z-50"
+                className="w-[352px] p-0 z-50"
                 align="end"
+                side="bottom"
+                sideOffset={8}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="grid grid-cols-10 gap-1">
-                  {POPULAR_EMOJIS.map((emoji) => (
-                    <button
-                      type="button"
-                      key={emoji}
-                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onAddEmoji(emoji);
-                        requestAnimationFrame(() => inputRef.current?.focus());
-                      }}
-                      aria-label={`Insert ${emoji}`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
+                <Picker
+                  data={data}
+                  onEmojiSelect={(emoji: { native: string }) => {
+                    onAddEmoji(emoji.native);
+                    requestAnimationFrame(() => inputRef.current?.focus());
+                  }}
+                  theme="light"
+                  previewPosition="none"
+                  skinTonePosition="search"
+                  maxFrequentRows={2}
+                  perLine={9}
+                />
               </PopoverContent>
             </Popover>
           </div>
