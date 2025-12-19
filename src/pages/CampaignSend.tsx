@@ -31,13 +31,11 @@ interface LocationState {
   selectedListId?: string;
 }
 
-interface CopyPair {
+interface CopyItem {
   id: string;
-  subjectLine: string;
-  previewText: string;
+  text: string;
   isFavorite: boolean;
-  isEditingSL: boolean;
-  isEditingPT: boolean;
+  isEditing: boolean;
 }
 
 interface SegmentPreset {
@@ -75,24 +73,27 @@ export default function CampaignSend() {
   const [presetName, setPresetName] = useState('');
   const [isSavingPreset, setIsSavingPreset] = useState(false);
   
-  // Paired SL/PT state
-  const [copyPairs, setCopyPairs] = useState<CopyPair[]>([]);
-  const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
-  // For mix-and-match: override individual SL or PT from other pairs
-  const [overrideSubjectId, setOverrideSubjectId] = useState<string | null>(null);
-  const [overridePreviewId, setOverridePreviewId] = useState<string | null>(null);
+  // SEPARATE SL and PT lists
+  const [subjectLines, setSubjectLines] = useState<CopyItem[]>([]);
+  const [previewTexts, setPreviewTexts] = useState<CopyItem[]>([]);
+  const [selectedSLId, setSelectedSLId] = useState<string | null>(null);
+  const [selectedPTId, setSelectedPTId] = useState<string | null>(null);
+  
+  // Chat refinement
+  const [refinementPrompt, setRefinementPrompt] = useState('');
+  const [lastRefinement, setLastRefinement] = useState<string | null>(null);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   
-  // Emoji picker state
-  const [emojiPickerOpenFor, setEmojiPickerOpenFor] = useState<{ pairId: string; field: 'sl' | 'pt' } | null>(null);
+  // Emoji picker state - track which item and which type
+  const [emojiPickerOpenFor, setEmojiPickerOpenFor] = useState<{ itemId: string; type: 'sl' | 'pt' } | null>(null);
   
   // Success state
   const [campaignId, setCampaignId] = useState<string | null>(null);
 
-  // Filter lists based on search - show ALL segments, just filter by search
+  // Filter lists based on search
   const filteredIncludeLists = useMemo(() => {
     const available = klaviyoLists.filter(l => !includedSegments.includes(l.id) && !excludedSegments.includes(l.id));
     if (!includeSearch) return available;
@@ -105,27 +106,16 @@ export default function CampaignSend() {
     return available.filter(l => l.name.toLowerCase().includes(excludeSearch.toLowerCase()));
   }, [klaviyoLists, excludeSearch, includedSegments, excludedSegments]);
 
-  // Count favorites for dynamic refresh button
-  const favoritesCount = useMemo(() => copyPairs.filter(p => p.isFavorite).length, [copyPairs]);
-
-  // Get selected subject and preview (with overrides)
+  // Get selected texts
   const selectedSubject = useMemo(() => {
-    if (overrideSubjectId) {
-      const pair = copyPairs.find(p => p.id === overrideSubjectId);
-      return pair?.subjectLine || '';
-    }
-    const pair = copyPairs.find(p => p.id === selectedPairId);
-    return pair?.subjectLine || '';
-  }, [copyPairs, selectedPairId, overrideSubjectId]);
+    const item = subjectLines.find(s => s.id === selectedSLId);
+    return item?.text || '';
+  }, [subjectLines, selectedSLId]);
 
   const selectedPreview = useMemo(() => {
-    if (overridePreviewId) {
-      const pair = copyPairs.find(p => p.id === overridePreviewId);
-      return pair?.previewText || '';
-    }
-    const pair = copyPairs.find(p => p.id === selectedPairId);
-    return pair?.previewText || '';
-  }, [copyPairs, selectedPairId, overridePreviewId]);
+    const item = previewTexts.find(p => p.id === selectedPTId);
+    return item?.text || '';
+  }, [previewTexts, selectedPTId]);
 
   useEffect(() => {
     if (state) {
@@ -141,11 +131,10 @@ export default function CampaignSend() {
         setIncludedSegments([state.selectedListId]);
       }
       
-      // Load presets and generate pairs
       if (state.brandId) {
         loadPresets(state.brandId);
       }
-      generateCopyPairs(state.slices, state.brandName || '');
+      generateCopy(state.slices, state.brandName || '');
     } else {
       navigate('/');
     }
@@ -168,27 +157,32 @@ export default function CampaignSend() {
     }
   };
 
-  // Extract URLs from slices
   const extractedUrls = slices
     .filter(s => s.link)
     .map(s => s.link as string);
 
-  const generateCopyPairs = async (
+  const generateCopy = async (
     campaignSlices: ProcessedSlice[],
     brand: string,
-    favoritePairs?: CopyPair[]
+    prompt?: string
   ) => {
     setIsGenerating(true);
     try {
-      const favorites = favoritePairs || [];
-      const countNeeded = 10 - favorites.length;
+      // Keep favorited items
+      const favoriteSLs = subjectLines.filter(s => s.isFavorite);
+      const favoritePTs = previewTexts.filter(p => p.isFavorite);
+      const countNeeded = 10 - Math.max(favoriteSLs.length, favoritePTs.length);
 
       const { data, error } = await supabase.functions.invoke('generate-email-copy', {
         body: {
           slices: campaignSlices.map(s => ({ altText: s.altText, link: s.link })),
           brandContext: { name: brand, domain: brandDomain },
-          existingFavorites: favorites.map(f => ({ subjectLine: f.subjectLine, previewText: f.previewText })),
+          existingFavorites: {
+            subjectLines: favoriteSLs.map(s => s.text),
+            previewTexts: favoritePTs.map(p => p.text),
+          },
           pairCount: countNeeded,
+          refinementPrompt: prompt,
         }
       });
 
@@ -201,79 +195,125 @@ export default function CampaignSend() {
         return;
       }
 
-      const newPairs: CopyPair[] = [
-        ...favorites,
-        ...(data.pairs || []).map((pair: { subjectLine: string; previewText: string }, i: number) => ({
-          id: `pair-${Date.now()}-${i}`,
-          subjectLine: pair.subjectLine,
-          previewText: pair.previewText,
+      // Build new SL list
+      const newSLs: CopyItem[] = [
+        ...favoriteSLs,
+        ...(data.subjectLines || []).map((text: string, i: number) => ({
+          id: `sl-${Date.now()}-${i}`,
+          text,
           isFavorite: false,
-          isEditingSL: false,
-          isEditingPT: false,
+          isEditing: false,
         })),
       ];
 
-      setCopyPairs(newPairs);
+      // Build new PT list
+      const newPTs: CopyItem[] = [
+        ...favoritePTs,
+        ...(data.previewTexts || []).map((text: string, i: number) => ({
+          id: `pt-${Date.now()}-${i}`,
+          text,
+          isFavorite: false,
+          isEditing: false,
+        })),
+      ];
+
+      setSubjectLines(newSLs);
+      setPreviewTexts(newPTs);
       
-      if (!selectedPairId && newPairs.length > 0) {
-        setSelectedPairId(newPairs[0].id);
+      // Auto-select first if nothing selected
+      if (!selectedSLId && newSLs.length > 0) {
+        setSelectedSLId(newSLs[0].id);
+      }
+      if (!selectedPTId && newPTs.length > 0) {
+        setSelectedPTId(newPTs[0].id);
+      }
+
+      if (prompt) {
+        setLastRefinement(prompt);
+        setRefinementPrompt('');
       }
     } catch (err) {
-      console.error('Error generating pairs:', err);
+      console.error('Error generating copy:', err);
       toast.error('Failed to generate subject lines. Please try again.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleRefreshPairs = async () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    const favorites = copyPairs.filter(p => p.isFavorite);
-    await generateCopyPairs(slices, brandName, favorites);
+    await generateCopy(slices, brandName, refinementPrompt || undefined);
     setIsRefreshing(false);
   };
 
-  const toggleFavorite = (pairId: string) => {
-    setCopyPairs(prev => prev.map(p => 
-      p.id === pairId ? { ...p, isFavorite: !p.isFavorite } : p
-    ));
+  const toggleFavorite = (type: 'sl' | 'pt', itemId: string) => {
+    if (type === 'sl') {
+      setSubjectLines(prev => prev.map(s => 
+        s.id === itemId ? { ...s, isFavorite: !s.isFavorite } : s
+      ));
+    } else {
+      setPreviewTexts(prev => prev.map(p => 
+        p.id === itemId ? { ...p, isFavorite: !p.isFavorite } : p
+      ));
+    }
   };
 
-  const startEditing = (pairId: string, field: 'sl' | 'pt') => {
-    setCopyPairs(prev => prev.map(p => 
-      p.id === pairId 
-        ? { ...p, isEditingSL: field === 'sl' ? true : p.isEditingSL, isEditingPT: field === 'pt' ? true : p.isEditingPT }
-        : p
-    ));
+  const startEditing = (type: 'sl' | 'pt', itemId: string) => {
+    if (type === 'sl') {
+      setSubjectLines(prev => prev.map(s => 
+        s.id === itemId ? { ...s, isEditing: true } : s
+      ));
+    } else {
+      setPreviewTexts(prev => prev.map(p => 
+        p.id === itemId ? { ...p, isEditing: true } : p
+      ));
+    }
   };
 
-  const updateText = (pairId: string, field: 'sl' | 'pt', text: string) => {
-    setCopyPairs(prev => prev.map(p => 
-      p.id === pairId 
-        ? { ...p, subjectLine: field === 'sl' ? text : p.subjectLine, previewText: field === 'pt' ? text : p.previewText }
-        : p
-    ));
+  const updateText = (type: 'sl' | 'pt', itemId: string, text: string) => {
+    if (type === 'sl') {
+      setSubjectLines(prev => prev.map(s => 
+        s.id === itemId ? { ...s, text } : s
+      ));
+    } else {
+      setPreviewTexts(prev => prev.map(p => 
+        p.id === itemId ? { ...p, text } : p
+      ));
+    }
   };
 
-  const stopEditing = (pairId: string, field: 'sl' | 'pt') => {
-    setCopyPairs(prev => prev.map(p => 
-      p.id === pairId 
-        ? { ...p, isEditingSL: field === 'sl' ? false : p.isEditingSL, isEditingPT: field === 'pt' ? false : p.isEditingPT }
-        : p
-    ));
-  };
-
-  const addEmoji = (pairId: string, field: 'sl' | 'pt', emoji: string) => {
-    setCopyPairs(prev => prev.map(p => 
-      p.id === pairId 
-        ? { 
-            ...p, 
-            subjectLine: field === 'sl' ? p.subjectLine + emoji : p.subjectLine, 
-            previewText: field === 'pt' ? p.previewText + emoji : p.previewText 
-          }
-        : p
-    ));
+  const stopEditing = (type: 'sl' | 'pt', itemId: string) => {
+    if (type === 'sl') {
+      setSubjectLines(prev => prev.map(s => 
+        s.id === itemId ? { ...s, isEditing: false } : s
+      ));
+    } else {
+      setPreviewTexts(prev => prev.map(p => 
+        p.id === itemId ? { ...p, isEditing: false } : p
+      ));
+    }
     setEmojiPickerOpenFor(null);
+  };
+
+  const addEmoji = (type: 'sl' | 'pt', itemId: string, emoji: string) => {
+    if (type === 'sl') {
+      setSubjectLines(prev => prev.map(s => 
+        s.id === itemId ? { ...s, text: s.text + emoji } : s
+      ));
+    } else {
+      setPreviewTexts(prev => prev.map(p => 
+        p.id === itemId ? { ...p, text: p.text + emoji } : p
+      ));
+    }
+    setEmojiPickerOpenFor(null);
+  };
+
+  const selectItem = (type: 'sl' | 'pt', itemId: string) => {
+    if (type === 'sl') {
+      setSelectedSLId(prev => prev === itemId ? null : itemId);
+    } else {
+      setSelectedPTId(prev => prev === itemId ? null : itemId);
+    }
   };
 
   const addSegment = (type: 'include' | 'exclude', segmentId: string) => {
@@ -394,26 +434,6 @@ export default function CampaignSend() {
     }
   };
 
-  const selectPair = (pairId: string) => {
-    setSelectedPairId(pairId);
-    setOverrideSubjectId(null);
-    setOverridePreviewId(null);
-  };
-
-  const selectIndividualSL = (pairId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedPairId) {
-      setOverrideSubjectId(pairId === selectedPairId ? null : pairId);
-    }
-  };
-
-  const selectIndividualPT = (pairId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedPairId) {
-      setOverridePreviewId(pairId === selectedPairId ? null : pairId);
-    }
-  };
-
   if (campaignId) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -530,13 +550,12 @@ export default function CampaignSend() {
                 </div>
               )}
 
-              {/* Include/Exclude boxes with Popover */}
+              {/* Include/Exclude boxes */}
               <div className="grid grid-cols-2 gap-4">
                 {/* Include Box */}
                 <div className="border border-border/50 rounded-lg p-3 min-h-[80px]">
                   <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Include</label>
                   
-                  {/* Selected chips */}
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {includedSegments.map(segId => {
                       const list = klaviyoLists.find(l => l.id === segId);
@@ -554,7 +573,6 @@ export default function CampaignSend() {
                     })}
                   </div>
                   
-                  {/* Add segment popover */}
                   <Popover open={includePopoverOpen} onOpenChange={setIncludePopoverOpen}>
                     <PopoverTrigger asChild>
                       <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
@@ -662,36 +680,50 @@ export default function CampaignSend() {
               </div>
             </div>
 
-            {/* SL/PT Pairs Section */}
+            {/* SL/PT Section - Two Columns */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Subject Line & Preview Text</h3>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={handleRefreshPairs}
-                  disabled={isRefreshing || isGenerating}
-                  className="h-7 text-xs"
-                >
-                  <RefreshCw className={cn("w-3 h-3 mr-1", isRefreshing && "animate-spin")} />
-                  {favoritesCount > 1 ? `Refresh based on ${favoritesCount} favorites` : 'Refresh'}
-                </Button>
-              </div>
+              <h3 className="text-sm font-medium">Subject Line & Preview Text</h3>
 
-              {/* Current selection summary - ENHANCED */}
-              {selectedSubject && (
+              {/* Current selection summary */}
+              {(selectedSubject || selectedPreview) && (
                 <div className="p-4 rounded-lg bg-primary/10 border-2 border-primary shadow-sm">
                   <div className="flex gap-6">
                     <div className="flex-1">
                       <span className="text-xs font-semibold text-primary uppercase tracking-wider">Subject Line</span>
-                      <p className="mt-1 text-lg font-bold text-foreground">{selectedSubject}</p>
+                      <p className="mt-1 text-lg font-bold text-foreground">{selectedSubject || 'Select one →'}</p>
                     </div>
                     <div className="flex-1">
                       <span className="text-xs font-semibold text-primary uppercase tracking-wider">Preview Text</span>
-                      <p className="mt-1 text-base font-medium text-foreground">{selectedPreview}</p>
+                      <p className="mt-1 text-base font-medium text-foreground">{selectedPreview || 'Select one →'}</p>
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Chat refinement input */}
+              <div className="flex gap-2">
+                <Input
+                  value={refinementPrompt}
+                  onChange={(e) => setRefinementPrompt(e.target.value)}
+                  placeholder="e.g., 'Make them more playful' or 'Focus on the discount'"
+                  className="flex-1 text-sm"
+                  onKeyDown={(e) => e.key === 'Enter' && !isRefreshing && handleRefresh()}
+                />
+                <Button 
+                  onClick={handleRefresh}
+                  disabled={isRefreshing || isGenerating}
+                  size="sm"
+                  className="px-4"
+                >
+                  <RefreshCw className={cn("w-4 h-4 mr-1.5", isRefreshing && "animate-spin")} />
+                  {isRefreshing ? 'Generating...' : 'Refresh'}
+                </Button>
+              </div>
+
+              {lastRefinement && (
+                <p className="text-xs text-muted-foreground">
+                  Last request: "{lastRefinement}"
+                </p>
               )}
 
               {isGenerating ? (
@@ -699,30 +731,48 @@ export default function CampaignSend() {
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {copyPairs.map(pair => (
-                    <PairCard
-                      key={pair.id}
-                      pair={pair}
-                      isSelected={selectedPairId === pair.id}
-                      slOverride={overrideSubjectId === pair.id}
-                      ptOverride={overridePreviewId === pair.id}
-                      onSelect={() => selectPair(pair.id)}
-                      onSelectSL={(e) => selectIndividualSL(pair.id, e)}
-                      onSelectPT={(e) => selectIndividualPT(pair.id, e)}
-                      onToggleFavorite={() => toggleFavorite(pair.id)}
-                      onStartEdit={(field) => startEditing(pair.id, field)}
-                      onUpdateText={(field, text) => updateText(pair.id, field, text)}
-                      onStopEdit={(field) => stopEditing(pair.id, field)}
-                      onAddEmoji={(field, emoji) => addEmoji(pair.id, field, emoji)}
-                      emojiPickerOpen={emojiPickerOpenFor?.pairId === pair.id ? emojiPickerOpenFor.field : null}
-                      onEmojiPickerToggle={(field) => setEmojiPickerOpenFor(
-                        emojiPickerOpenFor?.pairId === pair.id && emojiPickerOpenFor.field === field
-                          ? null 
-                          : { pairId: pair.id, field }
-                      )}
-                    />
-                  ))}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Subject Lines Column */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider block">Subject Lines</label>
+                    {subjectLines.map(item => (
+                      <CopyItemCard
+                        key={item.id}
+                        item={item}
+                        type="sl"
+                        isSelected={selectedSLId === item.id}
+                        onSelect={() => selectItem('sl', item.id)}
+                        onToggleFavorite={() => toggleFavorite('sl', item.id)}
+                        onStartEdit={() => startEditing('sl', item.id)}
+                        onUpdateText={(text) => updateText('sl', item.id, text)}
+                        onStopEdit={() => stopEditing('sl', item.id)}
+                        onAddEmoji={(emoji) => addEmoji('sl', item.id, emoji)}
+                        emojiPickerOpen={emojiPickerOpenFor?.itemId === item.id && emojiPickerOpenFor.type === 'sl'}
+                        onEmojiPickerToggle={(open) => setEmojiPickerOpenFor(open ? { itemId: item.id, type: 'sl' } : null)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Preview Texts Column */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground uppercase tracking-wider block">Preview Texts</label>
+                    {previewTexts.map(item => (
+                      <CopyItemCard
+                        key={item.id}
+                        item={item}
+                        type="pt"
+                        isSelected={selectedPTId === item.id}
+                        onSelect={() => selectItem('pt', item.id)}
+                        onToggleFavorite={() => toggleFavorite('pt', item.id)}
+                        onStartEdit={() => startEditing('pt', item.id)}
+                        onUpdateText={(text) => updateText('pt', item.id, text)}
+                        onStopEdit={() => stopEditing('pt', item.id)}
+                        onAddEmoji={(emoji) => addEmoji('pt', item.id, emoji)}
+                        emojiPickerOpen={emojiPickerOpenFor?.itemId === item.id && emojiPickerOpenFor.type === 'pt'}
+                        onEmojiPickerToggle={(open) => setEmojiPickerOpenFor(open ? { itemId: item.id, type: 'pt' } : null)}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -760,32 +810,26 @@ export default function CampaignSend() {
   );
 }
 
-// Pair Card Component
-interface PairCardProps {
-  pair: CopyPair;
+// Individual Copy Item Card Component
+interface CopyItemCardProps {
+  item: CopyItem;
+  type: 'sl' | 'pt';
   isSelected: boolean;
-  slOverride: boolean;
-  ptOverride: boolean;
   onSelect: () => void;
-  onSelectSL: (e: React.MouseEvent) => void;
-  onSelectPT: (e: React.MouseEvent) => void;
   onToggleFavorite: () => void;
-  onStartEdit: (field: 'sl' | 'pt') => void;
-  onUpdateText: (field: 'sl' | 'pt', text: string) => void;
-  onStopEdit: (field: 'sl' | 'pt') => void;
-  onAddEmoji: (field: 'sl' | 'pt', emoji: string) => void;
-  emojiPickerOpen: 'sl' | 'pt' | null;
-  onEmojiPickerToggle: (field: 'sl' | 'pt') => void;
+  onStartEdit: () => void;
+  onUpdateText: (text: string) => void;
+  onStopEdit: () => void;
+  onAddEmoji: (emoji: string) => void;
+  emojiPickerOpen: boolean;
+  onEmojiPickerToggle: (open: boolean) => void;
 }
 
-function PairCard({
-  pair,
+function CopyItemCard({
+  item,
+  type,
   isSelected,
-  slOverride,
-  ptOverride,
   onSelect,
-  onSelectSL,
-  onSelectPT,
   onToggleFavorite,
   onStartEdit,
   onUpdateText,
@@ -793,16 +837,21 @@ function PairCard({
   onAddEmoji,
   emojiPickerOpen,
   onEmojiPickerToggle,
-}: PairCardProps) {
+}: CopyItemCardProps) {
   return (
     <div
       className={cn(
-        "relative flex rounded-lg border transition-all cursor-pointer group",
+        "relative flex items-start gap-2 p-3 rounded-lg border transition-all cursor-pointer group",
         isSelected
           ? "border-primary bg-primary/5"
           : "border-border/40 hover:border-border"
       )}
-      onClick={onSelect}
+      onClick={(e) => {
+        // If clicking on the text area and not editing, start editing
+        if (!item.isEditing) {
+          onSelect();
+        }
+      }}
     >
       {/* Selection indicator */}
       {isSelected && (
@@ -811,42 +860,41 @@ function PairCard({
         </div>
       )}
 
-      {/* Favorite indicator - click to toggle */}
+      {/* Favorite button */}
       <button
         onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
         className={cn(
-          "absolute top-2 left-2 p-0.5 rounded transition-colors",
-          pair.isFavorite 
+          "flex-shrink-0 p-0.5 rounded transition-colors mt-0.5",
+          item.isFavorite 
             ? "text-red-500" 
             : "text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100"
         )}
-        title={pair.isFavorite ? "Remove from favorites" : "Add to favorites"}
+        title={item.isFavorite ? "Remove from favorites" : "Add to favorites"}
       >
-        <Heart className={cn("w-3 h-3", pair.isFavorite && "fill-current")} />
+        <Heart className={cn("w-3 h-3", item.isFavorite && "fill-current")} />
       </button>
 
-      {/* Subject Line (left) - click to edit */}
+      {/* Text content - click to edit */}
       <div 
-        className={cn(
-          "flex-1 p-3 pl-6 border-r border-border/30",
-          slOverride && "ring-2 ring-primary ring-inset"
-        )}
+        className="flex-1 min-w-0"
         onClick={(e) => {
           e.stopPropagation();
-          onStartEdit('sl');
+          if (!item.isEditing) {
+            onStartEdit();
+          }
         }}
       >
-        {pair.isEditingSL ? (
+        {item.isEditing ? (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Input
-              value={pair.subjectLine}
-              onChange={(e) => onUpdateText('sl', e.target.value)}
-              onBlur={() => { onStopEdit('sl'); }}
-              onKeyDown={(e) => e.key === 'Enter' && onStopEdit('sl')}
+              value={item.text}
+              onChange={(e) => onUpdateText(e.target.value)}
+              onBlur={onStopEdit}
+              onKeyDown={(e) => e.key === 'Enter' && onStopEdit()}
               autoFocus
               className="text-sm h-8 pr-8"
             />
-            <Popover open={emojiPickerOpen === 'sl'} onOpenChange={() => onEmojiPickerToggle('sl')}>
+            <Popover open={emojiPickerOpen} onOpenChange={onEmojiPickerToggle}>
               <PopoverTrigger asChild>
                 <button
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
@@ -860,7 +908,7 @@ function PairCard({
                   {POPULAR_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
-                      onMouseDown={(e) => { e.preventDefault(); onAddEmoji('sl', emoji); }}
+                      onMouseDown={(e) => { e.preventDefault(); onAddEmoji(emoji); }}
                       className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
                     >
                       {emoji}
@@ -871,57 +919,12 @@ function PairCard({
             </Popover>
           </div>
         ) : (
-          <p className="text-sm font-medium leading-snug">{pair.subjectLine}</p>
-        )}
-      </div>
-
-      {/* Preview Text (right) - click to edit */}
-      <div 
-        className={cn(
-          "flex-1 p-3",
-          ptOverride && "ring-2 ring-primary ring-inset"
-        )}
-        onClick={(e) => {
-          e.stopPropagation();
-          onStartEdit('pt');
-        }}
-      >
-        {pair.isEditingPT ? (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Input
-              value={pair.previewText}
-              onChange={(e) => onUpdateText('pt', e.target.value)}
-              onBlur={() => { onStopEdit('pt'); }}
-              onKeyDown={(e) => e.key === 'Enter' && onStopEdit('pt')}
-              autoFocus
-              className="text-sm h-8 pr-8"
-            />
-            <Popover open={emojiPickerOpen === 'pt'} onOpenChange={() => onEmojiPickerToggle('pt')}>
-              <PopoverTrigger asChild>
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <Smile className="w-3.5 h-3.5" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
-                <div className="grid grid-cols-10 gap-1">
-                  {POPULAR_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onMouseDown={(e) => { e.preventDefault(); onAddEmoji('pt', emoji); }}
-                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground leading-snug">{pair.previewText}</p>
+          <p className={cn(
+            "text-sm leading-snug",
+            type === 'sl' ? "font-medium" : "text-muted-foreground"
+          )}>
+            {item.text}
+          </p>
         )}
       </div>
     </div>
