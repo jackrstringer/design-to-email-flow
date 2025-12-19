@@ -66,6 +66,8 @@ export default function CampaignSend() {
   const [excludedSegments, setExcludedSegments] = useState<string[]>([]);
   const [includeSearch, setIncludeSearch] = useState('');
   const [excludeSearch, setExcludeSearch] = useState('');
+  const [includePopoverOpen, setIncludePopoverOpen] = useState(false);
+  const [excludePopoverOpen, setExcludePopoverOpen] = useState(false);
   
   // Presets
   const [presets, setPresets] = useState<SegmentPreset[]>([]);
@@ -90,22 +92,21 @@ export default function CampaignSend() {
   // Success state
   const [campaignId, setCampaignId] = useState<string | null>(null);
 
-  // Filter lists based on search
+  // Filter lists based on search - show ALL segments, just filter by search
   const filteredIncludeLists = useMemo(() => {
-    if (!includeSearch) return klaviyoLists.filter(l => !excludedSegments.includes(l.id));
-    return klaviyoLists.filter(l => 
-      !excludedSegments.includes(l.id) && 
-      l.name.toLowerCase().includes(includeSearch.toLowerCase())
-    );
-  }, [klaviyoLists, includeSearch, excludedSegments]);
+    const available = klaviyoLists.filter(l => !includedSegments.includes(l.id) && !excludedSegments.includes(l.id));
+    if (!includeSearch) return available;
+    return available.filter(l => l.name.toLowerCase().includes(includeSearch.toLowerCase()));
+  }, [klaviyoLists, includeSearch, includedSegments, excludedSegments]);
 
   const filteredExcludeLists = useMemo(() => {
-    if (!excludeSearch) return klaviyoLists.filter(l => !includedSegments.includes(l.id));
-    return klaviyoLists.filter(l => 
-      !includedSegments.includes(l.id) && 
-      l.name.toLowerCase().includes(excludeSearch.toLowerCase())
-    );
-  }, [klaviyoLists, excludeSearch, includedSegments]);
+    const available = klaviyoLists.filter(l => !includedSegments.includes(l.id) && !excludedSegments.includes(l.id));
+    if (!excludeSearch) return available;
+    return available.filter(l => l.name.toLowerCase().includes(excludeSearch.toLowerCase()));
+  }, [klaviyoLists, excludeSearch, includedSegments, excludedSegments]);
+
+  // Count favorites for dynamic refresh button
+  const favoritesCount = useMemo(() => copyPairs.filter(p => p.isFavorite).length, [copyPairs]);
 
   // Get selected subject and preview (with overrides)
   const selectedSubject = useMemo(() => {
@@ -191,7 +192,14 @@ export default function CampaignSend() {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('429') || error.message?.includes('Rate limit')) {
+          toast.error('Rate limit reached. Please wait a moment and try again.');
+        } else {
+          throw error;
+        }
+        return;
+      }
 
       const newPairs: CopyPair[] = [
         ...favorites,
@@ -212,7 +220,7 @@ export default function CampaignSend() {
       }
     } catch (err) {
       console.error('Error generating pairs:', err);
-      toast.error('Failed to generate subject lines');
+      toast.error('Failed to generate subject lines. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -268,22 +276,14 @@ export default function CampaignSend() {
     setEmojiPickerOpenFor(null);
   };
 
-  const toggleSegment = (type: 'include' | 'exclude', segmentId: string) => {
+  const addSegment = (type: 'include' | 'exclude', segmentId: string) => {
     if (type === 'include') {
-      setIncludedSegments(prev => 
-        prev.includes(segmentId) 
-          ? prev.filter(id => id !== segmentId)
-          : [...prev, segmentId]
-      );
-      setExcludedSegments(prev => prev.filter(id => id !== segmentId));
+      setIncludedSegments(prev => [...prev, segmentId]);
     } else {
-      setExcludedSegments(prev => 
-        prev.includes(segmentId) 
-          ? prev.filter(id => id !== segmentId)
-          : [...prev, segmentId]
-      );
-      setIncludedSegments(prev => prev.filter(id => id !== segmentId));
+      setExcludedSegments(prev => [...prev, segmentId]);
     }
+    setIncludeSearch('');
+    setExcludeSearch('');
   };
 
   const removeSegment = (type: 'include' | 'exclude', segmentId: string) => {
@@ -530,123 +530,134 @@ export default function CampaignSend() {
                 </div>
               )}
 
-              {/* Include/Exclude boxes */}
+              {/* Include/Exclude boxes with Popover */}
               <div className="grid grid-cols-2 gap-4">
                 {/* Include Box */}
-                <div className="border border-border/50 rounded-lg p-3">
+                <div className="border border-border/50 rounded-lg p-3 min-h-[80px]">
                   <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Include</label>
                   
                   {/* Selected chips */}
-                  {includedSegments.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {includedSegments.map(segId => {
-                        const list = klaviyoLists.find(l => l.id === segId);
-                        return list ? (
-                          <span 
-                            key={segId} 
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
-                          >
-                            {list.name}
-                            <button onClick={() => removeSegment('include', segId)} className="hover:text-primary/70">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
-                  )}
-                  
-                  {/* Search input */}
-                  <div className="relative mb-2">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <Input
-                      value={includeSearch}
-                      onChange={(e) => setIncludeSearch(e.target.value)}
-                      placeholder="Search segments..."
-                      className="h-8 pl-7 text-xs"
-                    />
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {includedSegments.map(segId => {
+                      const list = klaviyoLists.find(l => l.id === segId);
+                      return list ? (
+                        <span 
+                          key={segId} 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary border border-primary/20"
+                        >
+                          {list.name}
+                          <button onClick={() => removeSegment('include', segId)} className="hover:text-primary/70">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
                   </div>
                   
-                  {/* List */}
-                  <div className="max-h-32 overflow-auto space-y-0.5">
-                    {filteredIncludeLists.map(list => (
-                      <button
-                        key={list.id}
-                        onClick={() => toggleSegment('include', list.id)}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors",
-                          includedSegments.includes(list.id)
-                            ? "bg-primary/10 text-primary"
-                            : "hover:bg-muted/50 text-muted-foreground"
-                        )}
-                      >
-                        <div className={cn(
-                          "w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0",
-                          includedSegments.includes(list.id) ? "bg-primary border-primary" : "border-border"
-                        )}>
-                          {includedSegments.includes(list.id) && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
-                        </div>
-                        <span className="truncate">{list.name}</span>
+                  {/* Add segment popover */}
+                  <Popover open={includePopoverOpen} onOpenChange={setIncludePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        <Plus className="w-3.5 h-3.5" />
+                        Add segment
                       </button>
-                    ))}
-                  </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="relative mb-2">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input
+                          value={includeSearch}
+                          onChange={(e) => setIncludeSearch(e.target.value)}
+                          placeholder="Search segments..."
+                          className="h-8 pl-7 text-xs"
+                          autoFocus
+                        />
+                      </div>
+                      <ScrollArea className="max-h-48">
+                        <div className="space-y-0.5">
+                          {filteredIncludeLists.length === 0 ? (
+                            <p className="text-xs text-muted-foreground py-2 text-center">No segments available</p>
+                          ) : (
+                            filteredIncludeLists.map(list => (
+                              <button
+                                key={list.id}
+                                onClick={() => {
+                                  addSegment('include', list.id);
+                                  setIncludePopoverOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-muted/80 text-foreground transition-colors"
+                              >
+                                <span className="truncate">{list.name}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 {/* Exclude Box */}
-                <div className="border border-border/50 rounded-lg p-3">
+                <div className="border border-border/50 rounded-lg p-3 min-h-[80px]">
                   <label className="text-xs text-muted-foreground uppercase tracking-wider block mb-2">Exclude</label>
                   
-                  {excludedSegments.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {excludedSegments.map(segId => {
-                        const list = klaviyoLists.find(l => l.id === segId);
-                        return list ? (
-                          <span 
-                            key={segId} 
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-destructive/10 text-destructive border border-destructive/20"
-                          >
-                            {list.name}
-                            <button onClick={() => removeSegment('exclude', segId)} className="hover:text-destructive/70">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ) : null;
-                      })}
-                    </div>
-                  )}
-                  
-                  <div className="relative mb-2">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <Input
-                      value={excludeSearch}
-                      onChange={(e) => setExcludeSearch(e.target.value)}
-                      placeholder="Search segments..."
-                      className="h-8 pl-7 text-xs"
-                    />
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {excludedSegments.map(segId => {
+                      const list = klaviyoLists.find(l => l.id === segId);
+                      return list ? (
+                        <span 
+                          key={segId} 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-destructive/10 text-destructive border border-destructive/20"
+                        >
+                          {list.name}
+                          <button onClick={() => removeSegment('exclude', segId)} className="hover:text-destructive/70">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
                   </div>
                   
-                  <div className="max-h-32 overflow-auto space-y-0.5">
-                    {filteredExcludeLists.map(list => (
-                      <button
-                        key={list.id}
-                        onClick={() => toggleSegment('exclude', list.id)}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors",
-                          excludedSegments.includes(list.id)
-                            ? "bg-destructive/10 text-destructive"
-                            : "hover:bg-muted/50 text-muted-foreground"
-                        )}
-                      >
-                        <div className={cn(
-                          "w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0",
-                          excludedSegments.includes(list.id) ? "bg-destructive border-destructive" : "border-border"
-                        )}>
-                          {excludedSegments.includes(list.id) && <Check className="w-2.5 h-2.5 text-destructive-foreground" />}
-                        </div>
-                        <span className="truncate">{list.name}</span>
+                  <Popover open={excludePopoverOpen} onOpenChange={setExcludePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                        <Plus className="w-3.5 h-3.5" />
+                        Add segment
                       </button>
-                    ))}
-                  </div>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="relative mb-2">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <Input
+                          value={excludeSearch}
+                          onChange={(e) => setExcludeSearch(e.target.value)}
+                          placeholder="Search segments..."
+                          className="h-8 pl-7 text-xs"
+                          autoFocus
+                        />
+                      </div>
+                      <ScrollArea className="max-h-48">
+                        <div className="space-y-0.5">
+                          {filteredExcludeLists.length === 0 ? (
+                            <p className="text-xs text-muted-foreground py-2 text-center">No segments available</p>
+                          ) : (
+                            filteredExcludeLists.map(list => (
+                              <button
+                                key={list.id}
+                                onClick={() => {
+                                  addSegment('exclude', list.id);
+                                  setExcludePopoverOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left hover:bg-muted/80 text-foreground transition-colors"
+                              >
+                                <span className="truncate">{list.name}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             </div>
@@ -663,21 +674,21 @@ export default function CampaignSend() {
                   className="h-7 text-xs"
                 >
                   <RefreshCw className={cn("w-3 h-3 mr-1", isRefreshing && "animate-spin")} />
-                  Refresh
+                  {favoritesCount > 1 ? `Refresh based on ${favoritesCount} favorites` : 'Refresh'}
                 </Button>
               </div>
 
-              {/* Current selection summary */}
+              {/* Current selection summary - ENHANCED */}
               {selectedSubject && (
-                <div className="p-3 rounded-lg bg-muted/30 border border-border/30 text-sm">
-                  <div className="flex gap-4">
+                <div className="p-4 rounded-lg bg-primary/10 border-2 border-primary shadow-sm">
+                  <div className="flex gap-6">
                     <div className="flex-1">
-                      <span className="text-xs text-muted-foreground uppercase tracking-wider">Subject</span>
-                      <p className="mt-0.5 font-medium">{selectedSubject}</p>
+                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">Subject Line</span>
+                      <p className="mt-1 text-lg font-bold text-foreground">{selectedSubject}</p>
                     </div>
                     <div className="flex-1">
-                      <span className="text-xs text-muted-foreground uppercase tracking-wider">Preview</span>
-                      <p className="mt-0.5">{selectedPreview}</p>
+                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">Preview Text</span>
+                      <p className="mt-1 text-base font-medium text-foreground">{selectedPreview}</p>
                     </div>
                   </div>
                 </div>
@@ -823,26 +834,6 @@ function PairCard({
               autoFocus
               className="text-sm h-8"
             />
-            <Popover open={emojiPickerOpen === 'sl'} onOpenChange={() => onEmojiPickerToggle('sl')}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 px-2">
-                  <Smile className="w-3 h-3" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-2" align="start">
-                <div className="grid grid-cols-10 gap-1">
-                  {POPULAR_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => onAddEmoji('sl', emoji)}
-                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
           </div>
         ) : (
           <p className="text-sm font-medium leading-snug">{pair.subjectLine}</p>
@@ -867,50 +858,95 @@ function PairCard({
               autoFocus
               className="text-sm h-8"
             />
-            <Popover open={emojiPickerOpen === 'pt'} onOpenChange={() => onEmojiPickerToggle('pt')}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 px-2">
-                  <Smile className="w-3 h-3" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-2" align="start">
-                <div className="grid grid-cols-10 gap-1">
-                  {POPULAR_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => onAddEmoji('pt', emoji)}
-                      className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground leading-snug">{pair.previewText}</p>
         )}
       </div>
 
-      {/* Actions on hover */}
+      {/* Actions on hover - now includes PT edit button and emoji buttons outside edit mode */}
       {!pair.isEditingSL && !pair.isEditingPT && (
         <div className="absolute top-1/2 -translate-y-1/2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Edit SL button */}
           <button
             onClick={(e) => { e.stopPropagation(); onStartEdit('sl'); }}
             className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-            title="Edit subject"
+            title="Edit subject line"
           >
             <Pencil className="w-3 h-3" />
           </button>
+          
+          {/* Edit PT button */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onStartEdit('pt'); }}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+            title="Edit preview text"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+          
+          {/* Emoji for SL */}
+          <Popover open={emojiPickerOpen === 'sl'} onOpenChange={() => onEmojiPickerToggle('sl')}>
+            <PopoverTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                title="Add emoji to subject"
+              >
+                <Smile className="w-3 h-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
+              <div className="grid grid-cols-10 gap-1">
+                {POPULAR_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={(e) => { e.stopPropagation(); onAddEmoji('sl', emoji); }}
+                    className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          {/* Emoji for PT */}
+          <Popover open={emojiPickerOpen === 'pt'} onOpenChange={() => onEmojiPickerToggle('pt')}>
+            <PopoverTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                title="Add emoji to preview"
+              >
+                <Smile className="w-3 h-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2 z-50" align="end" onClick={(e) => e.stopPropagation()}>
+              <div className="grid grid-cols-10 gap-1">
+                {POPULAR_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={(e) => { e.stopPropagation(); onAddEmoji('pt', emoji); }}
+                    className="w-6 h-6 flex items-center justify-center hover:bg-muted rounded text-base"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          {/* Favorite button */}
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
             className={cn(
               "p-1 rounded transition-colors",
               pair.isFavorite 
                 ? "text-red-500 hover:text-red-600" 
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                : "text-muted-foreground hover:text-red-500"
             )}
+            title={pair.isFavorite ? "Remove from favorites" : "Add to favorites"}
           >
             <Heart className={cn("w-3 h-3", pair.isFavorite && "fill-current")} />
           </button>

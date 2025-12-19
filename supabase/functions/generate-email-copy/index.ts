@@ -5,6 +5,33 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Retry with exponential backoff for rate limits
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit, 
+  maxRetries = 3
+): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(url, options);
+    
+    if (response.status === 429) {
+      // Rate limited - wait and retry
+      const retryAfter = response.headers.get('retry-after');
+      const waitTime = retryAfter 
+        ? parseInt(retryAfter) * 1000 
+        : Math.pow(2, attempt + 1) * 1000; // Exponential backoff: 2s, 4s, 8s
+      
+      console.log(`Rate limited. Waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      continue;
+    }
+    
+    return response;
+  }
+  
+  throw new Error('Rate limit exceeded after retries. Please try again in a moment.');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -62,7 +89,7 @@ Respond in this exact JSON format:
   ]
 }`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -79,6 +106,14 @@ Respond in this exact JSON format:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Anthropic API error:', errorText);
+      
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded. Please try again in a moment.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       throw new Error(`Anthropic API error: ${response.status}`);
     }
 
@@ -117,9 +152,13 @@ Respond in this exact JSON format:
   } catch (error: unknown) {
     console.error('Error in generate-email-copy:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
+    
+    // Check if it's a rate limit message and return appropriate status
+    const status = message.includes('Rate limit') ? 429 : 500;
+    
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
