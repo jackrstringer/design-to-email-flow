@@ -585,7 +585,7 @@ export default function CampaignSend() {
                           autoFocus
                         />
                       </div>
-                      <ScrollArea className="max-h-48">
+                      <ScrollArea className="max-h-72">
                         <div className="space-y-0.5">
                           {filteredIncludeLists.length === 0 ? (
                             <p className="text-xs text-muted-foreground py-2 text-center">No segments available</p>
@@ -648,7 +648,7 @@ export default function CampaignSend() {
                           autoFocus
                         />
                       </div>
-                      <ScrollArea className="max-h-48">
+                      <ScrollArea className="max-h-72">
                         <div className="space-y-0.5">
                           {filteredExcludeLists.length === 0 ? (
                             <p className="text-xs text-muted-foreground py-2 text-center">No segments available</p>
