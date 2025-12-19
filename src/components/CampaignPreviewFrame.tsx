@@ -13,8 +13,16 @@ export function CampaignPreviewFrame({ slices, footerHtml, className, width = 60
   const campaignHtml = useMemo(() => {
     const sliceHtml = slices.map((slice, index) => {
       if (slice.type === 'html' && slice.htmlContent) {
-        // HTML slice - render the HTML content directly
-        return slice.htmlContent;
+        // HTML slice - check if it's already wrapped in a table row or is raw content
+        const content = slice.htmlContent.trim();
+        
+        // If the content already starts with <tr> or is a table structure, return as-is
+        if (content.startsWith('<tr') || content.startsWith('<TR')) {
+          return content;
+        }
+        
+        // If it's a standalone element (not a tr), wrap it in a table row
+        return `<tr><td align="center" style="padding: 0;">${content}</td></tr>`;
       } else {
         // Image slice - wrap in table row with optional link
         const imgTag = `<img src="${slice.imageUrl}" alt="${slice.altText || `Section ${index + 1}`}" style="display: block; width: 100%; max-width: ${width}px; height: auto; border: 0;" />`;
