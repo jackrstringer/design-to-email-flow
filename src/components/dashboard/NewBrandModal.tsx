@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Check } from 'lucide-react';
+import { Loader2, Check, RefreshCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,14 @@ interface NewBrandModalProps {
   backgroundAnalysis?: Promise<any> | null;
 }
 
+interface LogoData {
+  darkLogoUrl: string;
+  darkLogoPublicId: string;
+  lightLogoUrl: string;
+  lightLogoPublicId: string;
+  detectedType: 'dark' | 'light';
+}
+
 export function NewBrandModal({ 
   open, 
   onOpenChange, 
@@ -47,6 +55,12 @@ export function NewBrandModal({
   const [socialLinks, setSocialLinks] = useState<Brand['socialLinks']>([]);
   const [typography, setTypography] = useState<Brand['typography'] | null>(null);
   const [allLinks, setAllLinks] = useState<string[]>([]);
+  
+  // Logo state
+  const [logoData, setLogoData] = useState<LogoData | null>(null);
+  const [isProcessingLogo, setIsProcessingLogo] = useState(false);
+  const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null);
+  const [colorScheme, setColorScheme] = useState<string | null>(null);
   
   // Footer builder state
   const [showFooterBuilder, setShowFooterBuilder] = useState(false);
@@ -96,6 +110,10 @@ export function NewBrandModal({
       setSocialLinks([]);
       setTypography(null);
       setAllLinks([]);
+      setLogoData(null);
+      setOriginalLogoUrl(null);
+      setColorScheme(null);
+      setIsProcessingLogo(false);
     }
   }, [open]);
 
@@ -108,7 +126,57 @@ export function NewBrandModal({
     }
   };
 
-  const applyAnalysisData = (data: any, domain: string) => {
+  // Process logo after analysis
+  const processLogo = async (logoUrl: string, domain: string, scheme: string | null) => {
+    if (!logoUrl || !logoUrl.startsWith('http')) {
+      console.log('No valid logo URL to process');
+      return;
+    }
+
+    setIsProcessingLogo(true);
+    try {
+      console.log('Processing logo:', logoUrl);
+      const { data, error } = await supabase.functions.invoke('process-brand-logo', {
+        body: { 
+          logoUrl, 
+          brandDomain: domain,
+          colorScheme: scheme 
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        setLogoData({
+          darkLogoUrl: data.darkLogoUrl,
+          darkLogoPublicId: data.darkLogoPublicId,
+          lightLogoUrl: data.lightLogoUrl,
+          lightLogoPublicId: data.lightLogoPublicId,
+          detectedType: data.detectedType,
+        });
+        console.log('Logo processed successfully:', data.detectedType);
+      }
+    } catch (error) {
+      console.error('Error processing logo:', error);
+      // Don't block the flow if logo processing fails
+    } finally {
+      setIsProcessingLogo(false);
+    }
+  };
+
+  // Swap the dark/light logos if auto-detection was wrong
+  const swapLogos = () => {
+    if (!logoData) return;
+    setLogoData({
+      darkLogoUrl: logoData.lightLogoUrl,
+      darkLogoPublicId: logoData.lightLogoPublicId,
+      lightLogoUrl: logoData.darkLogoUrl,
+      lightLogoPublicId: logoData.darkLogoPublicId,
+      detectedType: logoData.detectedType === 'dark' ? 'light' : 'dark',
+    });
+  };
+
+  const applyAnalysisData = async (data: any, domain: string) => {
     if (data?.colors) {
       setPrimaryColor(data.colors.primary || '#3b82f6');
       setSecondaryColor(data.colors.secondary || '#64748b');
@@ -139,10 +207,23 @@ export function NewBrandModal({
       setAllLinks(data.allLinks);
     }
 
+    // Store logo URL and colorScheme for processing
+    if (data?.logo) {
+      setOriginalLogoUrl(data.logo);
+    }
+    if (data?.colorScheme) {
+      setColorScheme(data.colorScheme);
+    }
+
     // Extract brand name from domain
     const nameParts = domain.split('.');
     const suggestedName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
     setBrandName(suggestedName);
+
+    // Process logo if available
+    if (data?.logo && data.logo.startsWith('http')) {
+      processLogo(data.logo, domain, data.colorScheme || null);
+    }
   };
 
   const handleAnalyze = async (url?: string) => {
@@ -209,6 +290,11 @@ export function NewBrandModal({
           all_links: allLinks as unknown as Json,
           typography: typography as unknown as Json,
           klaviyo_api_key: klaviyoApiKey.trim(),
+          // Add logo data if available
+          dark_logo_url: logoData?.darkLogoUrl || null,
+          dark_logo_public_id: logoData?.darkLogoPublicId || null,
+          light_logo_url: logoData?.lightLogoUrl || null,
+          light_logo_public_id: logoData?.lightLogoPublicId || null,
         })
         .select()
         .single();
@@ -231,6 +317,8 @@ export function NewBrandModal({
         klaviyoApiKey: data.klaviyo_api_key || undefined,
         footerConfigured: false,
         typography: typography || undefined,
+        darkLogoUrl: data.dark_logo_url || undefined,
+        lightLogoUrl: data.light_logo_url || undefined,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };
@@ -349,6 +437,56 @@ export function NewBrandModal({
                   }
                 </div>
               </div>
+
+              {/* Logo Preview */}
+              {(isProcessingLogo || logoData) && (
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Detected Logos</Label>
+                  {isProcessingLogo ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Processing logo...</span>
+                    </div>
+                  ) : logoData && (
+                    <div className="space-y-2">
+                      <div className="flex gap-4">
+                        {/* Dark logo (for light backgrounds) */}
+                        <div className="flex-1 space-y-1">
+                          <span className="text-xs text-muted-foreground">Dark (for light bg)</span>
+                          <div className="p-2 bg-white rounded-md border flex items-center justify-center h-12">
+                            <img 
+                              src={logoData.darkLogoUrl} 
+                              alt="Dark logo" 
+                              className="max-h-8 max-w-full object-contain"
+                            />
+                          </div>
+                        </div>
+                        {/* Light logo (for dark backgrounds) */}
+                        <div className="flex-1 space-y-1">
+                          <span className="text-xs text-muted-foreground">Light (for dark bg)</span>
+                          <div className="p-2 bg-gray-900 rounded-md border flex items-center justify-center h-12">
+                            <img 
+                              src={logoData.lightLogoUrl} 
+                              alt="Light logo" 
+                              className="max-h-8 max-w-full object-contain"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={swapLogos}
+                        className="text-xs h-7"
+                      >
+                        <RefreshCw className="w-3 h-3 mr-1" />
+                        Swap if incorrect
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Klaviyo API Key - PRIMARY INPUT */}
               <div className="space-y-2 pt-2 border-t">

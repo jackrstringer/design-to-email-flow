@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.generate-email-copy]
 verify_jwt = false
+
+[functions.process-brand-logo]
+verify_jwt = false
