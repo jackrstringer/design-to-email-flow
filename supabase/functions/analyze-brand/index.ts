@@ -152,6 +152,7 @@ serve(async (req) => {
       allLinks,
     };
 
+    console.log('Extracted logo URL:', logo);
     console.log('Brand analysis complete');
 
     return new Response(
