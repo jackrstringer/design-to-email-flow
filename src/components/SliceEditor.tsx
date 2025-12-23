@@ -123,9 +123,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const sliceCount = validSlicePositions.length + 1;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 overflow-hidden">
       {/* Compact header */}
-      <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
+      <div className="flex items-center justify-between pb-3 border-b border-border mb-3 shrink-0">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Define Slice Points</h3>
           <p className="text-sm text-muted-foreground">
@@ -174,9 +174,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
         {/* Center: Image with slice lines - constrained scroll viewport */}
         <div 
           ref={scrollContainerRef}
-          className="flex-1 overflow-auto rounded-lg border border-border bg-muted/30 min-h-0"
+          className="flex-1 overflow-auto rounded-lg border border-border bg-muted/30 scrollbar-hide"
         >
-          <div className="flex justify-center min-h-full">
+          <div className="flex justify-center p-4">
           <div 
             ref={containerRef}
             className={cn(
