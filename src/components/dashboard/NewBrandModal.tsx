@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader2, Check, RefreshCw } from 'lucide-react';
 import {
   Dialog,
@@ -42,6 +43,7 @@ export function NewBrandModal({
   backgroundAnalysis,
   pendingCampaignImageUrl
 }: NewBrandModalProps) {
+  const navigate = useNavigate();
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [brandName, setBrandName] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#3b82f6');
@@ -546,6 +548,18 @@ export function NewBrandModal({
         brand={createdBrand}
         onFooterSaved={handleFooterSaved}
         initialCampaignImageUrl={pendingCampaignImageUrl}
+        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData) => {
+          // Close the modal and navigate to footer editor
+          onOpenChange(false);
+          navigate(`/footer-editor/${createdBrand.id}`, {
+            state: {
+              referenceImageUrl,
+              footerHtml,
+              footerName: 'New Footer',
+              figmaDesignData,
+            }
+          });
+        }}
       />
     )}
   </>
