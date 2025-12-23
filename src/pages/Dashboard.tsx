@@ -259,6 +259,7 @@ export default function Dashboard() {
         initialDomain={pendingBrandDomain}
         onBrandCreated={handleNewBrandCreated}
         backgroundAnalysis={backgroundAnalysisRef.current}
+        pendingCampaignImageUrl={pendingCampaign?.dataUrl}
       />
     </div>
   );

@@ -24,6 +24,7 @@ interface FooterBuilderModalProps {
   brand: Brand;
   onFooterSaved: () => void;
   onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any) => void;
+  initialCampaignImageUrl?: string;
 }
 
 type Step = 'reference' | 'logos' | 'social' | 'generate';
@@ -65,7 +66,7 @@ interface FigmaDesignData {
   exportedImageUrl: string | null;
 }
 
-export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio }: FooterBuilderModalProps) {
+export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
   const [sourceType, setSourceType] = useState<SourceType>(null);
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
@@ -97,7 +98,19 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch campaigns - try current brand first, then all brands
+  // Handle campaign source click - use provided image or fetch from DB
+  const handleCampaignSourceClick = useCallback(() => {
+    if (initialCampaignImageUrl) {
+      // Use the just-uploaded campaign image directly
+      setSelectedCampaignImage(initialCampaignImageUrl);
+      setSourceType('campaign');
+    } else {
+      // Fallback: fetch campaigns from database
+      fetchCampaigns();
+    }
+  }, [initialCampaignImageUrl]);
+
+  // Fetch campaigns from database (only used when no initialCampaignImageUrl)
   const fetchCampaigns = useCallback(async () => {
     setIsFetchingCampaigns(true);
     setShowingAllBrands(false);
@@ -535,7 +548,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
                 {/* Pull from Campaign option */}
                 <div
-                  onClick={fetchCampaigns}
+                  onClick={handleCampaignSourceClick}
                   className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
                 >
                   {isFetchingCampaigns ? (
