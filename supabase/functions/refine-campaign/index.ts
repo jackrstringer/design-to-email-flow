@@ -366,7 +366,7 @@ Use any 6-char hex color. Match icon color to background contrast.`;
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-1-20250805',
         max_tokens: 8000,
         system: systemPrompt,
         messages

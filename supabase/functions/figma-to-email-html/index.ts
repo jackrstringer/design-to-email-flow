@@ -359,7 +359,7 @@ ${currentHtml}
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-opus-4-1-20250805',
       max_tokens: 12000,
       system: `You're comparing email footer images. Look at both images carefully. 
 List what's visually different, then provide fixed HTML. 
@@ -412,7 +412,7 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-opus-4-1-20250805',
       max_tokens: 8000,
       system: systemPrompt,
       messages,

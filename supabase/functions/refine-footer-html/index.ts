@@ -305,7 +305,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-1-20250805',
         max_tokens: 4096,
         system: FOOTER_REFINEMENT_RULES + figmaSpecsSection,
         messages: [

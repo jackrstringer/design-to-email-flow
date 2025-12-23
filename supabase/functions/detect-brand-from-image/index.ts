@@ -15,7 +15,7 @@ async function callClaude(contentParts: any[], apiKey: string, retryCount = 0): 
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-1-20250805',
       max_tokens: 1024,
       tools: [{
         type: "web_search_20250305",

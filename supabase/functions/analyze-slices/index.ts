@@ -155,7 +155,7 @@ Respond in JSON format:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-1-20250805',
         max_tokens: 4000,
         tools: [
           {
