@@ -23,6 +23,7 @@ interface NewBrandModalProps {
   initialDomain: string | null;
   onBrandCreated: (brand: Brand) => void;
   backgroundAnalysis?: Promise<any> | null;
+  pendingCampaignImageUrl?: string;
 }
 
 interface LogoData {
@@ -38,7 +39,8 @@ export function NewBrandModal({
   onOpenChange, 
   initialDomain, 
   onBrandCreated,
-  backgroundAnalysis 
+  backgroundAnalysis,
+  pendingCampaignImageUrl
 }: NewBrandModalProps) {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [brandName, setBrandName] = useState('');
@@ -543,6 +545,7 @@ export function NewBrandModal({
         }}
         brand={createdBrand}
         onFooterSaved={handleFooterSaved}
+        initialCampaignImageUrl={pendingCampaignImageUrl}
       />
     )}
   </>
