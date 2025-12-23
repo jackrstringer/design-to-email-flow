@@ -2,7 +2,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { SliceLine } from './SliceLine';
 import { FooterCutoffHandle } from './FooterCutoffHandle';
 import { Button } from '@/components/ui/button';
-import { Scissors, RotateCcw, ChevronRight, Image, Code } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SliceType } from '@/types/slice';
 
@@ -22,6 +23,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const [slicePositions, setSlicePositions] = useState<SlicePosition[]>([]);
   const [footerCutoff, setFooterCutoff] = useState(100); // 100 = no cutoff
   const [containerHeight, setContainerHeight] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(50); // Default 50% zoom
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
@@ -136,7 +138,21 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
             Click to add slice lines. Drag up from bottom to exclude footer.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {/* Zoom control */}
+          <div className="flex items-center gap-2">
+            <ZoomOut className="w-4 h-4 text-muted-foreground" />
+            <Slider
+              value={[zoomLevel]}
+              onValueChange={([v]) => setZoomLevel(v)}
+              min={25}
+              max={100}
+              step={5}
+              className="w-24"
+            />
+            <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground w-8">{zoomLevel}%</span>
+          </div>
           <span className="text-sm font-medium text-muted-foreground">
             {sliceCount} slice{sliceCount !== 1 ? 's' : ''}
           </span>
@@ -150,21 +166,26 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       </div>
 
       {/* Image with slice lines */}
-      <div 
-        ref={containerRef}
-        className={cn(
-          'relative cursor-crosshair rounded-lg overflow-hidden border border-border',
-          isProcessing && 'pointer-events-none opacity-70'
-        )}
-        onClick={handleImageClick}
-      >
-        <img
-          ref={imageRef}
-          src={imageDataUrl}
-          alt="Email to slice"
-          className="w-full h-auto block"
-          draggable={false}
-        />
+      <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
+        <div 
+          ref={containerRef}
+          className={cn(
+            'relative cursor-crosshair origin-top-left',
+            isProcessing && 'pointer-events-none opacity-70'
+          )}
+          style={{ 
+            width: `${zoomLevel}%`,
+            transform: `scale(1)`,
+          }}
+          onClick={handleImageClick}
+        >
+          <img
+            ref={imageRef}
+            src={imageDataUrl}
+            alt="Email to slice"
+            className="w-full h-auto block"
+            draggable={false}
+          />
         
         {/* Slice lines */}
         {slicePositions.map((sp, index) => (
@@ -204,6 +225,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
             })}
           </div>
         )}
+        </div>
       </div>
 
       {/* Slice Type Legend */}
