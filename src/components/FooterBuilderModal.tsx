@@ -301,39 +301,59 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         throw new Error(`HTTP error: ${response.status}`);
       }
 
-      // Handle SSE stream
+      // Handle SSE stream with proper buffering for large payloads
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let finalHtml = '';
+      let buffer = '';
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const text = decoder.decode(value, { stream: true });
-          const lines = text.split('\n');
-
-          for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  
-                  if (data.message) {
-                    setGenerationStatus(data.message);
-                  }
-
-                  if (data.status === 'complete') {
-                    finalHtml = data.html;
-                  }
-
-                  if (data.status === 'error') {
-                    throw new Error(data.error);
-                  }
-                } catch (parseError) {
-                  console.error('SSE parse error:', parseError, 'line:', line.substring(0, 100));
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete lines only (SSE events end with \n\n)
+          let lineEndIndex;
+          while ((lineEndIndex = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, lineEndIndex).trim();
+            buffer = buffer.slice(lineEndIndex + 1);
+            
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.message) {
+                  setGenerationStatus(data.message);
                 }
+
+                if (data.status === 'complete') {
+                  finalHtml = data.html;
+                }
+
+                if (data.status === 'error') {
+                  throw new Error(data.error);
+                }
+              } catch (parseError) {
+                // If parse fails, the data might span multiple lines - keep buffering
+                // Put the line back in buffer and wait for more data
+                buffer = line + '\n' + buffer;
+                break;
               }
+            }
+          }
+        }
+        
+        // Process any remaining buffered data
+        if (buffer.trim().startsWith('data: ')) {
+          try {
+            const data = JSON.parse(buffer.trim().slice(6));
+            if (data.status === 'complete') {
+              finalHtml = data.html;
+            }
+          } catch (e) {
+            console.error('Final buffer parse error:', e);
           }
         }
       }
