@@ -306,7 +306,11 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
       },
       body: JSON.stringify({
         model: 'claude-opus-4-1-20250805',
-        max_tokens: 4096,
+        max_tokens: 16000,
+        thinking: {
+          type: 'enabled',
+          budget_tokens: 10000,
+        },
         system: FOOTER_REFINEMENT_RULES + figmaSpecsSection,
         messages: [
           {
@@ -324,7 +328,14 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
     }
 
     const data = await response.json();
-    let refinedHtml = data.content?.[0]?.text || '';
+    // Extended thinking returns multiple content blocks - find the text one
+    let refinedHtml = '';
+    for (const block of data.content || []) {
+      if (block.type === 'text') {
+        refinedHtml = block.text;
+        break;
+      }
+    }
 
     // Clean up any markdown formatting
     refinedHtml = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();

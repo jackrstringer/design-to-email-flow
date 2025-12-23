@@ -360,7 +360,11 @@ ${currentHtml}
     },
     body: JSON.stringify({
       model: 'claude-opus-4-1-20250805',
-      max_tokens: 12000,
+      max_tokens: 16000,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10000,
+      },
       system: `You're comparing email footer images. Look at both images carefully. 
 List what's visually different, then provide fixed HTML. 
 You can see your previous attempts in this conversation - learn from them.`,
@@ -375,7 +379,14 @@ You can see your previous attempts in this conversation - learn from them.`,
   }
 
   const data = await response.json();
-  const responseText = data.content?.[0]?.text || '';
+  // Extended thinking returns multiple content blocks - find the text one
+  let responseText = '';
+  for (const block of data.content || []) {
+    if (block.type === 'text') {
+      responseText = block.text;
+      break;
+    }
+  }
 
   conversationHistory.push({ role: 'assistant', content: responseText });
 
@@ -413,7 +424,11 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
     },
     body: JSON.stringify({
       model: 'claude-opus-4-1-20250805',
-      max_tokens: 8000,
+      max_tokens: 16000,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10000,
+      },
       system: systemPrompt,
       messages,
     }),
@@ -426,7 +441,14 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
   }
 
   const data = await response.json();
-  const responseText = data.content?.[0]?.text || '';
+  // Extended thinking returns multiple content blocks - find the text one
+  let responseText = '';
+  for (const block of data.content || []) {
+    if (block.type === 'text') {
+      responseText = block.text;
+      break;
+    }
+  }
 
   const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
   return htmlMatch ? htmlMatch[1] : responseText;

@@ -195,8 +195,12 @@ Create a professional dark footer with centered layout.`}`;
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-        model: 'claude-opus-4-1-20250805',
-            max_tokens: 4096,
+            model: 'claude-opus-4-1-20250805',
+            max_tokens: 16000,
+            thinking: {
+              type: 'enabled',
+              budget_tokens: 10000,
+            },
             system: EMAIL_FOOTER_RULES,
             messages: conversationHistory,
           }),
@@ -209,7 +213,14 @@ Create a professional dark footer with centered layout.`}`;
         }
 
         const data = await response.json();
-        let html = data.content?.[0]?.text || '';
+        // Extended thinking returns multiple content blocks - find the text one
+        let html = '';
+        for (const block of data.content || []) {
+          if (block.type === 'text') {
+            html = block.text;
+            break;
+          }
+        }
         html = html.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
 
         // Add assistant response to conversation
@@ -256,8 +267,12 @@ Otherwise list ALL discrepancies with specific fixes needed.`;
                 'anthropic-version': '2023-06-01',
               },
               body: JSON.stringify({
-            model: 'claude-opus-4-1-20250805',
-                max_tokens: 2048,
+                model: 'claude-opus-4-1-20250805',
+                max_tokens: 8000,
+                thinking: {
+                  type: 'enabled',
+                  budget_tokens: 6000,
+                },
                 system: EMAIL_FOOTER_RULES,
                 messages: conversationHistory,
               }),
@@ -269,7 +284,14 @@ Otherwise list ALL discrepancies with specific fixes needed.`;
             }
 
             const validateData = await validateResponse.json();
-            const validationResult = validateData.content?.[0]?.text || '';
+            // Extended thinking returns multiple content blocks - find the text one
+            let validationResult = '';
+            for (const block of validateData.content || []) {
+              if (block.type === 'text') {
+                validationResult = block.text;
+                break;
+              }
+            }
             
             conversationHistory.push({ role: 'assistant', content: validationResult });
 
@@ -318,7 +340,11 @@ Return only the corrected HTML.`;
               },
               body: JSON.stringify({
                 model: 'claude-opus-4-1-20250805',
-                max_tokens: 4096,
+                max_tokens: 16000,
+                thinking: {
+                  type: 'enabled',
+                  budget_tokens: 10000,
+                },
                 system: EMAIL_FOOTER_RULES,
                 messages: conversationHistory,
               }),
@@ -330,7 +356,14 @@ Return only the corrected HTML.`;
             }
 
             const refineData = await refineResponse.json();
-            const refinedHtml = refineData.content?.[0]?.text || '';
+            // Extended thinking returns multiple content blocks - find the text one
+            let refinedHtml = '';
+            for (const block of refineData.content || []) {
+              if (block.type === 'text') {
+                refinedHtml = block.text;
+                break;
+              }
+            }
             
             if (refinedHtml) {
               html = refinedHtml.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
