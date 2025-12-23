@@ -305,6 +305,7 @@ export default function CampaignPage() {
         footerHtml: footer,
         brandName: (brand as any)?.name,
         brandDomain: (brand as any)?.domain,
+        brandId: (brand as any)?.id,
         klaviyoApiKey: apiKey,
         klaviyoLists,
         selectedListId,
