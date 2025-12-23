@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles, Figma, Image } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles, Figma, Image, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SocialLinksEditor } from './SocialLinksEditor';
 import { getSocialIconUrl, uploadAllSocialIcons } from '@/lib/socialIcons';
+import { FooterCropSelector } from './FooterCropSelector';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 
 interface FooterBuilderModalProps {
@@ -26,7 +27,15 @@ interface FooterBuilderModalProps {
 }
 
 type Step = 'reference' | 'logos' | 'social' | 'generate';
-type SourceType = 'image' | 'figma' | null;
+type SourceType = 'image' | 'figma' | 'campaign' | null;
+
+interface Campaign {
+  id: string;
+  name: string;
+  original_image_url: string | null;
+  thumbnail_url: string | null;
+  created_at: string;
+}
 
 interface FigmaDesignData {
   design: any;
@@ -65,6 +74,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [isFetchingFigma, setIsFetchingFigma] = useState(false);
   const [figmaData, setFigmaData] = useState<FigmaDesignData | null>(null);
   
+  // Campaign state
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [isFetchingCampaigns, setIsFetchingCampaigns] = useState(false);
+  const [selectedCampaignImage, setSelectedCampaignImage] = useState<string | null>(null);
+  const [isUploadingCrop, setIsUploadingCrop] = useState(false);
+  
   // Logo state
   const [darkLogoUrl, setDarkLogoUrl] = useState(brand.darkLogoUrl || '');
   const [lightLogoUrl, setLightLogoUrl] = useState(brand.lightLogoUrl || '');
@@ -78,6 +93,59 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [generationStatus, setGenerationStatus] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch campaigns when campaign source is selected
+  const fetchCampaigns = useCallback(async () => {
+    setIsFetchingCampaigns(true);
+    try {
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('id, name, original_image_url, thumbnail_url, created_at')
+        .eq('brand_id', brand.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      
+      const campaignsWithImages = (data || []).filter(c => c.original_image_url || c.thumbnail_url);
+      
+      if (campaignsWithImages.length === 0) {
+        toast.error('No campaigns with images found');
+        return;
+      }
+      
+      setCampaigns(campaignsWithImages);
+      setSourceType('campaign');
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      toast.error('Failed to fetch campaigns');
+    } finally {
+      setIsFetchingCampaigns(false);
+    }
+  }, [brand.id]);
+
+  const handleCropComplete = useCallback(async (croppedImageData: string) => {
+    setIsUploadingCrop(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: { 
+          imageData: croppedImageData,
+          folder: `brands/${brand.domain}/footer-reference`
+        }
+      });
+
+      if (error) throw error;
+      
+      setReferenceImageUrl(data.url);
+      setSelectedCampaignImage(null);
+      toast.success('Footer region extracted');
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload cropped image');
+    } finally {
+      setIsUploadingCrop(false);
+    }
+  }, [brand.domain]);
 
   const handleReferenceUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -392,24 +460,24 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
             {/* Source selection cards */}
             {!sourceType && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 {/* Image upload option */}
                 <div
                   onDrop={handleDrop}
                   onDragOver={(e) => e.preventDefault()}
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-border/60 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                  className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
                 >
                   {isUploadingReference ? (
-                    <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+                    <Loader2 className="w-6 h-6 mx-auto animate-spin text-muted-foreground" />
                   ) : (
-                    <div className="space-y-3">
-                      <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
-                        <Image className="w-6 h-6 text-muted-foreground" />
+                    <div className="space-y-2">
+                      <div className="w-10 h-10 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                        <Image className="w-5 h-5 text-muted-foreground" />
                       </div>
                       <div>
-                        <p className="font-medium text-sm">Upload Image</p>
-                        <p className="text-xs text-muted-foreground">Drop or click</p>
+                        <p className="font-medium text-xs">Upload Image</p>
+                        <p className="text-[10px] text-muted-foreground">Drop or click</p>
                       </div>
                     </div>
                   )}
@@ -425,17 +493,37 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {/* Figma link option */}
                 <div
                   onClick={() => setSourceType('figma')}
-                  className="border-2 border-dashed border-border/60 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                  className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
                 >
-                  <div className="space-y-3">
-                    <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
-                      <Figma className="w-6 h-6 text-muted-foreground" />
+                  <div className="space-y-2">
+                    <div className="w-10 h-10 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                      <Figma className="w-5 h-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium text-sm">Figma Link</p>
-                      <p className="text-xs text-muted-foreground">Paste prototype</p>
+                      <p className="font-medium text-xs">Figma Link</p>
+                      <p className="text-[10px] text-muted-foreground">Paste prototype</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Pull from Campaign option */}
+                <div
+                  onClick={fetchCampaigns}
+                  className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                >
+                  {isFetchingCampaigns ? (
+                    <Loader2 className="w-6 h-6 mx-auto animate-spin text-muted-foreground" />
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="w-10 h-10 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                        <Layers className="w-5 h-5 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-xs">From Campaign</p>
+                        <p className="text-[10px] text-muted-foreground">Select existing</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -514,6 +602,101 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 )}
                 <p className="text-xs text-muted-foreground text-center">
                   {figmaData.design?.name || 'Design ready for conversion'}
+                </p>
+              </div>
+            )}
+
+            {/* Campaign selection - list of campaigns */}
+            {sourceType === 'campaign' && !selectedCampaignImage && !referenceImageUrl && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSourceType(null);
+                      setCampaigns([]);
+                    }}
+                    className="h-8 px-2"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Label className="text-sm font-medium">Select a campaign</Label>
+                </div>
+                <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                  {campaigns.map((campaign) => (
+                    <div
+                      key={campaign.id}
+                      onClick={() => setSelectedCampaignImage(campaign.original_image_url || campaign.thumbnail_url)}
+                      className="cursor-pointer rounded-lg border border-border/50 overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
+                    >
+                      {(campaign.thumbnail_url || campaign.original_image_url) && (
+                        <img
+                          src={campaign.thumbnail_url || campaign.original_image_url!}
+                          alt={campaign.name}
+                          className="w-full h-24 object-cover object-top"
+                        />
+                      )}
+                      <div className="p-2">
+                        <p className="text-xs font-medium truncate">{campaign.name}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(campaign.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Campaign cropping view */}
+            {sourceType === 'campaign' && selectedCampaignImage && !referenceImageUrl && (
+              <div className="space-y-3">
+                {isUploadingCrop ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Uploading cropped image...</p>
+                  </div>
+                ) : (
+                  <FooterCropSelector
+                    imageUrl={selectedCampaignImage}
+                    onCrop={handleCropComplete}
+                    onCancel={() => setSelectedCampaignImage(null)}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Show campaign-sourced image preview */}
+            {sourceType === 'campaign' && referenceImageUrl && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">Footer extracted</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setReferenceImageUrl(null);
+                      setSelectedCampaignImage(null);
+                      setCampaigns([]);
+                      setSourceType(null);
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <img 
+                    src={referenceImageUrl} 
+                    alt="Footer reference" 
+                    className="w-full max-h-48 object-contain"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Click next to continue
                 </p>
               </div>
             )}
