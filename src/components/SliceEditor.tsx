@@ -23,9 +23,10 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const [slicePositions, setSlicePositions] = useState<SlicePosition[]>([]);
   const [footerCutoff, setFooterCutoff] = useState(100); // 100 = no cutoff
   const [containerHeight, setContainerHeight] = useState(0);
-  const [zoomLevel, setZoomLevel] = useState(50); // Default 50% zoom
+  const [zoomLevel, setZoomLevel] = useState(35); // Default 35% zoom
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -46,6 +47,24 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     window.addEventListener('resize', updateHeight);
     return () => window.removeEventListener('resize', updateHeight);
   }, [imageDataUrl]);
+
+  // Trackpad/scroll wheel zoom support
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Pinch-to-zoom on Mac trackpad fires as wheel with ctrlKey
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -5 : 5; // Zoom out/in by 5%
+        setZoomLevel(prev => Math.min(100, Math.max(20, prev + delta)));
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const handleImageClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current || isProcessing) return;
@@ -80,21 +99,6 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setSlicePositions(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const toggleSliceType = useCallback((sliceIndex: number) => {
-    // sliceIndex is the index of the slice (between lines), not the line index
-    // We need to find the line that creates the boundary for this slice
-    setSlicePositions(prev => {
-      // Create a mapping of slices to their types
-      // Slice 0 is from 0% to first line
-      // Slice 1 is from first line to second line, etc.
-      // The type is stored on the line that ends the previous slice
-      
-      // For simplicity, we'll store slice types in a different way:
-      // We'll encode the type in the slice position data
-      return prev;
-    });
-  }, []);
-
   const resetSlices = useCallback(() => {
     setSlicePositions([]);
     setFooterCutoff(100);
@@ -118,144 +122,147 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const validSlicePositions = slicePositions.filter(sp => sp.position < footerCutoff);
   const sliceCount = validSlicePositions.length + 1;
 
-  // Calculate slice regions for type toggling
-  const sliceRegions = [];
-  const positions = [0, ...slicePositions.map(sp => sp.position), 100];
-  for (let i = 0; i < positions.length - 1; i++) {
-    sliceRegions.push({
-      start: positions[i],
-      end: positions[i + 1],
-      type: 'image' as SliceType // Default all to image for now
-    });
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full">
+      {/* Compact header */}
+      <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Define Slice Points</h3>
           <p className="text-sm text-muted-foreground">
             Click to add slice lines. Drag up from bottom to exclude footer.
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Zoom control */}
-          <div className="flex items-center gap-2">
-            <ZoomOut className="w-4 h-4 text-muted-foreground" />
-            <Slider
-              value={[zoomLevel]}
-              onValueChange={([v]) => setZoomLevel(v)}
-              min={25}
-              max={100}
-              step={5}
-              className="w-24"
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={isProcessing}>
+            Cancel
+          </Button>
+          <Button onClick={handleProcess} disabled={isProcessing}>
+            {isProcessing ? (
+              <>Processing...</>
+            ) : (
+              <>
+                <Scissors className="w-4 h-4 mr-2" />
+                Process {sliceCount} Slice{sliceCount !== 1 ? 's' : ''}
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Main content: left controls, center image, right controls */}
+      <div className="flex flex-1 gap-4 min-h-0">
+        {/* Left side: Vertical zoom slider */}
+        <div className="flex flex-col items-center gap-2 py-4">
+          <ZoomIn className="w-4 h-4 text-muted-foreground" />
+          <Slider
+            value={[zoomLevel]}
+            onValueChange={([v]) => setZoomLevel(v)}
+            min={20}
+            max={100}
+            step={5}
+            orientation="vertical"
+            className="h-32"
+          />
+          <ZoomOut className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground font-medium">{zoomLevel}%</span>
+          <p className="text-[10px] text-muted-foreground text-center mt-1 max-w-[60px]">
+            Ctrl+scroll to zoom
+          </p>
+        </div>
+
+        {/* Center: Image with slice lines - flex-1 to take remaining space */}
+        <div 
+          ref={scrollContainerRef}
+          className="flex-1 overflow-auto rounded-lg border border-border bg-muted/30 flex justify-center"
+        >
+          <div 
+            ref={containerRef}
+            className={cn(
+              'relative cursor-crosshair shrink-0',
+              isProcessing && 'pointer-events-none opacity-70'
+            )}
+            style={{ 
+              width: `${zoomLevel}%`,
+              minWidth: `${zoomLevel}%`,
+            }}
+            onClick={handleImageClick}
+          >
+            <img
+              ref={imageRef}
+              src={imageDataUrl}
+              alt="Email to slice"
+              className="w-full h-auto block"
+              draggable={false}
             />
-            <ZoomIn className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground w-8">{zoomLevel}%</span>
+          
+            {/* Slice lines */}
+            {slicePositions.map((sp, index) => (
+              <SliceLine
+                key={index}
+                position={sp.position}
+                containerHeight={containerHeight}
+                onPositionChange={(newPos) => updatePosition(index, newPos)}
+                onDelete={() => deletePosition(index)}
+                index={index}
+              />
+            ))}
+
+            {/* Footer cutoff handle */}
+            <FooterCutoffHandle
+              position={footerCutoff}
+              containerHeight={containerHeight}
+              onPositionChange={setFooterCutoff}
+              onReset={() => setFooterCutoff(100)}
+            />
+
+            {/* Visual slice preview overlay */}
+            {slicePositions.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none">
+                {[0, ...slicePositions.map(sp => sp.position)].map((startPos, i) => {
+                  const endPos = slicePositions[i]?.position ?? 100;
+                  return (
+                    <div
+                      key={i}
+                      className="absolute left-0 right-0 border-l-4 border-primary/20"
+                      style={{
+                        top: `${startPos}%`,
+                        height: `${endPos - startPos}%`,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <span className="text-sm font-medium text-muted-foreground">
-            {sliceCount} slice{sliceCount !== 1 ? 's' : ''}
-          </span>
+        </div>
+
+        {/* Right side: Slice count and reset */}
+        <div className="flex flex-col items-center gap-3 py-4 min-w-[80px]">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-foreground">{sliceCount}</div>
+            <div className="text-xs text-muted-foreground">slice{sliceCount !== 1 ? 's' : ''}</div>
+          </div>
+          
           {(slicePositions.length > 0 || footerCutoff < 100) && (
-            <Button variant="ghost" size="sm" onClick={resetSlices} disabled={isProcessing}>
+            <Button variant="ghost" size="sm" onClick={resetSlices} disabled={isProcessing} className="w-full">
               <RotateCcw className="w-4 h-4 mr-1" />
               Reset
             </Button>
           )}
-        </div>
-      </div>
 
-      {/* Image with slice lines */}
-      <div className="overflow-auto max-h-[70vh] rounded-lg border border-border">
-        <div 
-          ref={containerRef}
-          className={cn(
-            'relative cursor-crosshair origin-top-left',
-            isProcessing && 'pointer-events-none opacity-70'
-          )}
-          style={{ 
-            width: `${zoomLevel}%`,
-            transform: `scale(1)`,
-          }}
-          onClick={handleImageClick}
-        >
-          <img
-            ref={imageRef}
-            src={imageDataUrl}
-            alt="Email to slice"
-            className="w-full h-auto block"
-            draggable={false}
-          />
-        
-        {/* Slice lines */}
-        {slicePositions.map((sp, index) => (
-          <SliceLine
-            key={index}
-            position={sp.position}
-            containerHeight={containerHeight}
-            onPositionChange={(newPos) => updatePosition(index, newPos)}
-            onDelete={() => deletePosition(index)}
-            index={index}
-          />
-        ))}
-
-        {/* Footer cutoff handle */}
-        <FooterCutoffHandle
-          position={footerCutoff}
-          containerHeight={containerHeight}
-          onPositionChange={setFooterCutoff}
-          onReset={() => setFooterCutoff(100)}
-        />
-
-        {/* Visual slice preview overlay */}
-        {slicePositions.length > 0 && (
-          <div className="absolute inset-0 pointer-events-none">
-            {[0, ...slicePositions.map(sp => sp.position)].map((startPos, i) => {
-              const endPos = slicePositions[i]?.position ?? 100;
-              return (
-                <div
-                  key={i}
-                  className="absolute left-0 right-0 border-l-4 border-primary/20"
-                  style={{
-                    top: `${startPos}%`,
-                    height: `${endPos - startPos}%`,
-                  }}
-                />
-              );
-            })}
+          {/* Legend moved to right side */}
+          <div className="mt-auto space-y-2 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Image className="w-3 h-3 shrink-0" />
+              <span>Image</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Code className="w-3 h-3 shrink-0" />
+              <span>HTML</span>
+            </div>
           </div>
-        )}
         </div>
-      </div>
-
-      {/* Slice Type Legend */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <Image className="w-3 h-3" />
-          <span>Image slices (default) - will be hosted images</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Code className="w-3 h-3" />
-          <span>HTML slices - can be set in review step</span>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={onCancel} disabled={isProcessing} className="flex-1">
-          Cancel
-        </Button>
-        <Button onClick={handleProcess} disabled={isProcessing} className="flex-1">
-          {isProcessing ? (
-            <>Processing...</>
-          ) : (
-            <>
-              <Scissors className="w-4 h-4 mr-2" />
-              Process {sliceCount} Slice{sliceCount !== 1 ? 's' : ''}
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </>
-          )}
-        </Button>
       </div>
     </div>
   );
