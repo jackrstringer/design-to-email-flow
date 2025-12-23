@@ -488,14 +488,12 @@ export function CampaignCreator({
   // Show slice editor when in that state
   if (viewState === 'slice-editor' && uploadedImageDataUrl) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <SliceEditor
-          imageDataUrl={uploadedImageDataUrl}
-          onProcess={processSlices}
-          onCancel={handleSliceCancel}
-          isProcessing={isProcessing}
-        />
-      </div>
+      <SliceEditor
+        imageDataUrl={uploadedImageDataUrl}
+        onProcess={processSlices}
+        onCancel={handleSliceCancel}
+        isProcessing={isProcessing}
+      />
     );
   }
 
