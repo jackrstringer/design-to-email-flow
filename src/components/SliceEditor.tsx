@@ -151,9 +151,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       </div>
 
       {/* Main content: left controls, center image, right controls */}
-      <div className="flex flex-1 gap-4 min-h-0">
+      <div className="flex flex-1 gap-4 min-h-0 overflow-hidden">
         {/* Left side: Vertical zoom slider */}
-        <div className="flex flex-col items-center gap-2 py-4">
+        <div className="flex flex-col items-center gap-2 py-4 shrink-0">
           <ZoomIn className="w-4 h-4 text-muted-foreground" />
           <Slider
             value={[zoomLevel]}
@@ -171,11 +171,12 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           </p>
         </div>
 
-        {/* Center: Image with slice lines - flex-1 to take remaining space */}
+        {/* Center: Image with slice lines - constrained scroll viewport */}
         <div 
           ref={scrollContainerRef}
-          className="flex-1 overflow-auto rounded-lg border border-border bg-muted/30 flex justify-center"
+          className="flex-1 overflow-auto rounded-lg border border-border bg-muted/30 min-h-0"
         >
+          <div className="flex justify-center min-h-full">
           <div 
             ref={containerRef}
             className={cn(
@@ -235,10 +236,11 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
               </div>
             )}
           </div>
+          </div>
         </div>
 
         {/* Right side: Slice count and reset */}
-        <div className="flex flex-col items-center gap-3 py-4 min-w-[80px]">
+        <div className="flex flex-col items-center gap-3 py-4 min-w-[80px] shrink-0">
           <div className="text-center">
             <div className="text-2xl font-bold text-foreground">{sliceCount}</div>
             <div className="text-xs text-muted-foreground">slice{sliceCount !== 1 ? 's' : ''}</div>
