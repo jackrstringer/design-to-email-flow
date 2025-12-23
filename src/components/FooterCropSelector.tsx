@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Scissors, Check, X } from 'lucide-react';
+import { Scissors, Check, X, Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 
 interface FooterCropSelectorProps {
   imageUrl: string;
@@ -12,11 +13,37 @@ interface FooterCropSelectorProps {
 export function FooterCropSelector({ imageUrl, onCrop, onCancel }: FooterCropSelectorProps) {
   const [cropPosition, setCropPosition] = useState(70); // Default 70% from top
   const [containerHeight, setContainerHeight] = useState(0);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [wasAutoDetected, setWasAutoDetected] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const isDragging = useRef(false);
   const startY = useRef(0);
   const startPosition = useRef(0);
+  const hasDetected = useRef(false);
+
+  // Auto-detect footer region when image loads
+  const detectFooterRegion = useCallback(async () => {
+    if (hasDetected.current || !imageUrl) return;
+    hasDetected.current = true;
+    setIsDetecting(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('detect-footer-region', {
+        body: { imageUrl }
+      });
+
+      if (!error && data?.footerStartPercent) {
+        console.log('AI detected footer at:', data.footerStartPercent, 'confidence:', data.confidence);
+        setCropPosition(data.footerStartPercent);
+        setWasAutoDetected(true);
+      }
+    } catch (err) {
+      console.error('Failed to auto-detect footer:', err);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [imageUrl]);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -31,6 +58,7 @@ export function FooterCropSelector({ imageUrl, onCrop, onCancel }: FooterCropSel
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setWasAutoDetected(false); // User is manually adjusting
     e.preventDefault();
     e.stopPropagation();
     isDragging.current = true;
@@ -107,8 +135,20 @@ export function FooterCropSelector({ imageUrl, onCrop, onCancel }: FooterCropSel
             if (containerRef.current) {
               setContainerHeight(containerRef.current.offsetHeight);
             }
+            // Trigger AI detection when image loads
+            detectFooterRegion();
           }}
         />
+
+        {/* AI Detection loading overlay */}
+        {isDetecting && (
+          <div className="absolute inset-0 bg-background/50 flex items-center justify-center">
+            <div className="bg-background border border-border rounded-lg px-4 py-3 flex items-center gap-2 shadow-lg">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span className="text-sm font-medium">Detecting footer...</span>
+            </div>
+          </div>
+        )}
 
         {/* Overlay for non-selected area (above the line) */}
         <div 
@@ -130,11 +170,17 @@ export function FooterCropSelector({ imageUrl, onCrop, onCancel }: FooterCropSel
             "absolute left-1/2 -translate-x-1/2 -translate-y-1/2",
             "px-3 py-1 rounded-full flex items-center gap-1.5",
             "text-xs font-medium whitespace-nowrap",
-            "bg-primary text-primary-foreground shadow-lg",
-            "transition-transform hover:scale-105"
+            "shadow-lg transition-transform hover:scale-105",
+            wasAutoDetected 
+              ? "bg-gradient-to-r from-primary to-purple-500 text-primary-foreground" 
+              : "bg-primary text-primary-foreground"
           )}>
-            <Scissors className="w-3 h-3" />
-            <span>Footer starts here</span>
+            {wasAutoDetected ? (
+              <Sparkles className="w-3 h-3" />
+            ) : (
+              <Scissors className="w-3 h-3" />
+            )}
+            <span>{wasAutoDetected ? 'AI detected' : 'Footer starts here'}</span>
           </div>
         </div>
 

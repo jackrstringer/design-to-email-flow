@@ -35,6 +35,8 @@ interface Campaign {
   original_image_url: string | null;
   thumbnail_url: string | null;
   created_at: string;
+  brand_id?: string;
+  brandName?: string;
 }
 
 interface FigmaDesignData {
@@ -77,6 +79,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   // Campaign state
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isFetchingCampaigns, setIsFetchingCampaigns] = useState(false);
+  const [showingAllBrands, setShowingAllBrands] = useState(false);
   const [selectedCampaignImage, setSelectedCampaignImage] = useState<string | null>(null);
   const [isUploadingCrop, setIsUploadingCrop] = useState(false);
   
@@ -94,20 +97,44 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch campaigns when campaign source is selected
+  // Fetch campaigns - try current brand first, then all brands
   const fetchCampaigns = useCallback(async () => {
     setIsFetchingCampaigns(true);
+    setShowingAllBrands(false);
     try {
+      // First try current brand
       const { data, error } = await supabase
         .from('campaigns')
-        .select('id, name, original_image_url, thumbnail_url, created_at')
+        .select('id, name, original_image_url, thumbnail_url, created_at, brand_id')
         .eq('brand_id', brand.id)
         .order('created_at', { ascending: false })
         .limit(10);
 
       if (error) throw error;
       
-      const campaignsWithImages = (data || []).filter(c => c.original_image_url || c.thumbnail_url);
+      let campaignsWithImages = (data || []).filter(c => c.original_image_url || c.thumbnail_url);
+      
+      // If no campaigns for current brand, get from ALL brands
+      if (campaignsWithImages.length === 0) {
+        const { data: allData, error: allError } = await supabase
+          .from('campaigns')
+          .select('id, name, original_image_url, thumbnail_url, created_at, brand_id, brands(name)')
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (allError) throw allError;
+        
+        campaignsWithImages = (allData || [])
+          .filter(c => c.original_image_url || c.thumbnail_url)
+          .map(c => ({
+            ...c,
+            brandName: (c.brands as { name: string } | null)?.name || 'Unknown'
+          }));
+        
+        if (campaignsWithImages.length > 0) {
+          setShowingAllBrands(true);
+        }
+      }
       
       if (campaignsWithImages.length === 0) {
         toast.error('No campaigns with images found');
@@ -623,6 +650,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   </Button>
                   <Label className="text-sm font-medium">Select a campaign</Label>
                 </div>
+                
+                {showingAllBrands && (
+                  <div className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+                    No campaigns found for {brand.name}. Showing recent campaigns from all brands.
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
                   {campaigns.map((campaign) => (
                     <div
@@ -640,7 +674,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                       <div className="p-2">
                         <p className="text-xs font-medium truncate">{campaign.name}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          {new Date(campaign.created_at).toLocaleDateString()}
+                          {campaign.brandName ? (
+                            <span className="flex items-center gap-1">
+                              <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[9px]">{campaign.brandName}</span>
+                            </span>
+                          ) : (
+                            new Date(campaign.created_at).toLocaleDateString()
+                          )}
                         </p>
                       </div>
                     </div>

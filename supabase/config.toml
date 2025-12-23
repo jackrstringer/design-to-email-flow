@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.process-brand-logo]
 verify_jwt = false
+
+[functions.detect-footer-region]
+verify_jwt = false
