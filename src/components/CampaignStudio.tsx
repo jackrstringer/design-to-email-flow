@@ -44,6 +44,11 @@ interface KlaviyoList {
   name: string;
 }
 
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: any;
+}
+
 interface CampaignStudioProps {
   mode?: 'campaign' | 'footer';
   slices: ProcessedSlice[];
@@ -75,6 +80,8 @@ interface CampaignStudioProps {
   selectedListId?: string | null;
   onSelectList?: (listId: string) => void;
   isLoadingLists?: boolean;
+  // Conversation history from initial generation
+  initialConversationHistory?: ConversationMessage[];
 }
 
 interface SliceDimensions {
@@ -109,6 +116,7 @@ export function CampaignStudio({
   selectedListId,
   onSelectList,
   isLoadingLists = false,
+  initialConversationHistory = [],
 }: CampaignStudioProps) {
   const isFooterMode = mode === 'footer';
   
@@ -134,11 +142,14 @@ export function CampaignStudio({
   const [showAltText, setShowAltText] = useState(false);
   const [includeFooter, setIncludeFooter] = useState(true);
   
-  // Ref for the footer preview iframe
-  const footerPreviewRef = useRef<HTMLIFrameElement>(null);
+  // Ref for the studio container (both panels) for side-by-side screenshot
+  const studioContainerRef = useRef<HTMLDivElement>(null);
   
   // Claude conversation history - persisted across refinements
-  const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>([]);
+  const [claudeConversationHistory, setClaudeConversationHistory] = useState<ConversationMessage[]>(initialConversationHistory);
+  
+  // Track if auto-refine has been triggered after initial load
+  const [hasAutoRefined, setHasAutoRefined] = useState(false);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
@@ -282,71 +293,77 @@ export function CampaignStudio({
     setChatMessages(newMessages);
     setIsRefining(true);
 
-    // Detect target section from message
-    const target = detectTargetSection(message);
-    console.log('Detected target:', target);
-
-    // Build social icons data with URL pattern (Claude can use any color)
-    const socialIconsData = {
-      urlPattern: 'https://cdn.simpleicons.org/{slug}/{hexColorWithoutHash}',
-      platforms: brandContext?.socialLinks?.map(link => ({
-        platform: link.platform,
-        slug: PLATFORM_SLUGS[link.platform.toLowerCase()] || link.platform.toLowerCase(),
-        profileUrl: link.url,
-      })) || [],
-    };
-
     try {
-      const { data, error } = await supabase.functions.invoke('refine-campaign', {
-        body: {
-          allSlices: slices.map(s => ({
-            type: s.type,
-            imageUrl: s.imageUrl,
-            htmlContent: s.htmlContent,
-            altText: s.altText,
-            link: s.link,
-          })),
-          footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
-          originalCampaignImageUrl: originalImageUrl,
-          targetSection: target, // NEW: specify which section to target
-          conversationHistory: claudeConversationHistory,
-          userRequest: message,
-          brandUrl,
-          brandContext,
-          figmaDesignData: normalizedFigmaData,
-          isFooterMode,
-          lightLogoUrl: brandContext?.lightLogoUrl,
-          darkLogoUrl: brandContext?.darkLogoUrl,
-          socialIcons: socialIconsData,
-        }
-      });
-
-      if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
-
-      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
-      
-      // Update Claude conversation history if returned
-      if (data.conversationHistory) {
-        setClaudeConversationHistory(data.conversationHistory);
-      }
-
-      // Handle footer updates
-      if (data.updatedFooterHtml) {
-        setLocalFooterHtml(data.updatedFooterHtml);
-        toast.success('Footer updated');
-      }
-
-      if (data.updatedSlices && data.updatedSlices.length > 0) {
-        const updatedSlices = slices.map((slice, i) => {
-          const updated = data.updatedSlices.find((u: any) => u.index === i);
-          if (updated?.htmlContent && slice.type === 'html') {
-            return { ...slice, htmlContent: updated.htmlContent };
+      if (isFooterMode) {
+        // Use unified footer-conversation for chat in footer mode
+        const { data, error } = await supabase.functions.invoke('footer-conversation', {
+          body: {
+            action: 'chat',
+            referenceImageUrl: originalImageUrl,
+            currentHtml: localFooterHtml,
+            userMessage: message,
+            conversationHistory: claudeConversationHistory,
           }
-          return slice;
         });
-        onSlicesChange(updatedSlices);
-        toast.success('HTML updated');
+
+        if (error) throw new Error(error.message);
+        if (!data.success) throw new Error(data.error || 'Chat failed');
+
+        setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
+        
+        if (data.conversationHistory) {
+          setClaudeConversationHistory(data.conversationHistory);
+        }
+        if (data.html) {
+          setLocalFooterHtml(data.html);
+          toast.success('Footer updated');
+        }
+      } else {
+        // Campaign mode - use existing refine-campaign function
+        const target = detectTargetSection(message);
+        const { data, error } = await supabase.functions.invoke('refine-campaign', {
+          body: {
+            allSlices: slices.map(s => ({
+              type: s.type,
+              imageUrl: s.imageUrl,
+              htmlContent: s.htmlContent,
+              altText: s.altText,
+              link: s.link,
+            })),
+            footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
+            originalCampaignImageUrl: originalImageUrl,
+            targetSection: target,
+            conversationHistory: claudeConversationHistory,
+            userRequest: message,
+            brandUrl,
+            brandContext,
+            isFooterMode,
+          }
+        });
+
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+
+        setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Changes applied!' }]);
+        
+        if (data.conversationHistory) {
+          setClaudeConversationHistory(data.conversationHistory);
+        }
+        if (data.updatedFooterHtml) {
+          setLocalFooterHtml(data.updatedFooterHtml);
+          toast.success('Footer updated');
+        }
+        if (data.updatedSlices && data.updatedSlices.length > 0) {
+          const updatedSlices = slices.map((slice, i) => {
+            const updated = data.updatedSlices.find((u: any) => u.index === i);
+            if (updated?.htmlContent && slice.type === 'html') {
+              return { ...slice, htmlContent: updated.htmlContent };
+            }
+            return slice;
+          });
+          onSlicesChange(updatedSlices);
+          toast.success('HTML updated');
+        }
       }
     } catch (err) {
       setChatMessages([...newMessages, { 
@@ -359,119 +376,149 @@ export function CampaignStudio({
     }
   };
 
-  const handleAutoRefine = async () => {
-    setIsAutoRefining(true);
-    
-    // Build a more comprehensive auto-refine prompt for multi-slice campaigns
-    const htmlSliceCount = slices.filter(s => s.type === 'html').length;
-    
-    let autoRefinePrompt: string;
-    let currentPreviewImageUrl: string | undefined;
-    
-    if (isFooterMode) {
-      autoRefinePrompt = 'Compare the current render against the reference image. Identify every visual difference and fix them. Pay attention to: background colors, spacing, typography, icon sizes, element alignment.';
-      
-      // Capture screenshot of footer preview iframe
-      try {
-        const previewFrame = document.querySelector('iframe[title="Footer Preview"]') as HTMLIFrameElement;
-        if (previewFrame?.contentDocument?.body) {
-          toast.info('Capturing preview screenshot...');
-          const screenshotDataUrl = await toPng(previewFrame.contentDocument.body, {
-            width: BASE_WIDTH,
-            backgroundColor: '#ffffff',
-            pixelRatio: 2
-          });
-          
-          // Upload screenshot to Cloudinary for Claude to access
-          const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
-            body: { 
-              imageData: screenshotDataUrl,
-              folder: 'footer-previews'
-            }
-          });
-          
-          if (!uploadError && uploadData?.url) {
-            currentPreviewImageUrl = uploadData.url;
-            console.log('Screenshot uploaded:', currentPreviewImageUrl);
-          }
-        }
-      } catch (screenshotErr) {
-        console.warn('Failed to capture preview screenshot:', screenshotErr);
-        // Continue without screenshot - text-only comparison
-      }
-    } else if (htmlSliceCount > 1) {
-      autoRefinePrompt = `Analyze all ${htmlSliceCount} HTML sections. For each one, compare against its reference image and update to match. Ensure consistent styling across ALL sections.`;
-    } else {
-      autoRefinePrompt = 'Compare the HTML against the reference image and update to match exactly.';
+  // Capture side-by-side screenshot of reference + preview panels
+  const captureStudioScreenshot = async (): Promise<string | null> => {
+    if (!studioContainerRef.current) {
+      console.warn('Studio container ref not available');
+      return null;
     }
-    
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
-    setChatMessages(newMessages);
-
-    // Build social icons data with URL pattern (Claude can use any color)
-    const socialIconsData = {
-      urlPattern: 'https://cdn.simpleicons.org/{slug}/{hexColorWithoutHash}',
-      platforms: brandContext?.socialLinks?.map(link => ({
-        platform: link.platform,
-        slug: PLATFORM_SLUGS[link.platform.toLowerCase()] || link.platform.toLowerCase(),
-        profileUrl: link.url,
-      })) || [],
-    };
 
     try {
-      const { data, error } = await supabase.functions.invoke('refine-campaign', {
+      toast.info('Capturing side-by-side comparison...');
+      
+      // Capture the entire studio container showing reference + preview
+      const screenshotDataUrl = await toPng(studioContainerRef.current, {
+        backgroundColor: '#1a1a1a',
+        pixelRatio: 1.5, // Good balance between quality and size
+        cacheBust: true,
+      });
+      
+      // Upload to Cloudinary
+      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: { 
+          imageData: screenshotDataUrl,
+          folder: 'studio-screenshots'
+        }
+      });
+      
+      if (uploadError) {
+        console.error('Failed to upload screenshot:', uploadError);
+        return null;
+      }
+      
+      console.log('Side-by-side screenshot uploaded:', uploadData.url);
+      return uploadData.url;
+    } catch (err) {
+      console.error('Failed to capture studio screenshot:', err);
+      return null;
+    }
+  };
+
+  const handleAutoRefine = async () => {
+    if (!isFooterMode) {
+      // For non-footer mode, use the old refine-campaign function
+      // (keeping existing behavior for campaigns)
+      setIsAutoRefining(true);
+      const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine]' }];
+      setChatMessages(newMessages);
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('refine-campaign', {
+          body: {
+            allSlices: slices.map(s => ({
+              type: s.type,
+              imageUrl: s.imageUrl,
+              htmlContent: s.htmlContent,
+              altText: s.altText,
+              link: s.link,
+            })),
+            footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
+            originalCampaignImageUrl: originalImageUrl,
+            targetSection: { type: 'all' },
+            conversationHistory: claudeConversationHistory,
+            userRequest: 'Compare and fix all visual differences.',
+            brandUrl,
+            brandContext,
+            isFooterMode,
+          }
+        });
+
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        
+        setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Refinement complete!' }]);
+        
+        if (data.conversationHistory) {
+          setClaudeConversationHistory(data.conversationHistory);
+        }
+        if (data.updatedFooterHtml) {
+          setLocalFooterHtml(data.updatedFooterHtml);
+        }
+        if (data.updatedSlices && data.updatedSlices.length > 0) {
+          const updatedSlices = slices.map((slice, i) => {
+            const updated = data.updatedSlices.find((u: any) => u.index === i);
+            if (updated?.htmlContent && slice.type === 'html') {
+              return { ...slice, htmlContent: updated.htmlContent };
+            }
+            return slice;
+          });
+          onSlicesChange(updatedSlices);
+        }
+      } catch (err) {
+        setChatMessages([...newMessages, { 
+          role: 'assistant', 
+          content: `Failed: ${err instanceof Error ? err.message : 'Unknown error'}` 
+        }]);
+        toast.error('Auto-refine failed');
+      } finally {
+        setIsAutoRefining(false);
+      }
+      return;
+    }
+
+    // Footer mode: Use unified footer-conversation with side-by-side screenshot
+    setIsAutoRefining(true);
+    setHasAutoRefined(true);
+    
+    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Comparing side-by-side]' }];
+    setChatMessages(newMessages);
+
+    try {
+      // Wait a moment for the preview to fully render
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Capture the side-by-side screenshot
+      const sideBySideScreenshotUrl = await captureStudioScreenshot();
+      
+      if (!sideBySideScreenshotUrl) {
+        throw new Error('Failed to capture side-by-side screenshot');
+      }
+
+      // Call footer-conversation with refine action
+      const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
-          allSlices: slices.map(s => ({
-            type: s.type,
-            imageUrl: s.imageUrl,
-            htmlContent: s.htmlContent,
-            altText: s.altText,
-            link: s.link,
-          })),
-          footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
-          originalCampaignImageUrl: originalImageUrl,
-          currentPreviewImageUrl, // NEW: Screenshot of current render for visual comparison
-          targetSection: { type: 'all' }, // Auto-refine targets all sections
+          action: 'refine',
+          referenceImageUrl: originalImageUrl,
+          sideBySideScreenshotUrl,
+          currentHtml: localFooterHtml,
           conversationHistory: claudeConversationHistory,
-          userRequest: autoRefinePrompt,
-          brandUrl,
-          brandContext,
-          figmaDesignData: normalizedFigmaData,
-          isFooterMode,
-          lightLogoUrl: brandContext?.lightLogoUrl,
-          darkLogoUrl: brandContext?.darkLogoUrl,
-          socialIcons: socialIconsData,
         }
       });
 
       if (error) throw new Error(error.message);
-      if (data?.error) throw new Error(data.error);
+      if (!data.success) throw new Error(data.error || 'Refinement failed');
 
-      const responseMessage = data.styleConsistencyNotes 
-        ? `${data.message || 'Refinement complete!'}\n\nStyle notes: ${data.styleConsistencyNotes}`
-        : data.message || 'Refinement complete!';
+      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Compared and fixed differences.' }]);
       
-      setChatMessages([...newMessages, { role: 'assistant', content: responseMessage }]);
-      
+      // Update conversation history
       if (data.conversationHistory) {
         setClaudeConversationHistory(data.conversationHistory);
       }
 
-      if (data.updatedFooterHtml) {
-        setLocalFooterHtml(data.updatedFooterHtml);
-        toast.success('Footer refined');
-      }
-
-      if (data.updatedSlices && data.updatedSlices.length > 0) {
-        const updatedSlices = slices.map((slice, i) => {
-          const updated = data.updatedSlices.find((u: any) => u.index === i);
-          if (updated?.htmlContent && slice.type === 'html') {
-            return { ...slice, htmlContent: updated.htmlContent };
-          }
-          return slice;
-        });
-        onSlicesChange(updatedSlices);
-        toast.success(`${data.updatedSlices.length} slice(s) refined`);
+      // Apply updated HTML
+      if (data.html) {
+        setLocalFooterHtml(data.html);
+        toast.success('Footer refined based on visual comparison');
       }
     } catch (err) {
       setChatMessages([...newMessages, { 
@@ -483,6 +530,17 @@ export function CampaignStudio({
       setIsAutoRefining(false);
     }
   };
+
+  // Auto-refine on initial load for footer mode (after a short delay for render)
+  useEffect(() => {
+    if (isFooterMode && localFooterHtml && !hasAutoRefined && claudeConversationHistory.length > 0) {
+      // Wait for preview to render, then auto-refine
+      const timer = setTimeout(() => {
+        handleAutoRefine();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isFooterMode, localFooterHtml, hasAutoRefined, claudeConversationHistory.length]);
 
   const scaledWidth = BASE_WIDTH * (zoomLevel / 100);
 
@@ -731,7 +789,7 @@ export function CampaignStudio({
       </div>
 
       {/* Panel Layout - Chat narrower, content gets more space */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div ref={studioContainerRef} className="flex-1 flex min-h-0 overflow-hidden">
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Panel 1: Chat */}
         {chatExpanded && (

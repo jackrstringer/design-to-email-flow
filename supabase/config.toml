@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.extract-section-assets]
 verify_jwt = false
+
+[functions.footer-conversation]
+verify_jwt = false

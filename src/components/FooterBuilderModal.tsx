@@ -18,12 +18,17 @@ import { FooterCropSelector } from './FooterCropSelector';
 import { AssetCollectionModal } from './AssetCollectionModal';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: any;
+}
+
 interface FooterBuilderModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   brand: Brand;
   onFooterSaved: () => void;
-  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any) => void;
+  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any, conversationHistory?: ConversationMessage[]) => void;
   initialCampaignImageUrl?: string;
 }
 
@@ -388,13 +393,15 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       setGenerationStatus('Generating footer HTML...');
       
-      const { data, error } = await supabase.functions.invoke('generate-simple-footer', {
+      // Use the unified footer-conversation function
+      const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
+          action: 'generate',
           referenceImageUrl,
           assets: collectedAssets,
           styles: extractedStyles,
           socialIcons: socialIconsForGeneration,
-          textBasedElements
+          conversationHistory: [] // Fresh conversation
         }
       });
 
@@ -405,11 +412,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       }
 
       console.log('Footer generated, HTML length:', data.html.length);
+      console.log('Conversation history length:', data.conversationHistory?.length || 0);
 
-      // Hand off to studio for refinement
+      // Hand off to studio for refinement with conversation history
       if (onOpenStudio && referenceImageUrl) {
         onOpenChange(false);
-        onOpenStudio(referenceImageUrl, data.html, figmaData ? { design: figmaData.design, designData: figmaData.designData } : undefined);
+        onOpenStudio(
+          referenceImageUrl, 
+          data.html, 
+          figmaData ? { design: figmaData.design, designData: figmaData.designData } : undefined,
+          data.conversationHistory || []
+        );
       } else {
         toast.success('Footer generated!');
       }
