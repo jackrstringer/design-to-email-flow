@@ -143,22 +143,33 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         },
         {
           type: 'text',
-          text: `This screenshot shows the reference design on the LEFT and the current HTML render on the RIGHT.
+          text: `This is a REAL SCREENSHOT of the user's screen captured via Screen Capture API.
 
-Compare them carefully and identify ALL visual differences:
-- Background colors
-- Spacing and padding
-- Typography (size, weight, color)
-- Icon sizes and positioning
-- Element alignment
-- Any missing or extra elements
+CRITICAL LAYOUT INFORMATION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEFT SIDE = REFERENCE DESIGN (what we want to match)
+RIGHT SIDE = CURRENT HTML RENDER (what the code currently produces)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Current HTML:
+The labels at the top confirm: "← REFERENCE (TARGET)" on left, "CURRENT HTML →" on right.
+
+YOUR TASK:
+Look at BOTH sides and compare them pixel-by-pixel. The RIGHT side (current HTML) should look IDENTICAL to the LEFT side (reference).
+
+COMMON ISSUES TO FIX:
+1. If RIGHT is SHORTER/SMALLER than LEFT → INCREASE spacing, padding, font-sizes
+2. If RIGHT is TALLER/LARGER than LEFT → DECREASE spacing, padding, font-sizes  
+3. If colors differ → Match the LEFT side colors exactly
+4. If alignment differs → Match the LEFT side alignment exactly
+
+⚠️ DO NOT SHRINK FURTHER if the RIGHT side is already too small! Look at the heights carefully.
+
+Current HTML that produces the RIGHT side:
 \`\`\`html
 ${currentHtml}
 \`\`\`
 
-Fix ALL differences and return the corrected HTML. Return only the HTML code.`
+Return the CORRECTED HTML that will make the RIGHT side match the LEFT side. Return only the HTML code.`
         }
       ];
 
