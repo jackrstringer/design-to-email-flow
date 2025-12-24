@@ -807,21 +807,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     className="w-full max-h-48 object-contain"
                   />
                 </div>
-                {isDetectingSocials ? (
-                  <p className="text-xs text-primary text-center flex items-center justify-center gap-2">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Searching for socials...
-                  </p>
-                ) : detectionResult ? (
-                  <p className="text-xs text-green-600 text-center flex items-center justify-center gap-2">
-                    <Check className="w-3 h-3" />
-                    Found {detectionResult.found} social {detectionResult.found === 1 ? 'link' : 'links'}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Click next to continue
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground text-center">
+                  Click next to continue
+                </p>
               </div>
             )}
 
@@ -851,21 +839,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     className="w-full max-h-48 object-contain"
                   />
                 </div>
-                {isDetectingSocials ? (
-                  <p className="text-xs text-primary text-center flex items-center justify-center gap-2">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Searching for socials...
-                  </p>
-                ) : detectionResult ? (
-                  <p className="text-xs text-green-600 text-center flex items-center justify-center gap-2">
-                    <Check className="w-3 h-3" />
-                    Found {detectionResult.found} social {detectionResult.found === 1 ? 'link' : 'links'}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Click next to continue
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground text-center">
+                  Click next to continue
+                </p>
               </div>
             )}
 
@@ -991,54 +967,66 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       case 'social':
         return (
           <div className="space-y-4">
-            <div className="text-center space-y-2 py-4">
-              <h3 className="font-medium">Social links & icons</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                {isDetectingSocials 
-                  ? 'Searching for your social media profiles...'
-                  : socialLinks.length > 0 
-                    ? 'We found these social links. Confirm or edit them below.'
-                    : 'Icons are automatically sourced from Simple Icons. Just add your links.'}
-              </p>
-            </div>
-
-            {hasCustomIcons && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-600 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium">Custom icons detected in your design</p>
-                  <p className="text-amber-500/80">The icons in your reference image appear to be custom styled. Standard icons will be used, but you can upload custom icons later in the studio.</p>
+            {isDetectingSocials ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <div className="text-center">
+                  <h3 className="font-medium">Searching for socials...</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Looking for social media links from your footer
+                  </p>
                 </div>
               </div>
-            )}
+            ) : (
+              <>
+                <div className="text-center space-y-2 py-4">
+                  <h3 className="font-medium">Social links & icons</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    {socialLinks.length > 0 
+                      ? 'We found these social links. Confirm or edit them below.'
+                      : 'Icons are automatically sourced from Simple Icons. Just add your links.'}
+                  </p>
+                </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm">Icon Color</Label>
-              <div className="flex gap-2">
-                {['ffffff', '000000', brand.primaryColor?.replace('#', '')].filter(Boolean).map(color => (
-                  <button
-                    key={color}
-                    onClick={() => setIconColor(color!)}
-                    className={`w-8 h-8 rounded-md border-2 transition-all ${
-                      iconColor === color ? 'border-primary ring-2 ring-primary/20' : 'border-border'
-                    }`}
-                    style={{ backgroundColor: `#${color}` }}
-                  />
-                ))}
-                <Input
-                  value={`#${iconColor}`}
-                  onChange={(e) => setIconColor(e.target.value.replace('#', ''))}
-                  className="w-24 text-sm"
-                  placeholder="#ffffff"
+                {hasCustomIcons && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-600 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium">Custom icons detected in your design</p>
+                      <p className="text-amber-500/80">The icons in your reference image appear to be custom styled. Standard icons will be used, but you can upload custom icons later in the studio.</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Icon Color</Label>
+                  <div className="flex gap-2">
+                    {['ffffff', '000000', brand.primaryColor?.replace('#', '')].filter(Boolean).map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setIconColor(color!)}
+                        className={`w-8 h-8 rounded-md border-2 transition-all ${
+                          iconColor === color ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+                        }`}
+                        style={{ backgroundColor: `#${color}` }}
+                      />
+                    ))}
+                    <Input
+                      value={`#${iconColor}`}
+                      onChange={(e) => setIconColor(e.target.value.replace('#', ''))}
+                      className="w-24 text-sm"
+                      placeholder="#ffffff"
+                    />
+                  </div>
+                </div>
+
+                <SocialLinksEditor
+                  socialLinks={socialLinks}
+                  onChange={setSocialLinks}
+                  iconColor={iconColor}
                 />
-              </div>
-            </div>
-
-            <SocialLinksEditor
-              socialLinks={socialLinks}
-              onChange={setSocialLinks}
-              iconColor={iconColor}
-            />
+              </>
+            )}
           </div>
         );
 
