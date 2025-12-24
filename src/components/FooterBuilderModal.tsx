@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles, Figma, Image, Layers } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles, Figma, Image, Layers, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -93,6 +93,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [iconColor, setIconColor] = useState('ffffff');
   const [isDetectingSocials, setIsDetectingSocials] = useState(false);
   const [hasCustomIcons, setHasCustomIcons] = useState(false);
+  const [detectionResult, setDetectionResult] = useState<{ found: number } | null>(null);
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -191,12 +192,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         const mergedLinks: SocialLink[] = data.socialLinks.map((link: any) => ({
           platform: link.platform,
           url: link.url || '',
-        })).filter((link: SocialLink) => link.url); // Only keep links with URLs
+        }));
         
-        if (mergedLinks.length > 0) {
-          setSocialLinks(mergedLinks);
-          toast.success(`Found ${mergedLinks.length} social ${mergedLinks.length === 1 ? 'link' : 'links'}`);
+        const linksWithUrls = mergedLinks.filter((link: SocialLink) => link.url);
+        setSocialLinks(mergedLinks);
+        setDetectionResult({ found: linksWithUrls.length });
+        
+        if (linksWithUrls.length > 0) {
+          toast.success(`Found ${linksWithUrls.length} social ${linksWithUrls.length === 1 ? 'link' : 'links'}`);
         }
+      } else {
+        setDetectionResult({ found: 0 });
       }
 
       // Track if there are custom icons
@@ -804,7 +810,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {isDetectingSocials ? (
                   <p className="text-xs text-primary text-center flex items-center justify-center gap-2">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Detecting social links...
+                    Searching for socials...
+                  </p>
+                ) : detectionResult ? (
+                  <p className="text-xs text-green-600 text-center flex items-center justify-center gap-2">
+                    <Check className="w-3 h-3" />
+                    Found {detectionResult.found} social {detectionResult.found === 1 ? 'link' : 'links'}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground text-center">
@@ -843,7 +854,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {isDetectingSocials ? (
                   <p className="text-xs text-primary text-center flex items-center justify-center gap-2">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Detecting social links...
+                    Searching for socials...
+                  </p>
+                ) : detectionResult ? (
+                  <p className="text-xs text-green-600 text-center flex items-center justify-center gap-2">
+                    <Check className="w-3 h-3" />
+                    Found {detectionResult.found} social {detectionResult.found === 1 ? 'link' : 'links'}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground text-center">
