@@ -379,7 +379,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const handleGenerateFooter = async () => {
     setIsGenerating(true);
-    setGenerationStatus('Uploading social icons to Cloudinary...');
+    setGenerationStatus('Uploading social icons...');
     
     try {
       // Upload all social icons to Cloudinary for reliable email rendering
@@ -391,7 +391,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       
       console.log('Social icons uploaded to Cloudinary:', socialIconsData);
 
-      // If using Figma source, use AI with Figma measurements + brand context
+      // If using Figma source, use existing Figma flow
       if (sourceType === 'figma' && figmaData) {
         setGenerationStatus('Analyzing Figma design with AI...');
         
@@ -423,7 +423,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           throw new Error('Failed to generate HTML from Figma design');
         }
 
-        // Hand off to studio for refinement - include full Figma data (design + designData)
+        // Hand off to studio for refinement
         if (onOpenStudio && referenceImageUrl) {
           onOpenChange(false);
           onOpenStudio(referenceImageUrl, data.html, { design: figmaData.design, designData: figmaData.designData });
@@ -433,106 +433,41 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         return;
       }
 
-      // Otherwise use AI vision-based generation
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      // Use the simplified AI generation - just image + icons + simple prompt
+      setGenerationStatus('Generating footer HTML...');
+      
+      // Build icon URLs array from detected socials
+      const iconUrls: { name: string; url: string }[] = [];
+      for (const social of socialLinks) {
+        const iconData = socialIconsData.find((s: any) => s.platform === social.platform);
+        if (iconData?.iconUrl) {
+          iconUrls.push({
+            name: social.platform.charAt(0).toUpperCase() + social.platform.slice(1),
+            url: iconData.iconUrl
+          });
+        }
+      }
 
-      const response = await fetch(`${supabaseUrl}/functions/v1/generate-footer-html`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('generate-simple-footer', {
+        body: {
           referenceImageUrl,
-          logoUrl: lightLogoUrl,
-          lightLogoUrl: lightLogoUrl,
-          darkLogoUrl: darkLogoUrl,
-          socialIcons: socialIconsData,
-          brandName: brand.name,
-          websiteUrl: brand.websiteUrl || `https://${brand.domain}`,
-          allLinks: brand.allLinks || [],
-          brandColors: {
-            primary: brand.primaryColor,
-            secondary: brand.secondaryColor,
-            accent: brand.accentColor,
-            background: brand.backgroundColor,
-            textPrimary: brand.textPrimaryColor,
-            link: brand.linkColor,
-          },
-        }),
+          iconUrls,
+          logoUrl: lightLogoUrl || undefined // Only pass if explicitly set
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
+      if (error) throw error;
+      
+      if (!data.success || !data.html) {
+        throw new Error(data.error || 'Failed to generate footer HTML');
       }
 
-      // Handle SSE stream with proper buffering for large payloads
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let finalHtml = '';
-      let buffer = '';
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          
-          // Process complete lines only (SSE events end with \n\n)
-          let lineEndIndex;
-          while ((lineEndIndex = buffer.indexOf('\n')) !== -1) {
-            const line = buffer.slice(0, lineEndIndex).trim();
-            buffer = buffer.slice(lineEndIndex + 1);
-            
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                
-                if (data.message) {
-                  setGenerationStatus(data.message);
-                }
-
-                if (data.status === 'complete') {
-                  finalHtml = data.html;
-                }
-
-                if (data.status === 'error') {
-                  throw new Error(data.error);
-                }
-              } catch (parseError) {
-                // If parse fails, the data might span multiple lines - keep buffering
-                // Put the line back in buffer and wait for more data
-                buffer = line + '\n' + buffer;
-                break;
-              }
-            }
-          }
-        }
-        
-        // Process any remaining buffered data
-        if (buffer.trim().startsWith('data: ')) {
-          try {
-            const data = JSON.parse(buffer.trim().slice(6));
-            if (data.status === 'complete') {
-              finalHtml = data.html;
-            }
-          } catch (e) {
-            console.error('Final buffer parse error:', e);
-          }
-        }
-      }
-
-      if (!finalHtml) {
-        throw new Error('No HTML received from generator');
-      }
+      console.log('Simple footer generated, HTML length:', data.html.length);
 
       // Hand off to studio for refinement
       if (onOpenStudio && referenceImageUrl) {
         onOpenChange(false);
-        onOpenStudio(referenceImageUrl, finalHtml);
+        onOpenStudio(referenceImageUrl, data.html);
       } else {
         toast.success('Footer generated! Opening editor...');
       }

@@ -58,7 +58,8 @@ serve(async (req) => {
       allSlices, 
       footerHtml,
       originalCampaignImageUrl,
-      targetSection, // NEW: { type: 'footer' | 'slice' | 'all', sliceIndex?: number }
+      currentPreviewImageUrl,  // NEW: Screenshot of current render for visual comparison
+      targetSection, // { type: 'footer' | 'slice' | 'all', sliceIndex?: number }
       conversationHistory,
       userRequest, 
       brandUrl,
@@ -95,7 +96,8 @@ serve(async (req) => {
       conversationTurns: conversationHistory?.length || 0,
       userRequest: userRequest?.substring(0, 100),
       hasLogo: hasAnyLogo,
-      hasFigmaData
+      hasFigmaData,
+      hasCurrentPreviewImage: !!currentPreviewImageUrl
     });
 
     // Build brand context
@@ -216,10 +218,63 @@ Return FULL updated HTML for any modified sections.`;
     const contentBlocks: any[] = [];
     
     if (target.type === 'footer' || isFooterMode) {
-      // Footer-only refinement - use text mode since footer doesn't have a reference image
-      contentBlocks.push({
-        type: 'text',
-        text: `## USER REQUEST (targeting FOOTER)
+      // Footer refinement - use visual comparison if screenshot available
+      if (currentPreviewImageUrl && originalCampaignImageUrl) {
+        // VISUAL COMPARISON MODE: Send both images for pixel-by-pixel comparison
+        contentBlocks.push({
+          type: 'image',
+          source: { type: 'url', url: originalCampaignImageUrl }
+        });
+        contentBlocks.push({
+          type: 'text',
+          text: '↑ ORIGINAL DESIGN (this is what we want to match)'
+        });
+        contentBlocks.push({
+          type: 'image',
+          source: { type: 'url', url: currentPreviewImageUrl }
+        });
+        contentBlocks.push({
+          type: 'text',
+          text: `↑ CURRENT RENDER (this is what we have now)
+
+Compare these two images PIXEL BY PIXEL. Identify EVERY visual difference:
+- Background colors (check exact hex values)
+- Spacing and padding (check pixel values)
+- Typography (font sizes, weights, colors, line heights)
+- Icon sizes and positions
+- Element alignment
+- Border colors and widths
+- Any missing or extra elements
+
+If you notice elements that require custom assets (icons, logos, images) that haven't been provided, LIST them clearly.
+
+## USER REQUEST
+${userRequest}
+
+## CURRENT FOOTER HTML
+\`\`\`html
+${footerHtml || 'No footer HTML provided'}
+\`\`\`
+
+${hasAnyLogo ? `## AVAILABLE LOGOS
+${lightLogoUrl ? `- Light logo (for dark bg): ${lightLogoUrl}` : ''}
+${darkLogoUrl ? `- Dark logo (for light bg): ${darkLogoUrl}` : ''}` : ''}
+
+${socialIcons?.platforms?.length > 0 ? `## SOCIAL ICONS - DYNAMIC COLOR SYSTEM
+URL Pattern: ${socialIcons.urlPattern}
+
+Available platforms:
+${socialIcons.platforms.map((s: any) => `- ${s.platform} (slug: "${s.slug}", links to: ${s.profileUrl})`).join('\n')}
+
+Choose icon colors that contrast with background. Dark bg → light icons. Light bg → dark icons.` : ''}
+
+Fix EVERY discrepancy. Return the corrected HTML that matches the original design exactly.`
+        });
+      } else {
+        // TEXT-ONLY MODE: No screenshot available
+        contentBlocks.push({
+          type: 'text',
+          text: `## USER REQUEST (targeting FOOTER)
 ${userRequest}
 
 ## CURRENT FOOTER HTML
@@ -246,7 +301,8 @@ Examples (replace {slug} and {hexColor}):
 IMPORTANT: Choose icon colors that contrast with background:
 - Dark background → Light icons (ffffff, f5f5f5, etc.)
 - Light/white background → Dark icons (000000, 1a1a1a, etc.)` : ''}`
-      });
+        });
+      }
     } else if (target.type === 'slice' && typeof target.sliceIndex === 'number') {
       // Single slice refinement - include reference image for that slice
       const targetSlice = slicesArray[target.sliceIndex];

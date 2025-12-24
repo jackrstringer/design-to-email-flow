@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
@@ -9,6 +9,7 @@ import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Spar
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { toPng } from 'html-to-image';
 import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
@@ -132,6 +133,9 @@ export function CampaignStudio({
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
   const [showAltText, setShowAltText] = useState(false);
   const [includeFooter, setIncludeFooter] = useState(true);
+  
+  // Ref for the footer preview iframe
+  const footerPreviewRef = useRef<HTMLIFrameElement>(null);
   
   // Claude conversation history - persisted across refinements
   const [claudeConversationHistory, setClaudeConversationHistory] = useState<any[]>([]);
@@ -360,11 +364,41 @@ export function CampaignStudio({
     
     // Build a more comprehensive auto-refine prompt for multi-slice campaigns
     const htmlSliceCount = slices.filter(s => s.type === 'html').length;
-    const imageSliceCount = slices.filter(s => s.type === 'image').length;
     
     let autoRefinePrompt: string;
+    let currentPreviewImageUrl: string | undefined;
+    
     if (isFooterMode) {
-      autoRefinePrompt = 'Compare each HTML slice against its reference image and update to match exactly.';
+      autoRefinePrompt = 'Compare the current render against the reference image. Identify every visual difference and fix them. Pay attention to: background colors, spacing, typography, icon sizes, element alignment.';
+      
+      // Capture screenshot of footer preview iframe
+      try {
+        const previewFrame = document.querySelector('iframe[title="Footer Preview"]') as HTMLIFrameElement;
+        if (previewFrame?.contentDocument?.body) {
+          toast.info('Capturing preview screenshot...');
+          const screenshotDataUrl = await toPng(previewFrame.contentDocument.body, {
+            width: BASE_WIDTH,
+            backgroundColor: '#ffffff',
+            pixelRatio: 2
+          });
+          
+          // Upload screenshot to Cloudinary for Claude to access
+          const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+            body: { 
+              imageData: screenshotDataUrl,
+              folder: 'footer-previews'
+            }
+          });
+          
+          if (!uploadError && uploadData?.url) {
+            currentPreviewImageUrl = uploadData.url;
+            console.log('Screenshot uploaded:', currentPreviewImageUrl);
+          }
+        }
+      } catch (screenshotErr) {
+        console.warn('Failed to capture preview screenshot:', screenshotErr);
+        // Continue without screenshot - text-only comparison
+      }
     } else if (htmlSliceCount > 1) {
       autoRefinePrompt = `Analyze all ${htmlSliceCount} HTML sections. For each one, compare against its reference image and update to match. Ensure consistent styling across ALL sections.`;
     } else {
@@ -396,6 +430,7 @@ export function CampaignStudio({
           })),
           footerHtml: convertToSimpleIconsUrls(localFooterHtml || ''),
           originalCampaignImageUrl: originalImageUrl,
+          currentPreviewImageUrl, // NEW: Screenshot of current render for visual comparison
           targetSection: { type: 'all' }, // Auto-refine targets all sections
           conversationHistory: claudeConversationHistory,
           userRequest: autoRefinePrompt,
