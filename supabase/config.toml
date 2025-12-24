@@ -62,3 +62,9 @@ verify_jwt = false
 
 [functions.generate-simple-footer]
 verify_jwt = false
+
+[functions.extract-section-assets]
+verify_jwt = false
+
+[functions.compare-brand-assets]
+verify_jwt = false
