@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.detect-footer-region]
 verify_jwt = false
+
+[functions.detect-footer-socials]
+verify_jwt = false
