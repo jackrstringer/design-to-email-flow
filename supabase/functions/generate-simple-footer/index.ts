@@ -6,6 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface AssetManifest {
+  [key: string]: string; // asset_id -> URL
+}
+
+interface StyleTokens {
+  background_color?: string;
+  text_color?: string;
+  accent_color?: string;
+  special_effects?: string[];
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -14,8 +25,14 @@ serve(async (req) => {
   try {
     const { 
       referenceImageUrl, 
-      iconUrls,  // Array<{ name: string, url: string }>
-      logoUrl    // Optional - only include if detected/provided
+      assets,      // Full asset manifest with resolved URLs
+      styles,      // Extracted style tokens
+      socialIcons  // Array of { platform, url }
+    }: {
+      referenceImageUrl: string;
+      assets: AssetManifest;
+      styles: StyleTokens;
+      socialIcons?: Array<{ platform: string; url: string }>;
     } = await req.json();
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -27,35 +44,62 @@ serve(async (req) => {
       throw new Error('Reference image URL is required');
     }
 
-    console.log('Generate simple footer:', { 
+    console.log('Generate footer with explicit assets:', { 
       hasReferenceImage: !!referenceImageUrl,
-      iconCount: iconUrls?.length || 0,
-      hasLogo: !!logoUrl
+      assetCount: Object.keys(assets || {}).length,
+      hasStyles: !!styles,
+      socialIconCount: socialIcons?.length || 0
     });
 
-    // Build the simple, direct prompt (exactly like the successful test)
+    // Build explicit asset list for prompt
     let assetsList = '';
-    if (iconUrls && iconUrls.length > 0) {
-      assetsList = iconUrls.map((icon: { name: string; url: string }) => 
-        `- ${icon.name}: ${icon.url}`
-      ).join('\n');
+    
+    // Add custom assets
+    if (assets && Object.keys(assets).length > 0) {
+      for (const [id, url] of Object.entries(assets)) {
+        const label = id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        assetsList += `- ${label}: ${url}\n`;
+      }
     }
-    if (logoUrl) {
-      assetsList += `\n- Logo: ${logoUrl}`;
+
+    // Add social icons
+    if (socialIcons && socialIcons.length > 0) {
+      for (const icon of socialIcons) {
+        const label = icon.platform.charAt(0).toUpperCase() + icon.platform.slice(1);
+        assetsList += `- ${label}: ${icon.url}\n`;
+      }
     }
 
-    const prompt = `Make this footer design into pixel-perfect HTML code for use as an email footer.
+    // Build styles section
+    let stylesSection = '';
+    if (styles) {
+      if (styles.background_color) stylesSection += `- Background: ${styles.background_color}\n`;
+      if (styles.text_color) stylesSection += `- Text: ${styles.text_color}\n`;
+      if (styles.accent_color) stylesSection += `- Accent: ${styles.accent_color}\n`;
+      if (styles.special_effects && styles.special_effects.length > 0) {
+        stylesSection += `- Effects: ${styles.special_effects.join(', ')}\n`;
+      }
+    }
 
-${assetsList ? `Here are the assets used:\n${assetsList}` : ''}
+    const prompt = `Convert this email footer design into pixel-perfect HTML.
 
-Rules:
-- 600px max width, table-based layout
-- All styles inline (no <style> tags)
-- Match the design EXACTLY - colors, spacing, typography
-- Use the provided asset URLs directly in the HTML
-- Return ONLY the HTML code, no explanation`;
+${assetsList ? `ASSETS (use these exact URLs):
+${assetsList}` : ''}
+${stylesSection ? `
+STYLES:
+${stylesSection}` : ''}
 
-    // Single Claude call with reference image
+REQUIREMENTS:
+- Table-based layout for email client compatibility
+- 600px max width, centered
+- ALL styles must be inline (no <style> tags)
+- Match the design EXACTLY - colors, spacing, typography, layout
+- Use the provided asset URLs directly in img tags
+- Mobile responsive where possible
+- VML fallbacks for Outlook backgrounds if needed
+
+Return ONLY the HTML code, no explanation.`;
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -96,7 +140,6 @@ Rules:
     if (htmlMatch) {
       html = htmlMatch[1].trim();
     } else {
-      // Also try without html label
       const codeMatch = html.match(/```\n?([\s\S]*?)```/);
       if (codeMatch) {
         html = codeMatch[1].trim();
@@ -113,7 +156,7 @@ Rules:
     });
 
   } catch (error) {
-    console.error('Generate simple footer error:', error);
+    console.error('Generate footer error:', error);
     return new Response(JSON.stringify({ 
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

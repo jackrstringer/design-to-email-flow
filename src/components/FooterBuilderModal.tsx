@@ -14,8 +14,9 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SocialLinksEditor } from './SocialLinksEditor';
-import { getSocialIconUrl, uploadAllSocialIcons } from '@/lib/socialIcons';
+import { uploadAllSocialIcons } from '@/lib/socialIcons';
 import { FooterCropSelector } from './FooterCropSelector';
+import { AssetCollectionModal } from './AssetCollectionModal';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 
 interface FooterBuilderModalProps {
@@ -27,7 +28,7 @@ interface FooterBuilderModalProps {
   initialCampaignImageUrl?: string;
 }
 
-type Step = 'reference' | 'logos' | 'social' | 'generate';
+type Step = 'reference' | 'assets' | 'social' | 'generate';
 type SourceType = 'image' | 'figma' | 'campaign' | null;
 
 interface Campaign {
@@ -66,6 +67,28 @@ interface FigmaDesignData {
   exportedImageUrl: string | null;
 }
 
+interface ExtractedAsset {
+  id: string;
+  description: string;
+  location: string;
+  category: 'logo' | 'decorative' | 'background' | 'other';
+  is_standard_character?: boolean;
+}
+
+interface AssetComparisonResult {
+  use_from_library: Array<{ id: string; description: string; library_url: string }>;
+  needs_confirmation: Array<{ id: string; description: string; reason: string; library_url: string }>;
+  needs_upload: Array<{ id: string; description: string; category: string }>;
+  use_text_fallback?: Array<{ id: string; description: string; fallback_character: string }>;
+}
+
+interface StyleTokens {
+  background_color?: string;
+  text_color?: string;
+  accent_color?: string;
+  special_effects?: string[];
+}
+
 export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
   const [sourceType, setSourceType] = useState<SourceType>(null);
@@ -84,16 +107,22 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [selectedCampaignImage, setSelectedCampaignImage] = useState<string | null>(null);
   const [isUploadingCrop, setIsUploadingCrop] = useState(false);
   
-  // Logo state
-  const [darkLogoUrl, setDarkLogoUrl] = useState(brand.darkLogoUrl || '');
-  const [lightLogoUrl, setLightLogoUrl] = useState(brand.lightLogoUrl || '');
-  const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
+  // Asset extraction state
+  const [isExtractingAssets, setIsExtractingAssets] = useState(false);
+  const [extractedAssets, setExtractedAssets] = useState<ExtractedAsset[]>([]);
+  const [socialPlatforms, setSocialPlatforms] = useState<string[]>([]);
+  const [extractedStyles, setExtractedStyles] = useState<StyleTokens | null>(null);
+  const [socialIconColor, setSocialIconColor] = useState<string>('#ffffff');
   
+  // Asset comparison state
+  const [isComparingAssets, setIsComparingAssets] = useState(false);
+  const [assetComparison, setAssetComparison] = useState<AssetComparisonResult | null>(null);
+  const [showAssetCollectionModal, setShowAssetCollectionModal] = useState(false);
+  const [collectedAssets, setCollectedAssets] = useState<Record<string, string>>({});
+  
+  // Social state (simplified - just for URL editing)
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
   const [iconColor, setIconColor] = useState('ffffff');
-  const [isDetectingSocials, setIsDetectingSocials] = useState(false);
-  const [hasCustomIcons, setHasCustomIcons] = useState(false);
-  const [detectionResult, setDetectionResult] = useState<{ found: number } | null>(null);
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -101,24 +130,21 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle campaign source click - use provided image or fetch from DB
+  // Handle campaign source click
   const handleCampaignSourceClick = useCallback(() => {
     if (initialCampaignImageUrl) {
-      // Use the just-uploaded campaign image directly
       setSelectedCampaignImage(initialCampaignImageUrl);
       setSourceType('campaign');
     } else {
-      // Fallback: fetch campaigns from database
       fetchCampaigns();
     }
   }, [initialCampaignImageUrl]);
 
-  // Fetch campaigns from database (only used when no initialCampaignImageUrl)
+  // Fetch campaigns from database
   const fetchCampaigns = useCallback(async () => {
     setIsFetchingCampaigns(true);
     setShowingAllBrands(false);
     try {
-      // First try current brand
       const { data, error } = await supabase
         .from('campaigns')
         .select('id, name, original_image_url, thumbnail_url, created_at, brand_id')
@@ -130,7 +156,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       
       let campaignsWithImages = (data || []).filter(c => c.original_image_url || c.thumbnail_url);
       
-      // If no campaigns for current brand, get from ALL brands
       if (campaignsWithImages.length === 0) {
         const { data: allData, error: allError } = await supabase
           .from('campaigns')
@@ -167,55 +192,128 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     }
   }, [brand.id]);
 
-  // Function to detect social links from footer image
-  const detectSocialsFromImage = useCallback(async (imageUrl: string) => {
-    setIsDetectingSocials(true);
+  // Step 1: Extract assets from reference image
+  const extractAssetsFromImage = useCallback(async (imageUrl: string) => {
+    setIsExtractingAssets(true);
     try {
-      const { data, error } = await supabase.functions.invoke('detect-footer-socials', {
+      const { data, error } = await supabase.functions.invoke('extract-section-assets', {
+        body: { referenceImageUrl: imageUrl }
+      });
+
+      if (error) throw error;
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to extract assets');
+      }
+
+      console.log('Extracted assets:', data);
+
+      setExtractedAssets(data.non_social_assets || []);
+      setSocialPlatforms(data.social_platforms_detected || []);
+      setExtractedStyles(data.styles || null);
+      
+      if (data.social_icon_color) {
+        setSocialIconColor(data.social_icon_color);
+        setIconColor(data.social_icon_color.replace('#', ''));
+      }
+
+      // Auto-populate social links based on detected platforms
+      if (data.social_platforms_detected && data.social_platforms_detected.length > 0) {
+        const existingPlatforms = new Set(socialLinks.map(l => l.platform));
+        const newLinks = [...socialLinks];
+        
+        for (const platform of data.social_platforms_detected) {
+          if (!existingPlatforms.has(platform)) {
+            newLinks.push({ platform, url: '' });
+          }
+        }
+        
+        setSocialLinks(newLinks);
+      }
+
+      toast.success(`Found ${data.non_social_assets?.length || 0} custom assets`);
+    } catch (error) {
+      console.error('Asset extraction error:', error);
+      toast.error('Failed to analyze image');
+    } finally {
+      setIsExtractingAssets(false);
+    }
+  }, [socialLinks]);
+
+  // Step 2: Compare extracted assets to brand library
+  const compareAssetsToLibrary = useCallback(async () => {
+    if (!referenceImageUrl) return;
+    
+    setIsComparingAssets(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('compare-brand-assets', {
         body: {
-          footerImageUrl: imageUrl,
-          brandName: brand.name,
-          brandDomain: brand.domain,
-          existingSocialLinks: socialLinks,
+          extractedAssets,
+          brandLibrary: {
+            darkLogoUrl: brand.darkLogoUrl,
+            lightLogoUrl: brand.lightLogoUrl,
+            footerLogoUrl: brand.footerLogoUrl
+          },
+          referenceImageUrl
         }
       });
 
-      if (error) {
-        console.error('Social detection error:', error);
-        return;
+      if (error) throw error;
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to compare assets');
       }
 
-      console.log('Detected socials:', data);
+      console.log('Asset comparison:', data);
 
-      // Update social links with detected URLs
-      if (data.socialLinks && data.socialLinks.length > 0) {
-        const mergedLinks: SocialLink[] = data.socialLinks.map((link: any) => ({
-          platform: link.platform,
-          url: link.url || '',
-        }));
-        
-        const linksWithUrls = mergedLinks.filter((link: SocialLink) => link.url);
-        setSocialLinks(mergedLinks);
-        setDetectionResult({ found: linksWithUrls.length });
-        
-        if (linksWithUrls.length > 0) {
-          toast.success(`Found ${linksWithUrls.length} social ${linksWithUrls.length === 1 ? 'link' : 'links'}`);
-        }
+      setAssetComparison({
+        use_from_library: data.use_from_library || [],
+        needs_confirmation: data.needs_confirmation || [],
+        needs_upload: data.needs_upload || [],
+        use_text_fallback: data.use_text_fallback || []
+      });
+
+      // If there are assets needing user input, show the collection modal
+      if ((data.needs_confirmation?.length > 0) || (data.needs_upload?.length > 0)) {
+        setShowAssetCollectionModal(true);
       } else {
-        setDetectionResult({ found: 0 });
-      }
-
-      // Track if there are custom icons
-      if (data.hasCustomIcons) {
-        setHasCustomIcons(true);
-        toast.info('Custom icons detected - you may want to upload the exact icons used in the design');
+        // No user input needed - auto-collect library assets
+        const autoCollected: Record<string, string> = {};
+        for (const asset of data.use_from_library || []) {
+          autoCollected[asset.id] = asset.library_url;
+        }
+        setCollectedAssets(autoCollected);
+        toast.success('All assets resolved from library');
       }
     } catch (error) {
-      console.error('Failed to detect socials:', error);
+      console.error('Asset comparison error:', error);
+      toast.error('Failed to compare assets');
     } finally {
-      setIsDetectingSocials(false);
+      setIsComparingAssets(false);
     }
-  }, [brand.name, brand.domain, socialLinks]);
+  }, [extractedAssets, brand.darkLogoUrl, brand.lightLogoUrl, brand.footerLogoUrl, referenceImageUrl]);
+
+  // Handle asset collection complete
+  const handleAssetCollectionComplete = useCallback((collected: Record<string, string>) => {
+    // Merge with auto-collected library assets
+    const merged = { ...collectedAssets };
+    
+    // Add library matches
+    if (assetComparison?.use_from_library) {
+      for (const asset of assetComparison.use_from_library) {
+        merged[asset.id] = asset.library_url;
+      }
+    }
+    
+    // Add user-collected assets
+    for (const [id, url] of Object.entries(collected)) {
+      merged[id] = url;
+    }
+
+    setCollectedAssets(merged);
+    setShowAssetCollectionModal(false);
+    toast.success('Assets collected');
+  }, [collectedAssets, assetComparison]);
 
   const handleCropComplete = useCallback(async (croppedImageData: string) => {
     setIsUploadingCrop(true);
@@ -233,15 +331,15 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       setSelectedCampaignImage(null);
       toast.success('Footer region extracted');
       
-      // Auto-detect socials from the cropped footer image
-      detectSocialsFromImage(data.url);
+      // Extract assets from the cropped image
+      await extractAssetsFromImage(data.url);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload cropped image');
     } finally {
       setIsUploadingCrop(false);
     }
-  }, [brand.domain, detectSocialsFromImage]);
+  }, [brand.domain, extractAssetsFromImage]);
 
   const handleReferenceUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -268,17 +366,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         setSourceType('image');
         toast.success('Reference image uploaded');
         
-        // Auto-detect socials from the uploaded image
-        detectSocialsFromImage(data.url);
+        // Extract assets from uploaded image
+        await extractAssetsFromImage(data.url);
+        setIsUploadingReference(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload image');
-    } finally {
       setIsUploadingReference(false);
     }
-  }, [brand.domain, detectSocialsFromImage]);
+  }, [brand.domain, extractAssetsFromImage]);
 
   const handleFetchFigma = useCallback(async () => {
     if (!figmaUrl.trim()) {
@@ -306,9 +404,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       });
       setSourceType('figma');
       
-      // Use the exported image as reference for the studio
       if (data.exportedImageUrl) {
         setReferenceImageUrl(data.exportedImageUrl);
+        // Extract assets from Figma export
+        await extractAssetsFromImage(data.exportedImageUrl);
       }
       
       toast.success('Figma design fetched successfully');
@@ -318,58 +417,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     } finally {
       setIsFetchingFigma(false);
     }
-  }, [figmaUrl]);
-
-  const handleLogoUpload = useCallback(async (file: File, type: 'dark' | 'light') => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
-      return;
-    }
-
-    setUploadingLogo(type);
-    try {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const base64 = await base64Promise;
-
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
-        body: {
-          imageData: base64,
-          folder: `brands/${brand.domain}/logos`,
-          publicId: `${type}-logo`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (type === 'dark') {
-        setDarkLogoUrl(data.url);
-      } else {
-        setLightLogoUrl(data.url);
-      }
-
-      // Save to brand in database
-      const updateFields = type === 'dark'
-        ? { dark_logo_url: data.url, dark_logo_public_id: data.publicId }
-        : { light_logo_url: data.url, light_logo_public_id: data.publicId };
-
-      await supabase
-        .from('brands')
-        .update(updateFields)
-        .eq('id', brand.id);
-
-      toast.success(`${type === 'dark' ? 'Dark' : 'Light'} logo uploaded`);
-    } catch (error) {
-      console.error('Logo upload error:', error);
-      toast.error('Failed to upload logo');
-    } finally {
-      setUploadingLogo(null);
-    }
-  }, [brand.id, brand.domain]);
+  }, [figmaUrl, extractAssetsFromImage]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -382,77 +430,29 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     setGenerationStatus('Uploading social icons...');
     
     try {
-      // Upload all social icons to Cloudinary for reliable email rendering
+      // Upload social icons to Cloudinary
       const socialIconsData = await uploadAllSocialIcons(
-        socialLinks,
+        socialLinks.filter(l => l.url), // Only upload icons that have URLs
         iconColor,
         brand.domain
       );
       
-      console.log('Social icons uploaded to Cloudinary:', socialIconsData);
+      console.log('Social icons uploaded:', socialIconsData);
 
-      // If using Figma source, use existing Figma flow
-      if (sourceType === 'figma' && figmaData) {
-        setGenerationStatus('Analyzing Figma design with AI...');
-        
-        const { data, error } = await supabase.functions.invoke('figma-to-email-html', {
-          body: {
-            design: figmaData.design,
-            designData: figmaData.designData,
-            exportedImageUrl: figmaData.exportedImageUrl,
-            lightLogoUrl: lightLogoUrl,
-            darkLogoUrl: darkLogoUrl,
-            socialIcons: socialIconsData,
-            brandName: brand.name,
-            websiteUrl: brand.websiteUrl || `https://${brand.domain}`,
-            allLinks: brand.allLinks || [],
-            brandColors: {
-              primary: brand.primaryColor,
-              secondary: brand.secondaryColor,
-              accent: brand.accentColor,
-              background: brand.backgroundColor,
-              textPrimary: brand.textPrimaryColor,
-              link: brand.linkColor,
-            },
-          }
-        });
+      // Build social icons array for the generation function
+      const socialIconsForGeneration = socialIconsData.map((icon: any) => ({
+        platform: icon.platform,
+        url: icon.iconUrl
+      }));
 
-        if (error) throw error;
-        
-        if (!data.success || !data.html) {
-          throw new Error('Failed to generate HTML from Figma design');
-        }
-
-        // Hand off to studio for refinement
-        if (onOpenStudio && referenceImageUrl) {
-          onOpenChange(false);
-          onOpenStudio(referenceImageUrl, data.html, { design: figmaData.design, designData: figmaData.designData });
-        } else {
-          toast.success('Footer generated from Figma!');
-        }
-        return;
-      }
-
-      // Use the simplified AI generation - just image + icons + simple prompt
       setGenerationStatus('Generating footer HTML...');
       
-      // Build icon URLs array from detected socials
-      const iconUrls: { name: string; url: string }[] = [];
-      for (const social of socialLinks) {
-        const iconData = socialIconsData.find((s: any) => s.platform === social.platform);
-        if (iconData?.iconUrl) {
-          iconUrls.push({
-            name: social.platform.charAt(0).toUpperCase() + social.platform.slice(1),
-            url: iconData.iconUrl
-          });
-        }
-      }
-
       const { data, error } = await supabase.functions.invoke('generate-simple-footer', {
         body: {
           referenceImageUrl,
-          iconUrls,
-          logoUrl: lightLogoUrl || undefined // Only pass if explicitly set
+          assets: collectedAssets,
+          styles: extractedStyles,
+          socialIcons: socialIconsForGeneration
         }
       });
 
@@ -462,14 +462,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         throw new Error(data.error || 'Failed to generate footer HTML');
       }
 
-      console.log('Simple footer generated, HTML length:', data.html.length);
+      console.log('Footer generated, HTML length:', data.html.length);
 
       // Hand off to studio for refinement
       if (onOpenStudio && referenceImageUrl) {
         onOpenChange(false);
-        onOpenStudio(referenceImageUrl, data.html);
+        onOpenStudio(referenceImageUrl, data.html, figmaData ? { design: figmaData.design, designData: figmaData.designData } : undefined);
       } else {
-        toast.success('Footer generated! Opening editor...');
+        toast.success('Footer generated!');
       }
     } catch (error) {
       console.error('Generation error:', error);
@@ -495,7 +495,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             {/* Source selection cards */}
             {!sourceType && (
               <div className="grid grid-cols-3 gap-3">
-                {/* Image upload option */}
                 <div
                   onDrop={handleDrop}
                   onDragOver={(e) => e.preventDefault()}
@@ -524,7 +523,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   />
                 </div>
 
-                {/* Figma link option */}
                 <div
                   onClick={() => setSourceType('figma')}
                   className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
@@ -540,7 +538,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   </div>
                 </div>
 
-                {/* Pull from Campaign option */}
                 <div
                   onClick={handleCampaignSourceClick}
                   className="border-2 border-dashed border-border/60 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
@@ -566,12 +563,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             {sourceType === 'figma' && !figmaData && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSourceType(null)}
-                    className="h-8 px-2"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setSourceType(null)} className="h-8 px-2">
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
                   <Label className="text-sm font-medium">Paste Figma link</Label>
@@ -582,30 +574,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   onChange={(e) => setFigmaUrl(e.target.value)}
                   className="w-full"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Copy the link to a specific frame or component in Figma
-                </p>
-                <Button 
-                  onClick={handleFetchFigma} 
-                  disabled={isFetchingFigma || !figmaUrl.trim()}
-                  className="w-full"
-                >
+                <Button onClick={handleFetchFigma} disabled={isFetchingFigma || !figmaUrl.trim()} className="w-full">
                   {isFetchingFigma ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Fetching...
-                    </>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Fetching...</>
                   ) : (
-                    <>
-                      <Figma className="w-4 h-4 mr-2" />
-                      Fetch Design
-                    </>
+                    <><Figma className="w-4 h-4 mr-2" />Fetch Design</>
                   )}
                 </Button>
               </div>
             )}
 
-            {/* Show fetched Figma preview */}
+            {/* Figma preview */}
             {sourceType === 'figma' && figmaData && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -613,46 +592,23 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     <Figma className="w-4 h-4 text-primary" />
                     <span className="text-sm font-medium">Figma design loaded</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setFigmaData(null);
-                      setSourceType(null);
-                      setFigmaUrl('');
-                    }}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => { setFigmaData(null); setSourceType(null); setFigmaUrl(''); }}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
                 {figmaData.exportedImageUrl && (
                   <div className="rounded-lg border border-border overflow-hidden">
-                    <img 
-                      src={figmaData.exportedImageUrl} 
-                      alt="Figma design preview" 
-                      className="w-full"
-                    />
+                    <img src={figmaData.exportedImageUrl} alt="Figma design preview" className="w-full" />
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground text-center">
-                  {figmaData.design?.name || 'Design ready for conversion'}
-                </p>
               </div>
             )}
 
-            {/* Campaign selection - list of campaigns */}
+            {/* Campaign selection */}
             {sourceType === 'campaign' && !selectedCampaignImage && !referenceImageUrl && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSourceType(null);
-                      setCampaigns([]);
-                    }}
-                    className="h-8 px-2"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => { setSourceType(null); setCampaigns([]); }} className="h-8 px-2">
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
                   <Label className="text-sm font-medium">Select a campaign</Label>
@@ -672,22 +628,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                       className="cursor-pointer rounded-lg border border-border/50 overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
                     >
                       {(campaign.thumbnail_url || campaign.original_image_url) && (
-                        <img
-                          src={campaign.thumbnail_url || campaign.original_image_url!}
-                          alt={campaign.name}
-                          className="w-full h-24 object-cover object-top"
-                        />
+                        <img src={campaign.thumbnail_url || campaign.original_image_url!} alt={campaign.name} className="w-full h-24 object-cover object-top" />
                       )}
                       <div className="p-2">
                         <p className="text-xs font-medium truncate">{campaign.name}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          {campaign.brandName ? (
-                            <span className="flex items-center gap-1">
-                              <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[9px]">{campaign.brandName}</span>
-                            </span>
-                          ) : (
-                            new Date(campaign.created_at).toLocaleDateString()
-                          )}
+                          {campaign.brandName || new Date(campaign.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
@@ -702,7 +648,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {isUploadingCrop ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Uploading cropped image...</p>
+                    <p className="text-sm text-muted-foreground">Analyzing image...</p>
                   </div>
                 ) : (
                   <FooterCropSelector
@@ -714,7 +660,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            {/* Show campaign-sourced image preview */}
+            {/* Campaign-sourced image preview */}
             {sourceType === 'campaign' && referenceImageUrl && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -722,33 +668,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     <Layers className="w-4 h-4 text-primary" />
                     <span className="text-sm font-medium">Footer extracted</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setReferenceImageUrl(null);
-                      setSelectedCampaignImage(null);
-                      setCampaigns([]);
-                      setSourceType(null);
-                    }}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => { setReferenceImageUrl(null); setSelectedCampaignImage(null); setCampaigns([]); setSourceType(null); }}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
                 <div className="rounded-lg border border-border overflow-hidden">
-                  <img 
-                    src={referenceImageUrl} 
-                    alt="Footer reference" 
-                    className="w-full max-h-48 object-contain"
-                  />
+                  <img src={referenceImageUrl} alt="Footer reference" className="w-full max-h-48 object-contain" />
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  Click next to continue
-                </p>
               </div>
             )}
 
-            {/* Show uploaded image preview */}
+            {/* Uploaded image preview */}
             {sourceType === 'image' && referenceImageUrl && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -756,145 +686,117 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     <Image className="w-4 h-4 text-primary" />
                     <span className="text-sm font-medium">Image uploaded</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setReferenceImageUrl(null);
-                      setSourceType(null);
-                    }}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => { setReferenceImageUrl(null); setSourceType(null); }}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
                 <div className="rounded-lg border border-border overflow-hidden">
-                  <img 
-                    src={referenceImageUrl} 
-                    alt="Reference" 
-                    className="w-full max-h-48 object-contain"
-                  />
+                  <img src={referenceImageUrl} alt="Reference" className="w-full max-h-48 object-contain" />
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  Click next to continue
+              </div>
+            )}
+
+            {/* Show extraction status */}
+            {isExtractingAssets && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Analyzing image for assets...
+              </div>
+            )}
+
+            {/* Show extracted info */}
+            {!isExtractingAssets && referenceImageUrl && extractedAssets.length > 0 && (
+              <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+                <p className="text-sm font-medium">Analysis complete</p>
+                <p className="text-xs text-muted-foreground">
+                  Found {extractedAssets.length} custom asset{extractedAssets.length !== 1 ? 's' : ''} and {socialPlatforms.length} social icon{socialPlatforms.length !== 1 ? 's' : ''}
                 </p>
               </div>
             )}
 
-            <Button 
-              variant="link" 
-              className="w-full text-muted-foreground"
-              onClick={() => setStep('logos')}
-            >
+            <Button variant="link" className="w-full text-muted-foreground" onClick={() => setStep('assets')}>
               Skip - I don't have a reference
             </Button>
           </div>
         );
 
-      case 'logos':
+      case 'assets':
         return (
           <div className="space-y-4">
-            <div className="text-center space-y-2 py-2">
-              <h3 className="font-medium">Upload your logos</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Upload both versions of your logo for use in emails.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Dark Logo */}
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Dark Logo (for light backgrounds)</Label>
-                {darkLogoUrl ? (
-                  <div className="relative group rounded-lg border border-border/50 bg-white p-4 h-28 flex items-center justify-center">
-                    <img 
-                      src={darkLogoUrl} 
-                      alt="Dark logo" 
-                      className="max-h-16 max-w-full object-contain"
-                    />
-                    <button
-                      onClick={() => setDarkLogoUrl('')}
-                      className="absolute top-2 right-2 p-1 rounded bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center h-28 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors bg-white">
-                    {uploadingLogo === 'dark' ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    ) : (
-                      <>
-                        <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                        <span className="text-xs text-muted-foreground">Drop or click</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleLogoUpload(file, 'dark');
-                        e.target.value = '';
-                      }}
-                      disabled={uploadingLogo !== null}
-                    />
-                  </label>
-                )}
+            {isComparingAssets ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-4">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <div className="text-center">
+                  <h3 className="font-medium">Comparing assets...</h3>
+                  <p className="text-sm text-muted-foreground">Checking what we have vs what we need</p>
+                </div>
               </div>
-
-              {/* Light Logo */}
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Light Logo (for dark backgrounds)</Label>
-                {lightLogoUrl ? (
-                  <div className="relative group rounded-lg border border-border/50 bg-zinc-900 p-4 h-28 flex items-center justify-center">
-                    <img 
-                      src={lightLogoUrl} 
-                      alt="Light logo" 
-                      className="max-h-16 max-w-full object-contain"
-                    />
-                    <button
-                      onClick={() => setLightLogoUrl('')}
-                      className="absolute top-2 right-2 p-1 rounded bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center h-28 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors bg-zinc-900/50">
-                    {uploadingLogo === 'light' ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    ) : (
-                      <>
-                        <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                        <span className="text-xs text-muted-foreground">Drop or click</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleLogoUpload(file, 'light');
-                        e.target.value = '';
-                      }}
-                      disabled={uploadingLogo !== null}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-
-            {!lightLogoUrl && !darkLogoUrl ? (
-              <p className="text-xs text-amber-500 text-center flex items-center justify-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                Upload at least one logo to continue
-              </p>
             ) : (
-              <p className="text-xs text-muted-foreground text-center">
-                The light logo will be used in your email footer (dark background)
-              </p>
+              <>
+                <div className="text-center space-y-2 py-4">
+                  <h3 className="font-medium">Asset Collection</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    {extractedAssets.length > 0
+                      ? `We found ${extractedAssets.length} custom assets in your design.`
+                      : 'No custom assets detected. Click next to configure social links.'}
+                  </p>
+                </div>
+
+                {extractedAssets.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium">Detected Assets:</h4>
+                    <div className="grid gap-2">
+                      {extractedAssets.map(asset => (
+                        <div key={asset.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <div>
+                            <p className="text-sm font-medium">{asset.description}</p>
+                            <p className="text-xs text-muted-foreground">{asset.location}</p>
+                          </div>
+                          {collectedAssets[asset.id] ? (
+                            <Check className="w-4 h-4 text-primary" />
+                          ) : (
+                            <span className="text-xs text-amber-500">Needs collection</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {!assetComparison && (
+                      <Button onClick={compareAssetsToLibrary} className="w-full">
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Check Brand Library
+                      </Button>
+                    )}
+
+                    {assetComparison && (assetComparison.needs_confirmation.length > 0 || assetComparison.needs_upload.length > 0) && (
+                      <Button onClick={() => setShowAssetCollectionModal(true)} variant="outline" className="w-full">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload Missing Assets
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {extractedStyles && (
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <h4 className="text-sm font-medium mb-2">Detected Styles</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {extractedStyles.background_color && (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded border" style={{ backgroundColor: extractedStyles.background_color }} />
+                          <span className="text-xs">Background</span>
+                        </div>
+                      )}
+                      {extractedStyles.accent_color && (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded border" style={{ backgroundColor: extractedStyles.accent_color }} />
+                          <span className="text-xs">Accent</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         );
@@ -902,66 +804,42 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       case 'social':
         return (
           <div className="space-y-4">
-            {isDetectingSocials ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-4">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <div className="text-center">
-                  <h3 className="font-medium">Searching for socials...</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Looking for social media links from your footer
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="text-center space-y-2 py-4">
-                  <h3 className="font-medium">Social links & icons</h3>
-                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {socialLinks.length > 0 
-                      ? 'We found these social links. Confirm or edit them below.'
-                      : 'Icons are automatically sourced from Simple Icons. Just add your links.'}
-                  </p>
-                </div>
+            <div className="text-center space-y-2 py-4">
+              <h3 className="font-medium">Social Links</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                {socialPlatforms.length > 0
+                  ? `We detected ${socialPlatforms.join(', ')} icons. Add your profile URLs.`
+                  : 'Add your social media links.'}
+              </p>
+            </div>
 
-                {hasCustomIcons && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-600 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Custom icons detected in your design</p>
-                      <p className="text-amber-500/80">The icons in your reference image appear to be custom styled. Standard icons will be used, but you can upload custom icons later in the studio.</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Icon Color</Label>
-                  <div className="flex gap-2">
-                    {['ffffff', '000000', brand.primaryColor?.replace('#', '')].filter(Boolean).map(color => (
-                      <button
-                        key={color}
-                        onClick={() => setIconColor(color!)}
-                        className={`w-8 h-8 rounded-md border-2 transition-all ${
-                          iconColor === color ? 'border-primary ring-2 ring-primary/20' : 'border-border'
-                        }`}
-                        style={{ backgroundColor: `#${color}` }}
-                      />
-                    ))}
-                    <Input
-                      value={`#${iconColor}`}
-                      onChange={(e) => setIconColor(e.target.value.replace('#', ''))}
-                      className="w-24 text-sm"
-                      placeholder="#ffffff"
-                    />
-                  </div>
-                </div>
-
-                <SocialLinksEditor
-                  socialLinks={socialLinks}
-                  onChange={setSocialLinks}
-                  iconColor={iconColor}
+            <div className="space-y-2">
+              <Label className="text-sm">Icon Color</Label>
+              <div className="flex gap-2">
+                {['ffffff', '000000', brand.primaryColor?.replace('#', '')].filter(Boolean).map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setIconColor(color!)}
+                    className={`w-8 h-8 rounded-md border-2 transition-all ${
+                      iconColor === color ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+                    }`}
+                    style={{ backgroundColor: `#${color}` }}
+                  />
+                ))}
+                <Input
+                  value={`#${iconColor}`}
+                  onChange={(e) => setIconColor(e.target.value.replace('#', ''))}
+                  className="w-24 text-sm"
+                  placeholder="#ffffff"
                 />
-              </>
-            )}
+              </div>
+            </div>
+
+            <SocialLinksEditor
+              socialLinks={socialLinks}
+              onChange={setSocialLinks}
+              iconColor={iconColor}
+            />
           </div>
         );
 
@@ -974,11 +852,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 <div>
                   <h3 className="font-medium">{generationStatus || 'Generating your footer...'}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {sourceType === 'figma'
-                      ? 'Converting Figma design to email-safe HTML'
-                      : referenceImageUrl 
-                        ? 'AI is analyzing your reference and creating matching HTML'
-                        : 'AI is creating HTML based on your preferences'}
+                    AI is creating HTML using your collected assets
                   </p>
                 </div>
               </>
@@ -988,23 +862,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 <div>
                   <h3 className="font-medium">Ready to generate</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {sourceType === 'figma'
-                      ? 'Your Figma design will be converted to email-safe HTML'
-                      : 'Click below to generate your footer HTML. You\'ll be able to refine it in the studio.'}
+                    {Object.keys(collectedAssets).length > 0
+                      ? `Using ${Object.keys(collectedAssets).length} custom assets and ${socialLinks.filter(l => l.url).length} social icons.`
+                      : 'Click below to generate your footer HTML.'}
                   </p>
                 </div>
                 <Button onClick={handleGenerateFooter} size="lg">
-                  {sourceType === 'figma' ? (
-                    <>
-                      <Figma className="w-4 h-4 mr-2" />
-                      Convert from Figma
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Generate Footer
-                    </>
-                  )}
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate Footer
                 </Button>
               </>
             )}
@@ -1015,8 +880,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const canProceed = () => {
     switch (step) {
-      case 'reference': return sourceType !== null || true; // Can always skip
-      case 'logos': return !!lightLogoUrl || !!darkLogoUrl;
+      case 'reference': return sourceType !== null || true;
+      case 'assets': return true;
       case 'social': return true;
       case 'generate': return false;
     }
@@ -1024,8 +889,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const getNextStep = (): Step | null => {
     switch (step) {
-      case 'reference': return 'logos';
-      case 'logos': return 'social';
+      case 'reference': return 'assets';
+      case 'assets': return 'social';
       case 'social': return 'generate';
       case 'generate': return null;
     }
@@ -1034,92 +899,103 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const getPrevStep = (): Step | null => {
     switch (step) {
       case 'reference': return null;
-      case 'logos': return 'reference';
-      case 'social': return 'logos';
+      case 'assets': return 'reference';
+      case 'social': return 'assets';
       case 'generate': return 'social';
     }
   };
 
   const stepLabels: Record<Step, string> = {
     reference: 'Reference',
-    logos: 'Logos',
+    assets: 'Assets',
     social: 'Social Links',
     generate: 'Generate',
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Set Up Footer for {brand.name}</DialogTitle>
-          <DialogDescription>
-            Create a branded email footer that will be included in all your campaigns.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Set Up Footer for {brand.name}</DialogTitle>
+            <DialogDescription>
+              Create a branded email footer that will be included in all your campaigns.
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* Step indicator */}
-        <div className="flex items-center justify-center gap-1 py-2">
-          {(['reference', 'logos', 'social', 'generate'] as Step[]).map((s, i) => (
-            <div key={s} className="flex items-center">
-              <div 
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  s === step ? 'bg-primary' : 
-                  (['reference', 'logos', 'social', 'generate'].indexOf(s) < ['reference', 'logos', 'social', 'generate'].indexOf(step)) 
-                    ? 'bg-primary/40' : 'bg-muted'
-                }`}
-              />
-              {i < 3 && <div className="w-6 h-px bg-border mx-1" />}
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-center text-muted-foreground -mt-1">
-          {stepLabels[step]}
-        </p>
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-1 py-2">
+            {(['reference', 'assets', 'social', 'generate'] as Step[]).map((s, i) => (
+              <div key={s} className="flex items-center">
+                <div 
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    s === step ? 'bg-primary' : 
+                    (['reference', 'assets', 'social', 'generate'].indexOf(s) < ['reference', 'assets', 'social', 'generate'].indexOf(step)) 
+                      ? 'bg-primary/40' : 'bg-muted'
+                  }`}
+                />
+                {i < 3 && <div className="w-6 h-px bg-border mx-1" />}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-center text-muted-foreground -mt-1">
+            {stepLabels[step]}
+          </p>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto py-2">
-          {renderStepContent()}
-        </div>
+          {/* Content */}
+          <div className="flex-1 overflow-auto py-2">
+            {renderStepContent()}
+          </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between pt-4 border-t">
-          <Button
-            variant="ghost"
-            onClick={() => {
-              const prev = getPrevStep();
-              if (prev) setStep(prev);
-            }}
-            disabled={!getPrevStep()}
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Back
-          </Button>
-
-          {step === 'generate' ? (
-            <Button onClick={handleGenerateFooter} disabled={isGenerating}>
-              {isGenerating ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : sourceType === 'figma' ? (
-                <Figma className="w-4 h-4 mr-2" />
-              ) : (
-                <Sparkles className="w-4 h-4 mr-2" />
-              )}
-              {sourceType === 'figma' ? 'Convert' : 'Generate'}
-            </Button>
-          ) : (
+          {/* Navigation */}
+          <div className="flex items-center justify-between pt-4 border-t">
             <Button
+              variant="ghost"
               onClick={() => {
-                const next = getNextStep();
-                if (next) setStep(next);
+                const prev = getPrevStep();
+                if (prev) setStep(prev);
               }}
-              disabled={!canProceed() || !getNextStep()}
+              disabled={!getPrevStep()}
             >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Back
             </Button>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+            {step === 'generate' ? (
+              <Button onClick={handleGenerateFooter} disabled={isGenerating}>
+                {isGenerating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-2" />
+                )}
+                Generate
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  const next = getNextStep();
+                  if (next) setStep(next);
+                }}
+                disabled={!canProceed() || !getNextStep()}
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Asset Collection Modal */}
+      <AssetCollectionModal
+        open={showAssetCollectionModal}
+        onOpenChange={setShowAssetCollectionModal}
+        needsConfirmation={assetComparison?.needs_confirmation || []}
+        needsUpload={assetComparison?.needs_upload || []}
+        socialPlatforms={socialPlatforms}
+        brandDomain={brand.domain}
+        onComplete={handleAssetCollectionComplete}
+      />
+    </>
   );
 }
