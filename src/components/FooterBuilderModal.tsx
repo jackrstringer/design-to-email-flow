@@ -1,6 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, AlertCircle, Sparkles, Figma, Image, Layers, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useState, useCallback, useRef } from 'react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,7 +27,7 @@ interface FooterBuilderModalProps {
   initialCampaignImageUrl?: string;
 }
 
-type Step = 'reference' | 'assets' | 'social' | 'generate';
+type Step = 'reference' | 'social' | 'generate';
 type SourceType = 'image' | 'figma' | 'campaign' | null;
 
 interface Campaign {
@@ -71,22 +70,25 @@ interface ExtractedAsset {
   id: string;
   description: string;
   location: string;
-  category: 'logo' | 'decorative' | 'background' | 'other';
-  is_standard_character?: boolean;
+  category: string;
+  crop_hint?: {
+    x_percent: number;
+    y_percent: number;
+    width_percent: number;
+    height_percent: number;
+  };
 }
 
-interface AssetComparisonResult {
-  use_from_library: Array<{ id: string; description: string; library_url: string }>;
-  needs_confirmation: Array<{ id: string; description: string; reason: string; library_url: string }>;
-  needs_upload: Array<{ id: string; description: string; category: string }>;
-  use_text_fallback?: Array<{ id: string; description: string; fallback_character: string }>;
+interface TextBasedElement {
+  id: string;
+  description: string;
+  recommendation: string;
 }
 
 interface StyleTokens {
   background_color?: string;
   text_color?: string;
   accent_color?: string;
-  special_effects?: string[];
 }
 
 export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl }: FooterBuilderModalProps) {
@@ -107,20 +109,19 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [selectedCampaignImage, setSelectedCampaignImage] = useState<string | null>(null);
   const [isUploadingCrop, setIsUploadingCrop] = useState(false);
   
-  // Asset extraction state
+  // Asset extraction state - NEW SIMPLIFIED
   const [isExtractingAssets, setIsExtractingAssets] = useState(false);
-  const [extractedAssets, setExtractedAssets] = useState<ExtractedAsset[]>([]);
+  const [assetsNeeded, setAssetsNeeded] = useState<ExtractedAsset[]>([]);
+  const [textBasedElements, setTextBasedElements] = useState<TextBasedElement[]>([]);
   const [socialPlatforms, setSocialPlatforms] = useState<string[]>([]);
   const [extractedStyles, setExtractedStyles] = useState<StyleTokens | null>(null);
   const [socialIconColor, setSocialIconColor] = useState<string>('#ffffff');
   
-  // Asset comparison state
-  const [isComparingAssets, setIsComparingAssets] = useState(false);
-  const [assetComparison, setAssetComparison] = useState<AssetComparisonResult | null>(null);
+  // Asset collection modal state
   const [showAssetCollectionModal, setShowAssetCollectionModal] = useState(false);
   const [collectedAssets, setCollectedAssets] = useState<Record<string, string>>({});
   
-  // Social state (simplified - just for URL editing)
+  // Social state
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
   const [iconColor, setIconColor] = useState('ffffff');
   
@@ -129,6 +130,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [generationStatus, setGenerationStatus] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Build brand library object for AssetCollectionModal
+  const brandLibrary = {
+    logo: brand.darkLogoUrl || brand.lightLogoUrl,
+    darkLogo: brand.darkLogoUrl,
+    lightLogo: brand.lightLogoUrl,
+    footerLogo: brand.footerLogoUrl
+  };
 
   // Handle campaign source click
   const handleCampaignSourceClick = useCallback(() => {
@@ -192,7 +201,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     }
   }, [brand.id]);
 
-  // Step 1: Extract assets from reference image
+  // Extract assets from reference image - SIMPLIFIED: one pass, then show modal if needed
   const extractAssetsFromImage = useCallback(async (imageUrl: string) => {
     setIsExtractingAssets(true);
     try {
@@ -208,8 +217,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       console.log('Extracted assets:', data);
 
-      setExtractedAssets(data.non_social_assets || []);
-      setSocialPlatforms(data.social_platforms_detected || []);
+      // Store extraction results
+      setAssetsNeeded(data.requires_upload || []);
+      setTextBasedElements(data.text_based_elements || []);
+      setSocialPlatforms(data.social_platforms || []);
       setExtractedStyles(data.styles || null);
       
       if (data.social_icon_color) {
@@ -218,11 +229,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       }
 
       // Auto-populate social links based on detected platforms
-      if (data.social_platforms_detected && data.social_platforms_detected.length > 0) {
+      if (data.social_platforms && data.social_platforms.length > 0) {
         const existingPlatforms = new Set(socialLinks.map(l => l.platform));
         const newLinks = [...socialLinks];
         
-        for (const platform of data.social_platforms_detected) {
+        for (const platform of data.social_platforms) {
           if (!existingPlatforms.has(platform)) {
             newLinks.push({ platform, url: '' });
           }
@@ -231,7 +242,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         setSocialLinks(newLinks);
       }
 
-      toast.success(`Found ${data.non_social_assets?.length || 0} custom assets`);
+      // If there are assets that need upload, show the collection modal
+      if (data.requires_upload && data.requires_upload.length > 0) {
+        setShowAssetCollectionModal(true);
+      }
+
+      toast.success(`Analysis complete`);
     } catch (error) {
       console.error('Asset extraction error:', error);
       toast.error('Failed to analyze image');
@@ -240,80 +256,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     }
   }, [socialLinks]);
 
-  // Step 2: Compare extracted assets to brand library
-  const compareAssetsToLibrary = useCallback(async () => {
-    if (!referenceImageUrl) return;
-    
-    setIsComparingAssets(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('compare-brand-assets', {
-        body: {
-          extractedAssets,
-          brandLibrary: {
-            darkLogoUrl: brand.darkLogoUrl,
-            lightLogoUrl: brand.lightLogoUrl,
-            footerLogoUrl: brand.footerLogoUrl
-          },
-          referenceImageUrl
-        }
-      });
-
-      if (error) throw error;
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to compare assets');
-      }
-
-      console.log('Asset comparison:', data);
-
-      setAssetComparison({
-        use_from_library: data.use_from_library || [],
-        needs_confirmation: data.needs_confirmation || [],
-        needs_upload: data.needs_upload || [],
-        use_text_fallback: data.use_text_fallback || []
-      });
-
-      // If there are assets needing user input, show the collection modal
-      if ((data.needs_confirmation?.length > 0) || (data.needs_upload?.length > 0)) {
-        setShowAssetCollectionModal(true);
-      } else {
-        // No user input needed - auto-collect library assets
-        const autoCollected: Record<string, string> = {};
-        for (const asset of data.use_from_library || []) {
-          autoCollected[asset.id] = asset.library_url;
-        }
-        setCollectedAssets(autoCollected);
-        toast.success('All assets resolved from library');
-      }
-    } catch (error) {
-      console.error('Asset comparison error:', error);
-      toast.error('Failed to compare assets');
-    } finally {
-      setIsComparingAssets(false);
-    }
-  }, [extractedAssets, brand.darkLogoUrl, brand.lightLogoUrl, brand.footerLogoUrl, referenceImageUrl]);
-
   // Handle asset collection complete
   const handleAssetCollectionComplete = useCallback((collected: Record<string, string>) => {
-    // Merge with auto-collected library assets
-    const merged = { ...collectedAssets };
-    
-    // Add library matches
-    if (assetComparison?.use_from_library) {
-      for (const asset of assetComparison.use_from_library) {
-        merged[asset.id] = asset.library_url;
-      }
-    }
-    
-    // Add user-collected assets
-    for (const [id, url] of Object.entries(collected)) {
-      merged[id] = url;
-    }
-
-    setCollectedAssets(merged);
+    setCollectedAssets(collected);
     setShowAssetCollectionModal(false);
     toast.success('Assets collected');
-  }, [collectedAssets, assetComparison]);
+  }, []);
 
   const handleCropComplete = useCallback(async (croppedImageData: string) => {
     setIsUploadingCrop(true);
@@ -432,14 +380,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     try {
       // Upload social icons to Cloudinary
       const socialIconsData = await uploadAllSocialIcons(
-        socialLinks.filter(l => l.url), // Only upload icons that have URLs
+        socialLinks.filter(l => l.url),
         iconColor,
         brand.domain
       );
       
       console.log('Social icons uploaded:', socialIconsData);
 
-      // Build social icons array for the generation function
       const socialIconsForGeneration = socialIconsData.map((icon: any) => ({
         platform: icon.platform,
         url: icon.iconUrl
@@ -452,7 +399,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           referenceImageUrl,
           assets: collectedAssets,
           styles: extractedStyles,
-          socialIcons: socialIconsForGeneration
+          socialIcons: socialIconsForGeneration,
+          textBasedElements
         }
       });
 
@@ -700,104 +648,47 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             {isExtractingAssets && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Analyzing image for assets...
+                Analyzing image...
               </div>
             )}
 
-            {/* Show extracted info */}
-            {!isExtractingAssets && referenceImageUrl && extractedAssets.length > 0 && (
-              <div className="bg-muted/30 rounded-lg p-3 space-y-1">
-                <p className="text-sm font-medium">Analysis complete</p>
-                <p className="text-xs text-muted-foreground">
-                  Found {extractedAssets.length} custom asset{extractedAssets.length !== 1 ? 's' : ''} and {socialPlatforms.length} social icon{socialPlatforms.length !== 1 ? 's' : ''}
+            {/* Show extracted info summary */}
+            {!isExtractingAssets && referenceImageUrl && (
+              <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <Check className="w-4 h-4 text-primary" />
+                  Analysis complete
                 </p>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {assetsNeeded.length > 0 && (
+                    <p>• {assetsNeeded.length} asset{assetsNeeded.length !== 1 ? 's' : ''} {Object.keys(collectedAssets).length > 0 ? 'collected' : 'need collection'}</p>
+                  )}
+                  {textBasedElements.length > 0 && (
+                    <p>• {textBasedElements.length} text/CSS element{textBasedElements.length !== 1 ? 's' : ''} (auto-handled)</p>
+                  )}
+                  {socialPlatforms.length > 0 && (
+                    <p>• {socialPlatforms.length} social icon{socialPlatforms.length !== 1 ? 's' : ''} detected</p>
+                  )}
+                </div>
+                
+                {/* Button to open asset collection modal if there are uncollected assets */}
+                {assetsNeeded.length > 0 && Object.keys(collectedAssets).length < assetsNeeded.length && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full mt-2"
+                    onClick={() => setShowAssetCollectionModal(true)}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Collect Assets
+                  </Button>
+                )}
               </div>
             )}
 
-            <Button variant="link" className="w-full text-muted-foreground" onClick={() => setStep('assets')}>
+            <Button variant="link" className="w-full text-muted-foreground" onClick={() => setStep('social')}>
               Skip - I don't have a reference
             </Button>
-          </div>
-        );
-
-      case 'assets':
-        return (
-          <div className="space-y-4">
-            {isComparingAssets ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-4">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <div className="text-center">
-                  <h3 className="font-medium">Comparing assets...</h3>
-                  <p className="text-sm text-muted-foreground">Checking what we have vs what we need</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="text-center space-y-2 py-4">
-                  <h3 className="font-medium">Asset Collection</h3>
-                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    {extractedAssets.length > 0
-                      ? `We found ${extractedAssets.length} custom assets in your design.`
-                      : 'No custom assets detected. Click next to configure social links.'}
-                  </p>
-                </div>
-
-                {extractedAssets.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium">Detected Assets:</h4>
-                    <div className="grid gap-2">
-                      {extractedAssets.map(asset => (
-                        <div key={asset.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                          <div>
-                            <p className="text-sm font-medium">{asset.description}</p>
-                            <p className="text-xs text-muted-foreground">{asset.location}</p>
-                          </div>
-                          {collectedAssets[asset.id] ? (
-                            <Check className="w-4 h-4 text-primary" />
-                          ) : (
-                            <span className="text-xs text-amber-500">Needs collection</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {!assetComparison && (
-                      <Button onClick={compareAssetsToLibrary} className="w-full">
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Check Brand Library
-                      </Button>
-                    )}
-
-                    {assetComparison && (assetComparison.needs_confirmation.length > 0 || assetComparison.needs_upload.length > 0) && (
-                      <Button onClick={() => setShowAssetCollectionModal(true)} variant="outline" className="w-full">
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload Missing Assets
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                {extractedStyles && (
-                  <div className="bg-muted/30 rounded-lg p-3">
-                    <h4 className="text-sm font-medium mb-2">Detected Styles</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {extractedStyles.background_color && (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-4 h-4 rounded border" style={{ backgroundColor: extractedStyles.background_color }} />
-                          <span className="text-xs">Background</span>
-                        </div>
-                      )}
-                      {extractedStyles.accent_color && (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-4 h-4 rounded border" style={{ backgroundColor: extractedStyles.accent_color }} />
-                          <span className="text-xs">Accent</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
           </div>
         );
 
@@ -863,7 +754,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   <h3 className="font-medium">Ready to generate</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
                     {Object.keys(collectedAssets).length > 0
-                      ? `Using ${Object.keys(collectedAssets).length} custom assets and ${socialLinks.filter(l => l.url).length} social icons.`
+                      ? `Using ${Object.keys(collectedAssets).length} custom asset${Object.keys(collectedAssets).length !== 1 ? 's' : ''} and ${socialLinks.filter(l => l.url).length} social link${socialLinks.filter(l => l.url).length !== 1 ? 's' : ''}.`
                       : 'Click below to generate your footer HTML.'}
                   </p>
                 </div>
@@ -880,8 +771,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const canProceed = () => {
     switch (step) {
-      case 'reference': return sourceType !== null || true;
-      case 'assets': return true;
+      case 'reference': return true;
       case 'social': return true;
       case 'generate': return false;
     }
@@ -889,8 +779,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const getNextStep = (): Step | null => {
     switch (step) {
-      case 'reference': return 'assets';
-      case 'assets': return 'social';
+      case 'reference': return 'social';
       case 'social': return 'generate';
       case 'generate': return null;
     }
@@ -899,15 +788,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const getPrevStep = (): Step | null => {
     switch (step) {
       case 'reference': return null;
-      case 'assets': return 'reference';
-      case 'social': return 'assets';
+      case 'social': return 'reference';
       case 'generate': return 'social';
     }
   };
 
   const stepLabels: Record<Step, string> = {
     reference: 'Reference',
-    assets: 'Assets',
     social: 'Social Links',
     generate: 'Generate',
   };
@@ -923,18 +810,18 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             </DialogDescription>
           </DialogHeader>
 
-          {/* Step indicator */}
+          {/* Step indicator - now 3 steps instead of 4 */}
           <div className="flex items-center justify-center gap-1 py-2">
-            {(['reference', 'assets', 'social', 'generate'] as Step[]).map((s, i) => (
+            {(['reference', 'social', 'generate'] as Step[]).map((s, i) => (
               <div key={s} className="flex items-center">
                 <div 
                   className={`w-2 h-2 rounded-full transition-colors ${
                     s === step ? 'bg-primary' : 
-                    (['reference', 'assets', 'social', 'generate'].indexOf(s) < ['reference', 'assets', 'social', 'generate'].indexOf(step)) 
+                    (['reference', 'social', 'generate'].indexOf(s) < ['reference', 'social', 'generate'].indexOf(step)) 
                       ? 'bg-primary/40' : 'bg-muted'
                   }`}
                 />
-                {i < 3 && <div className="w-6 h-px bg-border mx-1" />}
+                {i < 2 && <div className="w-8 h-px bg-border mx-1" />}
               </div>
             ))}
           </div>
@@ -986,16 +873,20 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         </DialogContent>
       </Dialog>
 
-      {/* Asset Collection Modal */}
-      <AssetCollectionModal
-        open={showAssetCollectionModal}
-        onOpenChange={setShowAssetCollectionModal}
-        needsConfirmation={assetComparison?.needs_confirmation || []}
-        needsUpload={assetComparison?.needs_upload || []}
-        socialPlatforms={socialPlatforms}
-        brandDomain={brand.domain}
-        onComplete={handleAssetCollectionComplete}
-      />
+      {/* Asset Collection Modal - NEW SIMPLIFIED VERSION */}
+      {referenceImageUrl && (
+        <AssetCollectionModal
+          open={showAssetCollectionModal}
+          onOpenChange={setShowAssetCollectionModal}
+          referenceImageUrl={referenceImageUrl}
+          assetsNeeded={assetsNeeded}
+          textBasedElements={textBasedElements}
+          socialPlatforms={socialPlatforms}
+          brandLibrary={brandLibrary}
+          brandDomain={brand.domain}
+          onComplete={handleAssetCollectionComplete}
+        />
+      )}
     </>
   );
 }

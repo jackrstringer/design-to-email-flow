@@ -25,65 +25,80 @@ serve(async (req) => {
 
     console.log('Extracting assets from reference image:', referenceImageUrl);
 
-    const prompt = `Analyze this email section/footer design and catalog EVERY image-based element.
+    const prompt = `Analyze this email section/footer design and categorize ALL visual elements.
 
-IGNORE standard social media icons (Instagram, Facebook, TikTok, Twitter/X, YouTube, Pinterest, LinkedIn, Snapchat, etc.) - those are handled separately by our system.
+Your job is to classify elements into THREE categories:
 
-Identify ALL of the following:
+## 1. REQUIRES_UPLOAD (True image assets that MUST be uploaded)
+These are actual image files that cannot be recreated with text/CSS:
+- Brand logos (wordmarks, icons, mascots)
+- Custom illustrations or graphics
+- Product photos
+- Badges, seals, certifications with complex graphics
+- Background images or patterns
 
-1. LOGOS / BRAND MARKS
-   - Primary logo (text wordmark, icon, or combined)
-   - Secondary brand marks (mascots, secondary icons, alternate logos)
-   - For each: describe what it looks like and where it appears
+For each, provide:
+- id: unique snake_case identifier
+- description: what it looks like
+- location: where in the design (e.g., "bottom left", "center")
+- category: "logo" | "decorative" | "background" | "badge"
+- crop_hint: approximate position as percentages { x_percent, y_percent, width_percent, height_percent } so we can show a cropped preview from the reference image
 
-2. CUSTOM/DECORATIVE ICONS (NOT social media)
-   - Navigation arrows or chevrons
-   - Decorative elements (dividers, flourishes)
-   - UI elements (bullets, custom shapes)
-   - Any icon that is NOT a standard social platform icon
-   
-3. OTHER GRAPHICS
-   - Background images or patterns
-   - Badges, seals, certifications
-   - Product images
-   - Any other image-based element
+## 2. TEXT_BASED_ELEMENTS (Achievable with text/CSS - NO upload needed)
+These elements can be recreated with Unicode characters or CSS:
+- Simple arrows (→ ← ↑ ↓ › ‹ ›› « »)
+- Bullets (• ◦ ‣ ○)
+- Simple dividers (lines, pipes |)
+- Basic shapes achievable with CSS (circles, squares)
 
-4. SOCIAL PLATFORMS DETECTED
-   - Just list which platforms have icons visible (instagram, facebook, tiktok, etc.)
-   - Note if they appear custom-styled vs standard flat monochrome icons
-   - What color are the social icons? (extract hex if possible)
+For each, provide:
+- id: unique snake_case identifier
+- description: what it represents
+- recommendation: exact Unicode character or CSS approach to use
 
-5. STYLES
-   - Background color(s) - extract hex values
-   - Primary text color - extract hex
-   - Accent/highlight color - extract hex  
-   - Any special effects (gradients, glows, shadows)
-   - Typography observations (uppercase text, letter-spacing, etc.)
+## 3. SOCIAL ICONS
+Standard social media platform icons - we handle these separately.
+Just list: platform names detected (instagram, facebook, tiktok, twitter, youtube, linkedin, pinterest, snapchat, threads, etc.)
 
-Return ONLY valid JSON in this exact format:
+## 4. STYLES
+Extract visual style tokens:
+- background_color: hex value
+- text_color: primary text hex
+- accent_color: highlight/accent hex
+- social_icon_color: hex value of social icons
+
+Return ONLY valid JSON:
 {
-  "non_social_assets": [
+  "requires_upload": [
     {
-      "id": "unique_snake_case_id",
-      "description": "Clear description of what this asset is",
-      "location": "Where in the design (e.g., 'bottom left', 'center of header')",
-      "category": "logo" | "decorative" | "background" | "other",
-      "is_standard_character": false
+      "id": "owl_logo",
+      "description": "Owl brand mark with spread wings",
+      "location": "bottom left corner",
+      "category": "logo",
+      "crop_hint": { "x_percent": 5, "y_percent": 85, "width_percent": 15, "height_percent": 12 }
     }
   ],
-  "social_platforms_detected": ["instagram", "facebook", "tiktok"],
-  "social_icons_are_custom": true,
+  "text_based_elements": [
+    {
+      "id": "nav_arrows",
+      "description": "Right-pointing arrows after navigation items",
+      "recommendation": "Use → character or CSS ::after with border"
+    }
+  ],
+  "social_platforms": ["instagram", "facebook", "tiktok"],
   "social_icon_color": "#ffffff",
   "styles": {
     "background_color": "#0a0a0a",
     "text_color": "#ffffff",
-    "accent_color": "#c9a227",
-    "special_effects": ["description of any gradients, glows, etc."]
+    "accent_color": "#c9a227"
   }
 }
 
-If an element is a standard text character (like → or •), set is_standard_character to true.
-If no non-social assets are found, return an empty array for non_social_assets.`;
+IMPORTANT CLASSIFICATION RULES:
+- Simple arrows are ALWAYS text_based_elements, not requires_upload
+- Only flag as requires_upload if it's a complex graphic that CANNOT be a Unicode character
+- Be conservative - when in doubt, it's probably text-based
+- crop_hint percentages should roughly outline where the asset appears in the image`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -133,7 +148,11 @@ If no non-social assets are found, return an empty array for non_social_assets.`
 
     return new Response(JSON.stringify({ 
       success: true,
-      ...extractedData
+      requires_upload: extractedData.requires_upload || [],
+      text_based_elements: extractedData.text_based_elements || [],
+      social_platforms: extractedData.social_platforms || [],
+      social_icon_color: extractedData.social_icon_color || '#ffffff',
+      styles: extractedData.styles || {}
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
