@@ -131,13 +131,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Build brand library object for AssetCollectionModal
-  const brandLibrary = {
-    logo: brand.darkLogoUrl || brand.lightLogoUrl,
-    darkLogo: brand.darkLogoUrl,
-    lightLogo: brand.lightLogoUrl,
-    footerLogo: brand.footerLogoUrl
-  };
+  // No brand library - user uploads all assets explicitly
 
   // Handle campaign source click
   const handleCampaignSourceClick = useCallback(() => {
@@ -882,7 +876,6 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           assetsNeeded={assetsNeeded}
           textBasedElements={textBasedElements}
           socialPlatforms={socialPlatforms}
-          brandLibrary={brandLibrary}
           brandDomain={brand.domain}
           onComplete={handleAssetCollectionComplete}
         />

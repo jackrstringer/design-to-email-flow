@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, Loader2, Check, X, Image } from 'lucide-react';
+import { Upload, Loader2, Check, Image } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -32,13 +30,6 @@ interface TextBasedElement {
   recommendation: string;
 }
 
-interface BrandLibrary {
-  logo?: string;
-  darkLogo?: string;
-  lightLogo?: string;
-  footerLogo?: string;
-}
-
 interface AssetCollectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,7 +37,6 @@ interface AssetCollectionModalProps {
   assetsNeeded: AssetNeeded[];
   textBasedElements: TextBasedElement[];
   socialPlatforms: string[];
-  brandLibrary: BrandLibrary;
   brandDomain: string;
   onComplete: (collectedAssets: Record<string, string>) => void;
 }
@@ -71,10 +61,23 @@ function CroppedPreview({
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      const x = (cropHint.x_percent / 100) * img.width;
-      const y = (cropHint.y_percent / 100) * img.height;
-      const width = (cropHint.width_percent / 100) * img.width;
-      const height = (cropHint.height_percent / 100) * img.height;
+      // Use naturalWidth/naturalHeight for accurate calculations
+      const naturalW = img.naturalWidth;
+      const naturalH = img.naturalHeight;
+
+      // Calculate crop region with bounds clamping
+      let x = Math.max(0, (cropHint.x_percent / 100) * naturalW);
+      let y = Math.max(0, (cropHint.y_percent / 100) * naturalH);
+      let width = (cropHint.width_percent / 100) * naturalW;
+      let height = (cropHint.height_percent / 100) * naturalH;
+
+      // Clamp to image bounds
+      if (x + width > naturalW) width = naturalW - x;
+      if (y + height > naturalH) height = naturalH - y;
+      
+      // Ensure minimum size
+      width = Math.max(width, 10);
+      height = Math.max(height, 10);
 
       // Set canvas size to match crop region aspect ratio
       const maxSize = 80;
@@ -93,6 +96,10 @@ function CroppedPreview({
         setLoaded(true);
       }
     };
+    img.onerror = () => {
+      console.error('Failed to load image for crop preview');
+      setLoaded(false);
+    };
     img.src = referenceImageUrl;
   }, [referenceImageUrl, cropHint]);
 
@@ -105,7 +112,7 @@ function CroppedPreview({
   }
 
   return (
-    <div className="w-20 h-20 rounded border border-border/50 bg-muted/30 flex items-center justify-center overflow-hidden">
+    <div className="w-20 h-20 rounded border border-border/50 bg-muted/30 flex items-center justify-center overflow-hidden relative">
       <canvas 
         ref={canvasRef} 
         className={`max-w-full max-h-full object-contain ${loaded ? 'opacity-100' : 'opacity-0'}`}
@@ -122,25 +129,14 @@ export function AssetCollectionModal({
   assetsNeeded,
   textBasedElements,
   socialPlatforms,
-  brandLibrary,
   brandDomain,
   onComplete
 }: AssetCollectionModalProps) {
-  // Track user choice for each asset: 'upload' | 'library'
-  const [assetChoices, setAssetChoices] = useState<Record<string, 'upload' | 'library'>>({});
-  
   // Track uploaded files
   const [uploadedAssets, setUploadedAssets] = useState<Record<string, string>>({});
   const [uploadingAsset, setUploadingAsset] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  // Get library asset for a given asset based on category
-  const getLibraryAsset = (asset: AssetNeeded): string | null => {
-    if (asset.category === 'logo') {
-      return brandLibrary.footerLogo || brandLibrary.darkLogo || brandLibrary.lightLogo || brandLibrary.logo || null;
-    }
-    return null;
-  };
+  const [dragOverAsset, setDragOverAsset] = useState<string | null>(null);
 
   const handleFileUpload = async (assetId: string, file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -161,7 +157,7 @@ export function AssetCollectionModal({
       const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
         body: {
           imageData: base64,
-          folder: `brands/${brandDomain}/custom-assets`,
+          folder: `brands/${brandDomain}/footer-assets`,
           publicId: assetId,
         },
       });
@@ -169,7 +165,6 @@ export function AssetCollectionModal({
       if (error) throw error;
 
       setUploadedAssets(prev => ({ ...prev, [assetId]: data.url }));
-      setAssetChoices(prev => ({ ...prev, [assetId]: 'upload' }));
       toast.success('Asset uploaded');
     } catch (error) {
       console.error('Upload error:', error);
@@ -179,152 +174,106 @@ export function AssetCollectionModal({
     }
   };
 
+  const handleDrop = (assetId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverAsset(null);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(assetId, file);
+  };
+
   const handleComplete = () => {
     setIsProcessing(true);
-    
-    const collectedAssets: Record<string, string> = {};
-
-    for (const asset of assetsNeeded) {
-      const choice = assetChoices[asset.id];
-      const libraryUrl = getLibraryAsset(asset);
-      
-      if (choice === 'library' && libraryUrl) {
-        collectedAssets[asset.id] = libraryUrl;
-      } else if (choice === 'upload' && uploadedAssets[asset.id]) {
-        collectedAssets[asset.id] = uploadedAssets[asset.id];
-      }
-      // If no choice made and no upload, skip the asset
-    }
-
-    onComplete(collectedAssets);
+    onComplete(uploadedAssets);
     setIsProcessing(false);
   };
 
-  // Check if we can proceed - at least made a decision or uploaded for required assets
-  const canProceed = () => {
-    for (const asset of assetsNeeded) {
-      const choice = assetChoices[asset.id];
-      const libraryUrl = getLibraryAsset(asset);
-      
-      // If they chose library but there's no library asset, can't proceed
-      if (choice === 'library' && !libraryUrl) return false;
-      
-      // If they chose upload but haven't uploaded, can't proceed
-      if (choice === 'upload' && !uploadedAssets[asset.id]) return false;
-      
-      // If no choice made at all, that's okay - they can skip
-    }
-    return true;
-  };
+  // All assets must be uploaded to proceed
+  const canProceed = assetsNeeded.every(asset => uploadedAssets[asset.id]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload Required Assets</DialogTitle>
+          <DialogTitle>Assets Required</DialogTitle>
           <DialogDescription>
-            We found {assetsNeeded.length} asset{assetsNeeded.length !== 1 ? 's' : ''} that need{assetsNeeded.length === 1 ? 's' : ''} to be provided.
+            Upload {assetsNeeded.length} asset{assetsNeeded.length !== 1 ? 's' : ''} to continue.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-auto py-4 space-y-4">
-          {/* Assets needing upload/choice */}
-          {assetsNeeded.map(asset => {
-            const libraryUrl = getLibraryAsset(asset);
-            const choice = assetChoices[asset.id];
-            
-            return (
-              <div key={asset.id} className="border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  {/* Cropped preview from reference */}
-                  <CroppedPreview 
-                    referenceImageUrl={referenceImageUrl} 
-                    cropHint={asset.crop_hint} 
-                  />
-                  
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{asset.description}</p>
-                    <p className="text-xs text-muted-foreground">{asset.location}</p>
-                  </div>
+          {/* Assets needing upload */}
+          {assetsNeeded.map(asset => (
+            <div key={asset.id} className="border border-border rounded-lg p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                {/* Cropped preview from reference */}
+                <CroppedPreview 
+                  referenceImageUrl={referenceImageUrl} 
+                  cropHint={asset.crop_hint} 
+                />
+                
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{asset.description}</p>
+                  <p className="text-xs text-muted-foreground">{asset.location}</p>
                 </div>
-
-                <RadioGroup 
-                  value={choice || ''} 
-                  onValueChange={(val) => setAssetChoices(prev => ({ ...prev, [asset.id]: val as 'upload' | 'library' }))}
-                  className="space-y-2"
-                >
-                  {/* Upload option */}
-                  <div className="flex items-start gap-3">
-                    <RadioGroupItem value="upload" id={`${asset.id}-upload`} className="mt-1" />
-                    <div className="flex-1 space-y-2">
-                      <Label htmlFor={`${asset.id}-upload`} className="text-sm cursor-pointer">
-                        Upload new file
-                      </Label>
-                      
-                      {choice === 'upload' && (
-                        <>
-                          {uploadedAssets[asset.id] ? (
-                            <div className="flex items-center gap-2 text-sm text-primary">
-                              <div className="w-10 h-10 rounded border border-border/50 overflow-hidden">
-                                <img src={uploadedAssets[asset.id]} alt="Uploaded" className="w-full h-full object-contain" />
-                              </div>
-                              <Check className="w-4 h-4" />
-                              <span>Uploaded</span>
-                              <button 
-                                onClick={() => setUploadedAssets(prev => {
-                                  const next = { ...prev };
-                                  delete next[asset.id];
-                                  return next;
-                                })}
-                                className="ml-auto text-muted-foreground hover:text-foreground"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="flex items-center justify-center gap-2 h-10 rounded-md border border-dashed border-border cursor-pointer hover:bg-muted/20 transition-colors">
-                              {uploadingAsset === asset.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <>
-                                  <Upload className="w-4 h-4" />
-                                  <span className="text-sm">Choose file...</span>
-                                </>
-                              )}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) handleFileUpload(asset.id, file);
-                                  e.target.value = '';
-                                }}
-                                disabled={uploadingAsset !== null}
-                              />
-                            </label>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Library option (only if we have one) */}
-                  {libraryUrl && (
-                    <div className="flex items-start gap-3">
-                      <RadioGroupItem value="library" id={`${asset.id}-library`} className="mt-1" />
-                      <Label htmlFor={`${asset.id}-library`} className="flex items-center gap-3 cursor-pointer">
-                        <div className="w-10 h-10 rounded border border-border/50 bg-muted/20 overflow-hidden flex items-center justify-center">
-                          <img src={libraryUrl} alt="Library asset" className="max-w-full max-h-full object-contain" />
-                        </div>
-                        <span className="text-sm">Use from library</span>
-                      </Label>
-                    </div>
-                  )}
-                </RadioGroup>
               </div>
-            );
-          })}
+
+              {/* Upload dropzone */}
+              {uploadedAssets[asset.id] ? (
+                <div className="flex items-center gap-3 p-2 bg-muted/30 rounded-md">
+                  <div className="w-12 h-12 rounded border border-border/50 overflow-hidden bg-muted/20 flex items-center justify-center">
+                    <img src={uploadedAssets[asset.id]} alt="Uploaded" className="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-primary flex items-center gap-1">
+                      <Check className="w-4 h-4" /> Uploaded
+                    </p>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setUploadedAssets(prev => {
+                      const next = { ...prev };
+                      delete next[asset.id];
+                      return next;
+                    })}
+                  >
+                    Replace
+                  </Button>
+                </div>
+              ) : (
+                <label
+                  onDrop={(e) => handleDrop(asset.id, e)}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverAsset(asset.id); }}
+                  onDragLeave={() => setDragOverAsset(null)}
+                  className={`flex flex-col items-center justify-center gap-2 h-20 rounded-md border-2 border-dashed cursor-pointer transition-colors ${
+                    dragOverAsset === asset.id 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-border hover:border-primary/50 hover:bg-muted/20'
+                  }`}
+                >
+                  {uploadingAsset === asset.id ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Drop file or click to upload</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(asset.id, file);
+                      e.target.value = '';
+                    }}
+                    disabled={uploadingAsset !== null}
+                  />
+                </label>
+              )}
+            </div>
+          ))}
 
           {/* Text-based elements - just informational */}
           {textBasedElements.length > 0 && (
@@ -364,7 +313,7 @@ export function AssetCollectionModal({
           </Button>
           <Button 
             onClick={handleComplete} 
-            disabled={!canProceed() || isProcessing}
+            disabled={!canProceed || isProcessing}
           >
             {isProcessing ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
