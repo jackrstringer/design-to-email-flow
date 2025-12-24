@@ -232,20 +232,16 @@ Return ONLY the JSON, no other text.`,
       }
     }
 
-    // Merge with existing social links (prefer existing URLs)
+    // Fill in URLs from existing links ONLY for detected platforms
     const existingLinks = existingSocialLinks || [];
     for (const existing of existingLinks) {
       const found = socialLinks.find(l => l.platform === existing.platform);
+      // Only update if platform was detected AND doesn't have a URL yet
       if (found && !found.url && existing.url) {
         found.url = existing.url;
         found.verified = true; // Trust existing links
-      } else if (!found && existing.url) {
-        socialLinks.push({
-          platform: existing.platform,
-          url: existing.url,
-          verified: true,
-        });
       }
+      // Don't add platforms that weren't detected in the footer
     }
 
     const result: DetectionResult = {
