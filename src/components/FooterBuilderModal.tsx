@@ -91,6 +91,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
   const [iconColor, setIconColor] = useState('ffffff');
+  const [isDetectingSocials, setIsDetectingSocials] = useState(false);
+  const [hasCustomIcons, setHasCustomIcons] = useState(false);
   
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -164,6 +166,51 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     }
   }, [brand.id]);
 
+  // Function to detect social links from footer image
+  const detectSocialsFromImage = useCallback(async (imageUrl: string) => {
+    setIsDetectingSocials(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('detect-footer-socials', {
+        body: {
+          footerImageUrl: imageUrl,
+          brandName: brand.name,
+          brandDomain: brand.domain,
+          existingSocialLinks: socialLinks,
+        }
+      });
+
+      if (error) {
+        console.error('Social detection error:', error);
+        return;
+      }
+
+      console.log('Detected socials:', data);
+
+      // Update social links with detected URLs
+      if (data.socialLinks && data.socialLinks.length > 0) {
+        const mergedLinks: SocialLink[] = data.socialLinks.map((link: any) => ({
+          platform: link.platform,
+          url: link.url || '',
+        })).filter((link: SocialLink) => link.url); // Only keep links with URLs
+        
+        if (mergedLinks.length > 0) {
+          setSocialLinks(mergedLinks);
+          toast.success(`Found ${mergedLinks.length} social ${mergedLinks.length === 1 ? 'link' : 'links'}`);
+        }
+      }
+
+      // Track if there are custom icons
+      if (data.hasCustomIcons) {
+        setHasCustomIcons(true);
+        toast.info('Custom icons detected - you may want to upload the exact icons used in the design');
+      }
+    } catch (error) {
+      console.error('Failed to detect socials:', error);
+    } finally {
+      setIsDetectingSocials(false);
+    }
+  }, [brand.name, brand.domain, socialLinks]);
+
   const handleCropComplete = useCallback(async (croppedImageData: string) => {
     setIsUploadingCrop(true);
     try {
@@ -179,13 +226,16 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       setReferenceImageUrl(data.url);
       setSelectedCampaignImage(null);
       toast.success('Footer region extracted');
+      
+      // Auto-detect socials from the cropped footer image
+      detectSocialsFromImage(data.url);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload cropped image');
     } finally {
       setIsUploadingCrop(false);
     }
-  }, [brand.domain]);
+  }, [brand.domain, detectSocialsFromImage]);
 
   const handleReferenceUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -211,6 +261,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         setReferenceImageUrl(data.url);
         setSourceType('image');
         toast.success('Reference image uploaded');
+        
+        // Auto-detect socials from the uploaded image
+        detectSocialsFromImage(data.url);
       };
       reader.readAsDataURL(file);
     } catch (error) {
@@ -219,7 +272,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     } finally {
       setIsUploadingReference(false);
     }
-  }, [brand.domain]);
+  }, [brand.domain, detectSocialsFromImage]);
 
   const handleFetchFigma = useCallback(async () => {
     if (!figmaUrl.trim()) {
@@ -748,9 +801,16 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     className="w-full max-h-48 object-contain"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  Click next to continue
-                </p>
+                {isDetectingSocials ? (
+                  <p className="text-xs text-primary text-center flex items-center justify-center gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Detecting social links...
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Click next to continue
+                  </p>
+                )}
               </div>
             )}
 
@@ -780,9 +840,16 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     className="w-full max-h-48 object-contain"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  Click next to continue
-                </p>
+                {isDetectingSocials ? (
+                  <p className="text-xs text-primary text-center flex items-center justify-center gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Detecting social links...
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Click next to continue
+                  </p>
+                )}
               </div>
             )}
 
@@ -911,9 +978,23 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             <div className="text-center space-y-2 py-4">
               <h3 className="font-medium">Social links & icons</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Icons are automatically sourced from Simple Icons. Just confirm your links.
+                {isDetectingSocials 
+                  ? 'Searching for your social media profiles...'
+                  : socialLinks.length > 0 
+                    ? 'We found these social links. Confirm or edit them below.'
+                    : 'Icons are automatically sourced from Simple Icons. Just add your links.'}
               </p>
             </div>
+
+            {hasCustomIcons && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-600 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Custom icons detected in your design</p>
+                  <p className="text-amber-500/80">The icons in your reference image appear to be custom styled. Standard icons will be used, but you can upload custom icons later in the studio.</p>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label className="text-sm">Icon Color</Label>
