@@ -42,7 +42,11 @@ For each, provide:
 - description: what it looks like
 - location: where in the design (e.g., "bottom left", "center")
 - category: "logo" | "decorative" | "background" | "badge"
-- crop_hint: approximate position as percentages { x_percent, y_percent, width_percent, height_percent } so we can show a cropped preview from the reference image
+- crop_hint: bounding box as percentages with ORIGIN AT TOP-LEFT (0,0)
+  - x_percent: distance from LEFT edge to LEFT side of asset (0-100)
+  - y_percent: distance from TOP edge to TOP side of asset (0-100)  
+  - width_percent: width of asset as % of full image width
+  - height_percent: height of asset as % of full image height
 
 ## 2. TEXT_BASED_ELEMENTS (Achievable with text/CSS - NO upload needed)
 These elements can be recreated with Unicode characters or CSS:
@@ -75,7 +79,7 @@ Return ONLY valid JSON:
       "description": "Owl brand mark with spread wings",
       "location": "bottom left corner",
       "category": "logo",
-      "crop_hint": { "x_percent": 5, "y_percent": 85, "width_percent": 15, "height_percent": 12 }
+      "crop_hint": { "x_percent": 5, "y_percent": 80, "width_percent": 12, "height_percent": 15 }
     }
   ],
   "text_based_elements": [
@@ -98,7 +102,7 @@ IMPORTANT CLASSIFICATION RULES:
 - Simple arrows are ALWAYS text_based_elements, not requires_upload
 - Only flag as requires_upload if it's a complex graphic that CANNOT be a Unicode character
 - Be conservative - when in doubt, it's probably text-based
-- crop_hint percentages should roughly outline where the asset appears in the image`;
+- crop_hint: x_percent/y_percent = TOP-LEFT corner of the asset bounding box`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
