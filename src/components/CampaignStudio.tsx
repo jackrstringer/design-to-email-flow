@@ -5,16 +5,16 @@ import { Slider } from '@/components/ui/slider';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save, Users, Check } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save, Users, Check, Camera, CameraOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { toPng } from 'html-to-image';
 import type { ProcessedSlice } from '@/types/slice';
 import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
 import { FooterSelector, BrandFooter } from './FooterSelector';
 import { PLATFORM_SLUGS } from '@/lib/socialIcons';
+import { useScreenCapture } from '@/hooks/useScreenCapture';
 
 const BASE_WIDTH = 600;
 
@@ -144,6 +144,18 @@ export function CampaignStudio({
   
   // Ref for the studio container (both panels) for side-by-side screenshot
   const studioContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Ref for just the comparison panels (reference + preview, excluding chat)
+  const comparisonPanelsRef = useRef<HTMLDivElement>(null);
+  
+  // Screen capture hook for pixel-perfect screenshots
+  const { 
+    isCapturing, 
+    isCaptureEnabled, 
+    enableCapture, 
+    captureScreenshot, 
+    stopCapture 
+  } = useScreenCapture({ targetRef: comparisonPanelsRef });
   
   // Claude conversation history - persisted across refinements
   const [claudeConversationHistory, setClaudeConversationHistory] = useState<ConversationMessage[]>(initialConversationHistory);
@@ -376,43 +388,7 @@ export function CampaignStudio({
     }
   };
 
-  // Capture side-by-side screenshot of reference + preview panels
-  const captureStudioScreenshot = async (): Promise<string | null> => {
-    if (!studioContainerRef.current) {
-      console.warn('Studio container ref not available');
-      return null;
-    }
-
-    try {
-      toast.info('Capturing side-by-side comparison...');
-      
-      // Capture the entire studio container showing reference + preview
-      const screenshotDataUrl = await toPng(studioContainerRef.current, {
-        backgroundColor: '#1a1a1a',
-        pixelRatio: 1.5, // Good balance between quality and size
-        cacheBust: true,
-      });
-      
-      // Upload to Cloudinary
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
-        body: { 
-          imageData: screenshotDataUrl,
-          folder: 'studio-screenshots'
-        }
-      });
-      
-      if (uploadError) {
-        console.error('Failed to upload screenshot:', uploadError);
-        return null;
-      }
-      
-      console.log('Side-by-side screenshot uploaded:', uploadData.url);
-      return uploadData.url;
-    } catch (err) {
-      console.error('Failed to capture studio screenshot:', err);
-      return null;
-    }
-  };
+  // No longer using html-to-image, screen capture is now handled by useScreenCapture hook
 
   const handleAutoRefine = async () => {
     if (!isFooterMode) {
@@ -477,21 +453,27 @@ export function CampaignStudio({
     }
 
     // Footer mode: Use unified footer-conversation with side-by-side screenshot
+    if (!isCaptureEnabled) {
+      toast.error('Please enable screen capture first to use auto-refine');
+      return;
+    }
+    
     setIsAutoRefining(true);
     setHasAutoRefined(true);
     
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Comparing side-by-side]' }];
+    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Capturing your screen for pixel-perfect comparison]' }];
     setChatMessages(newMessages);
 
     try {
       // Wait a moment for the preview to fully render
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Capture the side-by-side screenshot
-      const sideBySideScreenshotUrl = await captureStudioScreenshot();
+      // Capture the side-by-side screenshot using Screen Capture API
+      toast.info('Capturing screen...');
+      const sideBySideScreenshotUrl = await captureScreenshot();
       
       if (!sideBySideScreenshotUrl) {
-        throw new Error('Failed to capture side-by-side screenshot');
+        throw new Error('Failed to capture screen - make sure screen capture is enabled');
       }
 
       // Call footer-conversation with refine action
@@ -508,7 +490,7 @@ export function CampaignStudio({
       if (error) throw new Error(error.message);
       if (!data.success) throw new Error(data.error || 'Refinement failed');
 
-      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Compared and fixed differences.' }]);
+      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Compared your screen and fixed differences.' }]);
       
       // Update conversation history
       if (data.conversationHistory) {
@@ -518,7 +500,7 @@ export function CampaignStudio({
       // Apply updated HTML
       if (data.html) {
         setLocalFooterHtml(data.html);
-        toast.success('Footer refined based on visual comparison');
+        toast.success('Footer refined based on your screen');
       }
     } catch (err) {
       setChatMessages([...newMessages, { 
@@ -532,15 +514,16 @@ export function CampaignStudio({
   };
 
   // Auto-refine on initial load for footer mode (after a short delay for render)
+  // Only triggers if screen capture is already enabled
   useEffect(() => {
-    if (isFooterMode && localFooterHtml && !hasAutoRefined && claudeConversationHistory.length > 0) {
+    if (isFooterMode && localFooterHtml && !hasAutoRefined && claudeConversationHistory.length > 0 && isCaptureEnabled) {
       // Wait for preview to render, then auto-refine
       const timer = setTimeout(() => {
         handleAutoRefine();
-      }, 1500);
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isFooterMode, localFooterHtml, hasAutoRefined, claudeConversationHistory.length]);
+  }, [isFooterMode, localFooterHtml, hasAutoRefined, claudeConversationHistory.length, isCaptureEnabled]);
 
   const scaledWidth = BASE_WIDTH * (zoomLevel / 100);
 
@@ -585,7 +568,29 @@ export function CampaignStudio({
           
           {/* Show different info based on mode */}
           {isFooterMode ? (
-            <span className="text-xs text-muted-foreground/60">Footer Editor</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground/60">Footer Editor</span>
+              {/* Screen capture toggle for pixel-perfect comparison */}
+              <button
+                onClick={isCaptureEnabled ? stopCapture : enableCapture}
+                className={cn(
+                  "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
+                  isCaptureEnabled 
+                    ? "text-green-600 bg-green-50 hover:bg-green-100" 
+                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+                )}
+                title={isCaptureEnabled ? "Screen capture active - click to stop" : "Enable screen capture for pixel-perfect refinement"}
+              >
+                {isCapturing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isCaptureEnabled ? (
+                  <Camera className="w-3.5 h-3.5" />
+                ) : (
+                  <CameraOff className="w-3.5 h-3.5" />
+                )}
+                <span>{isCaptureEnabled ? 'Capture On' : 'Enable Capture'}</span>
+              </button>
+            </div>
           ) : (
             <>
               <span className="text-xs text-muted-foreground/60">{slices.length} slices</span>
@@ -790,296 +795,303 @@ export function CampaignStudio({
 
       {/* Panel Layout - Chat narrower, content gets more space */}
       <div ref={studioContainerRef} className="flex-1 flex min-h-0 overflow-hidden">
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Panel 1: Chat */}
-        {chatExpanded && (
-          <>
-            <ResizablePanel defaultSize={22} minSize={15} maxSize={35}>
-              <div className="h-full flex flex-col">
-                <div className="px-3 py-2 border-b border-border/30">
-                  <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3" />
-                    Refine
-                  </span>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <CampaignChat
-                    messages={chatMessages}
-                    onSendMessage={handleSendMessage}
-                    onAutoRefine={handleAutoRefine}
-                    isLoading={isRefining}
-                    isAutoRefining={isAutoRefining}
-                  />
-                </div>
-              </div>
-            </ResizablePanel>
-            <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
-          </>
-        )}
-
-        {/* Panel 2: Content - Footer mode or Campaign mode */}
-        <ResizablePanel defaultSize={isFooterMode ? 39 : (hasHtmlSlices ? 45 : (chatExpanded ? 78 : 100))} minSize={35}>
-          <div className="h-full overflow-auto bg-muted/20">
-            <div className="p-6 flex justify-center">
-              {isFooterMode ? (
-                /* Footer Mode: Reference image */
-                <div className="flex flex-col items-center gap-4">
-                  <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Reference Image</span>
-                  <img 
-                    src={originalImageUrl} 
-                    alt="Footer reference"
-                    style={{ width: scaledWidth }}
-                    className="rounded border border-border/30"
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-col">
-                {/* Stacked slices with inline details */}
-                {slices.map((slice, index) => (
-                <div key={index} className="relative flex items-center">
-                  {/* Slice separator line - extends from left edge to image */}
-                  {index > 0 && (
-                    <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
-                      <div className="h-px bg-destructive/60 flex-1" />
-                      <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {index + 1}</span>
-                    </div>
-                  )}
-                  {/* Slice details - generous width for readability */}
-                  <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
-                    {/* Row 1: Type toggle + Link + dimensions - all inline */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Pill toggle - Figma style */}
-                      <div className="flex items-center bg-muted/50 border border-border/40 rounded-full p-0.5">
-                        <button
-                          onClick={() => slice.type === 'html' && toggleSliceType(index)}
-                          disabled={convertingIndex !== null || isCreating}
-                          className={cn(
-                            "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
-                            slice.type === 'image' 
-                              ? "bg-primary/15 text-primary border border-primary/30" 
-                              : "text-muted-foreground/50 hover:text-muted-foreground",
-                            (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
-                          )}
-                          title="Image mode"
-                        >
-                          <Image className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => slice.type === 'image' && toggleSliceType(index)}
-                          disabled={convertingIndex !== null || isCreating}
-                          className={cn(
-                            "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
-                            slice.type === 'html' 
-                              ? "bg-primary/15 text-primary border border-primary/30" 
-                              : "text-muted-foreground/50 hover:text-muted-foreground",
-                            (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
-                          )}
-                          title="HTML mode"
-                        >
-                          {convertingIndex === index ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Code2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Link - clickable to edit, or add button */}
-                      <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
-                        if (open) {
-                          setEditingLinkIndex(index);
-                          setLinkSearchValue('');
-                        } else {
-                          setEditingLinkIndex(null);
-                        }
-                      }}>
-                        <PopoverTrigger asChild>
-                          {slice.link !== null && slice.link !== '' ? (
-                            <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors">
-                              <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                              <span className="text-foreground break-all text-left font-medium">{slice.link}</span>
-                            </button>
-                          ) : (
-                            <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">
-                              <Link className="w-3.5 h-3.5" />
-                              <span>Add link</span>
-                            </button>
-                          )}
-                        </PopoverTrigger>
-                        <PopoverContent className="w-72 p-0" align="start">
-                          <Command>
-                            <CommandInput 
-                              placeholder="Search or enter URL..." 
-                              value={linkSearchValue}
-                              onValueChange={setLinkSearchValue}
-                            />
-                            <CommandList>
-                              <CommandEmpty>
-                                {linkSearchValue && (
-                                  <button
-                                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                    onClick={() => setSliceLink(index, linkSearchValue)}
-                                  >
-                                    Use "{linkSearchValue}"
-                                  </button>
-                                )}
-                              </CommandEmpty>
-                              {filteredLinks.length > 0 && (
-                                <CommandGroup heading="Brand Links">
-                                  {filteredLinks.slice(0, 10).map((link) => (
-                                    <CommandItem
-                                      key={link}
-                                      value={link}
-                                      onSelect={() => setSliceLink(index, link)}
-                                      className="text-xs"
-                                    >
-                                      <span className="break-all">{link}</span>
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              )}
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      {/* Remove link button - separate from popover */}
-                      {slice.link && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeLink(index);
-                          }}
-                          className="text-muted-foreground/40 hover:text-foreground/60"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-
-                    </div>
-
-                    {/* Row 2: Alt text (toggleable) */}
-                    {showAltText && (
-                      editingAltIndex === index ? (
-                        <textarea
-                          value={slice.altText}
-                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                          placeholder="Add description..."
-                          className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                          rows={2}
-                          autoFocus
-                          onBlur={() => setEditingAltIndex(null)}
-                        />
-                      ) : (
-                        <p 
-                          onClick={() => setEditingAltIndex(index)}
-                          className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
-                        >
-                          {slice.altText || 'Add description...'}
-                        </p>
-                      )
-                    )}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          {/* Panel 1: Chat */}
+          {chatExpanded && (
+            <>
+              <ResizablePanel defaultSize={22} minSize={15} maxSize={35}>
+                <div className="h-full flex flex-col">
+                  <div className="px-3 py-2 border-b border-border/30">
+                    <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3" />
+                      Refine
+                    </span>
                   </div>
-
-                  {/* Slice image - fixed width, no gap */}
-                  <div className="flex-shrink-0" style={{ width: scaledWidth }}>
-                    <img
-                      src={slice.imageUrl}
-                      alt={slice.altText}
-                      style={{ width: scaledWidth }}
-                      className="block"
+                  <div className="flex-1 overflow-hidden">
+                    <CampaignChat
+                      messages={chatMessages}
+                      onSendMessage={handleSendMessage}
+                      onAutoRefine={handleAutoRefine}
+                      isLoading={isRefining}
+                      isAutoRefining={isAutoRefining}
                     />
                   </div>
                 </div>
-              ))}
-              
-              {/* Footer preview */}
-              {includeFooter && localFooterHtml && (
-                <div className="border-t-2 border-dashed border-primary/40 mt-2">
-                  <div className="flex items-stretch">
-                    <div className="min-w-[320px] w-96 flex-shrink-0 p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
-                        {isFooterModified && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">Modified</span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground/60 mt-1">Modify via chat: "change footer background to..."</p>
-                    </div>
-                    <div 
-                      className="flex-shrink-0 origin-top-left" 
-                      style={{ width: scaledWidth }}
-                    >
-                      <iframe
-                        srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml}</table></body></html>`}
-                        title="Footer Preview"
-                        style={{ 
-                          border: 'none', 
-                          width: BASE_WIDTH, 
-                          height: '600px',
-                          transform: `scale(${zoomLevel / 100})`,
-                          transformOrigin: 'top left'
-                        }}
-                        sandbox="allow-same-origin"
-                      />
+              </ResizablePanel>
+              <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
+            </>
+          )}
+
+          {/* Panels 2+3: Comparison Area - wrapped for screen capture */}
+          <ResizablePanel defaultSize={chatExpanded ? 78 : 100} minSize={50}>
+            {/* This wrapper captures just the comparison panels, excluding chat */}
+            <div ref={comparisonPanelsRef} className="h-full flex">
+              <ResizablePanelGroup direction="horizontal" className="flex-1">
+                {/* Panel 2: Content - Footer mode or Campaign mode */}
+                <ResizablePanel defaultSize={isFooterMode ? 50 : (hasHtmlSlices ? 60 : 100)} minSize={30}>
+                  <div className="h-full overflow-auto bg-muted/20">
+                    <div className="p-6 flex justify-center">
+                      {isFooterMode ? (
+                        /* Footer Mode: Reference image */
+                        <div className="flex flex-col items-center gap-4">
+                          <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Reference (Target)</span>
+                          <img 
+                            src={originalImageUrl} 
+                            alt="Footer reference"
+                            style={{ width: scaledWidth }}
+                            className="rounded border border-border/30"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex flex-col">
+                          {/* Stacked slices with inline details */}
+                          {slices.map((slice, index) => (
+                            <div key={index} className="relative flex items-center">
+                              {/* Slice separator line - extends from left edge to image */}
+                              {index > 0 && (
+                                <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
+                                  <div className="h-px bg-destructive/60 flex-1" />
+                                  <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {index + 1}</span>
+                                </div>
+                              )}
+                              {/* Slice details - generous width for readability */}
+                              <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
+                                {/* Row 1: Type toggle + Link + dimensions - all inline */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* Pill toggle - Figma style */}
+                                  <div className="flex items-center bg-muted/50 border border-border/40 rounded-full p-0.5">
+                                    <button
+                                      onClick={() => slice.type === 'html' && toggleSliceType(index)}
+                                      disabled={convertingIndex !== null || isCreating}
+                                      className={cn(
+                                        "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                                        slice.type === 'image' 
+                                          ? "bg-primary/15 text-primary border border-primary/30" 
+                                          : "text-muted-foreground/50 hover:text-muted-foreground",
+                                        (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
+                                      )}
+                                      title="Image mode"
+                                    >
+                                      <Image className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => slice.type === 'image' && toggleSliceType(index)}
+                                      disabled={convertingIndex !== null || isCreating}
+                                      className={cn(
+                                        "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                                        slice.type === 'html' 
+                                          ? "bg-primary/15 text-primary border border-primary/30" 
+                                          : "text-muted-foreground/50 hover:text-muted-foreground",
+                                        (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
+                                      )}
+                                      title="HTML mode"
+                                    >
+                                      {convertingIndex === index ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Code2 className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+
+                                  {/* Link - clickable to edit, or add button */}
+                                  <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
+                                    if (open) {
+                                      setEditingLinkIndex(index);
+                                      setLinkSearchValue('');
+                                    } else {
+                                      setEditingLinkIndex(null);
+                                    }
+                                  }}>
+                                    <PopoverTrigger asChild>
+                                      {slice.link !== null && slice.link !== '' ? (
+                                        <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors">
+                                          <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                          <span className="text-foreground break-all text-left font-medium">{slice.link}</span>
+                                        </button>
+                                      ) : (
+                                        <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">
+                                          <Link className="w-3.5 h-3.5" />
+                                          <span>Add link</span>
+                                        </button>
+                                      )}
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-72 p-0" align="start">
+                                      <Command>
+                                        <CommandInput 
+                                          placeholder="Search or enter URL..." 
+                                          value={linkSearchValue}
+                                          onValueChange={setLinkSearchValue}
+                                        />
+                                        <CommandList>
+                                          <CommandEmpty>
+                                            {linkSearchValue && (
+                                              <button
+                                                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                                onClick={() => setSliceLink(index, linkSearchValue)}
+                                              >
+                                                Use "{linkSearchValue}"
+                                              </button>
+                                            )}
+                                          </CommandEmpty>
+                                          {filteredLinks.length > 0 && (
+                                            <CommandGroup heading="Brand Links">
+                                              {filteredLinks.slice(0, 10).map((link) => (
+                                                <CommandItem
+                                                  key={link}
+                                                  value={link}
+                                                  onSelect={() => setSliceLink(index, link)}
+                                                  className="text-xs"
+                                                >
+                                                  <span className="break-all">{link}</span>
+                                                </CommandItem>
+                                              ))}
+                                            </CommandGroup>
+                                          )}
+                                        </CommandList>
+                                      </Command>
+                                    </PopoverContent>
+                                  </Popover>
+                                  {/* Remove link button - separate from popover */}
+                                  {slice.link && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeLink(index);
+                                      }}
+                                      className="text-muted-foreground/40 hover:text-foreground/60"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Row 2: Alt text (toggleable) */}
+                                {showAltText && (
+                                  editingAltIndex === index ? (
+                                    <textarea
+                                      value={slice.altText}
+                                      onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                                      placeholder="Add description..."
+                                      className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                      rows={2}
+                                      autoFocus
+                                      onBlur={() => setEditingAltIndex(null)}
+                                    />
+                                  ) : (
+                                    <p 
+                                      onClick={() => setEditingAltIndex(index)}
+                                      className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
+                                    >
+                                      {slice.altText || 'Add description...'}
+                                    </p>
+                                  )
+                                )}
+                              </div>
+
+                              {/* Slice image - fixed width, no gap */}
+                              <div className="flex-shrink-0" style={{ width: scaledWidth }}>
+                                <img
+                                  src={slice.imageUrl}
+                                  alt={slice.altText}
+                                  style={{ width: scaledWidth }}
+                                  className="block"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {/* Footer preview */}
+                          {includeFooter && localFooterHtml && (
+                            <div className="border-t-2 border-dashed border-primary/40 mt-2">
+                              <div className="flex items-stretch">
+                                <div className="min-w-[320px] w-96 flex-shrink-0 p-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
+                                    {isFooterModified && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">Modified</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground/60 mt-1">Modify via chat: "change footer background to..."</p>
+                                </div>
+                                <div 
+                                  className="flex-shrink-0 origin-top-left" 
+                                  style={{ width: scaledWidth }}
+                                >
+                                  <iframe
+                                    srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml}</table></body></html>`}
+                                    title="Footer Preview"
+                                    style={{ 
+                                      border: 'none', 
+                                      width: BASE_WIDTH, 
+                                      height: '600px',
+                                      transform: `scale(${zoomLevel / 100})`,
+                                      transformOrigin: 'top left'
+                                    }}
+                                    sandbox="allow-same-origin"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
-              </div>
-              )}
-            </div>
-          </div>
-        </ResizablePanel>
+                </ResizablePanel>
 
-        {/* Panel 3: Preview - show for HTML slices OR footer mode */}
-        {(hasHtmlSlices || isFooterMode) && (
-          <>
-            <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
-            <ResizablePanel defaultSize={isFooterMode ? 39 : 33} minSize={25}>
-              <div className="h-full overflow-auto bg-background">
-                <div className="p-6 flex justify-center">
-                  {isFooterMode ? (
-                    /* Footer Mode: Footer preview - full height, no scroll */
-                    <div className="flex flex-col items-center gap-4">
-                      <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Footer Preview</span>
-                      <div 
-                        style={{ 
-                          width: scaledWidth,
-                          transform: `scale(${zoomLevel / 100})`,
-                          transformOrigin: 'top left'
-                        }}
-                      >
-                        <iframe
-                          srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;overflow:visible;height:auto;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
-                          title="Footer Preview"
-                          style={{ 
-                            border: 'none', 
-                            width: BASE_WIDTH, 
-                            height: '1200px',
-                            display: 'block'
-                          }}
-                          sandbox="allow-same-origin"
-                          className="rounded border border-border/30"
-                        />
+                {/* Panel 3: Preview - show for HTML slices OR footer mode */}
+                {(hasHtmlSlices || isFooterMode) && (
+                  <>
+                    <ResizableHandle className="w-px bg-border/30 hover:bg-border/60 transition-colors" />
+                    <ResizablePanel defaultSize={isFooterMode ? 50 : 40} minSize={25}>
+                      <div className="h-full overflow-auto bg-background">
+                        <div className="p-6 flex justify-center">
+                          {isFooterMode ? (
+                            /* Footer Mode: Footer preview - full height, no scroll */
+                            <div className="flex flex-col items-center gap-4">
+                              <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Current HTML</span>
+                              <div 
+                                style={{ 
+                                  width: scaledWidth,
+                                  transform: `scale(${zoomLevel / 100})`,
+                                  transformOrigin: 'top left'
+                                }}
+                              >
+                                <iframe
+                                  srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;overflow:visible;height:auto;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
+                                  title="Footer Preview"
+                                  style={{ 
+                                    border: 'none', 
+                                    width: BASE_WIDTH, 
+                                    height: '1200px',
+                                    display: 'block'
+                                  }}
+                                  sandbox="allow-same-origin"
+                                  className="rounded border border-border/30"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div 
+                              style={{ 
+                                transform: `scale(${zoomLevel / 100})`, 
+                                transformOrigin: 'top left',
+                                width: BASE_WIDTH,
+                              }}
+                            >
+                              <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? localFooterHtml : undefined} width={BASE_WIDTH} />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div 
-                      style={{ 
-                        transform: `scale(${zoomLevel / 100})`, 
-                        transformOrigin: 'top left',
-                        width: BASE_WIDTH,
-                      }}
-                    >
-                      <CampaignPreviewFrame slices={slices} footerHtml={includeFooter ? localFooterHtml : undefined} width={BASE_WIDTH} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
+                    </ResizablePanel>
+                  </>
+                )}
+              </ResizablePanelGroup>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );
