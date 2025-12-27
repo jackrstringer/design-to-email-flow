@@ -44,11 +44,45 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    console.log(`Generating ${pairCount} SL/PT for ${brandContext?.name || 'brand'}${refinementPrompt ? ` with: "${refinementPrompt}"` : ''}`);
+    console.log(`Generating ${pairCount} SL/PT for ${brandContext?.name || 'brand'} (${brandContext?.domain || 'no domain'})${refinementPrompt ? ` with: "${refinementPrompt}"` : ''}`);
 
-    const sliceContext = (slices || [])
-      .map((s: any, i: number) => `Section ${i + 1}: ${s.altText || 'No description'}${s.link ? ` (links to: ${s.link})` : ''}`)
-      .join('\n');
+    // Check if alt texts are generic (fallback values from failed analysis)
+    const hasGenericAltTexts = (slices || []).every((s: any) => 
+      !s.altText || s.altText.match(/^Email section \d+$/) || s.altText === 'No description'
+    );
+
+    // Build slice context - if alt texts are generic but we have image URLs, note that
+    let sliceContext = '';
+    const sliceImages: Array<{ type: string; source: { type: string; media_type: string; url: string } }> = [];
+
+    if (hasGenericAltTexts && slices?.length > 0) {
+      console.log('Alt texts are generic, will use vision to analyze images');
+      // Collect image URLs for vision analysis (limit to first 3 to avoid token limits)
+      for (let i = 0; i < Math.min(slices.length, 3); i++) {
+        const slice = slices[i];
+        if (slice.imageUrl) {
+          sliceImages.push({
+            type: 'image',
+            source: {
+              type: 'url',
+              media_type: 'image/png',
+              url: slice.imageUrl
+            }
+          });
+        }
+      }
+      sliceContext = 'See the email section images below for content context.';
+    } else {
+      sliceContext = (slices || [])
+        .map((s: any, i: number) => `Section ${i + 1}: ${s.altText || 'No description'}${s.link ? ` (links to: ${s.link})` : ''}`)
+        .join('\n');
+    }
+
+    // Extract link context even if alt texts are generic
+    const linkContext = (slices || [])
+      .filter((s: any) => s.link)
+      .map((s: any) => s.link)
+      .join(', ');
 
     const favoriteSLs = (existingFavorites?.subjectLines || []).filter((s: string) => s).map((s: string) => `- "${s}"`);
     const favoritePTs = (existingFavorites?.previewTexts || []).filter((p: string) => p).map((p: string) => `- "${p}"`);
@@ -61,13 +95,16 @@ serve(async (req) => {
       ? `\n\nUSER'S REQUEST: "${refinementPrompt}"\nFollow this direction for tone, style, or focus.`
       : '';
 
-    const prompt = `You are a creative email copywriter. Generate diverse, engaging subject lines and preview texts.
+    const textPrompt = `You are a creative email copywriter. Generate diverse, engaging subject lines and preview texts.
 
 BRAND: ${brandContext?.name || 'Unknown'}${brandContext?.domain ? ` (${brandContext.domain})` : ''}
 
 EMAIL CONTENT:
 ${sliceContext || 'No specific content'}
+${linkContext ? `\nLINKS IN EMAIL: ${linkContext}` : ''}
 ${favoriteContext}${userDirection}
+
+${sliceImages.length > 0 ? 'IMPORTANT: Look at the email section images provided to understand what the email is about. The images show the actual email content - use this visual context to write relevant subject lines about the products, offers, or message shown.' : ''}
 
 GUIDELINES (flexible):
 - Subject lines: 3-10 words typically
@@ -76,6 +113,7 @@ GUIDELINES (flexible):
 - Mix structures (questions, statements, commands, teasers)
 - Some with emojis, some without
 - Each should feel distinctly different
+- Reference specific products, offers, or content from the email
 
 Generate ${pairCount} unique subject lines and ${pairCount} unique preview texts.
 
@@ -85,6 +123,14 @@ Respond in JSON:
   "previewTexts": ["preview 1", "preview 2", ...]
 }`;
 
+    // Build message content - text first, then images if available
+    const messageContent: any[] = [{ type: 'text', text: textPrompt }];
+    if (sliceImages.length > 0) {
+      messageContent.push(...sliceImages);
+    }
+
+    console.log(`Sending request with ${sliceImages.length} images for vision analysis`);
+
     const response = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -93,9 +139,9 @@ Respond in JSON:
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-1-20250805',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }]
+        messages: [{ role: 'user', content: messageContent }]
       })
     });
 

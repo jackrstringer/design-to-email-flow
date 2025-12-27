@@ -128,7 +128,7 @@ export default function CampaignSend() {
       if (state.brandId) {
         loadPresets(state.brandId);
       }
-      generateCopy(state.slices, state.brandName || '');
+      generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
     } else {
       navigate('/');
     }
@@ -155,10 +155,24 @@ export default function CampaignSend() {
     .filter(s => s.link)
     .map(s => s.link as string);
 
+  // Helper to extract domain from URLs
+  const extractDomainFromSlices = (slicesData: ProcessedSlice[]): string => {
+    for (const slice of slicesData) {
+      if (slice.link) {
+        try {
+          const url = new URL(slice.link);
+          return url.hostname.replace(/^www\./, '');
+        } catch { /* ignore */ }
+      }
+    }
+    return '';
+  };
+
   const generateCopy = async (
     campaignSlices: ProcessedSlice[],
     brand: string,
-    prompt?: string
+    prompt?: string,
+    domain?: string
   ) => {
     setIsGenerating(true);
     try {
@@ -167,10 +181,17 @@ export default function CampaignSend() {
       const favoritePTs = previewTexts.filter(p => p.isFavorite);
       const countNeeded = 10 - Math.max(favoriteSLs.length, favoritePTs.length);
 
+      // Ensure we have a domain - use passed domain, state, or extract from slice URLs
+      const effectiveDomain = domain || brandDomain || extractDomainFromSlices(campaignSlices);
+
       const { data, error } = await supabase.functions.invoke('generate-email-copy', {
         body: {
-          slices: campaignSlices.map(s => ({ altText: s.altText, link: s.link })),
-          brandContext: { name: brand, domain: brandDomain },
+          slices: campaignSlices.map(s => ({ 
+            altText: s.altText, 
+            link: s.link,
+            imageUrl: s.imageUrl // Pass image URL for vision analysis
+          })),
+          brandContext: { name: brand, domain: effectiveDomain },
           existingFavorites: {
             subjectLines: favoriteSLs.map(s => s.text),
             previewTexts: favoritePTs.map(p => p.text),
