@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -150,6 +150,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [isDetectingLinks, setIsDetectingLinks] = useState(false);
   const [approvedLinks, setApprovedLinks] = useState<DetectedLink[]>([]);
   
+  // Social detection state
+  const [isDetectingSocials, setIsDetectingSocials] = useState(false);
+  
+  // Processing tracking
+  const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
+  const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [dynamicMessage, setDynamicMessage] = useState('');
+  
   // Social state
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
   const [iconColor, setIconColor] = useState('ffffff');
@@ -159,6 +167,44 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [generationStatus, setGenerationStatus] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Compute if processing is in progress
+  const isProcessingReference = isUploadingReference || isUploadingCrop || isFetchingFigma || isExtractingAssets || isDetectingLinks || isDetectingSocials;
+  
+  // Dynamic messages for the loading screen
+  const dynamicMessages = [
+    "Analyzing footer layout...",
+    "Detecting navigation links...",
+    "Finding social media icons...",
+    "Matching URLs to link text...",
+    "Verifying links are reachable...",
+    "Extracting color palette...",
+    "Reading text content...",
+    "Almost there...",
+  ];
+  
+  // Timer for elapsed time and dynamic messages
+  useEffect(() => {
+    if (!isProcessingReference) {
+      setProcessingStartTime(null);
+      setProcessingElapsed(0);
+      return;
+    }
+    
+    if (!processingStartTime) {
+      setProcessingStartTime(Date.now());
+    }
+    
+    const interval = setInterval(() => {
+      if (processingStartTime) {
+        setProcessingElapsed(Math.floor((Date.now() - processingStartTime) / 1000));
+      }
+      // Rotate dynamic message every 3 seconds
+      setDynamicMessage(dynamicMessages[Math.floor(Math.random() * dynamicMessages.length)]);
+    }, 3000);
+    
+    return () => clearInterval(interval);
+  }, [isProcessingReference, processingStartTime]);
 
   // No brand library - user uploads all assets explicitly
 
@@ -266,6 +312,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
         // Try to auto-detect the brand's *actual* profile URLs in the background
         console.log('Starting background social URL detection...');
+        setIsDetectingSocials(true);
         supabase.functions
           .invoke('detect-footer-socials', {
             body: {
@@ -293,6 +340,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               console.log('Background social detection complete:', detected);
               setSocialLinks(detected);
             }
+          })
+          .finally(() => {
+            setIsDetectingSocials(false);
           });
       }
 
@@ -699,7 +749,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {isUploadingCrop ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Analyzing image...</p>
+                    <p className="text-sm text-muted-foreground">Extracting footer region...</p>
                   </div>
                 ) : (
                   <FooterCropSelector
@@ -711,8 +761,106 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            {/* Campaign-sourced image preview */}
-            {sourceType === 'campaign' && referenceImageUrl && (
+            {/* PROCESSING LOADING SCREEN */}
+            {isProcessingReference && referenceImageUrl && (
+              <div className="space-y-6 py-4">
+                {/* Preview thumbnail */}
+                <div className="flex justify-center">
+                  <div className="relative w-48 rounded-lg border border-border overflow-hidden">
+                    <img src={referenceImageUrl} alt="Processing" className="w-full opacity-80" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+                  </div>
+                </div>
+                
+                {/* Main loading indicator */}
+                <div className="text-center space-y-2">
+                  <Loader2 className="w-10 h-10 mx-auto animate-spin text-primary" />
+                  <h3 className="font-medium">Analyzing your footer...</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {dynamicMessage || "This usually takes 10-25 seconds"}
+                  </p>
+                </div>
+                
+                {/* Step checklist */}
+                <div className="bg-muted/30 rounded-lg p-4 space-y-3 max-w-sm mx-auto">
+                  <div className="flex items-center gap-3 text-sm">
+                    {isUploadingReference || isUploadingCrop ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    )}
+                    <span className={isUploadingReference || isUploadingCrop ? 'text-foreground' : 'text-muted-foreground'}>
+                      Uploading image
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-sm">
+                    {isExtractingAssets ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                    ) : !isUploadingReference && !isUploadingCrop && !isExtractingAssets ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    ) : (
+                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className={isExtractingAssets ? 'text-foreground' : (!isUploadingReference && !isUploadingCrop && !isExtractingAssets) ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
+                      Detecting layout & assets
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-sm">
+                    {isDetectingLinks ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                    ) : clickableElements.length > 0 && !isDetectingLinks && !isExtractingAssets ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    ) : (
+                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className={isDetectingLinks ? 'text-foreground' : (clickableElements.length > 0 && !isDetectingLinks && !isExtractingAssets) ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
+                      Finding link URLs
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-sm">
+                    {isDetectingSocials ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
+                    ) : socialPlatforms.length > 0 && !isDetectingSocials && !isExtractingAssets ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    ) : (
+                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className={isDetectingSocials ? 'text-foreground' : (socialPlatforms.length > 0 && !isDetectingSocials && !isExtractingAssets) ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
+                      Finding social URLs
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Elapsed time */}
+                <p className="text-xs text-center text-muted-foreground">
+                  {processingElapsed > 0 && `${processingElapsed}s elapsed`}
+                </p>
+                
+                {/* Force continue after 30s */}
+                {canForceSkip && (
+                  <div className="text-center space-y-2">
+                    <p className="text-xs text-amber-600">Taking longer than expected...</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setIsDetectingLinks(false);
+                        setIsDetectingSocials(false);
+                        setStep('links');
+                      }}
+                    >
+                      Continue anyway
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Campaign-sourced image preview (only when NOT processing) */}
+            {sourceType === 'campaign' && referenceImageUrl && !isProcessingReference && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -729,8 +877,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            {/* Uploaded image preview */}
-            {sourceType === 'image' && referenceImageUrl && (
+            {/* Uploaded image preview (only when NOT processing) */}
+            {sourceType === 'image' && referenceImageUrl && !isProcessingReference && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -747,8 +895,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            {/* Show extraction status */}
-            {isExtractingAssets && (
+            {/* Show extracted info summary (only when NOT processing) */}
+            {!isProcessingReference && referenceImageUrl && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Analyzing image...
@@ -772,6 +920,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   {socialPlatforms.length > 0 && (
                     <p>• {socialPlatforms.length} social icon{socialPlatforms.length !== 1 ? 's' : ''} detected</p>
                   )}
+                  {approvedLinks.length > 0 && (
+                    <p>• {approvedLinks.filter(l => l.verified).length}/{approvedLinks.length} links verified</p>
+                  )}
                 </div>
                 
                 {/* Button to open asset collection modal if there are uncollected assets */}
@@ -789,7 +940,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            <Button variant="link" className="w-full text-muted-foreground" onClick={() => setStep('links')}>
+            {/* Skip link - disabled during processing */}
+            <Button 
+              variant="link" 
+              className="w-full text-muted-foreground" 
+              onClick={() => setStep('links')}
+              disabled={isProcessingReference}
+            >
               Skip - I don't have a reference
             </Button>
           </div>
@@ -973,12 +1130,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const canProceed = () => {
     switch (step) {
-      case 'reference': return true;
+      case 'reference': 
+        // Lock navigation while processing
+        return !isProcessingReference;
       case 'links': return true;
       case 'social': return true;
       case 'generate': return false;
     }
   };
+  
+  // Allow override after 30 seconds
+  const canForceSkip = processingElapsed >= 30;
 
   const getNextStep = (): Step | null => {
     switch (step) {
@@ -1073,8 +1235,17 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 }}
                 disabled={!canProceed() || !getNextStep()}
               >
-                Next
-                <ChevronRight className="w-4 h-4 ml-1" />
+                {step === 'reference' && isProcessingReference ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    Next
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </>
+                )}
               </Button>
             )}
           </div>
