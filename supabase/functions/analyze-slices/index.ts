@@ -191,42 +191,61 @@ Respond in JSON format:
 
     const aiResponse = await response.json();
     
-    // Claude with web search returns multiple content blocks - we need to find ALL text blocks
-    // and concatenate them, as the JSON response may come after tool use blocks
-    let aiContent = '';
+    // Claude with web search returns multiple content blocks - we need to search ALL text blocks
+    // for JSON as the response may come before/after tool use blocks
+    let allTextContent = '';
     if (aiResponse.content && Array.isArray(aiResponse.content)) {
       // Log all block types for debugging
       const blockTypes = aiResponse.content.map((b: { type: string }) => b.type);
       console.log('Claude response block types:', blockTypes);
       
-      // Collect all text blocks - the final JSON is usually in the last text block
+      // Collect ALL text blocks and concatenate them
       const textBlocks = aiResponse.content.filter((block: { type: string }) => block.type === 'text');
-      if (textBlocks.length > 0) {
-        // Use the last text block as it contains the final response after web searches
-        aiContent = textBlocks[textBlocks.length - 1].text || '';
-      }
-      console.log('Extracted text content length:', aiContent.length);
-      console.log('Text content preview:', aiContent.substring(0, 500));
+      allTextContent = textBlocks.map((block: { text?: string }) => block.text || '').join('\n');
+      
+      console.log('Total text blocks:', textBlocks.length);
+      console.log('Combined text content length:', allTextContent.length);
+      console.log('Text content preview:', allTextContent.substring(0, 500));
     } else {
       console.error('Unexpected response format:', JSON.stringify(aiResponse).substring(0, 500));
     }
     
     console.log('Claude response received');
 
-    // Parse JSON from AI response
+    // Parse JSON from AI response - search through ALL text content
     let analyses: SliceAnalysis[] = [];
     try {
-      // Extract JSON from response (might be wrapped in markdown code blocks)
-      let jsonMatch = aiContent.match(/```json\s*([\s\S]*?)```/);
-      let jsonStr = jsonMatch ? jsonMatch[1] : null;
+      let jsonStr: string | null = null;
       
-      // If no markdown code block, try to find raw JSON
+      // First try: look for markdown code block with json
+      const codeBlockMatch = allTextContent.match(/```json\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1];
+        console.log('Found JSON in markdown code block');
+      }
+      
+      // Second try: look for raw JSON object with "slices" key
       if (!jsonStr) {
-        jsonMatch = aiContent.match(/\{[\s\S]*\}/);
-        jsonStr = jsonMatch ? jsonMatch[0] : null;
+        const rawJsonMatch = allTextContent.match(/\{\s*"slices"\s*:\s*\[[\s\S]*?\]\s*\}/);
+        if (rawJsonMatch) {
+          jsonStr = rawJsonMatch[0];
+          console.log('Found raw JSON with slices key');
+        }
+      }
+      
+      // Third try: find any JSON object
+      if (!jsonStr) {
+        const anyJsonMatch = allTextContent.match(/\{[\s\S]*\}/);
+        if (anyJsonMatch) {
+          jsonStr = anyJsonMatch[0];
+          console.log('Found generic JSON object');
+        }
       }
       
       console.log('JSON string found:', jsonStr ? 'yes' : 'no');
+      if (jsonStr) {
+        console.log('JSON preview:', jsonStr.substring(0, 300));
+      }
       
       if (jsonStr) {
         const parsed = JSON.parse(jsonStr);
