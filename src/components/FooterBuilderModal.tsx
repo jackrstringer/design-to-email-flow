@@ -42,6 +42,7 @@ interface DetectedLink {
   category: 'navigation' | 'button' | 'social' | 'email_action';
   searchedUrl: string;
   verified: boolean;
+  needsManualUrl: boolean;
   placeholder?: string;
 }
 
@@ -242,8 +243,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       // Store extraction results
       setAssetsNeeded(data.requires_upload || []);
       setTextBasedElements(data.text_based_elements || []);
-      setClickableElements(data.clickable_elements || []);
-      setSocialPlatforms(data.social_platforms || []);
+      const extractedClickables = data.clickable_elements || [];
+      setClickableElements(extractedClickables);
+      
+      // Only use social platforms detected from the image
+      const detectedSocialPlatforms = data.social_platforms || [];
+      setSocialPlatforms(detectedSocialPlatforms);
       setExtractedStyles(data.styles || null);
       
       if (data.social_icon_color) {
@@ -251,23 +256,44 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         setIconColor(data.social_icon_color.replace('#', ''));
       }
 
-      // Auto-populate social links based on detected platforms
-      if (data.social_platforms && data.social_platforms.length > 0) {
-        const existingPlatforms = new Set(socialLinks.map(l => l.platform));
-        const newLinks = [...socialLinks];
-        
-        for (const platform of data.social_platforms) {
-          if (!existingPlatforms.has(platform)) {
-            newLinks.push({ platform, url: '' });
-          }
-        }
-        
+      // Auto-populate social links ONLY with detected platforms from image
+      if (detectedSocialPlatforms.length > 0) {
+        const newLinks = detectedSocialPlatforms.map((platform: string) => ({ 
+          platform, 
+          url: '' 
+        }));
         setSocialLinks(newLinks);
       }
 
       // If there are assets that need upload, show the collection modal
       if (data.requires_upload && data.requires_upload.length > 0) {
         setShowAssetCollectionModal(true);
+      }
+
+      // START LINK DETECTION IN BACKGROUND IMMEDIATELY
+      if (extractedClickables.length > 0) {
+        console.log('Starting background link detection...');
+        setIsDetectingLinks(true);
+        
+        // Fire and forget - don't await
+        supabase.functions.invoke('detect-footer-links', {
+          body: { 
+            clickableElements: extractedClickables,
+            brandDomain: brand.domain,
+            brandName: brand.name
+          }
+        }).then(({ data: linkData, error: linkError }) => {
+          if (linkError) {
+            console.error('Background link detection error:', linkError);
+            toast.error('Failed to detect links');
+          } else if (linkData?.success) {
+            console.log('Background link detection complete:', linkData.links);
+            setDetectedLinks(linkData.links || []);
+            setApprovedLinks(linkData.links || []);
+          }
+        }).finally(() => {
+          setIsDetectingLinks(false);
+        });
       }
 
       toast.success(`Analysis complete`);
@@ -277,47 +303,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     } finally {
       setIsExtractingAssets(false);
     }
-  }, [socialLinks]);
-
-  // Detect links for clickable elements
-  const detectLinksForElements = useCallback(async () => {
-    if (clickableElements.length === 0) {
-      toast.info('No clickable elements detected');
-      return;
-    }
-
-    setIsDetectingLinks(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('detect-footer-links', {
-        body: { 
-          clickableElements,
-          brandDomain: brand.domain,
-          brandName: brand.name
-        }
-      });
-
-      if (error) throw error;
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to detect links');
-      }
-
-      console.log('Detected links:', data.links);
-      setDetectedLinks(data.links || []);
-      setApprovedLinks(data.links || []); // Pre-fill with detected URLs
-      toast.success(`Found ${data.links?.length || 0} links`);
-    } catch (error) {
-      console.error('Link detection error:', error);
-      toast.error('Failed to detect links');
-    } finally {
-      setIsDetectingLinks(false);
-    }
-  }, [clickableElements, brand.domain, brand.name]);
+  }, [brand.domain, brand.name]);
 
   // Update a single link URL
   const updateLinkUrl = useCallback((id: string, newUrl: string) => {
     setApprovedLinks(prev => prev.map(link => 
-      link.id === id ? { ...link, searchedUrl: newUrl } : link
+      link.id === id ? { ...link, searchedUrl: newUrl, needsManualUrl: false } : link
     ));
   }, []);
 
@@ -774,65 +765,58 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         );
 
       case 'links':
+        const emailActionLinks = approvedLinks.filter(l => l.category === 'email_action');
+        const otherLinks = approvedLinks.filter(l => l.category !== 'email_action');
+        
         return (
           <div className="space-y-4">
-            <div className="text-center space-y-2 py-4">
+            <div className="text-center space-y-2 py-2">
               <h3 className="font-medium">Footer Links</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                {clickableElements.length > 0
-                  ? `We detected ${clickableElements.length} clickable element${clickableElements.length !== 1 ? 's' : ''}. Confirm or edit the URLs.`
-                  : 'No clickable elements detected.'}
+              <p className="text-sm text-muted-foreground">
+                {isDetectingLinks 
+                  ? 'Searching for URLs...' 
+                  : clickableElements.length > 0
+                    ? 'Review detected links. Fix any marked with warnings.'
+                    : 'No clickable elements detected.'}
               </p>
             </div>
 
-            {clickableElements.length > 0 && approvedLinks.length === 0 && (
-              <Button 
-                onClick={detectLinksForElements} 
-                disabled={isDetectingLinks}
-                className="w-full"
-              >
-                {isDetectingLinks ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Searching for URLs...</>
-                ) : (
-                  <><Link className="w-4 h-4 mr-2" />Detect Link URLs</>
-                )}
-              </Button>
+            {isDetectingLinks && (
+              <div className="flex items-center justify-center gap-2 py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">Finding URLs...</span>
+              </div>
             )}
 
-            {approvedLinks.length > 0 && (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {approvedLinks.map((link) => (
-                  <div key={link.id} className="border border-border rounded-lg p-3 space-y-2">
+            {!isDetectingLinks && otherLinks.length > 0 && (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {otherLinks.map((link) => (
+                  <div key={link.id} className="border border-border rounded-lg p-3 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{link.text}</span>
-                        <Badge variant={link.category === 'email_action' ? 'secondary' : 'outline'} className="text-xs">
-                          {link.category}
-                        </Badge>
-                      </div>
-                      {link.verified ? (
-                        <Badge variant="default" className="text-xs bg-green-600">
-                          <Check className="w-3 h-3 mr-1" />Verified
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">
-                          <AlertCircle className="w-3 h-3 mr-1" />Review
-                        </Badge>
-                      )}
+                      <span className="font-medium text-sm">{link.text}</span>
+                      {link.needsManualUrl ? (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          URL not found
+                        </span>
+                      ) : link.verified ? (
+                        <Check className="w-4 h-4 text-green-600" />
+                      ) : null}
                     </div>
                     <div className="flex gap-2">
                       <Input
                         value={link.searchedUrl}
                         onChange={(e) => updateLinkUrl(link.id, e.target.value)}
-                        className="text-xs font-mono"
+                        className={`text-xs font-mono ${link.needsManualUrl ? 'border-amber-400' : ''}`}
                         placeholder="https://..."
                       />
-                      {!link.searchedUrl.startsWith('{{') && (
+                      {!link.searchedUrl.startsWith('{{') && link.searchedUrl && (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="shrink-0"
                           onClick={() => window.open(link.searchedUrl, '_blank')}
+                          title="Test link"
                         >
                           <ExternalLink className="w-4 h-4" />
                         </Button>
@@ -843,11 +827,28 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            {clickableElements.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Link className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No clickable elements detected in the reference.</p>
-                <p className="text-xs">Links can be added manually later.</p>
+            {/* Email action links - shown separately */}
+            {!isDetectingLinks && emailActionLinks.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Email Actions (auto-filled)</p>
+                <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+                  {emailActionLinks.map((link) => (
+                    <div key={link.id} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{link.text}</span>
+                      <code className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                        {link.searchedUrl}
+                      </code>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!isDetectingLinks && clickableElements.length === 0 && (
+              <div className="text-center py-6 text-muted-foreground">
+                <Link className="w-6 h-6 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No clickable elements detected.</p>
+                <p className="text-xs">Links can be added manually in the studio.</p>
               </div>
             )}
           </div>
@@ -856,42 +857,53 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       case 'social':
         return (
           <div className="space-y-4">
-            <div className="text-center space-y-2 py-4">
+            <div className="text-center space-y-2 py-2">
               <h3 className="font-medium">Social Links</h3>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              <p className="text-sm text-muted-foreground">
                 {socialPlatforms.length > 0
-                  ? `We detected ${socialPlatforms.join(', ')} icons. Add your profile URLs.`
-                  : 'Add your social media links.'}
+                  ? `Detected: ${socialPlatforms.join(', ')}. Add your profile URLs.`
+                  : 'No social icons detected in the footer image.'}
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm">Icon Color</Label>
-              <div className="flex gap-2">
-                {['ffffff', '000000', brand.primaryColor?.replace('#', '')].filter(Boolean).map(color => (
-                  <button
-                    key={color}
-                    onClick={() => setIconColor(color!)}
-                    className={`w-8 h-8 rounded-md border-2 transition-all ${
-                      iconColor === color ? 'border-primary ring-2 ring-primary/20' : 'border-border'
-                    }`}
-                    style={{ backgroundColor: `#${color}` }}
-                  />
-                ))}
-                <Input
-                  value={`#${iconColor}`}
-                  onChange={(e) => setIconColor(e.target.value.replace('#', ''))}
-                  className="w-24 text-sm"
-                  placeholder="#ffffff"
-                />
-              </div>
-            </div>
+            {socialPlatforms.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm">Icon Color</Label>
+                  <div className="flex gap-2">
+                    {['ffffff', '000000', brand.primaryColor?.replace('#', '')].filter(Boolean).map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setIconColor(color!)}
+                        className={`w-8 h-8 rounded-md border-2 transition-all ${
+                          iconColor === color ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+                        }`}
+                        style={{ backgroundColor: `#${color}` }}
+                      />
+                    ))}
+                    <Input
+                      value={`#${iconColor}`}
+                      onChange={(e) => setIconColor(e.target.value.replace('#', ''))}
+                      className="w-24 text-sm"
+                      placeholder="#ffffff"
+                    />
+                  </div>
+                </div>
 
-            <SocialLinksEditor
-              socialLinks={socialLinks}
-              onChange={setSocialLinks}
-              iconColor={iconColor}
-            />
+                <SocialLinksEditor
+                  socialLinks={socialLinks}
+                  onChange={setSocialLinks}
+                  iconColor={iconColor}
+                />
+              </>
+            )}
+
+            {socialPlatforms.length === 0 && (
+              <div className="text-center py-6 text-muted-foreground">
+                <p className="text-sm">No social icons in this footer design.</p>
+                <p className="text-xs">You can skip this step.</p>
+              </div>
+            )}
           </div>
         );
 
@@ -969,7 +981,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Set Up Footer for {brand.name}</DialogTitle>
             <DialogDescription>
