@@ -114,11 +114,13 @@ serve(async (req) => {
 
     const uploadResult = await uploadResponse.json();
     
-    // Return the Cloudinary URL - use PNG format for better email compatibility
-    const pngUrl = uploadResult.secure_url.replace(/\.[^/.]+$/, '.png');
+    // Return the Cloudinary URL - use PNG format with explicit sizing for crisp icons
+    // Add transformation for proper sizing: 64x64 with fit
+    const pngUrl = uploadResult.secure_url
+      .replace('/upload/', '/upload/w_64,h_64,c_fit,f_png/')
+      .replace(/\.[^/.]+$/, '.png');
     
     console.log(`Successfully uploaded ${platform} icon to Cloudinary: ${pngUrl}`);
-
     return new Response(
       JSON.stringify({
         success: true,
