@@ -80,6 +80,12 @@ FOR EACH CLICKABLE SLICE:
 4. ONLY suggest links you've verified exist via search
 5. If you can't find a matching page via search, you may suggest a logical path but mark linkVerified: false
 
+**CRITICAL CTA RULE**:
+- If a slice contains a CTA button (e.g., "Shop Now", "Buy Now", "Get Started", "Learn More", "Claim Savings", "Order Now", "Subscribe", etc.), it MUST have isClickable: true AND a suggestedLink
+- CTAs without links are BROKEN emails - users expect to click them
+- If you cannot find the exact page, use your best guess based on the campaign context (e.g., homepage, product page, collection page) and set linkVerified: false
+- NEVER return a CTA slice with isClickable: true but suggestedLink: null
+
 ALT TEXT RULES:
 - Write the actual campaign copy/text visible in the slice, condensed and spoken as if to someone who cannot see it
 - For CTAs/buttons: Add "Click to" prefix (e.g., "Click to Schedule Consultation")
@@ -92,6 +98,7 @@ LINK RULES:
 - If you found the link via web search, set linkVerified: true
 - If you couldn't verify but are suggesting a logical path, set linkVerified: false and add linkWarning
 - If a link points outside ${domain}, set linkVerified: false and add linkWarning: "External link - verify this is correct"
+- For CTAs where you cannot find a specific page, default to the brand homepage: https://${domain}/
 
 Respond in JSON format:
 {
