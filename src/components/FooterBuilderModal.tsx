@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import { uploadAllSocialIcons } from '@/lib/socialIcons';
 import { FooterCropSelector } from './FooterCropSelector';
 import { AssetCollectionModal } from './AssetCollectionModal';
 import type { Brand, SocialLink } from '@/types/brand-assets';
+import { Badge } from '@/components/ui/badge';
 
 interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -32,8 +33,24 @@ interface FooterBuilderModalProps {
   initialCampaignImageUrl?: string;
 }
 
-type Step = 'reference' | 'social' | 'generate';
+type Step = 'reference' | 'links' | 'social' | 'generate';
 type SourceType = 'image' | 'figma' | 'campaign' | null;
+
+interface DetectedLink {
+  id: string;
+  text: string;
+  category: 'navigation' | 'button' | 'social' | 'email_action';
+  searchedUrl: string;
+  verified: boolean;
+  placeholder?: string;
+}
+
+interface ClickableElement {
+  id: string;
+  text: string;
+  category: 'navigation' | 'button' | 'social' | 'email_action';
+  likely_destination: string;
+}
 
 interface Campaign {
   id: string;
@@ -118,6 +135,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [isExtractingAssets, setIsExtractingAssets] = useState(false);
   const [assetsNeeded, setAssetsNeeded] = useState<ExtractedAsset[]>([]);
   const [textBasedElements, setTextBasedElements] = useState<TextBasedElement[]>([]);
+  const [clickableElements, setClickableElements] = useState<ClickableElement[]>([]);
   const [socialPlatforms, setSocialPlatforms] = useState<string[]>([]);
   const [extractedStyles, setExtractedStyles] = useState<StyleTokens | null>(null);
   const [socialIconColor, setSocialIconColor] = useState<string>('#ffffff');
@@ -125,6 +143,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   // Asset collection modal state
   const [showAssetCollectionModal, setShowAssetCollectionModal] = useState(false);
   const [collectedAssets, setCollectedAssets] = useState<Record<string, string>>({});
+  
+  // Links state - NEW
+  const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([]);
+  const [isDetectingLinks, setIsDetectingLinks] = useState(false);
+  const [approvedLinks, setApprovedLinks] = useState<DetectedLink[]>([]);
   
   // Social state
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(brand.socialLinks || []);
@@ -219,6 +242,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       // Store extraction results
       setAssetsNeeded(data.requires_upload || []);
       setTextBasedElements(data.text_based_elements || []);
+      setClickableElements(data.clickable_elements || []);
       setSocialPlatforms(data.social_platforms || []);
       setExtractedStyles(data.styles || null);
       
@@ -254,6 +278,48 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       setIsExtractingAssets(false);
     }
   }, [socialLinks]);
+
+  // Detect links for clickable elements
+  const detectLinksForElements = useCallback(async () => {
+    if (clickableElements.length === 0) {
+      toast.info('No clickable elements detected');
+      return;
+    }
+
+    setIsDetectingLinks(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('detect-footer-links', {
+        body: { 
+          clickableElements,
+          brandDomain: brand.domain,
+          brandName: brand.name
+        }
+      });
+
+      if (error) throw error;
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to detect links');
+      }
+
+      console.log('Detected links:', data.links);
+      setDetectedLinks(data.links || []);
+      setApprovedLinks(data.links || []); // Pre-fill with detected URLs
+      toast.success(`Found ${data.links?.length || 0} links`);
+    } catch (error) {
+      console.error('Link detection error:', error);
+      toast.error('Failed to detect links');
+    } finally {
+      setIsDetectingLinks(false);
+    }
+  }, [clickableElements, brand.domain, brand.name]);
+
+  // Update a single link URL
+  const updateLinkUrl = useCallback((id: string, newUrl: string) => {
+    setApprovedLinks(prev => prev.map(link => 
+      link.id === id ? { ...link, searchedUrl: newUrl } : link
+    ));
+  }, []);
 
   // Handle asset collection complete
   const handleAssetCollectionComplete = useCallback((collected: Record<string, string>) => {
@@ -393,6 +459,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       setGenerationStatus('Generating footer HTML...');
       
+      // Prepare links for generation
+      const linksForGeneration = approvedLinks.map(link => ({
+        id: link.id,
+        text: link.text,
+        url: link.searchedUrl
+      }));
+      
       // Use the unified footer-conversation function
       const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
@@ -401,6 +474,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           assets: collectedAssets,
           styles: extractedStyles,
           socialIcons: socialIconsForGeneration,
+          links: linksForGeneration,
           conversationHistory: [] // Fresh conversation
         }
       });
@@ -693,9 +767,89 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </div>
             )}
 
-            <Button variant="link" className="w-full text-muted-foreground" onClick={() => setStep('social')}>
+            <Button variant="link" className="w-full text-muted-foreground" onClick={() => setStep('links')}>
               Skip - I don't have a reference
             </Button>
+          </div>
+        );
+
+      case 'links':
+        return (
+          <div className="space-y-4">
+            <div className="text-center space-y-2 py-4">
+              <h3 className="font-medium">Footer Links</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                {clickableElements.length > 0
+                  ? `We detected ${clickableElements.length} clickable element${clickableElements.length !== 1 ? 's' : ''}. Confirm or edit the URLs.`
+                  : 'No clickable elements detected.'}
+              </p>
+            </div>
+
+            {clickableElements.length > 0 && approvedLinks.length === 0 && (
+              <Button 
+                onClick={detectLinksForElements} 
+                disabled={isDetectingLinks}
+                className="w-full"
+              >
+                {isDetectingLinks ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Searching for URLs...</>
+                ) : (
+                  <><Link className="w-4 h-4 mr-2" />Detect Link URLs</>
+                )}
+              </Button>
+            )}
+
+            {approvedLinks.length > 0 && (
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {approvedLinks.map((link) => (
+                  <div key={link.id} className="border border-border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{link.text}</span>
+                        <Badge variant={link.category === 'email_action' ? 'secondary' : 'outline'} className="text-xs">
+                          {link.category}
+                        </Badge>
+                      </div>
+                      {link.verified ? (
+                        <Badge variant="default" className="text-xs bg-green-600">
+                          <Check className="w-3 h-3 mr-1" />Verified
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">
+                          <AlertCircle className="w-3 h-3 mr-1" />Review
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={link.searchedUrl}
+                        onChange={(e) => updateLinkUrl(link.id, e.target.value)}
+                        className="text-xs font-mono"
+                        placeholder="https://..."
+                      />
+                      {!link.searchedUrl.startsWith('{{') && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => window.open(link.searchedUrl, '_blank')}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {clickableElements.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Link className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No clickable elements detected in the reference.</p>
+                <p className="text-xs">Links can be added manually later.</p>
+              </div>
+            )}
           </div>
         );
 
@@ -779,6 +933,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const canProceed = () => {
     switch (step) {
       case 'reference': return true;
+      case 'links': return true;
       case 'social': return true;
       case 'generate': return false;
     }
@@ -786,7 +941,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const getNextStep = (): Step | null => {
     switch (step) {
-      case 'reference': return 'social';
+      case 'reference': return 'links';
+      case 'links': return 'social';
       case 'social': return 'generate';
       case 'generate': return null;
     }
@@ -795,16 +951,20 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const getPrevStep = (): Step | null => {
     switch (step) {
       case 'reference': return null;
-      case 'social': return 'reference';
+      case 'links': return 'reference';
+      case 'social': return 'links';
       case 'generate': return 'social';
     }
   };
 
   const stepLabels: Record<Step, string> = {
     reference: 'Reference',
-    social: 'Social Links',
+    links: 'Links',
+    social: 'Social',
     generate: 'Generate',
   };
+
+  const stepOrder: Step[] = ['reference', 'links', 'social', 'generate'];
 
   return (
     <>
@@ -817,18 +977,18 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             </DialogDescription>
           </DialogHeader>
 
-          {/* Step indicator - now 3 steps instead of 4 */}
+          {/* Step indicator - now 4 steps */}
           <div className="flex items-center justify-center gap-1 py-2">
-            {(['reference', 'social', 'generate'] as Step[]).map((s, i) => (
+            {stepOrder.map((s, i) => (
               <div key={s} className="flex items-center">
                 <div 
                   className={`w-2 h-2 rounded-full transition-colors ${
                     s === step ? 'bg-primary' : 
-                    (['reference', 'social', 'generate'].indexOf(s) < ['reference', 'social', 'generate'].indexOf(step)) 
+                    stepOrder.indexOf(s) < stepOrder.indexOf(step) 
                       ? 'bg-primary/40' : 'bg-muted'
                   }`}
                 />
-                {i < 2 && <div className="w-8 h-px bg-border mx-1" />}
+                {i < stepOrder.length - 1 && <div className="w-6 h-px bg-border mx-1" />}
               </div>
             ))}
           </div>

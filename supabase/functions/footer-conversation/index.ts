@@ -22,6 +22,12 @@ interface StyleTokens {
   special_effects?: string[];
 }
 
+interface LinkMapping {
+  id: string;
+  text: string;
+  url: string;
+}
+
 interface FooterConversationRequest {
   action: 'generate' | 'refine' | 'chat';
   referenceImageUrl: string;
@@ -32,6 +38,7 @@ interface FooterConversationRequest {
   assets?: AssetManifest;
   socialIcons?: Array<{ platform: string; url: string }>;
   styles?: StyleTokens;
+  links?: LinkMapping[]; // User-approved links for all clickable elements
 }
 
 serve(async (req) => {
@@ -50,7 +57,8 @@ serve(async (req) => {
       conversationHistory = [],
       assets = {},
       socialIcons = [],
-      styles
+      styles,
+      links = []
     } = request;
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -90,6 +98,15 @@ serve(async (req) => {
       if (styles.accent_color) stylesSection += `- Accent: ${styles.accent_color}\n`;
     }
 
+    // Build links section
+    let linksSection = '';
+    if (links && links.length > 0) {
+      linksSection = 'LINK MAPPINGS (use these exact URLs for each element):\n';
+      for (const link of links) {
+        linksSection += `- "${link.text}" → ${link.url}\n`;
+      }
+    }
+
     // System prompt - consistent across all actions
     const systemPrompt = `You are an expert email HTML developer. You create pixel-perfect email footers using table-based layouts for maximum email client compatibility.
 
@@ -101,9 +118,12 @@ CRITICAL RULES:
 - Match designs EXACTLY - colors, spacing, typography, alignment
 - VML fallbacks for Outlook backgrounds if needed
 - Mobile responsive where possible using max-width
+- EVERY clickable element MUST have the correct href from the link mappings
+- Use ESP placeholders (like {{ unsubscribe_url }}) exactly as provided
 
 ${assetsList ? `AVAILABLE ASSETS:\n${assetsList}` : ''}
 ${stylesSection ? `STYLE TOKENS:\n${stylesSection}` : ''}
+${linksSection ? `\n${linksSection}` : ''}
 
 When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`\`html code blocks. No explanations unless specifically asked.`;
 
