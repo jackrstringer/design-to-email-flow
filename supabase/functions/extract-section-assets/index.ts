@@ -27,7 +27,7 @@ serve(async (req) => {
 
     const prompt = `Analyze this email section/footer design and categorize ALL visual elements.
 
-Your job is to classify elements into THREE categories:
+Your job is to classify elements into FIVE categories:
 
 ## 1. REQUIRES_UPLOAD (True image assets that MUST be uploaded)
 These are actual image files that cannot be recreated with text/CSS:
@@ -64,7 +64,20 @@ For each, provide:
 Standard social media platform icons - we handle these separately.
 Just list: platform names detected (instagram, facebook, tiktok, twitter, youtube, linkedin, pinterest, snapchat, threads, etc.)
 
-## 4. STYLES
+## 4. CLICKABLE_ELEMENTS (All text links and buttons that need URLs)
+Identify ALL clickable text elements in the footer:
+- Navigation links (shop categories, pages)
+- CTA buttons (e.g., "JOIN THE FACEBOOK GROUP")
+- Email action links (Unsubscribe, Manage Preferences, View in Browser)
+- Contact links
+
+For each, provide:
+- id: unique snake_case identifier
+- text: exact text shown (e.g., "THE WALLETS", "Unsubscribe")
+- category: "navigation" | "button" | "social" | "email_action"
+- likely_destination: description of where this likely links to
+
+## 5. STYLES
 Extract visual style tokens:
 - background_color: hex value
 - text_color: primary text hex
@@ -89,6 +102,26 @@ Return ONLY valid JSON:
       "recommendation": "Use → character or CSS ::after with border"
     }
   ],
+  "clickable_elements": [
+    {
+      "id": "nav_wallets",
+      "text": "THE WALLETS",
+      "category": "navigation",
+      "likely_destination": "shop wallets collection page"
+    },
+    {
+      "id": "cta_facebook",
+      "text": "JOIN THE FACEBOOK GROUP",
+      "category": "button",
+      "likely_destination": "Facebook group page"
+    },
+    {
+      "id": "unsubscribe_link",
+      "text": "Unsubscribe",
+      "category": "email_action",
+      "likely_destination": "email unsubscribe action"
+    }
+  ],
   "social_platforms": ["instagram", "facebook", "tiktok"],
   "social_icon_color": "#ffffff",
   "styles": {
@@ -102,7 +135,8 @@ IMPORTANT CLASSIFICATION RULES:
 - Simple arrows are ALWAYS text_based_elements, not requires_upload
 - Only flag as requires_upload if it's a complex graphic that CANNOT be a Unicode character
 - Be conservative - when in doubt, it's probably text-based
-- crop_hint: x_percent/y_percent = TOP-LEFT corner of the asset bounding box`;
+- crop_hint: x_percent/y_percent = TOP-LEFT corner of the asset bounding box
+- Identify ALL clickable text - navigation, buttons, email actions, etc.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -154,6 +188,7 @@ IMPORTANT CLASSIFICATION RULES:
       success: true,
       requires_upload: extractedData.requires_upload || [],
       text_based_elements: extractedData.text_based_elements || [],
+      clickable_elements: extractedData.clickable_elements || [],
       social_platforms: extractedData.social_platforms || [],
       social_icon_color: extractedData.social_icon_color || '#ffffff',
       styles: extractedData.styles || {}
