@@ -25,7 +25,6 @@ interface ClickableElement {
 
 // Verify a URL with a HEAD request
 async function verifyUrl(url: string): Promise<boolean> {
-  // Skip verification for template placeholders
   if (url.startsWith('{{') || url.startsWith('mailto:')) {
     return true;
   }
@@ -47,6 +46,68 @@ async function verifyUrl(url: string): Promise<boolean> {
   } catch (error) {
     console.log(`URL verification failed for ${url}:`, error);
     return false;
+  }
+}
+
+// Search for a real URL using Firecrawl
+async function searchForUrl(brandName: string, linkText: string, brandDomain: string): Promise<string | null> {
+  const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!FIRECRAWL_API_KEY) {
+    console.log('FIRECRAWL_API_KEY not configured, skipping web search');
+    return null;
+  }
+  
+  const query = `${brandName} ${linkText}`;
+  console.log(`🔍 Searching: "${query}"`);
+  
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v1/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        limit: 5,
+      }),
+    });
+
+    if (!response.ok) {
+      console.log(`Firecrawl search failed: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const results = data.data || [];
+    
+    // Prefer URLs from the brand's domain
+    for (const result of results) {
+      if (result.url && result.url.includes(brandDomain)) {
+        console.log(`✅ Found brand URL: ${result.url}`);
+        return result.url;
+      }
+    }
+    
+    // For social links, accept social platform URLs
+    const socialDomains = ['instagram.com', 'facebook.com', 'twitter.com', 'x.com', 'tiktok.com', 'pinterest.com', 'youtube.com', 'linkedin.com'];
+    for (const result of results) {
+      if (result.url && socialDomains.some(domain => result.url.includes(domain))) {
+        console.log(`✅ Found social URL: ${result.url}`);
+        return result.url;
+      }
+    }
+    
+    // Return first result if nothing better found
+    if (results[0]?.url) {
+      console.log(`⚠️ Using first result: ${results[0].url}`);
+      return results[0].url;
+    }
+    
+    return null;
+  } catch (error) {
+    console.log(`Firecrawl search error:`, error);
+    return null;
   }
 }
 
@@ -159,31 +220,51 @@ Return ONLY valid JSON array:
     
     console.log('AI generated links:', JSON.stringify(links, null, 2));
 
-    // Verify each URL with HEAD requests
-    console.log('Verifying URLs...');
-    const verificationPromises = links.map(async (link) => {
+    // Now enhance with real web search and verify URLs
+    console.log('🔍 Searching for real URLs with Firecrawl...');
+    
+    const enhancedLinks = await Promise.all(links.map(async (link) => {
+      // Skip placeholders and mailto
       if (link.searchedUrl.startsWith('{{') || link.searchedUrl.startsWith('mailto:')) {
-        // Placeholders and mailto are always verified
         link.verified = true;
         link.needsManualUrl = false;
-      } else {
-        const isValid = await verifyUrl(link.searchedUrl);
+        return link;
+      }
+      
+      // Step 1: Try web search first
+      const searchedUrl = await searchForUrl(brandName, link.text, brandDomain);
+      
+      if (searchedUrl) {
+        const isValid = await verifyUrl(searchedUrl);
         if (isValid) {
+          console.log(`✅ ${link.text}: Found via search → ${searchedUrl}`);
+          link.searchedUrl = searchedUrl;
           link.verified = true;
           link.needsManualUrl = false;
-          console.log(`URL ${link.searchedUrl}: VALID`);
-        } else {
-          // Clear broken URL - don't show unverified guesses
-          console.log(`URL ${link.searchedUrl}: NOT FOUND - clearing`);
-          link.searchedUrl = '';
-          link.verified = false;
-          link.needsManualUrl = true;
+          return link;
         }
       }
+      
+      // Step 2: Fall back to Claude's guess, verify it
+      if (link.searchedUrl) {
+        const isValid = await verifyUrl(link.searchedUrl);
+        if (isValid) {
+          console.log(`✅ ${link.text}: Claude guess verified → ${link.searchedUrl}`);
+          link.verified = true;
+          link.needsManualUrl = false;
+          return link;
+        }
+      }
+      
+      // Both search and guess failed
+      console.log(`❌ ${link.text}: No valid URL found, flagging for manual entry`);
+      link.searchedUrl = '';
+      link.verified = false;
+      link.needsManualUrl = true;
       return link;
-    });
+    }));
 
-    links = await Promise.all(verificationPromises);
+    links = enhancedLinks;
     
     console.log('Final verified links:', JSON.stringify(links, null, 2));
 
