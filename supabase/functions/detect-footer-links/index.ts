@@ -168,9 +168,17 @@ Return ONLY valid JSON array:
         link.needsManualUrl = false;
       } else {
         const isValid = await verifyUrl(link.searchedUrl);
-        link.verified = isValid;
-        link.needsManualUrl = !isValid;
-        console.log(`URL ${link.searchedUrl}: ${isValid ? 'VALID' : 'NOT FOUND'}`);
+        if (isValid) {
+          link.verified = true;
+          link.needsManualUrl = false;
+          console.log(`URL ${link.searchedUrl}: VALID`);
+        } else {
+          // Clear broken URL - don't show unverified guesses
+          console.log(`URL ${link.searchedUrl}: NOT FOUND - clearing`);
+          link.searchedUrl = '';
+          link.verified = false;
+          link.needsManualUrl = true;
+        }
       }
       return link;
     });
