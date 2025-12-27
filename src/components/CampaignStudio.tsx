@@ -141,6 +141,7 @@ export function CampaignStudio({
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
   const [showAltText, setShowAltText] = useState(false);
   const [includeFooter, setIncludeFooter] = useState(true);
+  const [footerPreviewHeight, setFooterPreviewHeight] = useState(400);
   
   // Ref for the studio container (both panels) for side-by-side screenshot
   const studioContainerRef = useRef<HTMLDivElement>(null);
@@ -1016,15 +1017,21 @@ export function CampaignStudio({
                                 </div>
                                 <div 
                                   className="flex-shrink-0 origin-top-left" 
-                                  style={{ width: scaledWidth }}
+                                  style={{ width: scaledWidth, height: footerPreviewHeight * (zoomLevel / 100) }}
                                 >
                                   <iframe
-                                    srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:0;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml}</table></body></html>`}
+                                    srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;overflow:hidden;height:auto;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml}</table></body></html>`}
                                     title="Footer Preview"
+                                    onLoad={(e) => {
+                                      try {
+                                        const height = e.currentTarget.contentDocument?.body?.scrollHeight || 400;
+                                        setFooterPreviewHeight(Math.max(100, height + 10));
+                                      } catch { /* cross-origin */ }
+                                    }}
                                     style={{ 
                                       border: 'none', 
                                       width: BASE_WIDTH, 
-                                      height: '600px',
+                                      height: footerPreviewHeight,
                                       transform: `scale(${zoomLevel / 100})`,
                                       transformOrigin: 'top left'
                                     }}
@@ -1048,23 +1055,30 @@ export function CampaignStudio({
                       <div className="h-full overflow-auto bg-background">
                         <div className="p-6 flex justify-center">
                           {isFooterMode ? (
-                            /* Footer Mode: Footer preview - full height, no scroll */
+                            /* Footer Mode: Footer preview - auto height, no scroll */
                             <div className="flex flex-col items-center gap-4">
                               <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Current HTML</span>
                               <div 
                                 style={{ 
                                   width: scaledWidth,
+                                  height: footerPreviewHeight * (zoomLevel / 100),
                                   transform: `scale(${zoomLevel / 100})`,
                                   transformOrigin: 'top left'
                                 }}
                               >
                                 <iframe
-                                  srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;overflow:visible;height:auto;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
+                                  srcDoc={`<!DOCTYPE html><html><head><style>html,body{margin:0;padding:0;overflow:hidden;height:auto;}</style></head><body><table width="${BASE_WIDTH}" style="width:${BASE_WIDTH}px;margin:0 auto;">${localFooterHtml || ''}</table></body></html>`}
                                   title="Footer Preview"
+                                  onLoad={(e) => {
+                                    try {
+                                      const height = e.currentTarget.contentDocument?.body?.scrollHeight || 400;
+                                      setFooterPreviewHeight(Math.max(100, height + 10));
+                                    } catch { /* cross-origin */ }
+                                  }}
                                   style={{ 
                                     border: 'none', 
                                     width: BASE_WIDTH, 
-                                    height: '1200px',
+                                    height: footerPreviewHeight,
                                     display: 'block'
                                   }}
                                   sandbox="allow-same-origin"
