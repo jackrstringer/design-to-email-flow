@@ -256,13 +256,44 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         setIconColor(data.social_icon_color.replace('#', ''));
       }
 
-      // Auto-populate social links ONLY with detected platforms from image
+      // Auto-populate social links ONLY with platforms detected from the image
       if (detectedSocialPlatforms.length > 0) {
-        const newLinks = detectedSocialPlatforms.map((platform: string) => ({ 
-          platform, 
-          url: '' 
+        const emptyLinks = detectedSocialPlatforms.map((platform: string) => ({
+          platform,
+          url: '',
         }));
-        setSocialLinks(newLinks);
+        setSocialLinks(emptyLinks);
+
+        // Try to auto-detect the brand's *actual* profile URLs in the background
+        console.log('Starting background social URL detection...');
+        supabase.functions
+          .invoke('detect-footer-socials', {
+            body: {
+              footerImageUrl: imageUrl,
+              brandName: brand.name,
+              brandDomain: brand.domain,
+              existingSocialLinks: brand.socialLinks || [],
+            },
+          })
+          .then(({ data: socialData, error: socialError }) => {
+            if (socialError) {
+              console.error('Background social detection error:', socialError);
+              toast.error('Could not auto-detect social URLs');
+              return;
+            }
+
+            const detected = (socialData?.socialLinks || [])
+              .filter((l: any) => detectedSocialPlatforms.includes(l.platform))
+              .map((l: any) => ({
+                platform: l.platform,
+                url: l.url || '',
+              }));
+
+            if (detected.length > 0) {
+              console.log('Background social detection complete:', detected);
+              setSocialLinks(detected);
+            }
+          });
       }
 
       // If there are assets that need upload, show the collection modal
