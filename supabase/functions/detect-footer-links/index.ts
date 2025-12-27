@@ -23,6 +23,68 @@ interface ClickableElement {
   likely_destination: string;
 }
 
+const SOCIAL_PLATFORMS: Record<string, string> = {
+  'instagram': 'instagram.com',
+  'facebook': 'facebook.com',
+  'twitter': 'twitter.com',
+  'x': 'x.com',
+  'tiktok': 'tiktok.com',
+  'pinterest': 'pinterest.com',
+  'youtube': 'youtube.com',
+  'linkedin': 'linkedin.com',
+  'threads': 'threads.net',
+  'snapchat': 'snapchat.com',
+};
+
+// Small delay helper for rate limiting
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Clean URL by removing tracking params
+function cleanUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // Remove common tracking params
+    const trackingParams = ['srsltid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ref', 'ref_'];
+    trackingParams.forEach(param => parsed.searchParams.delete(param));
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+// Check if URL is a low-quality match (homepage with tracking, etc.)
+function isGoodUrlMatch(url: string, linkText: string, brandDomain: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname;
+    
+    // Reject homepage for specific link texts (should have a real path)
+    if (path === '/' || path === '') {
+      const specificLinks = ['deal', 'sale', 'collection', 'shop', 'wallet', 'bag', 'product', 'fit', 'weekly'];
+      const lowerText = linkText.toLowerCase();
+      if (specificLinks.some(term => lowerText.includes(term))) {
+        console.log(`⚠️ Rejecting homepage URL for specific link "${linkText}"`);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Detect if link text refers to a social platform
+function detectSocialPlatform(text: string): { platform: string; domain: string } | null {
+  const lowerText = text.toLowerCase();
+  for (const [platform, domain] of Object.entries(SOCIAL_PLATFORMS)) {
+    if (lowerText.includes(platform)) {
+      return { platform, domain };
+    }
+  }
+  return null;
+}
+
 // Verify a URL with a HEAD request
 async function verifyUrl(url: string): Promise<boolean> {
   if (url.startsWith('{{') || url.startsWith('mailto:')) {
@@ -49,15 +111,30 @@ async function verifyUrl(url: string): Promise<boolean> {
   }
 }
 
-// Search for a real URL using Firecrawl
-async function searchForUrl(brandName: string, linkText: string, brandDomain: string): Promise<string | null> {
+// Search for a real URL using Firecrawl with site filtering
+async function searchForUrl(
+  brandName: string, 
+  linkText: string, 
+  brandDomain: string,
+  isSocial: boolean = false,
+  socialDomain?: string
+): Promise<string | null> {
   const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
   if (!FIRECRAWL_API_KEY) {
     console.log('FIRECRAWL_API_KEY not configured, skipping web search');
     return null;
   }
   
-  const query = `${brandName} ${linkText}`;
+  // Build a site-filtered query for better results
+  let query: string;
+  if (isSocial && socialDomain) {
+    // For socials, search with site filter to the social platform
+    query = `${brandName} site:${socialDomain}`;
+  } else {
+    // For regular links, search with site filter to brand domain
+    query = `"${linkText}" site:${brandDomain}`;
+  }
+  
   console.log(`🔍 Searching: "${query}"`);
   
   try {
@@ -74,34 +151,51 @@ async function searchForUrl(brandName: string, linkText: string, brandDomain: st
     });
 
     if (!response.ok) {
-      console.log(`Firecrawl search failed: ${response.status}`);
+      const status = response.status;
+      console.log(`Firecrawl search failed: ${status}`);
+      
+      // If rate limited, log it clearly
+      if (status === 429) {
+        console.log('⚠️ Rate limited by Firecrawl, will use fallback');
+      }
       return null;
     }
 
     const data = await response.json();
     const results = data.data || [];
     
-    // Prefer URLs from the brand's domain
-    for (const result of results) {
-      if (result.url && result.url.includes(brandDomain)) {
-        console.log(`✅ Found brand URL: ${result.url}`);
-        return result.url;
+    console.log(`📋 Got ${results.length} results`);
+    
+    if (isSocial && socialDomain) {
+      // For social searches, find the matching social domain URL
+      for (const result of results) {
+        if (result.url && result.url.includes(socialDomain)) {
+          const cleanedUrl = cleanUrl(result.url);
+          console.log(`✅ Found social URL: ${cleanedUrl}`);
+          return cleanedUrl;
+        }
+      }
+    } else {
+      // For brand links, find a good quality URL from the brand domain
+      for (const result of results) {
+        if (result.url && result.url.includes(brandDomain)) {
+          const cleanedUrl = cleanUrl(result.url);
+          if (isGoodUrlMatch(cleanedUrl, linkText, brandDomain)) {
+            console.log(`✅ Found brand URL: ${cleanedUrl}`);
+            return cleanedUrl;
+          }
+        }
       }
     }
     
-    // For social links, accept social platform URLs
-    const socialDomains = ['instagram.com', 'facebook.com', 'twitter.com', 'x.com', 'tiktok.com', 'pinterest.com', 'youtube.com', 'linkedin.com'];
-    for (const result of results) {
-      if (result.url && socialDomains.some(domain => result.url.includes(domain))) {
-        console.log(`✅ Found social URL: ${result.url}`);
-        return result.url;
-      }
-    }
-    
-    // Return first result if nothing better found
+    // Fallback: try first result if it's from the right domain
     if (results[0]?.url) {
-      console.log(`⚠️ Using first result: ${results[0].url}`);
-      return results[0].url;
+      const cleanedUrl = cleanUrl(results[0].url);
+      const targetDomain = isSocial && socialDomain ? socialDomain : brandDomain;
+      if (cleanedUrl.includes(targetDomain) && isGoodUrlMatch(cleanedUrl, linkText, brandDomain)) {
+        console.log(`⚠️ Using first result: ${cleanedUrl}`);
+        return cleanedUrl;
+      }
     }
     
     return null;
@@ -109,6 +203,67 @@ async function searchForUrl(brandName: string, linkText: string, brandDomain: st
     console.log(`Firecrawl search error:`, error);
     return null;
   }
+}
+
+// Process a single link with search and verification
+async function processLink(
+  link: DetectedLink, 
+  brandName: string, 
+  brandDomain: string
+): Promise<DetectedLink> {
+  // Skip placeholders and mailto
+  if (link.searchedUrl.startsWith('{{') || link.searchedUrl.startsWith('mailto:')) {
+    link.verified = true;
+    link.needsManualUrl = false;
+    console.log(`✓ ${link.text}: Placeholder/mailto preserved`);
+    return link;
+  }
+  
+  // Check if this is a social link
+  const socialInfo = detectSocialPlatform(link.text);
+  const isSocial = link.category === 'social' || socialInfo !== null;
+  
+  // Step 1: Try web search first
+  const searchedUrl = await searchForUrl(
+    brandName, 
+    link.text, 
+    brandDomain,
+    isSocial,
+    socialInfo?.domain
+  );
+  
+  if (searchedUrl) {
+    const isValid = await verifyUrl(searchedUrl);
+    if (isValid) {
+      console.log(`✅ ${link.text}: Found via search → ${searchedUrl}`);
+      link.searchedUrl = searchedUrl;
+      link.verified = true;
+      link.needsManualUrl = false;
+      return link;
+    } else {
+      console.log(`⚠️ ${link.text}: Search result failed verification: ${searchedUrl}`);
+    }
+  }
+  
+  // Step 2: Fall back to Claude's guess, verify it
+  if (link.searchedUrl) {
+    const cleanedGuess = cleanUrl(link.searchedUrl);
+    const isValid = await verifyUrl(cleanedGuess);
+    if (isValid && isGoodUrlMatch(cleanedGuess, link.text, brandDomain)) {
+      console.log(`✅ ${link.text}: Claude guess verified → ${cleanedGuess}`);
+      link.searchedUrl = cleanedGuess;
+      link.verified = true;
+      link.needsManualUrl = false;
+      return link;
+    }
+  }
+  
+  // Both search and guess failed
+  console.log(`❌ ${link.text}: No valid URL found, flagging for manual entry`);
+  link.searchedUrl = '';
+  link.verified = false;
+  link.needsManualUrl = true;
+  return link;
 }
 
 serve(async (req) => {
@@ -220,49 +375,20 @@ Return ONLY valid JSON array:
     
     console.log('AI generated links:', JSON.stringify(links, null, 2));
 
-    // Now enhance with real web search and verify URLs
-    console.log('🔍 Searching for real URLs with Firecrawl...');
+    // Process links SEQUENTIALLY to avoid rate limits
+    console.log('🔍 Searching for real URLs with Firecrawl (sequential to avoid rate limits)...');
     
-    const enhancedLinks = await Promise.all(links.map(async (link) => {
-      // Skip placeholders and mailto
-      if (link.searchedUrl.startsWith('{{') || link.searchedUrl.startsWith('mailto:')) {
-        link.verified = true;
-        link.needsManualUrl = false;
-        return link;
+    const enhancedLinks: DetectedLink[] = [];
+    for (const link of links) {
+      const processed = await processLink(link, brandName, brandDomain);
+      enhancedLinks.push(processed);
+      
+      // Add a small delay between searches to avoid rate limiting
+      // Only delay if it's not a placeholder (which doesn't hit the API)
+      if (!link.searchedUrl.startsWith('{{') && !link.searchedUrl.startsWith('mailto:')) {
+        await delay(300); // 300ms delay between API calls
       }
-      
-      // Step 1: Try web search first
-      const searchedUrl = await searchForUrl(brandName, link.text, brandDomain);
-      
-      if (searchedUrl) {
-        const isValid = await verifyUrl(searchedUrl);
-        if (isValid) {
-          console.log(`✅ ${link.text}: Found via search → ${searchedUrl}`);
-          link.searchedUrl = searchedUrl;
-          link.verified = true;
-          link.needsManualUrl = false;
-          return link;
-        }
-      }
-      
-      // Step 2: Fall back to Claude's guess, verify it
-      if (link.searchedUrl) {
-        const isValid = await verifyUrl(link.searchedUrl);
-        if (isValid) {
-          console.log(`✅ ${link.text}: Claude guess verified → ${link.searchedUrl}`);
-          link.verified = true;
-          link.needsManualUrl = false;
-          return link;
-        }
-      }
-      
-      // Both search and guess failed
-      console.log(`❌ ${link.text}: No valid URL found, flagging for manual entry`);
-      link.searchedUrl = '';
-      link.verified = false;
-      link.needsManualUrl = true;
-      return link;
-    }));
+    }
 
     links = enhancedLinks;
     
