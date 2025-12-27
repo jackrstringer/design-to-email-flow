@@ -770,13 +770,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         
         return (
           <div className="space-y-4">
-            <div className="text-center space-y-2 py-2">
+            <div className="text-center space-y-1 py-2">
               <h3 className="font-medium">Footer Links</h3>
               <p className="text-sm text-muted-foreground">
                 {isDetectingLinks 
                   ? 'Searching for URLs...' 
                   : clickableElements.length > 0
-                    ? 'Review detected links. Fix any marked with warnings.'
+                    ? 'Verified links show ✓. Enter missing URLs below.'
                     : 'No clickable elements detected.'}
               </p>
             </div>
@@ -789,39 +789,36 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             )}
 
             {!isDetectingLinks && otherLinks.length > 0 && (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                 {otherLinks.map((link) => (
-                  <div key={link.id} className="border border-border rounded-lg p-3 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm">{link.text}</span>
+                  <div key={link.id} className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0">
+                    <div className="w-5 flex-shrink-0">
                       {link.needsManualUrl ? (
-                        <span className="text-xs text-amber-600 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />
-                          URL not found
-                        </span>
+                        <AlertCircle className="w-4 h-4 text-amber-500" />
                       ) : link.verified ? (
                         <Check className="w-4 h-4 text-green-600" />
                       ) : null}
                     </div>
-                    <div className="flex gap-2">
-                      <Input
-                        value={link.searchedUrl}
-                        onChange={(e) => updateLinkUrl(link.id, e.target.value)}
-                        className={`text-xs font-mono ${link.needsManualUrl ? 'border-amber-400' : ''}`}
-                        placeholder="https://..."
-                      />
-                      {!link.searchedUrl.startsWith('{{') && link.searchedUrl && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0"
-                          onClick={() => window.open(link.searchedUrl, '_blank')}
-                          title="Test link"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
+                    <span className="w-32 flex-shrink-0 font-medium text-sm truncate" title={link.text}>
+                      {link.text}
+                    </span>
+                    <Input
+                      value={link.searchedUrl}
+                      onChange={(e) => updateLinkUrl(link.id, e.target.value)}
+                      className={`flex-1 text-xs font-mono h-8 ${link.needsManualUrl ? 'border-amber-400 bg-amber-50/50' : ''}`}
+                      placeholder="Enter URL..."
+                    />
+                    {link.searchedUrl && !link.searchedUrl.startsWith('{{') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 flex-shrink-0"
+                        onClick={() => window.open(link.searchedUrl, '_blank')}
+                        title="Test link"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -829,13 +826,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
             {/* Email action links - shown separately */}
             {!isDetectingLinks && emailActionLinks.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <p className="text-xs text-muted-foreground font-medium">Email Actions (auto-filled)</p>
-                <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+                <div className="bg-muted/30 rounded-lg px-3 py-2 space-y-0.5">
                   {emailActionLinks.map((link) => (
-                    <div key={link.id} className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{link.text}</span>
-                      <code className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                    <div key={link.id} className="flex items-center gap-3 text-xs py-0.5">
+                      <Check className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                      <span className="w-32 flex-shrink-0 text-muted-foreground">{link.text}</span>
+                      <code className="font-mono text-[10px] text-muted-foreground">
                         {link.searchedUrl}
                       </code>
                     </div>
@@ -981,7 +979,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-2xl">
+        <DialogContent className="max-h-[90vh] overflow-hidden flex flex-col sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Set Up Footer for {brand.name}</DialogTitle>
             <DialogDescription>
