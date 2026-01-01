@@ -501,8 +501,14 @@ export default function CampaignSend() {
         <div className="w-[360px] border-r border-border/40 flex-shrink-0 overflow-auto bg-muted/20">
           <div className="p-4">
             <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Preview</h3>
-            <div className="bg-background rounded-lg border border-border/40 overflow-hidden">
-              <div className="transform scale-[0.45] origin-top-left" style={{ width: '222%' }}>
+            <div 
+              className="bg-background rounded-lg border border-border/40"
+              style={{ width: '270px' }}
+            >
+              <div 
+                className="origin-top-left" 
+                style={{ transform: 'scale(0.45)', width: '600px' }}
+              >
                 <CampaignPreviewFrame slices={slices} footerHtml={footerHtml} width={600} />
               </div>
             </div>
