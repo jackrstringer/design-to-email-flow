@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ProcessedSlice } from '@/types/slice';
 
 interface CampaignPreviewFrameProps {
@@ -80,15 +80,25 @@ export function CampaignPreviewFrame({ slices, footerHtml, className, width = 60
 </html>`;
   }, [slices, footerHtml, width]);
 
-  // Calculate approximate height based on content
-  // Use a large height to ensure full content is visible
+  const [contentHeight, setContentHeight] = useState(2000);
+
+  const handleLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    try {
+      const height = e.currentTarget.contentDocument?.body?.scrollHeight;
+      if (height) setContentHeight(height + 20);
+    } catch {
+      // Cross-origin fallback - keep default height
+    }
+  };
+
   return (
     <iframe
       srcDoc={campaignHtml}
       title="Campaign Preview"
       className={className}
       sandbox="allow-same-origin"
-      style={{ border: 'none', width: `${width}px`, minHeight: '2000px' }}
+      onLoad={handleLoad}
+      style={{ border: 'none', width: `${width}px`, height: `${contentHeight}px` }}
     />
   );
 }
