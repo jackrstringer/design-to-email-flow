@@ -45,15 +45,16 @@ serve(async (req) => {
 
     // Fetch sent campaigns with pagination
     while (totalFetched < maxCampaigns) {
-      const url = new URL('https://a.klaviyo.com/api/campaigns');
-      url.searchParams.set('filter', "equals(messages.channel,'email'),equals(status,'Sent')");
-      url.searchParams.set('sort', '-created_at');
-      url.searchParams.set('page[size]', '50');
+      // Build URL manually to avoid encoding issues with Klaviyo's bracket syntax
+      let urlString = 'https://a.klaviyo.com/api/campaigns?filter=' + 
+        encodeURIComponent("equals(messages.channel,'email'),equals(status,'Sent')") +
+        '&sort=-created_at&page[size]=50';
+      
       if (nextCursor) {
-        url.searchParams.set('page[cursor]', nextCursor);
+        urlString += '&page[cursor]=' + encodeURIComponent(nextCursor);
       }
 
-      const campaignsResponse = await fetch(url.toString(), {
+      const campaignsResponse = await fetch(urlString, {
         headers: {
           'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
           'revision': '2024-02-15',
