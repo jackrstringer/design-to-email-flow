@@ -127,12 +127,30 @@ export default function CampaignSend() {
       
       if (state.brandId) {
         loadPresets(state.brandId);
+        // Fetch copy examples for this brand
+        fetchCopyExamples(state.brandId).then(examples => {
+          generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
+        });
+      } else {
+        generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
       }
-      generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
     } else {
       navigate('/');
     }
   }, []);
+
+  const fetchCopyExamples = async (bId: string) => {
+    const { data } = await supabase
+      .from('brands')
+      .select('copy_examples')
+      .eq('id', bId)
+      .single();
+    
+    if (data?.copy_examples) {
+      return data.copy_examples as { subjectLines: string[]; previewTexts: string[] };
+    }
+    return undefined;
+  };
 
   const loadPresets = async (bId: string) => {
     const { data } = await supabase
@@ -172,7 +190,8 @@ export default function CampaignSend() {
     campaignSlices: ProcessedSlice[],
     brand: string,
     prompt?: string,
-    domain?: string
+    domain?: string,
+    copyExamples?: { subjectLines: string[]; previewTexts: string[] }
   ) => {
     setIsGenerating(true);
     try {
@@ -198,6 +217,7 @@ export default function CampaignSend() {
           },
           pairCount: countNeeded,
           refinementPrompt: prompt,
+          copyExamples: copyExamples,
         }
       });
 
@@ -257,7 +277,8 @@ export default function CampaignSend() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await generateCopy(slices, brandName, refinementPrompt || undefined);
+    const examples = brandId ? await fetchCopyExamples(brandId) : undefined;
+    await generateCopy(slices, brandName, refinementPrompt || undefined, brandDomain, examples);
     setIsRefreshing(false);
   };
 

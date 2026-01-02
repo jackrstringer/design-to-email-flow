@@ -65,14 +65,32 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [addFooterMethodOpen, setAddFooterMethodOpen] = useState(false);
   const [footerBuilderOpen, setFooterBuilderOpen] = useState(false);
 
+  // Copy examples state
+  const [isSyncingCopy, setIsSyncingCopy] = useState(false);
+  const [copyExamples, setCopyExamples] = useState<{
+    subjectLines: string[];
+    previewTexts: string[];
+    lastScraped: string | null;
+  }>({ subjectLines: [], previewTexts: [], lastScraped: null });
+
   // Collapsible sections
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     footers: true,
     api: true,
+    copyExamples: false,
   });
 
   useEffect(() => {
     fetchFooters();
+    // Parse copy_examples from brand if available
+    if ((brand as any).copy_examples) {
+      const examples = (brand as any).copy_examples;
+      setCopyExamples({
+        subjectLines: examples.subjectLines || [],
+        previewTexts: examples.previewTexts || [],
+        lastScraped: examples.lastScraped || null,
+      });
+    }
   }, [brand.id]);
 
   const fetchFooters = async () => {
@@ -380,6 +398,109 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
 
   const toggleSection = (key: string) => {
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSyncKlaviyoCopy = async () => {
+    if (!brand.klaviyoApiKey) {
+      toast.error('Please add a Klaviyo API key first');
+      return;
+    }
+
+    setIsSyncingCopy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-klaviyo-copy', {
+        body: {
+          brandId: brand.id,
+          klaviyoApiKey: brand.klaviyoApiKey,
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(`Synced ${data.subjectLinesCount} subject lines and ${data.previewTextsCount} preview texts`);
+      onBrandChange();
+    } catch (error) {
+      console.error('Error syncing Klaviyo copy:', error);
+      toast.error('Failed to sync from Klaviyo');
+    } finally {
+      setIsSyncingCopy(false);
+    }
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      // Skip header if present
+      const startIndex = lines[0]?.toLowerCase().includes('type') ? 1 : 0;
+      
+      const newSubjectLines: string[] = [...copyExamples.subjectLines];
+      const newPreviewTexts: string[] = [...copyExamples.previewTexts];
+      
+      for (let i = startIndex; i < lines.length; i++) {
+        const parts = lines[i].split(',');
+        if (parts.length < 2) continue;
+        
+        const type = parts[0].trim().toLowerCase();
+        const text = parts.slice(1).join(',').trim().replace(/^["']|["']$/g, '');
+        
+        if (type === 'subject' || type === 'sl') {
+          if (text && !newSubjectLines.includes(text)) {
+            newSubjectLines.push(text);
+          }
+        } else if (type === 'preview' || type === 'pt') {
+          if (text && !newPreviewTexts.includes(text)) {
+            newPreviewTexts.push(text);
+          }
+        }
+      }
+
+      const updatedExamples = {
+        subjectLines: newSubjectLines,
+        previewTexts: newPreviewTexts,
+        lastScraped: copyExamples.lastScraped,
+      };
+
+      const { error } = await supabase
+        .from('brands')
+        .update({ copy_examples: updatedExamples })
+        .eq('id', brand.id);
+
+      if (error) throw error;
+
+      setCopyExamples(updatedExamples);
+      toast.success(`Added ${newSubjectLines.length - copyExamples.subjectLines.length} SLs, ${newPreviewTexts.length - copyExamples.previewTexts.length} PTs`);
+      onBrandChange();
+    } catch (error) {
+      console.error('CSV upload error:', error);
+      toast.error('Failed to parse CSV');
+    }
+
+    e.target.value = '';
+  };
+
+  const handleClearCopyExamples = async () => {
+    if (!confirm('Clear all copy examples?')) return;
+
+    const emptyExamples = { subjectLines: [], previewTexts: [], lastScraped: null };
+    
+    const { error } = await supabase
+      .from('brands')
+      .update({ copy_examples: emptyExamples })
+      .eq('id', brand.id);
+
+    if (error) {
+      toast.error('Failed to clear examples');
+      return;
+    }
+
+    setCopyExamples(emptyExamples);
+    toast.success('Copy examples cleared');
+    onBrandChange();
   };
 
   const handleLogoUpload = useCallback(async (file: File, type: 'dark' | 'light') => {
@@ -886,7 +1007,110 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         </CollapsibleContent>
       </Collapsible>
 
-      {/* HTML Formatting Rules */}
+      {/* Copy Examples */}
+      <Collapsible open={openSections.copyExamples} onOpenChange={() => toggleSection('copyExamples')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.copyExamples ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">Copy Examples (SL/PT)</span>
+            <span className="text-xs text-muted-foreground">
+              ({copyExamples.subjectLines.length} SL, {copyExamples.previewTexts.length} PT)
+            </span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          <div className="space-y-4">
+            {/* Sync status */}
+            {copyExamples.lastScraped && (
+              <p className="text-xs text-muted-foreground">
+                Last synced: {new Date(copyExamples.lastScraped).toLocaleDateString()} at {new Date(copyExamples.lastScraped).toLocaleTimeString()}
+              </p>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncKlaviyoCopy}
+                disabled={isSyncingCopy || !brand.klaviyoApiKey}
+                className="text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 mr-2 ${isSyncingCopy ? 'animate-spin' : ''}`} />
+                {isSyncingCopy ? 'Syncing...' : 'Sync from Klaviyo'}
+              </Button>
+
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCsvUpload}
+                  className="hidden"
+                />
+                <Button variant="outline" size="sm" className="text-xs" asChild>
+                  <span>
+                    <Upload className="h-3 w-3 mr-2" />
+                    Upload CSV
+                  </span>
+                </Button>
+              </label>
+
+              {(copyExamples.subjectLines.length > 0 || copyExamples.previewTexts.length > 0) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearCopyExamples}
+                  className="text-xs text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3 mr-2" />
+                  Clear All
+                </Button>
+              )}
+            </div>
+
+            {/* CSV format hint */}
+            <p className="text-xs text-muted-foreground">
+              CSV format: <code className="bg-muted px-1 rounded">type,text</code> where type is "subject" or "preview"
+            </p>
+
+            {/* Preview of examples */}
+            {copyExamples.subjectLines.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Subject Lines ({copyExamples.subjectLines.length})</p>
+                <div className="max-h-24 overflow-y-auto space-y-0.5">
+                  {copyExamples.subjectLines.slice(0, 5).map((sl, i) => (
+                    <p key={i} className="text-xs text-muted-foreground truncate">• {sl}</p>
+                  ))}
+                  {copyExamples.subjectLines.length > 5 && (
+                    <p className="text-xs text-muted-foreground">...and {copyExamples.subjectLines.length - 5} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {copyExamples.previewTexts.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Preview Texts ({copyExamples.previewTexts.length})</p>
+                <div className="max-h-24 overflow-y-auto space-y-0.5">
+                  {copyExamples.previewTexts.slice(0, 5).map((pt, i) => (
+                    <p key={i} className="text-xs text-muted-foreground truncate">• {pt}</p>
+                  ))}
+                  {copyExamples.previewTexts.length > 5 && (
+                    <p className="text-xs text-muted-foreground">...and {copyExamples.previewTexts.length - 5} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {copyExamples.subjectLines.length === 0 && copyExamples.previewTexts.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No examples yet. Sync from Klaviyo or upload a CSV to train the AI on your brand voice.
+              </p>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
       <Collapsible open={openSections.rules} onOpenChange={() => toggleSection('rules')}>
         <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
           <div className="flex items-center gap-2">

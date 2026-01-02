@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.detect-footer-links]
 verify_jwt = false
+
+[functions.scrape-klaviyo-copy]
+verify_jwt = false
