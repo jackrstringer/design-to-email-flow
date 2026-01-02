@@ -52,65 +52,23 @@ serve(async (req) => {
 
     const sliceDescriptions = slices.map((s, i) => `Slice ${i + 1}`).join(', ');
     
-    const prompt = `You are analyzing an email marketing campaign. 
+    const prompt = `Analyze these email campaign slices.
 
-STEP 1 - UNDERSTAND THE FULL CAMPAIGN CONTEXT:
-${fullCampaignImage ? 'The FIRST image below shows the FULL campaign. Study it to understand:' : 'No full campaign image provided.'}
-- What is the PRIMARY focus of this email? (specific product, collection, promotion, announcement)
-- What product name, offer, or topic is being highlighted?
-- What action should the main CTAs drive users toward?
+${fullCampaignImage ? 'First image is the full campaign for context. Then individual slices follow.' : ''}
 
-STEP 2 - ANALYZE INDIVIDUAL SLICES:
-After the full campaign (if provided), you'll see ${slices.length} individual slices: ${sliceDescriptions}.
+Brand: ${domain || 'Unknown'}
 
-CRITICAL CONTEXT RULE:
-- If the campaign focuses on a SPECIFIC product, ALL relevant CTAs should link to that product's page
-- Hero CTAs like "Shop Now", "Claim Savings", "Get Started" should link to the SPECIFIC product/offer featured, NOT generic pages like "shop-all" or "collections"
-- Only use collection/shop-all pages if the campaign genuinely promotes multiple products equally
+For each slice, look at the image and tell me:
+1. Alt text (max 100 chars) - describe what's shown
+2. Is there a button or CTA? If yes → isClickable: true and suggest a link
+3. No button → isClickable: false
 
-IMPORTANT: You have access to web search. USE IT to find REAL pages on the brand's website.
+For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
-BRAND WEBSITE: ${brandUrl || 'Unknown'}
-BRAND DOMAIN: ${domain || 'Unknown'}
-
-FOR EACH CLICKABLE SLICE:
-1. Use the full campaign context to understand what this slice is promoting
-2. Use web search to find the SPECIFIC product/page that matches the campaign focus
-3. Search queries like: "site:${domain} [product name from campaign]" or "site:${domain} [specific offer]"
-4. ONLY suggest links you've verified exist via search
-5. If you can't find a matching page via search, you may suggest a logical path but mark linkVerified: false
-
-**CRITICAL CTA RULE**:
-- If a slice contains a CTA button (e.g., "Shop Now", "Buy Now", "Get Started", "Learn More", "Claim Savings", "Order Now", "Subscribe", etc.), it MUST have isClickable: true AND a suggestedLink
-- CTAs without links are BROKEN emails - users expect to click them
-- If you cannot find the exact page, use your best guess based on the campaign context (e.g., homepage, product page, collection page) and set linkVerified: false
-- NEVER return a CTA slice with isClickable: true but suggestedLink: null
-
-ALT TEXT RULES:
-- Write the actual campaign copy/text visible in the slice, condensed and spoken as if to someone who cannot see it
-- For CTAs/buttons: Add "Click to" prefix (e.g., "Click to Schedule Consultation")
-- For hero text: Include the headline copy (e.g., "It's time to get Enhanced")
-- For logos: ONLY the brand name - never say "logo"
-- Max 100 chars
-
-LINK RULES:
-- Use FULL URLs (e.g., "https://${domain}/schedule" not "/schedule")
-- If you found the link via web search, set linkVerified: true
-- If you couldn't verify but are suggesting a logical path, set linkVerified: false and add linkWarning
-- If a link points outside ${domain}, set linkVerified: false and add linkWarning: "External link - verify this is correct"
-- For CTAs where you cannot find a specific page, default to the brand homepage: https://${domain}/
-
-Respond in JSON format:
+Return JSON:
 {
   "slices": [
-    {
-      "index": 0,
-      "altText": "alt text here",
-      "isClickable": true/false,
-      "suggestedLink": "https://full-url-here" or null,
-      "linkVerified": true/false,
-      "linkWarning": "Optional warning if unverified or external"
-    }
+    { "index": 0, "altText": "...", "isClickable": true/false, "suggestedLink": "https://..." or null, "linkVerified": true/false }
   ]
 }`;
 
