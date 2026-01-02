@@ -58,10 +58,25 @@ ${fullCampaignImage ? 'First image is the full campaign for context. Then indivi
 
 Brand: ${domain || 'Unknown'}
 
-For each slice, look at the image and tell me:
-1. Alt text (max 100 chars) - describe what's shown
-2. Is there a button or CTA? If yes → isClickable: true and suggest a link
-3. No button → isClickable: false
+For each slice:
+
+**ALT TEXT (max 100 chars)** - THIS IS CRITICAL:
+- READ the actual marketing copy/headline from the slice and USE IT
+- Alt text should SELL - it appears in AI inbox summaries
+- Write as if reading aloud to a blind person: convey the MESSAGE, not just "there's a button"
+- If there's a CTA button, end with "Click to [action]"
+
+Examples:
+- BAD: "Shop Now button"  
+- GOOD: "NEKTAR® - our most potent resveratrol formula. Click to Shop"
+- BAD: "Hero image with product"
+- GOOD: "Save 25% on your first order of Enhanced Collagen"
+- BAD: "Email header with logo"
+- GOOD: "Ambrosia Collective - Premium Supplements"
+
+**CLICKABLE**:
+- Is there a button or CTA? If yes → isClickable: true and suggest a link
+- No button → isClickable: false
 
 For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
