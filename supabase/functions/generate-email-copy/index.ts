@@ -37,14 +37,15 @@ serve(async (req) => {
   }
 
   try {
-    const { slices, brandContext, existingFavorites, pairCount = 10, refinementPrompt } = await req.json();
+    const { slices, brandContext, existingFavorites, pairCount = 10, refinementPrompt, copyExamples } = await req.json();
     
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    console.log(`Generating ${pairCount} SL/PT for ${brandContext?.name || 'brand'} (${brandContext?.domain || 'no domain'})${refinementPrompt ? ` with: "${refinementPrompt}"` : ''}`);
+    const hasCopyExamples = copyExamples?.subjectLines?.length > 0 || copyExamples?.previewTexts?.length > 0;
+    console.log(`Generating ${pairCount} SL/PT for ${brandContext?.name || 'brand'} (${brandContext?.domain || 'no domain'})${hasCopyExamples ? ` with ${copyExamples.subjectLines?.length || 0} SL examples` : ''}${refinementPrompt ? ` | direction: "${refinementPrompt}"` : ''}`);
 
     // Check if alt texts are generic (fallback values from failed analysis)
     const hasGenericAltTexts = (slices || []).every((s: any) => 
@@ -95,10 +96,27 @@ serve(async (req) => {
       ? `\n\nUSER'S REQUEST: "${refinementPrompt}"\nFollow this direction for tone, style, or focus.`
       : '';
 
+    // Build brand voice examples section if available
+    let brandVoiceSection = '';
+    if (copyExamples?.subjectLines?.length > 0 || copyExamples?.previewTexts?.length > 0) {
+      brandVoiceSection = `
+BRAND VOICE EXAMPLES - MATCH THIS STYLE:
+${copyExamples.subjectLines?.length > 0 ? `
+Past subject lines from this brand:
+${copyExamples.subjectLines.slice(0, 20).map((s: string) => `- "${s}"`).join('\n')}` : ''}
+${copyExamples.previewTexts?.length > 0 ? `
+
+Past preview texts from this brand:
+${copyExamples.previewTexts.slice(0, 20).map((p: string) => `- "${p}"`).join('\n')}` : ''}
+
+IMPORTANT: Match this brand's tone, style, emoji usage, and formatting patterns. These examples show how this specific brand communicates.
+`;
+    }
+
     const textPrompt = `You are a creative email copywriter. Generate diverse, engaging subject lines and preview texts.
 
 BRAND: ${brandContext?.name || 'Unknown'}${brandContext?.domain ? ` (${brandContext.domain})` : ''}
-
+${brandVoiceSection}
 EMAIL CONTENT:
 ${sliceContext || 'No specific content'}
 ${linkContext ? `\nLINKS IN EMAIL: ${linkContext}` : ''}
@@ -114,6 +132,7 @@ GUIDELINES (flexible):
 - Some with emojis, some without
 - Each should feel distinctly different
 - Reference specific products, offers, or content from the email
+${brandVoiceSection ? '- CRITICALLY IMPORTANT: Your output should sound like it was written by this brand based on the examples above' : ''}
 
 Generate ${pairCount} unique subject lines and ${pairCount} unique preview texts.
 

@@ -63,6 +63,7 @@ export type Database = {
           accent_color: string | null
           all_links: Json
           background_color: string | null
+          copy_examples: Json | null
           created_at: string
           dark_logo_public_id: string | null
           dark_logo_url: string | null
@@ -91,6 +92,7 @@ export type Database = {
           accent_color?: string | null
           all_links?: Json
           background_color?: string | null
+          copy_examples?: Json | null
           created_at?: string
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
@@ -119,6 +121,7 @@ export type Database = {
           accent_color?: string | null
           all_links?: Json
           background_color?: string | null
+          copy_examples?: Json | null
           created_at?: string
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
