@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CampaignStudio } from '@/components/CampaignStudio';
+import { CampaignSuccessDialog } from '@/components/CampaignSuccessDialog';
 import type { ProcessedSlice } from '@/types/slice';
 import type { Brand } from '@/types/brand-assets';
 import type { BrandFooter } from '@/components/FooterSelector';
@@ -50,6 +51,10 @@ export default function CampaignPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  
+  // Success dialog state
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [createdCampaignName, setCreatedCampaignName] = useState<string | undefined>();
 
   useEffect(() => {
     if (state?.slices && state.slices.length > 0) {
@@ -298,11 +303,41 @@ export default function CampaignPage() {
       return;
     }
 
-    // Navigate to send page with all campaign data
+    // Update the campaign in the database with the current slices and footer
+    if (id) {
+      try {
+        const { error } = await supabase
+          .from('campaigns')
+          .update({
+            blocks: JSON.parse(JSON.stringify(slices)),
+            generated_html: footer,
+            status: 'ready',
+          })
+          .eq('id', id);
+
+        if (error) {
+          console.error('Error updating campaign:', error);
+        }
+      } catch (err) {
+        console.error('Error saving campaign:', err);
+      }
+    }
+
+    // Get campaign name for the dialog
+    const campaignName = `Campaign ${new Date().toLocaleDateString()}`;
+    setCreatedCampaignName(campaignName);
+    
+    // Show success dialog instead of navigating immediately
+    setShowSuccessDialog(true);
+  };
+
+  const handleViewCampaign = () => {
+    // Navigate to the send page with all campaign data
+    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
     navigate(`/campaign/${id}/send`, {
       state: {
         slices,
-        footerHtml: footer,
+        footerHtml: initialFooterHtml,
         brandName: (brand as any)?.name,
         brandDomain: (brand as any)?.domain,
         brandId: (brand as any)?.id,
@@ -311,6 +346,11 @@ export default function CampaignPage() {
         selectedListId,
       }
     });
+  };
+
+  const handleCreateAnother = () => {
+    setShowSuccessDialog(false);
+    navigate('/');
   };
 
   const handleBack = () => {
@@ -344,51 +384,63 @@ export default function CampaignPage() {
   const brandLinks = Array.isArray(rawLinks) ? rawLinks as string[] : [];
 
   return (
-    <CampaignStudio
-      slices={slices}
-      onSlicesChange={setSlices}
-      originalImageUrl={originalImageUrl}
-      brandUrl={brand?.websiteUrl || brand?.domain || ''}
-      brandContext={
-        brand
-          ? {
-              name: (brand as any)?.name,
-              domain: (brand as any)?.domain,
-              websiteUrl:
-                (brand as any)?.websiteUrl ??
-                (brand as any)?.website_url ??
-                (brand as any)?.domain,
-              colors: {
-                primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
-                secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
-                accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
-                background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
-                textPrimary:
-                  (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
-                link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
-              },
-              typography: (brand as any)?.typography,
-            }
-          : undefined
-      }
-      brandLinks={brandLinks}
-      figmaDesignData={figmaDesignData}
-      initialFooterHtml={initialFooterHtml}
-      initialFooterId={initialFooterId}
-      savedFooters={savedFooters}
-      onSaveFooter={handleSaveFooter}
-      onBack={handleBack}
-      onCreateTemplate={handleCreateTemplate}
-      onCreateCampaign={handleCreateCampaign}
-      onConvertToHtml={handleConvertToHtml}
-      isCreating={isCreating}
-      templateId={templateId}
-      campaignId={campaignId}
-      onReset={handleReset}
-      klaviyoLists={klaviyoLists}
-      selectedListId={selectedListId}
-      onSelectList={setSelectedListId}
-      isLoadingLists={isLoadingLists}
-    />
+    <>
+      <CampaignStudio
+        slices={slices}
+        onSlicesChange={setSlices}
+        originalImageUrl={originalImageUrl}
+        brandUrl={brand?.websiteUrl || brand?.domain || ''}
+        brandContext={
+          brand
+            ? {
+                name: (brand as any)?.name,
+                domain: (brand as any)?.domain,
+                websiteUrl:
+                  (brand as any)?.websiteUrl ??
+                  (brand as any)?.website_url ??
+                  (brand as any)?.domain,
+                colors: {
+                  primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
+                  secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
+                  accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
+                  background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
+                  textPrimary:
+                    (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
+                  link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
+                },
+                typography: (brand as any)?.typography,
+              }
+            : undefined
+        }
+        brandLinks={brandLinks}
+        figmaDesignData={figmaDesignData}
+        initialFooterHtml={initialFooterHtml}
+        initialFooterId={initialFooterId}
+        savedFooters={savedFooters}
+        onSaveFooter={handleSaveFooter}
+        onBack={handleBack}
+        onCreateTemplate={handleCreateTemplate}
+        onCreateCampaign={handleCreateCampaign}
+        onConvertToHtml={handleConvertToHtml}
+        isCreating={isCreating}
+        templateId={templateId}
+        campaignId={campaignId}
+        onReset={handleReset}
+        klaviyoLists={klaviyoLists}
+        selectedListId={selectedListId}
+        onSelectList={setSelectedListId}
+        isLoadingLists={isLoadingLists}
+      />
+
+      {/* Success dialog after campaign creation */}
+      <CampaignSuccessDialog
+        open={showSuccessDialog}
+        onOpenChange={setShowSuccessDialog}
+        campaignId={id || ''}
+        campaignName={createdCampaignName}
+        onViewCampaign={handleViewCampaign}
+        onCreateAnother={handleCreateAnother}
+      />
+    </>
   );
 }
