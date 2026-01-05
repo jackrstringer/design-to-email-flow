@@ -4,6 +4,9 @@ export interface ImageSlice {
   endPercent: number;
   height: number;
   width: number;
+  column?: number; // Which column (0-based) in a multi-column row
+  totalColumns?: number; // Total columns in this row (1-4)
+  rowIndex?: number; // Which row this slice belongs to
 }
 
 const MAX_AI_DIMENSION = 8000;
@@ -71,15 +74,22 @@ export async function resizeImageForAI(
   });
 }
 
+export interface ColumnConfig {
+  columns: 1 | 2 | 3 | 4;
+}
+
 /**
  * Slice an image into multiple parts based on Y-axis percentages
+ * Optionally split each row into multiple columns
  * @param imageDataUrl - Base64 data URL of the image
  * @param slicePositions - Array of percentages (0-100) including 0 and 100 as boundaries
+ * @param columnConfigs - Optional array of column configs for each slice region
  * @returns Array of sliced image data URLs with metadata
  */
 export async function sliceImage(
   imageDataUrl: string, 
-  slicePositions: number[]
+  slicePositions: number[],
+  columnConfigs?: ColumnConfig[]
 ): Promise<ImageSlice[]> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -88,15 +98,15 @@ export async function sliceImage(
     img.onload = () => {
       const slices: ImageSlice[] = [];
       const totalHeight = img.naturalHeight;
-      const width = img.naturalWidth;
+      const totalWidth = img.naturalWidth;
 
       // Sort positions and ensure they're valid
       const sortedPositions = [...slicePositions].sort((a, b) => a - b);
 
       // Create slices between each pair of positions
-      for (let i = 0; i < sortedPositions.length - 1; i++) {
-        const startPercent = sortedPositions[i];
-        const endPercent = sortedPositions[i + 1];
+      for (let rowIndex = 0; rowIndex < sortedPositions.length - 1; rowIndex++) {
+        const startPercent = sortedPositions[rowIndex];
+        const endPercent = sortedPositions[rowIndex + 1];
         
         const startY = Math.round((startPercent / 100) * totalHeight);
         const endY = Math.round((endPercent / 100) * totalHeight);
@@ -104,33 +114,81 @@ export async function sliceImage(
 
         if (sliceHeight <= 0) continue;
 
-        // Create canvas for this slice
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = sliceHeight;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Could not get canvas context'));
-          return;
+        // Get column count for this row (default to 1)
+        const colConfig = columnConfigs?.[rowIndex];
+        const numColumns = colConfig?.columns || 1;
+
+        if (numColumns === 1) {
+          // Single column - original behavior
+          const canvas = document.createElement('canvas');
+          canvas.width = totalWidth;
+          canvas.height = sliceHeight;
+          
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(
+            img,
+            0, startY,
+            totalWidth, sliceHeight,
+            0, 0,
+            totalWidth, sliceHeight
+          );
+
+          slices.push({
+            dataUrl: canvas.toDataURL('image/png'),
+            startPercent,
+            endPercent,
+            height: sliceHeight,
+            width: totalWidth,
+            column: 0,
+            totalColumns: 1,
+            rowIndex
+          });
+        } else {
+          // Multiple columns - split horizontally
+          const columnWidth = Math.round(totalWidth / numColumns);
+
+          for (let col = 0; col < numColumns; col++) {
+            const startX = col * columnWidth;
+            // Last column takes remaining width to avoid rounding issues
+            const colWidth = col === numColumns - 1 
+              ? totalWidth - startX 
+              : columnWidth;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = colWidth;
+            canvas.height = sliceHeight;
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Could not get canvas context'));
+              return;
+            }
+
+            ctx.drawImage(
+              img,
+              startX, startY,
+              colWidth, sliceHeight,
+              0, 0,
+              colWidth, sliceHeight
+            );
+
+            slices.push({
+              dataUrl: canvas.toDataURL('image/png'),
+              startPercent,
+              endPercent,
+              height: sliceHeight,
+              width: colWidth,
+              column: col,
+              totalColumns: numColumns,
+              rowIndex
+            });
+          }
         }
-
-        // Draw the slice portion
-        ctx.drawImage(
-          img,
-          0, startY,           // Source x, y
-          width, sliceHeight,  // Source width, height
-          0, 0,                // Dest x, y
-          width, sliceHeight   // Dest width, height
-        );
-
-        slices.push({
-          dataUrl: canvas.toDataURL('image/png'),
-          startPercent,
-          endPercent,
-          height: sliceHeight,
-          width
-        });
       }
 
       resolve(slices);

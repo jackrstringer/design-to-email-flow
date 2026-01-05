@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SliceEditor } from '@/components/SliceEditor';
 import { CampaignStudio } from '@/components/CampaignStudio';
-import { sliceImage, ImageSlice, resizeImageForAI } from '@/lib/imageSlicing';
+import { sliceImage, ImageSlice, resizeImageForAI, ColumnConfig } from '@/lib/imageSlicing';
 import type { ProcessedSlice, SliceType } from '@/types/slice';
 const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
 <tr>
@@ -155,7 +155,7 @@ export default function SimpleUpload() {
     }
   };
 
-  const processSlices = async (slicePositions: number[]) => {
+  const processSlices = async (slicePositions: number[], _sliceTypes: SliceType[], columnConfigs: ColumnConfig[]) => {
     if (!uploadedImage) return;
 
     setIsProcessing(true);
@@ -173,9 +173,9 @@ export default function SimpleUpload() {
       setOriginalCloudinaryUrl(originalUpload.url);
       console.log('Original image uploaded:', originalUpload.url);
 
-      // Slice the image
+      // Slice the image with column configs
       setStatus('Slicing image...');
-      const slices = await sliceImage(uploadedImage.dataUrl, slicePositions);
+      const slices = await sliceImage(uploadedImage.dataUrl, slicePositions, columnConfigs);
       console.log(`Created ${slices.length} slices`);
 
       // Upload each slice to Cloudinary
@@ -214,7 +214,7 @@ export default function SimpleUpload() {
         console.warn('AI analysis failed, using defaults:', analysisError);
       }
 
-      // Combine uploads with analysis
+      // Combine uploads with analysis, preserving column metadata
       const analyses = analysisData?.analyses || [];
       const results: ProcessedSlice[] = uploadedSlices.map((uploaded, i) => ({
         imageUrl: uploaded.imageUrl,
@@ -223,7 +223,10 @@ export default function SimpleUpload() {
         isClickable: analyses[i]?.isClickable || false,
         linkVerified: analyses[i]?.linkVerified || false,
         linkWarning: analyses[i]?.linkWarning,
-        type: 'image' as SliceType
+        type: 'image' as SliceType,
+        column: uploaded.slice.column,
+        totalColumns: uploaded.slice.totalColumns,
+        rowIndex: uploaded.slice.rowIndex
       }));
 
       setProcessedSlices(results);

@@ -9,6 +9,9 @@ export interface ProcessedSlice {
   htmlContent?: string; // For HTML type slices
   linkVerified?: boolean; // Was this link verified via web search?
   linkWarning?: string; // Warning if unverified or external
+  column?: number; // Which column (0-based) in a multi-column row
+  totalColumns?: number; // Total columns in this row (1-4)
+  rowIndex?: number; // Which row this slice belongs to
 }
 
 export interface SliceInput {
