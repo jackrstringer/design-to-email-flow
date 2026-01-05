@@ -73,8 +73,8 @@ export function CampaignCreator({
   const [viewState, setViewState] = useState<ViewState>('upload');
   const [uploadedImageDataUrl, setUploadedImageDataUrl] = useState<string | null>(null);
   
-  // Figma source state - default to 'figma' for Figma-first workflow
-  const [sourceType, setSourceType] = useState<SourceType>('figma');
+  // Figma source state
+  const [sourceType, setSourceType] = useState<SourceType>('image');
   const [figmaUrl, setFigmaUrl] = useState('');
   const [isFetchingFigma, setIsFetchingFigma] = useState(false);
   const [figmaDesignData, setFigmaDesignData] = useState<FigmaDesignData | null>(null);

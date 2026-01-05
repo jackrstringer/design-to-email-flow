@@ -3,7 +3,6 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CampaignStudio } from '@/components/CampaignStudio';
-import { CampaignSuccessDialog } from '@/components/CampaignSuccessDialog';
 import type { ProcessedSlice } from '@/types/slice';
 import type { Brand } from '@/types/brand-assets';
 import type { BrandFooter } from '@/components/FooterSelector';
@@ -51,10 +50,6 @@ export default function CampaignPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
-  
-  // Success dialog state
-  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  const [createdCampaignName, setCreatedCampaignName] = useState<string | undefined>();
 
   useEffect(() => {
     if (state?.slices && state.slices.length > 0) {
@@ -323,21 +318,11 @@ export default function CampaignPage() {
       }
     }
 
-    // Get campaign name for the dialog
-    const campaignName = `Campaign ${new Date().toLocaleDateString()}`;
-    setCreatedCampaignName(campaignName);
-    
-    // Show success dialog instead of navigating immediately
-    setShowSuccessDialog(true);
-  };
-
-  const handleViewCampaign = () => {
     // Navigate to the send page with all campaign data
-    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
     navigate(`/campaign/${id}/send`, {
       state: {
         slices,
-        footerHtml: initialFooterHtml,
+        footerHtml: footer,
         brandName: (brand as any)?.name,
         brandDomain: (brand as any)?.domain,
         brandId: (brand as any)?.id,
@@ -346,11 +331,6 @@ export default function CampaignPage() {
         selectedListId,
       }
     });
-  };
-
-  const handleCreateAnother = () => {
-    setShowSuccessDialog(false);
-    navigate('/');
   };
 
   const handleBack = () => {
@@ -432,15 +412,6 @@ export default function CampaignPage() {
         isLoadingLists={isLoadingLists}
       />
 
-      {/* Success dialog after campaign creation */}
-      <CampaignSuccessDialog
-        open={showSuccessDialog}
-        onOpenChange={setShowSuccessDialog}
-        campaignId={id || ''}
-        campaignName={createdCampaignName}
-        onViewCampaign={handleViewCampaign}
-        onCreateAnother={handleCreateAnother}
-      />
     </>
   );
 }

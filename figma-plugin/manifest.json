@@ -1,0 +1,11 @@
+{
+  "name": "Email Campaign Creator",
+  "id": "email-campaign-creator-plugin",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "networkAccess": {
+    "allowedDomains": ["esrimjavbjdtecszxudc.supabase.co", "res.cloudinary.com"]
+  },
+  "editorType": ["figma"]
+}
