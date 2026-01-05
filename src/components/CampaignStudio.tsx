@@ -845,162 +845,204 @@ export function CampaignStudio({
                         </div>
                       ) : (
                         <div className="flex flex-col">
-                          {/* Stacked slices with inline details */}
-                          {slices.map((slice, index) => (
-                            <div key={index} className="relative flex items-center">
-                              {/* Slice separator line - extends from left edge to image */}
-                              {index > 0 && (
-                                <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
-                                  <div className="h-px bg-destructive/60 flex-1" />
-                                  <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {index + 1}</span>
-                                </div>
-                              )}
-                              {/* Slice details - generous width for readability */}
-                              <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
-                                {/* Row 1: Type toggle + Link + dimensions - all inline */}
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {/* Pill toggle - Figma style */}
-                                  <div className="flex items-center bg-muted/50 border border-border/40 rounded-full p-0.5">
-                                    <button
-                                      onClick={() => slice.type === 'html' && toggleSliceType(index)}
-                                      disabled={convertingIndex !== null || isCreating}
-                                      className={cn(
-                                        "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
-                                        slice.type === 'image' 
-                                          ? "bg-primary/15 text-primary border border-primary/30" 
-                                          : "text-muted-foreground/50 hover:text-muted-foreground",
-                                        (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
-                                      )}
-                                      title="Image mode"
-                                    >
-                                      <Image className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => slice.type === 'image' && toggleSliceType(index)}
-                                      disabled={convertingIndex !== null || isCreating}
-                                      className={cn(
-                                        "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
-                                        slice.type === 'html' 
-                                          ? "bg-primary/15 text-primary border border-primary/30" 
-                                          : "text-muted-foreground/50 hover:text-muted-foreground",
-                                        (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
-                                      )}
-                                      title="HTML mode"
-                                    >
-                                      {convertingIndex === index ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : (
-                                        <Code2 className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
+                          {/* Group slices by rowIndex and render side-by-side */}
+                          {(() => {
+                            // Group slices by rowIndex
+                            const rowGroups: { rowIndex: number; slices: Array<{ slice: typeof slices[0]; originalIndex: number }> }[] = [];
+                            slices.forEach((slice, originalIndex) => {
+                              const rowIdx = slice.rowIndex ?? originalIndex;
+                              let group = rowGroups.find(g => g.rowIndex === rowIdx);
+                              if (!group) {
+                                group = { rowIndex: rowIdx, slices: [] };
+                                rowGroups.push(group);
+                              }
+                              group.slices.push({ slice, originalIndex });
+                            });
+                            // Sort by rowIndex
+                            rowGroups.sort((a, b) => a.rowIndex - b.rowIndex);
+                            // Sort slices within each group by column
+                            rowGroups.forEach(g => g.slices.sort((a, b) => (a.slice.column ?? 0) - (b.slice.column ?? 0)));
+
+                            return rowGroups.map((group, groupIdx) => {
+                              const isMultiColumn = group.slices.length > 1;
+                              const firstOriginalIndex = group.slices[0].originalIndex;
+
+                              return (
+                                <div key={group.rowIndex} className="relative flex items-start">
+                                  {/* Slice separator line */}
+                                  {groupIdx > 0 && (
+                                    <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
+                                      <div className="h-px bg-destructive/60 flex-1" />
+                                      <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {groupIdx + 1}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Details panel - stacked for each column */}
+                                  <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
+                                    {group.slices.map(({ slice, originalIndex }, colIdx) => (
+                                      <div key={originalIndex} className="space-y-2">
+                                        {isMultiColumn && (
+                                          <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-wider">
+                                            Column {colIdx + 1}
+                                          </span>
+                                        )}
+                                        
+                                        {/* Type toggle + Link */}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          {/* Pill toggle */}
+                                          <div className="flex items-center bg-muted/50 border border-border/40 rounded-full p-0.5">
+                                            <button
+                                              onClick={() => slice.type === 'html' && toggleSliceType(originalIndex)}
+                                              disabled={convertingIndex !== null || isCreating}
+                                              className={cn(
+                                                "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                                                slice.type === 'image' 
+                                                  ? "bg-primary/15 text-primary border border-primary/30" 
+                                                  : "text-muted-foreground/50 hover:text-muted-foreground",
+                                                (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
+                                              )}
+                                              title="Image mode"
+                                            >
+                                              <Image className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              onClick={() => slice.type === 'image' && toggleSliceType(originalIndex)}
+                                              disabled={convertingIndex !== null || isCreating}
+                                              className={cn(
+                                                "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                                                slice.type === 'html' 
+                                                  ? "bg-primary/15 text-primary border border-primary/30" 
+                                                  : "text-muted-foreground/50 hover:text-muted-foreground",
+                                                (convertingIndex !== null || isCreating) && "opacity-50 cursor-not-allowed"
+                                              )}
+                                              title="HTML mode"
+                                            >
+                                              {convertingIndex === originalIndex ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                              ) : (
+                                                <Code2 className="w-3.5 h-3.5" />
+                                              )}
+                                            </button>
+                                          </div>
+
+                                          {/* Link */}
+                                          <Popover open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
+                                            if (open) {
+                                              setEditingLinkIndex(originalIndex);
+                                              setLinkSearchValue('');
+                                            } else {
+                                              setEditingLinkIndex(null);
+                                            }
+                                          }}>
+                                            <PopoverTrigger asChild>
+                                              {slice.link !== null && slice.link !== '' ? (
+                                                <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors">
+                                                  <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                                  <span className="text-foreground break-all text-left font-medium max-w-[150px] truncate">{slice.link}</span>
+                                                </button>
+                                              ) : (
+                                                <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">
+                                                  <Link className="w-3.5 h-3.5" />
+                                                  <span>Add link</span>
+                                                </button>
+                                              )}
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-72 p-0" align="start">
+                                              <Command>
+                                                <CommandInput 
+                                                  placeholder="Search or enter URL..." 
+                                                  value={linkSearchValue}
+                                                  onValueChange={setLinkSearchValue}
+                                                />
+                                                <CommandList>
+                                                  <CommandEmpty>
+                                                    {linkSearchValue && (
+                                                      <button
+                                                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                                        onClick={() => setSliceLink(originalIndex, linkSearchValue)}
+                                                      >
+                                                        Use "{linkSearchValue}"
+                                                      </button>
+                                                    )}
+                                                  </CommandEmpty>
+                                                  {filteredLinks.length > 0 && (
+                                                    <CommandGroup heading="Brand Links">
+                                                      {filteredLinks.slice(0, 10).map((link) => (
+                                                        <CommandItem
+                                                          key={link}
+                                                          value={link}
+                                                          onSelect={() => setSliceLink(originalIndex, link)}
+                                                          className="text-xs"
+                                                        >
+                                                          <span className="break-all">{link}</span>
+                                                        </CommandItem>
+                                                      ))}
+                                                    </CommandGroup>
+                                                  )}
+                                                </CommandList>
+                                              </Command>
+                                            </PopoverContent>
+                                          </Popover>
+                                          
+                                          {/* Remove link button */}
+                                          {slice.link && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                removeLink(originalIndex);
+                                              }}
+                                              className="text-muted-foreground/40 hover:text-foreground/60"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {/* Alt text */}
+                                        {showAltText && (
+                                          editingAltIndex === originalIndex ? (
+                                            <textarea
+                                              value={slice.altText}
+                                              onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
+                                              placeholder="Add description..."
+                                              className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                              rows={2}
+                                              autoFocus
+                                              onBlur={() => setEditingAltIndex(null)}
+                                            />
+                                          ) : (
+                                            <p 
+                                              onClick={() => setEditingAltIndex(originalIndex)}
+                                              className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
+                                            >
+                                              {slice.altText || 'Add description...'}
+                                            </p>
+                                          )
+                                        )}
+                                      </div>
+                                    ))}
                                   </div>
 
-                                  {/* Link - clickable to edit, or add button */}
-                                  <Popover open={editingLinkIndex === index} onOpenChange={(open) => {
-                                    if (open) {
-                                      setEditingLinkIndex(index);
-                                      setLinkSearchValue('');
-                                    } else {
-                                      setEditingLinkIndex(null);
-                                    }
-                                  }}>
-                                    <PopoverTrigger asChild>
-                                      {slice.link !== null && slice.link !== '' ? (
-                                        <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors">
-                                          <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                                          <span className="text-foreground break-all text-left font-medium">{slice.link}</span>
-                                        </button>
-                                      ) : (
-                                        <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">
-                                          <Link className="w-3.5 h-3.5" />
-                                          <span>Add link</span>
-                                        </button>
-                                      )}
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-72 p-0" align="start">
-                                      <Command>
-                                        <CommandInput 
-                                          placeholder="Search or enter URL..." 
-                                          value={linkSearchValue}
-                                          onValueChange={setLinkSearchValue}
+                                  {/* Images - side by side for multi-column */}
+                                  <div className="flex flex-shrink-0" style={{ width: scaledWidth }}>
+                                    {group.slices.map(({ slice, originalIndex }) => (
+                                      <div 
+                                        key={originalIndex} 
+                                        style={{ width: scaledWidth / group.slices.length }}
+                                      >
+                                        <img
+                                          src={slice.imageUrl}
+                                          alt={slice.altText}
+                                          style={{ width: '100%' }}
+                                          className="block"
                                         />
-                                        <CommandList>
-                                          <CommandEmpty>
-                                            {linkSearchValue && (
-                                              <button
-                                                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                                onClick={() => setSliceLink(index, linkSearchValue)}
-                                              >
-                                                Use "{linkSearchValue}"
-                                              </button>
-                                            )}
-                                          </CommandEmpty>
-                                          {filteredLinks.length > 0 && (
-                                            <CommandGroup heading="Brand Links">
-                                              {filteredLinks.slice(0, 10).map((link) => (
-                                                <CommandItem
-                                                  key={link}
-                                                  value={link}
-                                                  onSelect={() => setSliceLink(index, link)}
-                                                  className="text-xs"
-                                                >
-                                                  <span className="break-all">{link}</span>
-                                                </CommandItem>
-                                              ))}
-                                            </CommandGroup>
-                                          )}
-                                        </CommandList>
-                                      </Command>
-                                    </PopoverContent>
-                                  </Popover>
-                                  {/* Remove link button - separate from popover */}
-                                  {slice.link && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeLink(index);
-                                      }}
-                                      className="text-muted-foreground/40 hover:text-foreground/60"
-                                    >
-                                      <X className="w-3 h-3" />
-                                    </button>
-                                  )}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-
-                                {/* Row 2: Alt text (toggleable) */}
-                                {showAltText && (
-                                  editingAltIndex === index ? (
-                                    <textarea
-                                      value={slice.altText}
-                                      onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                                      placeholder="Add description..."
-                                      className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                                      rows={2}
-                                      autoFocus
-                                      onBlur={() => setEditingAltIndex(null)}
-                                    />
-                                  ) : (
-                                    <p 
-                                      onClick={() => setEditingAltIndex(index)}
-                                      className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
-                                    >
-                                      {slice.altText || 'Add description...'}
-                                    </p>
-                                  )
-                                )}
-                              </div>
-
-                              {/* Slice image - fixed width, no gap */}
-                              <div className="flex-shrink-0" style={{ width: scaledWidth }}>
-                                <img
-                                  src={slice.imageUrl}
-                                  alt={slice.altText}
-                                  style={{ width: scaledWidth }}
-                                  className="block"
-                                />
-                              </div>
-                            </div>
-                          ))}
+                              );
+                            });
+                          })()}
                           
                           {/* Footer preview */}
                           {includeFooter && localFooterHtml && (

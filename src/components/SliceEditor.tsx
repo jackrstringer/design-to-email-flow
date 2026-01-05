@@ -284,8 +284,53 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
               className="w-full h-auto block"
               draggable={false}
             />
+
+            {/* First region column selector (above first slice) */}
+            <div className="absolute top-2 left-2 z-10">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all",
+                      "bg-background/90 backdrop-blur-sm border shadow-sm",
+                      firstRegionColumns > 1 
+                        ? "border-primary text-primary" 
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    )}
+                  >
+                    <ColumnIcon cols={firstRegionColumns} />
+                    <span>Top: {firstRegionColumns} col{firstRegionColumns > 1 ? 's' : ''}</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="w-auto p-2" 
+                  align="start"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="text-[10px] text-muted-foreground mb-1.5">First region columns:</div>
+                  <div className="flex gap-1">
+                    {([1, 2, 3, 4] as const).map((num) => (
+                      <button
+                        key={num}
+                        className={cn(
+                          "flex flex-col items-center gap-1 p-2 rounded-md transition-all min-w-[40px]",
+                          firstRegionColumns === num
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-muted text-foreground"
+                        )}
+                        onClick={() => setFirstRegionColumns(num)}
+                      >
+                        <ColumnIcon cols={num} />
+                        <span className="text-[10px]">{num}</span>
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           
-            {/* Slice lines */}
+            {/* Slice lines with integrated column selectors */}
             {slicePositions.map((sp, index) => (
               <SliceLine
                 key={index}
@@ -294,6 +339,14 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
                 onPositionChange={(newPos) => updatePosition(index, newPos)}
                 onDelete={() => deletePosition(index)}
                 index={index}
+                columns={sp.columns}
+                onColumnsChange={(cols) => {
+                  setSlicePositions(prev => {
+                    const updated = [...prev];
+                    updated[index] = { ...updated[index], columns: cols };
+                    return updated;
+                  });
+                }}
               />
             ))}
 
@@ -305,85 +358,27 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
               onReset={() => setFooterCutoff(100)}
             />
 
-            {/* Column selector overlays for each region */}
+            {/* Visual column preview lines for each region */}
             {regions.map((region) => {
               const cols = getRegionColumns(region.index);
-              const regionHeight = region.endPercent - region.startPercent;
+              if (cols <= 1) return null;
               
-              // Don't show on very small regions
-              if (regionHeight < 5) return null;
-
               return (
                 <div
-                  key={`region-${region.index}`}
+                  key={`region-cols-${region.index}`}
                   className="absolute left-0 right-0 pointer-events-none"
                   style={{
                     top: `${region.startPercent}%`,
-                    height: `${regionHeight}%`,
+                    height: `${region.endPercent - region.startPercent}%`,
                   }}
                 >
-                  {/* Column indicator badge */}
-                  <div className="absolute top-2 right-2 pointer-events-auto z-10">
-                    <Popover 
-                      open={activeColumnPopover === region.index} 
-                      onOpenChange={(open) => setActiveColumnPopover(open ? region.index : null)}
-                    >
-                      <PopoverTrigger asChild>
-                        <button
-                          className={cn(
-                            "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all",
-                            "bg-background/90 backdrop-blur-sm border shadow-sm",
-                            cols > 1 
-                              ? "border-primary text-primary" 
-                              : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                          )}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ColumnIcon cols={cols} />
-                          <span>{cols} col{cols > 1 ? 's' : ''}</span>
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent 
-                        className="w-auto p-2" 
-                        align="end"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex gap-1">
-                          {([1, 2, 3, 4] as const).map((num) => (
-                            <button
-                              key={num}
-                              className={cn(
-                                "flex flex-col items-center gap-1 p-2 rounded-md transition-all min-w-[48px]",
-                                cols === num
-                                  ? "bg-primary text-primary-foreground"
-                                  : "hover:bg-muted text-foreground"
-                              )}
-                              onClick={() => setRegionColumns(region.index, num)}
-                            >
-                              <ColumnIcon cols={num} />
-                              <span className="text-[10px]">{num}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  {/* Visual column preview lines */}
-                  {cols > 1 && (
-                    <div className="absolute inset-0 pointer-events-none">
-                      {Array.from({ length: cols - 1 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="absolute top-0 bottom-0 border-l-2 border-dashed border-primary/40"
-                          style={{ left: `${((i + 1) / cols) * 100}%` }}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Region border highlight */}
-                  <div className="absolute inset-0 border-l-4 border-primary/10" />
+                  {Array.from({ length: cols - 1 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-0 bottom-0 border-l-2 border-dashed border-primary/40"
+                      style={{ left: `${((i + 1) / cols) * 100}%` }}
+                    />
+                  ))}
                 </div>
               );
             })}
