@@ -298,27 +298,7 @@ export default function CampaignPage() {
       return;
     }
 
-    // Update the campaign in the database with the current slices and footer
-    if (id) {
-      try {
-        const { error } = await supabase
-          .from('campaigns')
-          .update({
-            blocks: JSON.parse(JSON.stringify(slices)),
-            generated_html: footer,
-            status: 'ready',
-          })
-          .eq('id', id);
-
-        if (error) {
-          console.error('Error updating campaign:', error);
-        }
-      } catch (err) {
-        console.error('Error saving campaign:', err);
-      }
-    }
-
-    // Navigate to the send page with all campaign data
+    // Navigate to send page with all campaign data
     navigate(`/campaign/${id}/send`, {
       state: {
         slices,
@@ -364,54 +344,51 @@ export default function CampaignPage() {
   const brandLinks = Array.isArray(rawLinks) ? rawLinks as string[] : [];
 
   return (
-    <>
-      <CampaignStudio
-        slices={slices}
-        onSlicesChange={setSlices}
-        originalImageUrl={originalImageUrl}
-        brandUrl={brand?.websiteUrl || brand?.domain || ''}
-        brandContext={
-          brand
-            ? {
-                name: (brand as any)?.name,
-                domain: (brand as any)?.domain,
-                websiteUrl:
-                  (brand as any)?.websiteUrl ??
-                  (brand as any)?.website_url ??
-                  (brand as any)?.domain,
-                colors: {
-                  primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
-                  secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
-                  accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
-                  background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
-                  textPrimary:
-                    (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
-                  link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
-                },
-                typography: (brand as any)?.typography,
-              }
-            : undefined
-        }
-        brandLinks={brandLinks}
-        figmaDesignData={figmaDesignData}
-        initialFooterHtml={initialFooterHtml}
-        initialFooterId={initialFooterId}
-        savedFooters={savedFooters}
-        onSaveFooter={handleSaveFooter}
-        onBack={handleBack}
-        onCreateTemplate={handleCreateTemplate}
-        onCreateCampaign={handleCreateCampaign}
-        onConvertToHtml={handleConvertToHtml}
-        isCreating={isCreating}
-        templateId={templateId}
-        campaignId={campaignId}
-        onReset={handleReset}
-        klaviyoLists={klaviyoLists}
-        selectedListId={selectedListId}
-        onSelectList={setSelectedListId}
-        isLoadingLists={isLoadingLists}
-      />
-
-    </>
+    <CampaignStudio
+      slices={slices}
+      onSlicesChange={setSlices}
+      originalImageUrl={originalImageUrl}
+      brandUrl={brand?.websiteUrl || brand?.domain || ''}
+      brandContext={
+        brand
+          ? {
+              name: (brand as any)?.name,
+              domain: (brand as any)?.domain,
+              websiteUrl:
+                (brand as any)?.websiteUrl ??
+                (brand as any)?.website_url ??
+                (brand as any)?.domain,
+              colors: {
+                primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
+                secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
+                accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
+                background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
+                textPrimary:
+                  (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
+                link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
+              },
+              typography: (brand as any)?.typography,
+            }
+          : undefined
+      }
+      brandLinks={brandLinks}
+      figmaDesignData={figmaDesignData}
+      initialFooterHtml={initialFooterHtml}
+      initialFooterId={initialFooterId}
+      savedFooters={savedFooters}
+      onSaveFooter={handleSaveFooter}
+      onBack={handleBack}
+      onCreateTemplate={handleCreateTemplate}
+      onCreateCampaign={handleCreateCampaign}
+      onConvertToHtml={handleConvertToHtml}
+      isCreating={isCreating}
+      templateId={templateId}
+      campaignId={campaignId}
+      onReset={handleReset}
+      klaviyoLists={klaviyoLists}
+      selectedListId={selectedListId}
+      onSelectList={setSelectedListId}
+      isLoadingLists={isLoadingLists}
+    />
   );
 }

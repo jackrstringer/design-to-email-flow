@@ -497,19 +497,14 @@ export function CampaignCreator({
     );
   }
 
-  // Check if brand is selected and ready (has API key)
-  const brandReady = selectedBrand?.klaviyoApiKey;
-
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      {/* Step 1: Brand selector - always visible */}
+      {/* Firecrawl-style input box */}
       <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm">
         <div className="space-y-6">
           {/* Brand selector */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-muted-foreground">
-              1. Select Brand
-            </Label>
+            <Label className="text-sm font-medium text-muted-foreground">Brand</Label>
             <div className="flex gap-2">
               <Select
                 value={selectedBrandId || ''}
@@ -547,6 +542,19 @@ export function CampaignCreator({
             </div>
           </div>
 
+          {/* Include footer toggle */}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="include-footer" className="text-sm font-medium text-muted-foreground">
+              Include Footer
+            </Label>
+            <Switch
+              id="include-footer"
+              checked={includeFooter}
+              onCheckedChange={onIncludeFooterChange}
+              disabled={!hasFooters}
+            />
+          </div>
+
           {/* Selected brand info */}
           {selectedBrand && (
             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
@@ -572,141 +580,112 @@ export function CampaignCreator({
             </div>
           )}
 
-          {/* Warning for brands without API key */}
-          {selectedBrand && !selectedBrand.klaviyoApiKey && (
+          {/* Waiting for API key message */}
+          {waitingForApiKey && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
               <p className="text-sm text-amber-800">
-                This brand needs a Klaviyo API key to continue.
+                Brand detected! Please add the Klaviyo API key to continue.
               </p>
-            </div>
-          )}
-
-          {/* Include footer toggle - only show when brand is ready */}
-          {brandReady && (
-            <div className="flex items-center justify-between pt-2 border-t border-border/40">
-              <Label htmlFor="include-footer" className="text-sm font-medium text-muted-foreground">
-                Include Footer
-              </Label>
-              <Switch
-                id="include-footer"
-                checked={includeFooter}
-                onCheckedChange={onIncludeFooterChange}
-                disabled={!hasFooters}
-              />
             </div>
           )}
         </div>
       </div>
 
-      {/* Step 2: Source selection - only show when brand is ready */}
-      {brandReady && (
-        <>
-          {/* Source selection tabs */}
-          <div className="flex gap-2 p-1 bg-muted/50 rounded-lg w-fit mx-auto">
-            <button
-              onClick={() => setSourceType('figma')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                sourceType === 'figma'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Link2 className="w-4 h-4" />
-              Paste Figma Link
-            </button>
-            <button
-              onClick={() => setSourceType('image')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                sourceType === 'image'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Image className="w-4 h-4" />
-              Upload Image
-            </button>
-          </div>
+      {/* Source selection tabs */}
+      <div className="flex gap-2 p-1 bg-muted/50 rounded-lg w-fit mx-auto">
+        <button
+          onClick={() => setSourceType('image')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            sourceType === 'image'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Image className="w-4 h-4" />
+          Upload Image
+        </button>
+        <button
+          onClick={() => setSourceType('figma')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            sourceType === 'figma'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Link2 className="w-4 h-4" />
+          Paste Figma Link
+        </button>
+      </div>
 
-          {/* Figma URL input */}
-          {sourceType === 'figma' && (
-            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm space-y-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-muted-foreground">
-                  2. Figma URL
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={figmaUrl}
-                    onChange={(e) => setFigmaUrl(e.target.value)}
-                    placeholder="https://www.figma.com/design/..."
-                    className="flex-1"
-                    disabled={isFetchingFigma}
-                  />
-                  <Button
-                    onClick={handleFetchFigma}
-                    disabled={isFetchingFigma || !figmaUrl.trim()}
-                  >
-                    {isFetchingFigma ? 'Fetching...' : 'Fetch'}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Paste a Figma frame URL. Make sure the frame is accessible (public or shared).
-                </p>
-              </div>
-              
-              {figmaDesignData && (
-                <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-                  <p className="text-sm text-green-800 font-medium">Design data extracted</p>
-                  <p className="text-xs text-green-600 mt-1">
-                    {figmaDesignData.colors.length} colors, {figmaDesignData.fonts.length} font styles
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Upload zone - only show for image source */}
-          {sourceType === 'image' && (
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              className={`
-                relative rounded-xl border-2 border-dashed transition-all duration-200 cursor-pointer
-                ${isDragging 
-                  ? 'border-primary bg-primary/5' 
-                  : 'border-border/60 hover:border-primary/50 hover:bg-muted/30'
-                }
-                ${isProcessing ? 'pointer-events-none opacity-60' : ''}
-              `}
-            >
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                disabled={isProcessing}
+      {/* Figma URL input */}
+      {sourceType === 'figma' && (
+        <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium text-muted-foreground">Figma URL</Label>
+            <div className="flex gap-2">
+              <Input
+                value={figmaUrl}
+                onChange={(e) => setFigmaUrl(e.target.value)}
+                placeholder="https://www.figma.com/design/..."
+                className="flex-1"
+                disabled={isFetchingFigma}
               />
-              <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <Upload className="w-5 h-5 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-medium mb-1">
-                  {isProcessing ? 'Detecting brand...' : 'Drop your campaign image here'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  PNG or JPG up to 20MB
-                </p>
-              </div>
+              <Button
+                onClick={handleFetchFigma}
+                disabled={isFetchingFigma || !figmaUrl.trim()}
+              >
+                {isFetchingFigma ? 'Fetching...' : 'Fetch'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Paste a Figma frame URL. Make sure the frame is accessible (public or shared).
+            </p>
+          </div>
+          
+          {figmaDesignData && (
+            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+              <p className="text-sm text-green-800 font-medium">Design data extracted</p>
+              <p className="text-xs text-green-600 mt-1">
+                {figmaDesignData.colors.length} colors, {figmaDesignData.fonts.length} font styles
+              </p>
             </div>
           )}
-        </>
+        </div>
       )}
 
-      {/* Prompt to select brand when no brand selected */}
-      {!selectedBrand && brands.length > 0 && (
-        <div className="text-center py-8 text-muted-foreground">
-          <p className="text-sm">Select a brand to continue</p>
+      {/* Upload zone - only show for image source */}
+      {sourceType === 'image' && (
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`
+            relative rounded-xl border-2 border-dashed transition-all duration-200 cursor-pointer
+            ${isDragging 
+              ? 'border-primary bg-primary/5' 
+              : 'border-border/60 hover:border-primary/50 hover:bg-muted/30'
+            }
+            ${isProcessing ? 'pointer-events-none opacity-60' : ''}
+          `}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            disabled={isProcessing}
+          />
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Upload className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium mb-1">
+              {isProcessing ? 'Detecting brand...' : 'Drop your campaign image here'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              PNG or JPG up to 20MB
+            </p>
+          </div>
         </div>
       )}
 
@@ -714,7 +693,7 @@ export function CampaignCreator({
       {!isLoading && brands.length === 0 && (
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground mb-4">
-            No brands configured yet.
+            No brands configured yet. Drop an image to get started.
           </p>
           <Button onClick={onAddBrandClick}>
             <Plus className="w-4 h-4 mr-2" />
