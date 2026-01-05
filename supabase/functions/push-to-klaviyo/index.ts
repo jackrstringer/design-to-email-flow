@@ -11,6 +11,9 @@ interface SliceData {
   link?: string | null;
   type?: 'image' | 'html';
   htmlContent?: string;
+  column?: number; // Which column (0-based) in a multi-column row
+  totalColumns?: number; // Total columns in this row (1-4)
+  rowIndex?: number; // Which row this slice belongs to
 }
 
 serve(async (req) => {
@@ -62,29 +65,49 @@ serve(async (req) => {
     // Footer section - inject directly since footerHtml contains proper <tr> elements
     const footerSection = footerHtml ? footerHtml : '';
 
-    // Build image content - either single image or multiple slices
+    // Build image content - either single image or multiple slices (with column support)
     let imageContent: string;
     
     if (hasSlices) {
-      // Multiple slices - stack them vertically, supporting both image and HTML types
-      imageContent = (slices as SliceData[]).map((slice: SliceData) => {
-        // Check if this is an HTML slice
-        if (slice.type === 'html' && slice.htmlContent) {
-          // Return raw HTML content wrapped in editable region
-          return `<tr>
+      const slicesArray = slices as SliceData[];
+      
+      // Group slices by rowIndex for multi-column support
+      const rowGroups = new Map<number, SliceData[]>();
+      slicesArray.forEach((slice) => {
+        const rowIdx = slice.rowIndex ?? 0;
+        if (!rowGroups.has(rowIdx)) {
+          rowGroups.set(rowIdx, []);
+        }
+        rowGroups.get(rowIdx)!.push(slice);
+      });
+
+      // Sort rows by rowIndex and generate HTML
+      const sortedRows = Array.from(rowGroups.entries()).sort((a, b) => a[0] - b[0]);
+      
+      imageContent = sortedRows.map(([_rowIndex, rowSlices]) => {
+        // Sort slices within row by column index
+        rowSlices.sort((a, b) => (a.column ?? 0) - (b.column ?? 0));
+        
+        const totalColumns = rowSlices[0]?.totalColumns ?? 1;
+        
+        if (totalColumns === 1) {
+          // Single column row - original behavior
+          const slice = rowSlices[0];
+          
+          if (slice.type === 'html' && slice.htmlContent) {
+            return `<tr>
             <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
               <div class="klaviyo-block klaviyo-text-block">
                 ${slice.htmlContent}
               </div>
             </td>
           </tr>`;
-        }
-        
-        // Image slice (default)
-        const imgTag = `<img src="${slice.imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${slice.altText || 'Email image'}" />`;
-        
-        if (slice.link) {
-          return `<tr>
+          }
+          
+          const imgTag = `<img src="${slice.imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${slice.altText || 'Email image'}" />`;
+          
+          if (slice.link) {
+            return `<tr>
             <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
               <div class="klaviyo-block klaviyo-image-block">
                 <a href="${slice.link}" target="_blank" style="text-decoration: none;">
@@ -93,15 +116,54 @@ serve(async (req) => {
               </div>
             </td>
           </tr>`;
-        }
-        
-        return `<tr>
+          }
+          
+          return `<tr>
             <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
               <div class="klaviyo-block klaviyo-image-block">
                 ${imgTag}
               </div>
             </td>
           </tr>`;
+        } else {
+          // Multi-column row - create nested table
+          const columnWidth = Math.floor(600 / totalColumns);
+          const columnPercent = (100 / totalColumns).toFixed(2);
+          
+          const columnCells = rowSlices.map((slice) => {
+            if (slice.type === 'html' && slice.htmlContent) {
+              return `<td width="${columnPercent}%" valign="top" style="padding: 0;">
+                <div class="klaviyo-block klaviyo-text-block">
+                  ${slice.htmlContent}
+                </div>
+              </td>`;
+            }
+            
+            const imgTag = `<img src="${slice.imageUrl}" width="${columnWidth}" style="display: block; width: 100%; height: auto;" alt="${slice.altText || 'Email image'}" />`;
+            
+            if (slice.link) {
+              return `<td width="${columnPercent}%" valign="top" style="padding: 0;">
+                <a href="${slice.link}" target="_blank" style="text-decoration: none;">
+                  ${imgTag}
+                </a>
+              </td>`;
+            }
+            
+            return `<td width="${columnPercent}%" valign="top" style="padding: 0;">
+              ${imgTag}
+            </td>`;
+          }).join('\n              ');
+          
+          return `<tr>
+            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  ${columnCells}
+                </tr>
+              </table>
+            </td>
+          </tr>`;
+        }
       }).join('\n');
     } else {
       // Single image (legacy support)

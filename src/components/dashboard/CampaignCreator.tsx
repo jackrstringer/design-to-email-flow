@@ -15,7 +15,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SliceEditor } from '@/components/SliceEditor';
-import { sliceImage, resizeImageForAI } from '@/lib/imageSlicing';
+import { sliceImage, resizeImageForAI, ColumnConfig } from '@/lib/imageSlicing';
 import type { Brand } from '@/types/brand-assets';
 import type { SliceType } from '@/types/slice';
 
@@ -108,7 +108,7 @@ export function CampaignCreator({
     }
   }, [pendingCampaign, selectedBrand, viewState]);
 
-  const processSlices = async (slicePositions: number[], sliceTypes: SliceType[]) => {
+  const processSlices = async (slicePositions: number[], sliceTypes: SliceType[], columnConfigs: ColumnConfig[]) => {
     if (!selectedBrand?.klaviyoApiKey || !uploadedImageDataUrl) return;
     
     setViewState('processing');
@@ -124,8 +124,8 @@ export function CampaignCreator({
         throw new Error('Failed to upload original image');
       }
 
-      // Slice the image
-      const slices = await sliceImage(uploadedImageDataUrl, slicePositions);
+      // Slice the image with column configs
+      const slices = await sliceImage(uploadedImageDataUrl, slicePositions, columnConfigs);
       
       // Upload each slice to Cloudinary
       const uploadedSlices = await Promise.all(
@@ -160,7 +160,7 @@ export function CampaignCreator({
         }
       });
 
-      // Merge analysis data with uploaded slices
+      // Merge analysis data with uploaded slices, preserving column metadata
       const processedSlices = uploadedSlices.map((slice, index) => {
         const analysis = analysisData?.analyses?.find((a: any) => a.index === index);
         return {
@@ -176,6 +176,9 @@ export function CampaignCreator({
           linkWarning: analysis?.linkWarning,
           html: null,
           figmaDesignData: figmaDesignData, // Attach Figma data for HTML generation
+          column: slice.column,
+          totalColumns: slice.totalColumns,
+          rowIndex: slice.rowIndex,
         };
       });
 

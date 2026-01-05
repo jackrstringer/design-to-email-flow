@@ -11,27 +11,65 @@ interface CampaignPreviewFrameProps {
 export function CampaignPreviewFrame({ slices, footerHtml, className, width = 600 }: CampaignPreviewFrameProps) {
   // Build the full campaign HTML from all slices
   const campaignHtml = useMemo(() => {
-    const sliceHtml = slices.map((slice, index) => {
-      if (slice.type === 'html' && slice.htmlContent) {
-        // HTML slice - check if it's already wrapped in a table row or is raw content
-        const content = slice.htmlContent.trim();
+    // Group slices by rowIndex for multi-column support
+    const rowGroups = new Map<number, ProcessedSlice[]>();
+    slices.forEach((slice) => {
+      const rowIdx = slice.rowIndex ?? slices.indexOf(slice);
+      if (!rowGroups.has(rowIdx)) {
+        rowGroups.set(rowIdx, []);
+      }
+      rowGroups.get(rowIdx)!.push(slice);
+    });
+
+    // Sort rows by rowIndex and generate HTML
+    const sortedRows = Array.from(rowGroups.entries()).sort((a, b) => a[0] - b[0]);
+    
+    const sliceHtml = sortedRows.map(([_rowIndex, rowSlices]) => {
+      // Sort slices within row by column index
+      rowSlices.sort((a, b) => (a.column ?? 0) - (b.column ?? 0));
+      
+      const totalColumns = rowSlices[0]?.totalColumns ?? 1;
+      
+      if (totalColumns === 1) {
+        // Single column row - original behavior
+        const slice = rowSlices[0];
+        const index = slices.indexOf(slice);
         
-        // If the content already starts with <tr> or is a table structure, return as-is
-        if (content.startsWith('<tr') || content.startsWith('<TR')) {
-          return content;
+        if (slice.type === 'html' && slice.htmlContent) {
+          const content = slice.htmlContent.trim();
+          if (content.startsWith('<tr') || content.startsWith('<TR')) {
+            return content;
+          }
+          return `<tr><td align="center" style="padding: 0;">${content}</td></tr>`;
+        } else {
+          const imgTag = `<img src="${slice.imageUrl}" alt="${slice.altText || `Section ${index + 1}`}" style="display: block; width: 100%; max-width: ${width}px; height: auto; border: 0;" />`;
+          const content = slice.link 
+            ? `<a href="${slice.link}" target="_blank" style="text-decoration: none;">${imgTag}</a>`
+            : imgTag;
+          return `<tr><td align="center" style="padding: 0;">${content}</td></tr>`;
         }
-        
-        // If it's a standalone element (not a tr), wrap it in a table row
-        return `<tr><td align="center" style="padding: 0;">${content}</td></tr>`;
       } else {
-        // Image slice - wrap in table row with optional link
-        const imgTag = `<img src="${slice.imageUrl}" alt="${slice.altText || `Section ${index + 1}`}" style="display: block; width: 100%; max-width: ${width}px; height: auto; border: 0;" />`;
+        // Multi-column row - create nested table
+        const columnWidth = Math.floor(width / totalColumns);
+        const columnPercent = (100 / totalColumns).toFixed(2);
         
-        const content = slice.link 
-          ? `<a href="${slice.link}" target="_blank" style="text-decoration: none;">${imgTag}</a>`
-          : imgTag;
+        const columnCells = rowSlices.map((slice, colIndex) => {
+          if (slice.type === 'html' && slice.htmlContent) {
+            return `<td width="${columnPercent}%" valign="top" style="padding: 0;">${slice.htmlContent}</td>`;
+          }
+          
+          const imgTag = `<img src="${slice.imageUrl}" alt="${slice.altText || `Column ${colIndex + 1}`}" style="display: block; width: 100%; max-width: ${columnWidth}px; height: auto; border: 0;" />`;
+          const content = slice.link 
+            ? `<a href="${slice.link}" target="_blank" style="text-decoration: none;">${imgTag}</a>`
+            : imgTag;
+          return `<td width="${columnPercent}%" valign="top" style="padding: 0;">${content}</td>`;
+        }).join('\n');
         
-        return `<tr><td align="center" style="padding: 0;">${content}</td></tr>`;
+        return `<tr><td align="center" style="padding: 0;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr>${columnCells}</tr>
+          </table>
+        </td></tr>`;
       }
     }).join('\n');
 
