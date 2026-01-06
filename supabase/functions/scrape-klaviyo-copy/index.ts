@@ -18,8 +18,13 @@ interface KlaviyoCampaign {
 interface KlaviyoCampaignMessage {
   id: string;
   attributes: {
-    subject: string;
-    preview_text: string;
+    content?: {
+      subject?: string;
+      preview_text?: string;
+    };
+    // Legacy fallback fields
+    subject?: string;
+    preview_text?: string;
   };
 }
 
@@ -41,6 +46,8 @@ serve(async (req) => {
     const previewTexts: string[] = [];
     let nextCursor: string | null = null;
     let totalFetched = 0;
+    let messagesFetchedOk = 0;
+    let messagesFailed = 0;
     const maxCampaigns = 100;
 
     // Fetch sent campaigns with pagination
@@ -101,12 +108,14 @@ serve(async (req) => {
           });
 
           if (messagesResponse.ok) {
+            messagesFetchedOk++;
             const messagesData = await messagesResponse.json();
             const messages: KlaviyoCampaignMessage[] = messagesData.data || [];
 
             for (const message of messages) {
-              const subject = message.attributes?.subject;
-              const preview = message.attributes?.preview_text;
+              // Klaviyo API v2024-10-15 nests subject/preview under content
+              const subject = message.attributes?.content?.subject ?? message.attributes?.subject;
+              const preview = message.attributes?.content?.preview_text ?? message.attributes?.preview_text;
 
               if (subject && subject.trim() && !subjectLines.includes(subject.trim())) {
                 subjectLines.push(subject.trim());
@@ -115,8 +124,13 @@ serve(async (req) => {
                 previewTexts.push(preview.trim());
               }
             }
+          } else {
+            messagesFailed++;
+            const errText = await messagesResponse.text().catch(() => '');
+            console.error(`Messages API error for campaign ${campaign.id}: ${messagesResponse.status} - ${errText.slice(0, 200)}`);
           }
         } catch (err) {
+          messagesFailed++;
           console.error(`Error fetching messages for campaign ${campaign.id}:`, err);
         }
 
@@ -131,7 +145,7 @@ serve(async (req) => {
       if (!nextCursor) break;
     }
 
-    console.log(`Scraped ${subjectLines.length} subject lines, ${previewTexts.length} preview texts from ${totalFetched} campaigns`);
+    console.log(`Scraped ${subjectLines.length} subject lines, ${previewTexts.length} preview texts from ${totalFetched} campaigns (messages OK: ${messagesFetchedOk}, failed: ${messagesFailed})`);
 
     // Update brand in database
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -160,6 +174,9 @@ serve(async (req) => {
         subjectLinesCount: subjectLines.length,
         previewTextsCount: previewTexts.length,
         campaignsScanned: totalFetched,
+        messagesFetchedOk,
+        messagesFailed,
+        sampleSubjectLines: subjectLines.slice(0, 5),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
