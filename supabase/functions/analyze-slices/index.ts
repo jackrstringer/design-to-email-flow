@@ -75,12 +75,19 @@ Examples:
 - Product image without text → "Hydroglyph and Planta protein supplements"
 - Logo header → "Ambrosia Collective"
 
-**CLICKABLE** - Be aggressive:
-- Almost EVERY slice should be clickable EXCEPT pure dividers, spacers, or legal text
-- ANY slice with a CTA button → isClickable: true
-- Product images → isClickable: true
-- Hero sections → isClickable: true
-- Text blocks with marketing copy → isClickable: true
+**CLICKABLE** - Be selective, not aggressive:
+SHOULD be clickable (isClickable: true):
+- ANY slice with a CTA button or "Shop" / "Buy" / "Order" text → YES
+- Product images (with or without CTA) → YES
+- Hero sections that contain a CTA → YES
+
+Should NOT be clickable (isClickable: false):
+- Text-only sections WITHOUT a CTA button → NO (they set up products below)
+- Educational/informational copy leading into product sections → NO
+- Headers/logos without CTAs → NO
+- Dividers, spacers, legal/footer text → NO
+
+Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't need its own link.
 
 **LINKS** - Find the best destination:
 - For CTA like "Shop [Product]" → search for that specific product page
