@@ -58,13 +58,18 @@ export default function CampaignPage() {
       setBrand(state.brand);
       setFigmaDesignData(state.figmaDesignData || null);
       
-      const processedSlices: ProcessedSlice[] = state.slices.map((slice) => ({
+      const processedSlices: ProcessedSlice[] = state.slices.map((slice: any) => ({
         imageUrl: slice.imageUrl,
         altText: slice.altText || '',
         link: slice.link || null,
-        isClickable: !!slice.link,
+        isClickable: slice.isClickable ?? !!slice.link,
         type: slice.type || 'image',
-        htmlContent: slice.html || undefined,
+        htmlContent: slice.htmlContent || slice.html || undefined,
+        linkVerified: slice.linkVerified,
+        linkWarning: slice.linkWarning,
+        column: slice.column,
+        totalColumns: slice.totalColumns,
+        rowIndex: slice.rowIndex,
       }));
       setSlices(processedSlices);
       setIsLoading(false);
@@ -205,16 +210,21 @@ export default function CampaignPage() {
         fetchBrandFooters(brandData.id);
       }
 
-      // Parse blocks from campaign
+      // Parse blocks from campaign, preserving all metadata
       const blocks = campaign.blocks as Array<any> || [];
       if (blocks.length > 0) {
         setSlices(blocks.map((block: any) => ({
           imageUrl: block.imageUrl || campaign.original_image_url,
           altText: block.altText || '',
           link: block.link || null,
-          isClickable: block.isClickable || false,
+          isClickable: block.isClickable ?? !!block.link,
           type: block.type || 'image',
-          htmlContent: block.htmlContent,
+          htmlContent: block.htmlContent || block.html,
+          linkVerified: block.linkVerified,
+          linkWarning: block.linkWarning,
+          column: block.column,
+          totalColumns: block.totalColumns,
+          rowIndex: block.rowIndex,
         })));
       } else {
         setSlices([{

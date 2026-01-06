@@ -219,7 +219,9 @@ Return JSON with exactly ${slices.length} slices:
     console.log('Claude response received');
 
     // Parse JSON from AI response - search through ALL text content
-    let analyses: SliceAnalysis[] = [];
+    // Build a Map keyed by index from AI response to avoid position-based misalignment
+    const analysisByIndex = new Map<number, SliceAnalysis>();
+    
     try {
       let jsonStr: string | null = null;
       
@@ -255,10 +257,30 @@ Return JSON with exactly ${slices.length} slices:
       
       if (jsonStr) {
         const parsed = JSON.parse(jsonStr);
-        analyses = parsed.slices || [];
+        const rawAnalyses: SliceAnalysis[] = parsed.slices || [];
         
-        // Ensure indices are correct and validate links
-        analyses = analyses.map((a: SliceAnalysis, i: number) => {
+        // Log AI-returned indices for debugging
+        const aiIndices = rawAnalyses.map(a => a.index);
+        console.log(`AI returned ${rawAnalyses.length} analyses with indices: [${aiIndices.slice(0, 10).join(', ')}${aiIndices.length > 10 ? '...' : ''}]`);
+        console.log(`Expected indices: 0 to ${slices.length - 1} (${slices.length} slices)`);
+        
+        // Build map using AI-provided index, validating each entry
+        for (const a of rawAnalyses) {
+          const idx = typeof a.index === 'number' ? a.index : parseInt(String(a.index), 10);
+          
+          // Skip invalid indices
+          if (isNaN(idx) || idx < 0 || idx >= slices.length) {
+            console.warn(`Skipping analysis with invalid index: ${a.index} (expected 0-${slices.length - 1})`);
+            continue;
+          }
+          
+          // Skip duplicates (keep first occurrence)
+          if (analysisByIndex.has(idx)) {
+            console.warn(`Duplicate index ${idx} in AI response, keeping first occurrence`);
+            continue;
+          }
+          
+          // Validate and fix links
           let link = a.suggestedLink;
           let linkVerified = a.linkVerified ?? false;
           let linkWarning = a.linkWarning;
@@ -290,34 +312,38 @@ Return JSON with exactly ${slices.length} slices:
             }
           }
           
-          return { 
-            ...a, 
-            index: i, 
+          analysisByIndex.set(idx, {
+            ...a,
+            index: idx,
             suggestedLink: link,
             linkVerified,
             linkWarning
-          };
-        });
+          });
+        }
       }
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
     }
 
-    // Validate count matches
-    if (analyses.length !== slices.length) {
-      console.warn(`Analysis count mismatch: got ${analyses.length}, expected ${slices.length}`);
+    // Build final analyses array in strict index order 0..N-1
+    const analyses: SliceAnalysis[] = [];
+    for (let i = 0; i < slices.length; i++) {
+      const existing = analysisByIndex.get(i);
+      if (existing) {
+        analyses.push(existing);
+      } else {
+        console.warn(`Missing analysis for index ${i}, using default`);
+        analyses.push({
+          index: i,
+          altText: `Email section ${i + 1}`,
+          suggestedLink: null,
+          isClickable: false,
+          linkVerified: false
+        });
+      }
     }
-
-    // Fill in any missing slices with defaults
-    while (analyses.length < slices.length) {
-      analyses.push({
-        index: analyses.length,
-        altText: `Email section ${analyses.length + 1}`,
-        suggestedLink: null,
-        isClickable: false,
-        linkVerified: false
-      });
-    }
+    
+    console.log(`Final analyses indices: [${analyses.map(a => a.index).join(', ')}]`);
 
     return new Response(
       JSON.stringify({ analyses }),
