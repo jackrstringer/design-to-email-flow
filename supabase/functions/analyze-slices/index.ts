@@ -50,15 +50,17 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
-    const sliceDescriptions = slices.map((s, i) => `Slice ${i + 1}`).join(', ');
-    
     const prompt = `Analyze these email campaign slices.
 
-${fullCampaignImage ? 'First image is the full campaign for context. Then individual slices follow.' : ''}
+${fullCampaignImage ? 'FIRST IMAGE: Full campaign overview (REFERENCE ONLY - DO NOT include in your output).' : ''}
+
+IMPORTANT: Each slice to analyze is labeled "=== SLICE N (index: X) ===" before its image.
+You must ONLY analyze the labeled slices. Do NOT analyze the reference image.
+Your output MUST have exactly ${slices.length} entries, with indices 0 to ${slices.length - 1}.
 
 Brand: ${domain || 'Unknown'}
 
-For each slice:
+For each labeled slice:
 
 **ALT TEXT (max 100 chars)** - THIS IS CRITICAL:
 - READ the actual marketing copy/headline from the slice and USE IT
@@ -80,10 +82,12 @@ Examples:
 
 For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
-Return JSON:
+Return JSON with exactly ${slices.length} slices:
 {
   "slices": [
-    { "index": 0, "altText": "...", "isClickable": true/false, "suggestedLink": "https://..." or null, "linkVerified": true/false }
+    { "index": 0, "altText": "...", "isClickable": true/false, "suggestedLink": "https://..." or null, "linkVerified": true/false },
+    { "index": 1, "altText": "...", ... },
+    ...up to index ${slices.length - 1}
   ]
 }`;
 
@@ -97,6 +101,10 @@ Return JSON:
       const fullMatches = fullCampaignImage.match(/^data:([^;]+);base64,(.+)$/);
       if (fullMatches) {
         content.push({
+          type: 'text',
+          text: '=== REFERENCE IMAGE (DO NOT ANALYZE - context only) ==='
+        });
+        content.push({
           type: 'image',
           source: {
             type: 'base64',
@@ -104,16 +112,18 @@ Return JSON:
             data: fullMatches[2]
           }
         });
-        content.push({
-          type: 'text',
-          text: '↑ FULL CAMPAIGN IMAGE - Study this first to understand the campaign focus before analyzing individual slices below.'
-        });
       }
     }
 
-    // Add each slice image in Claude's format
-    for (const slice of slices) {
-      // Extract base64 data and media type from data URL
+    // Add each slice image with EXPLICIT labeling
+    for (let i = 0; i < slices.length; i++) {
+      const slice = slices[i];
+      // Add explicit text label BEFORE each slice image
+      content.push({
+        type: 'text',
+        text: `=== SLICE ${i + 1} (index: ${i}) ===`
+      });
+      
       const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (matches) {
         content.push({
@@ -275,6 +285,11 @@ Return JSON:
       }
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
+    }
+
+    // Validate count matches
+    if (analyses.length !== slices.length) {
+      console.warn(`Analysis count mismatch: got ${analyses.length}, expected ${slices.length}`);
     }
 
     // Fill in any missing slices with defaults
