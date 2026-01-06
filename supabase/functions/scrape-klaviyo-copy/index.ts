@@ -48,16 +48,16 @@ serve(async (req) => {
       // Build URL manually to avoid encoding issues with Klaviyo's bracket syntax
       let urlString = 'https://a.klaviyo.com/api/campaigns?filter=' + 
         encodeURIComponent("equals(messages.channel,'email'),equals(status,'Sent')") +
-        '&sort=-created_at&page[size]=50';
+        '&sort=-created_at&page%5Bsize%5D=50';
       
       if (nextCursor) {
-        urlString += '&page[cursor]=' + encodeURIComponent(nextCursor);
+        urlString += '&page%5Bcursor%5D=' + encodeURIComponent(nextCursor);
       }
 
       const campaignsResponse = await fetch(urlString, {
         headers: {
           'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-          'revision': '2024-02-15',
+          'revision': '2024-10-15',
           'Accept': 'application/json',
         },
       });
@@ -82,7 +82,7 @@ serve(async (req) => {
           const messagesResponse = await fetch(messagesUrl, {
             headers: {
               'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
-              'revision': '2024-02-15',
+              'revision': '2024-10-15',
               'Accept': 'application/json',
             },
           });
