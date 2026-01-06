@@ -139,7 +139,7 @@ export function CampaignStudio({
   const [zoomLevel, setZoomLevel] = useState(65);
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
-  const [showAltText, setShowAltText] = useState(false);
+  const [showAltText, setShowAltText] = useState(true);
   const [includeFooter, setIncludeFooter] = useState(true);
   const [footerPreviewHeight, setFooterPreviewHeight] = useState(400);
   
@@ -936,9 +936,9 @@ export function CampaignStudio({
                                           }}>
                                             <PopoverTrigger asChild>
                                               {slice.link !== null && slice.link !== '' ? (
-                                                <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors">
+                                                <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors max-w-full">
                                                   <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                                                  <span className="text-foreground break-all text-left font-medium max-w-[150px] truncate">{slice.link}</span>
+                                                  <span className="text-foreground break-all text-left font-medium text-[10px]">{slice.link}</span>
                                                 </button>
                                               ) : (
                                                 <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">

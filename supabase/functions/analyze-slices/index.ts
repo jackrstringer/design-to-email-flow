@@ -62,22 +62,32 @@ Brand: ${domain || 'Unknown'}
 
 For each labeled slice:
 
-**ALT TEXT (max 100 chars)** - KEEP IT SIMPLE:
-- ONLY describe what is literally visible IN THIS SLICE
-- Do NOT pull copy from other slices or the reference image
-- CTA button → "Click to [Action] [Product if visible]"
-- Marketing copy → use that copy (condensed if needed)
-- Product image → briefly describe the product
-- Header/footer → just the brand name
+**ALT TEXT (max 200 chars)** - CAPTURE THE FULL MESSAGE:
+- Include the main headline/copy that appears IN THIS SLICE
+- Paraphrase if needed to fit, but PRESERVE the core marketing message
+- If there's a CTA in the slice, add "Click to [CTA action]" at the end
+- Do NOT pull copy from other slices - only what's visible in THIS slice
 
 Examples:
-- "SHOP HYDROGLYPH →" button → "Click to Shop Hydroglyph"
-- "SHOP NOW" button → "Click to Shop"
-- Headline "Buy One Get One 50% OFF!" → "Buy One Get One 50% OFF!"
-- Product image → "Planta Plant Protein"
+- Hero with headline + CTA → "Fasted Training is a Tool. Done right, it supports fat loss. Done wrong, it costs you muscle. Click to Shop Ambrosia"
+- Product promo with CTA → "Hydroglyph + Planta. Train Fasted. Recover Smart. Click to Shop"
+- CTA button only → "Click to Shop Planta"
+- Product image without text → "Hydroglyph and Planta protein supplements"
 - Logo header → "Ambrosia Collective"
 
-**CLICKABLE**: true for CTAs, buttons, products. false for dividers or plain text.
+**CLICKABLE** - Be aggressive:
+- Almost EVERY slice should be clickable EXCEPT pure dividers, spacers, or legal text
+- ANY slice with a CTA button → isClickable: true
+- Product images → isClickable: true
+- Hero sections → isClickable: true
+- Text blocks with marketing copy → isClickable: true
+
+**LINKS** - Find the best destination:
+- For CTA like "Shop [Product]" → search for that specific product page
+- For general CTA like "Shop [Brand]" with multiple products mentioned → find "All Products", "Shop All", or category page
+- If multiple products shown, find a collection/category containing them
+- Use web search: "site:${domain} [product name]" or "site:${domain} collections" or "site:${domain} all products"
+- Homepage is LAST RESORT only
 
 For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
