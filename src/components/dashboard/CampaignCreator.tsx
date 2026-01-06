@@ -113,7 +113,6 @@ export function CampaignCreator({
   const processSlices = async (slicePositions: number[], sliceTypes: SliceType[], columnConfigs: ColumnConfig[]) => {
     if (!selectedBrand?.klaviyoApiKey || !uploadedImageDataUrl) return;
     
-    setViewState('processing');
     setIsProcessing(true);
     setStatus('Uploading original image...');
     
