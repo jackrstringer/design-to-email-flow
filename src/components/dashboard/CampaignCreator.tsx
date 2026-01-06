@@ -167,9 +167,17 @@ export function CampaignCreator({
         }
       });
 
+      // Build a Map keyed by index for reliable lookup (avoid find() issues)
+      const analysisByIndex = new Map<number, any>();
+      if (analysisData?.analyses) {
+        for (const a of analysisData.analyses) {
+          analysisByIndex.set(a.index, a);
+        }
+      }
+      
       // Merge analysis data with uploaded slices, preserving column metadata
       const processedSlices = uploadedSlices.map((slice, index) => {
-        const analysis = analysisData?.analyses?.find((a: any) => a.index === index);
+        const analysis = analysisByIndex.get(index);
         return {
           imageUrl: slice.imageUrl,
           startPercent: slice.startPercent,
@@ -179,6 +187,7 @@ export function CampaignCreator({
           type: slice.type,
           altText: analysis?.altText || `Email section ${index + 1}`,
           link: analysis?.suggestedLink || null,
+          isClickable: analysis?.isClickable ?? false,
           linkVerified: analysis?.linkVerified || false,
           linkWarning: analysis?.linkWarning,
           html: null,
