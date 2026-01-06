@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, Plus, Link2, Image } from 'lucide-react';
+import { ProcessingLoader } from '@/components/ProcessingLoader';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,7 @@ export function CampaignCreator({
   const [figmaUrl, setFigmaUrl] = useState('');
   const [isFetchingFigma, setIsFetchingFigma] = useState(false);
   const [figmaDesignData, setFigmaDesignData] = useState<FigmaDesignData | null>(null);
+  const [status, setStatus] = useState<string>('');
 
   // Check if selected brand has footers
   useEffect(() => {
@@ -113,6 +115,7 @@ export function CampaignCreator({
     
     setViewState('processing');
     setIsProcessing(true);
+    setStatus('Uploading original image...');
     
     try {
       // Upload original image to Cloudinary
@@ -125,11 +128,14 @@ export function CampaignCreator({
       }
 
       // Slice the image with column configs
+      setStatus('Slicing image...');
       const slices = await sliceImage(uploadedImageDataUrl, slicePositions, columnConfigs);
       
       // Upload each slice to Cloudinary
+      setStatus(`Uploading slice 1 of ${slices.length}...`);
       const uploadedSlices = await Promise.all(
         slices.map(async (slice, index) => {
+          setStatus(`Uploading slice ${index + 1} of ${slices.length}...`);
           const { data: sliceUpload, error: sliceError } = await supabase.functions.invoke('upload-to-cloudinary', {
             body: { imageData: slice.dataUrl }
           });
@@ -147,9 +153,11 @@ export function CampaignCreator({
       );
 
       // Resize full campaign image for AI context (max 8000px)
+      setStatus('Preparing for AI analysis...');
       const resizedFullImage = await resizeImageForAI(uploadedImageDataUrl);
       
       // Analyze slices with AI for alt text and links (with web search grounding)
+      setStatus('Analyzing slices with AI...');
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-slices', {
         body: {
           slices: uploadedSlices.map((s, i) => ({ dataUrl: s.dataUrl, index: i })),
@@ -215,6 +223,7 @@ export function CampaignCreator({
       setViewState('slice-editor');
     } finally {
       setIsProcessing(false);
+      setStatus('');
     }
   };
 
@@ -491,12 +500,17 @@ export function CampaignCreator({
   // Show slice editor when in that state
   if (viewState === 'slice-editor' && uploadedImageDataUrl) {
     return (
-      <SliceEditor
-        imageDataUrl={uploadedImageDataUrl}
-        onProcess={processSlices}
-        onCancel={handleSliceCancel}
-        isProcessing={isProcessing}
-      />
+      <>
+        <SliceEditor
+          imageDataUrl={uploadedImageDataUrl}
+          onProcess={processSlices}
+          onCancel={handleSliceCancel}
+          isProcessing={isProcessing}
+        />
+        {isProcessing && status && (
+          <ProcessingLoader currentStatus={status} />
+        )}
+      </>
     );
   }
 
