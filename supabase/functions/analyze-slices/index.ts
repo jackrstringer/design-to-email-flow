@@ -62,23 +62,22 @@ Brand: ${domain || 'Unknown'}
 
 For each labeled slice:
 
-**ALT TEXT (max 100 chars)** - THIS IS CRITICAL:
-- READ the actual marketing copy/headline from the slice and USE IT
-- Alt text should SELL - it appears in AI inbox summaries
-- Write as if reading aloud to a blind person: convey the MESSAGE, not just "there's a button"
-- If there's a CTA button, end with "Click to [action]"
+**ALT TEXT (max 100 chars)** - KEEP IT SIMPLE:
+- ONLY describe what is literally visible IN THIS SLICE
+- Do NOT pull copy from other slices or the reference image
+- CTA button → "Click to [Action] [Product if visible]"
+- Marketing copy → use that copy (condensed if needed)
+- Product image → briefly describe the product
+- Header/footer → just the brand name
 
 Examples:
-- BAD: "Shop Now button"  
-- GOOD: "NEKTAR® - our most potent resveratrol formula. Click to Shop"
-- BAD: "Hero image with product"
-- GOOD: "Save 25% on your first order of Enhanced Collagen"
-- BAD: "Email header with logo"
-- GOOD: "Ambrosia Collective - Premium Supplements"
+- "SHOP HYDROGLYPH →" button → "Click to Shop Hydroglyph"
+- "SHOP NOW" button → "Click to Shop"
+- Headline "Buy One Get One 50% OFF!" → "Buy One Get One 50% OFF!"
+- Product image → "Planta Plant Protein"
+- Logo header → "Ambrosia Collective"
 
-**CLICKABLE**:
-- Is there a button or CTA? If yes → isClickable: true and suggest a link
-- No button → isClickable: false
+**CLICKABLE**: true for CTAs, buttons, products. false for dividers or plain text.
 
 For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
