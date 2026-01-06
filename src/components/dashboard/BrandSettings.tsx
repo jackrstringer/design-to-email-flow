@@ -417,7 +417,15 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
 
       if (error) throw error;
 
-      toast.success(`Synced ${data.subjectLinesCount} subject lines and ${data.previewTextsCount} preview texts`);
+      if (data.subjectLinesCount === 0 && data.previewTextsCount === 0) {
+        toast.warning(
+          `Scanned ${data.campaignsScanned} campaigns but found 0 subject lines. ` +
+          `This may mean campaigns lack accessible copy or your API key needs 'Read Campaigns' scope.`,
+          { duration: 8000 }
+        );
+      } else {
+        toast.success(`Synced ${data.subjectLinesCount} subject lines and ${data.previewTextsCount} preview texts`);
+      }
       onBrandChange();
     } catch (error) {
       console.error('Error syncing Klaviyo copy:', error);
