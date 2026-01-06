@@ -46,12 +46,14 @@ serve(async (req) => {
     // Fetch sent campaigns with pagination
     while (totalFetched < maxCampaigns) {
       // Build URL manually to avoid encoding issues with Klaviyo's bracket syntax
-      let urlString = 'https://a.klaviyo.com/api/campaigns?filter=' + 
+      let urlString =
+        "https://a.klaviyo.com/api/campaigns?filter=" +
         encodeURIComponent("equals(messages.channel,'email'),equals(status,'Sent')") +
-        '&sort=-created_at&page%5Bsize%5D=50';
-      
+        "&sort=-created_at";
+
+      // NOTE: The campaigns endpoint supports cursor pagination, but not page[size].
       if (nextCursor) {
-        urlString += '&page%5Bcursor%5D=' + encodeURIComponent(nextCursor);
+        urlString += "&page%5Bcursor%5D=" + encodeURIComponent(nextCursor);
       }
 
       const campaignsResponse = await fetch(urlString, {
@@ -65,7 +67,18 @@ serve(async (req) => {
       if (!campaignsResponse.ok) {
         const errorText = await campaignsResponse.text();
         console.error('Klaviyo campaigns API error:', errorText);
-        throw new Error(`Klaviyo API error: ${campaignsResponse.status}`);
+
+        let detail: string | undefined;
+        try {
+          const parsed = JSON.parse(errorText);
+          detail = parsed?.errors?.[0]?.detail;
+        } catch {
+          // ignore
+        }
+
+        throw new Error(
+          `Klaviyo API error: ${campaignsResponse.status}${detail ? ` - ${detail}` : ''}`
+        );
       }
 
       const campaignsData = await campaignsResponse.json();
