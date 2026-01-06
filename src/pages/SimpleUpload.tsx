@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { SliceEditor } from '@/components/SliceEditor';
 import { CampaignStudio } from '@/components/CampaignStudio';
+import { ProcessingLoader } from '@/components/ProcessingLoader';
 import { sliceImage, ImageSlice, resizeImageForAI, ColumnConfig } from '@/lib/imageSlicing';
 import type { ProcessedSlice, SliceType } from '@/types/slice';
 const ENHANCED_FOOTER_HTML = `<!-- Black Footer Section -->
@@ -447,12 +448,9 @@ export default function SimpleUpload() {
           />
         )}
 
-        {/* Processing status overlay */}
+        {/* Fun processing loader */}
         {isProcessing && status && viewState === 'slice-editor' && (
-          <div className="flex items-center justify-center gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-            <Loader2 className="w-5 h-5 animate-spin text-primary" />
-            <span className="text-sm text-muted-foreground">{status}</span>
-          </div>
+          <ProcessingLoader currentStatus={status} />
         )}
 
         {/* Campaign Studio View */}

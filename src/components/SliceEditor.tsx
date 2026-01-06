@@ -80,8 +80,8 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     // Don't add slices below the footer cutoff
     if (percentage >= footerCutoff) return;
     
-    // Don't add if too close to existing line (within 3%)
-    const tooClose = slicePositions.some(sp => Math.abs(sp.position - percentage) < 3);
+    // Only prevent exact duplicates (within 0.5%)
+    const tooClose = slicePositions.some(sp => Math.abs(sp.position - percentage) < 0.5);
     if (tooClose) return;
     
     // Add new slice position with default type 'image' and 1 column
