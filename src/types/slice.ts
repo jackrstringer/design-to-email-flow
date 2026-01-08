@@ -30,16 +30,14 @@ export interface SliceAnalysis {
   linkWarning?: string; // Warning if unverified or external
 }
 
-// Auto-detected slice from Grounding DINO + Claude pipeline
+// Auto-detected slice from OmniParser + Claude pipeline (vertical-only)
 export interface AutoDetectedSlice {
   id: string;
   yStartPercent: number;
   yEndPercent: number;
   type: string;
-  columns: number;
   label: string;
   clickable: boolean;
-  columnBounds?: { xStartPercent: number; xEndPercent: number }[];
 }
 
 // Response from auto-slice-email edge function

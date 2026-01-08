@@ -7,7 +7,7 @@ const corsHeaders = {
 
 // OmniParser V2 element format
 interface OmniParserElement {
-  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+  bbox: [number, number, number, number]; // [x1, y1, x2, y2] - NORMALIZED 0-1
   content: string;
   type?: string;
 }
@@ -19,7 +19,6 @@ interface OmniParserResult {
 
 interface Section {
   type: string;
-  columns: number;
   label: string;
   clickable: boolean;
 }
@@ -34,10 +33,8 @@ interface AutoDetectedSlice {
   yStartPercent: number;
   yEndPercent: number;
   type: string;
-  columns: number;
   label: string;
   clickable: boolean;
-  columnBounds?: { xStartPercent: number; xEndPercent: number }[];
 }
 
 interface AutoSliceResponse {
@@ -235,7 +232,7 @@ async function getSemanticAnalysis(imageBase64: string): Promise<SemanticAnalysi
           },
           {
             type: "text",
-            text: `Analyze this email marketing image for slicing into separate image sections.
+            text: `Analyze this email marketing image for slicing into separate horizontal sections.
 
 IMPORTANT: Do NOT provide any coordinates, percentages, pixel positions, or location estimates. I only need semantic information.
 
@@ -252,7 +249,6 @@ Tell me:
 
 2. For each section from TOP to BOTTOM, provide:
    - type: "promo_banner" | "header" | "hero" | "product_grid" | "cta_button" | "text_block" | "divider" | "footer" | "navigation"
-   - columns: How many clickable columns? (1, 2, 3, or 4) — e.g., a 3-product grid = 3 columns
    - label: A brief descriptive label like "BOGO 50% off banner" or "Dual product showcase"
    - clickable: Is this section meant to be clickable? (true/false)
 
@@ -260,11 +256,11 @@ Return ONLY valid JSON in this exact format:
 {
   "totalSections": 8,
   "sections": [
-    { "type": "promo_banner", "columns": 1, "label": "BOGO 50% off banner", "clickable": true },
-    { "type": "hero", "columns": 1, "label": "Main hero with CTA button", "clickable": true },
-    { "type": "cta_button", "columns": 1, "label": "Shop Hydroglyph button", "clickable": true },
-    { "type": "product_grid", "columns": 2, "label": "Dual product showcase", "clickable": true },
-    { "type": "text_block", "columns": 1, "label": "Learn the protocol section", "clickable": false }
+    { "type": "promo_banner", "label": "BOGO 50% off banner", "clickable": true },
+    { "type": "hero", "label": "Main hero with CTA button", "clickable": true },
+    { "type": "cta_button", "label": "Shop Hydroglyph button", "clickable": true },
+    { "type": "product_grid", "label": "Dual product showcase", "clickable": true },
+    { "type": "text_block", "label": "Learn the protocol section", "clickable": false }
   ]
 }`
           }
@@ -299,178 +295,103 @@ Return ONLY valid JSON in this exact format:
   };
 }
 
-// Select best cut points from candidates
-function selectBestCutPoints(
-  candidates: number[], 
-  numCuts: number, 
-  imageHeight: number
-): number[] {
-  if (candidates.length === 0) {
-    // Generate even distribution
-    return Array.from({ length: numCuts }, (_, i) => 
-      Math.round((imageHeight * (i + 1)) / (numCuts + 1))
-    );
-  }
-  
-  if (candidates.length <= numCuts) {
-    return [...candidates].sort((a, b) => a - b);
-  }
-  
-  // Select cuts that create the most evenly distributed sections
-  const idealSpacing = imageHeight / (numCuts + 1);
-  const selected: number[] = [];
-  const used = new Set<number>();
-  
-  for (let i = 1; i <= numCuts; i++) {
-    const targetY = idealSpacing * i;
-    let closest = candidates[0];
-    let closestDist = Math.abs(candidates[0] - targetY);
-    
-    for (const c of candidates) {
-      if (used.has(c)) continue;
-      const dist = Math.abs(c - targetY);
-      if (dist < closestDist) {
-        closest = c;
-        closestDist = dist;
-      }
-    }
-    
-    if (!used.has(closest)) {
-      selected.push(closest);
-      used.add(closest);
-    }
-  }
-  
-  return selected.sort((a, b) => a - b);
-}
-
-// Calculate column bounds from OmniParser elements
-function calculateColumnBounds(
+// Find section boundaries by detecting GAPS between elements
+function findSectionBoundaries(
   elements: OmniParserElement[],
-  yStart: number,
-  yEnd: number,
-  columns: number,
-  imageWidth: number,
-  imageHeight: number
-): { xStartPercent: number; xEndPercent: number }[] {
-  // Find elements within this Y range
-  // NOTE: OmniParser returns NORMALIZED coords (0-1), must scale to pixels
-  const relevantElements = elements.filter(el => {
-    const [, y1Norm, , y2Norm] = el.bbox;
-    const y1 = y1Norm * imageHeight;
-    const y2 = y2Norm * imageHeight;
-    const elementMidY = (y1 + y2) / 2;
-    return elementMidY >= yStart - 20 && elementMidY <= yEnd + 20;
+  numCuts: number,
+  imageHeight: number,
+  minSliceHeight: number = 80
+): number[] {
+  // 1. Get all element Y positions (scaled from normalized 0-1 to pixels)
+  const elementYs: number[] = [];
+  elements.forEach(el => {
+    const y1 = el.bbox[1] * imageHeight; // top edge
+    const y2 = el.bbox[3] * imageHeight; // bottom edge
+    elementYs.push(y1, y2);
   });
-
-  if (relevantElements.length >= columns) {
-    // Sort by X position
-    const sortedByX = [...relevantElements].sort((a, b) => a.bbox[0] - b.bbox[0]);
-    
-    // Group elements into columns based on X position clustering
-    const columnGroups: OmniParserElement[][] = [];
-    let currentGroup: OmniParserElement[] = [];
-    let lastX2 = -Infinity;
-    
-    for (const el of sortedByX) {
-      // Scale normalized X coords to pixels
-      const x1 = el.bbox[0] * imageWidth;
-      const x2 = el.bbox[2] * imageWidth;
-      // If there's a significant gap, start a new column
-      if (x1 - lastX2 > 20) {
-        if (currentGroup.length > 0) {
-          columnGroups.push(currentGroup);
-        }
-        currentGroup = [el];
-      } else {
-        currentGroup.push(el);
-      }
-      lastX2 = x2;
-    }
-    if (currentGroup.length > 0) {
-      columnGroups.push(currentGroup);
-    }
-    
-    // If we have the right number of column groups, use their bounds
-    if (columnGroups.length === columns) {
-      return columnGroups.map(group => {
-        // bbox values are normalized (0-1), so multiply by 100 for percentage
-        const minX = Math.min(...group.map(el => el.bbox[0]));
-        const maxX = Math.max(...group.map(el => el.bbox[2]));
-        return { 
-          xStartPercent: minX * 100, 
-          xEndPercent: maxX * 100 
-        };
+  
+  // Sort all Y positions
+  elementYs.sort((a, b) => a - b);
+  
+  // 2. Find gaps between consecutive element positions
+  const gaps: { y: number; size: number }[] = [];
+  for (let i = 0; i < elementYs.length - 1; i++) {
+    const gapSize = elementYs[i + 1] - elementYs[i];
+    if (gapSize > 20) { // Minimum gap threshold (20px)
+      gaps.push({
+        y: Math.round(elementYs[i] + gapSize / 2), // Cut at gap center
+        size: gapSize
       });
     }
   }
   
-  // Fallback: divide evenly
-  const colWidth = 100 / columns;
-  return Array.from({ length: columns }, (_, i) => ({
-    xStartPercent: colWidth * i,
-    xEndPercent: colWidth * (i + 1)
-  }));
+  console.log(`Found ${gaps.length} gaps > 20px between elements`);
+  
+  // 3. Sort by gap size (largest first)
+  gaps.sort((a, b) => b.size - a.size);
+  
+  // Log top gaps for debugging
+  const topGaps = gaps.slice(0, 15);
+  console.log(`Largest gaps: ${topGaps.map(g => `${Math.round(g.size)}px at y=${g.y}`).join(', ')}`);
+  
+  // 4. Select top N gaps, ensuring minimum slice height between cuts
+  const selected: number[] = [];
+  
+  for (const gap of gaps) {
+    if (selected.length >= numCuts) break;
+    
+    // Check if this cut would create slices that are too small
+    const allBoundaries = [0, ...selected, gap.y, imageHeight].sort((a, b) => a - b);
+    let valid = true;
+    
+    for (let i = 0; i < allBoundaries.length - 1; i++) {
+      if (allBoundaries[i + 1] - allBoundaries[i] < minSliceHeight) {
+        valid = false;
+        break;
+      }
+    }
+    
+    if (valid) {
+      selected.push(gap.y);
+    }
+  }
+  
+  // 5. Return sorted by Y position
+  const result = selected.sort((a, b) => a - b);
+  console.log(`Selected ${result.length} cut points: ${result.join(', ')}`);
+  
+  return result;
 }
 
 // Main snapping logic: match OmniParser elements to Claude's sections
 function snapOmniParserToSections(
   elements: OmniParserElement[],
   sections: Section[],
-  imageWidth: number,
   imageHeight: number
 ): AutoDetectedSlice[] {
-  // Extract unique Y-coordinates from OmniParser bounding boxes
-  // IMPORTANT: OmniParser returns NORMALIZED coords (0-1), must scale to pixels
-  const yCoordinates: number[] = [];
-  elements.forEach(el => {
-    const [, y1Norm, , y2Norm] = el.bbox;
-    // Scale from normalized (0-1) to actual pixels
-    yCoordinates.push(Math.round(y1Norm * imageHeight)); // Top edge in pixels
-    yCoordinates.push(Math.round(y2Norm * imageHeight)); // Bottom edge in pixels
-  });
-  
-  // Sort and deduplicate (within 15px tolerance)
-  const sortedYs = [...new Set(yCoordinates)].sort((a, b) => a - b);
-  const uniqueYs = sortedYs.filter((y, i, arr) => i === 0 || y - arr[i - 1] > 15);
-  
-  console.log(`Extracted ${uniqueYs.length} unique Y coordinates from ${elements.length} elements (scaled to ${imageHeight}px height)`);
-  
   // We need (totalSections - 1) cut points
   const cutsNeeded = sections.length - 1;
-  const cutPoints = selectBestCutPoints(uniqueYs, cutsNeeded, imageHeight);
+  
+  // Find cut points at natural gaps between elements
+  const cutPoints = findSectionBoundaries(elements, cutsNeeded, imageHeight);
   const boundaries = [0, ...cutPoints, imageHeight];
   
-  console.log(`Cut points (px): ${cutPoints.join(', ')}`);
+  console.log(`Boundaries (px): ${boundaries.join(', ')}`);
   
   // Map each section to its boundaries
   const finalSlices: AutoDetectedSlice[] = sections.map((section, index) => {
-    const yStart = boundaries[index];
-    const yEnd = boundaries[index + 1];
+    // Handle case where we have fewer cut points than sections
+    const yStart = boundaries[index] ?? boundaries[boundaries.length - 2] ?? 0;
+    const yEnd = boundaries[index + 1] ?? boundaries[boundaries.length - 1] ?? imageHeight;
     
-    const slice: AutoDetectedSlice = {
+    return {
       id: `slice-${index}`,
       yStartPercent: Number(((yStart / imageHeight) * 100).toFixed(2)),
       yEndPercent: Number(((yEnd / imageHeight) * 100).toFixed(2)),
       type: section.type,
-      columns: section.columns,
       label: section.label,
       clickable: section.clickable
     };
-    
-    // For multi-column sections, calculate column bounds
-    if (section.columns > 1) {
-      slice.columnBounds = calculateColumnBounds(
-        elements, 
-        yStart, 
-        yEnd, 
-        section.columns, 
-        imageWidth,
-        imageHeight
-      );
-    }
-    
-    return slice;
   });
   
   return finalSlices;
@@ -590,12 +511,18 @@ serve(async (req) => {
     }
     
     console.log(`Claude: ${semanticAnalysis.totalSections} sections identified`);
+    
+    // Cap section count based on available gaps and image height
+    const maxSectionsByHeight = Math.floor(dimensions.height / 100); // Min 100px per slice
+    if (semanticAnalysis.sections.length > maxSectionsByHeight) {
+      console.log(`Capping sections from ${semanticAnalysis.sections.length} to ${maxSectionsByHeight} based on image height`);
+      semanticAnalysis.sections = semanticAnalysis.sections.slice(0, maxSectionsByHeight);
+    }
 
     // Snap OmniParser coordinates to Claude's sections
     const slices = snapOmniParserToSections(
       omniParserResult.parsed_content_list,
       semanticAnalysis.sections,
-      dimensions.width,
       dimensions.height
     );
 
