@@ -30,7 +30,32 @@ export interface SliceAnalysis {
   linkWarning?: string; // Warning if unverified or external
 }
 
-// Automatic slicing types
+// Auto-detected slice from Grounding DINO + Claude pipeline
+export interface AutoDetectedSlice {
+  id: string;
+  yStartPercent: number;
+  yEndPercent: number;
+  type: string;
+  columns: number;
+  label: string;
+  clickable: boolean;
+  columnBounds?: { xStartPercent: number; xEndPercent: number }[];
+}
+
+// Response from auto-slice-email edge function
+export interface AutoSliceResponse {
+  success: boolean;
+  slices: AutoDetectedSlice[];
+  metadata: {
+    imageWidth: number;
+    imageHeight: number;
+    groundingDinoBoxCount: number;
+    processingTimeMs: number;
+  };
+  error?: string;
+}
+
+// Legacy types (kept for backward compatibility during transition)
 export type AutoSectionType = 'header' | 'hero' | 'product_grid' | 'cta' | 'text_block' | 'divider' | 'footer' | 'unknown';
 
 export interface AutoDetectedSection {
