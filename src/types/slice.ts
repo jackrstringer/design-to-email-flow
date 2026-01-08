@@ -49,7 +49,7 @@ export interface AutoSliceResponse {
   metadata: {
     imageWidth: number;
     imageHeight: number;
-    groundingDinoBoxCount: number;
+    omniParserElementCount: number;
     processingTimeMs: number;
   };
   error?: string;
