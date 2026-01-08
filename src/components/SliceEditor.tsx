@@ -167,48 +167,109 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setAnalysisStep('idle');
   }, []);
 
+  // Constants for auto-slice processing
+  const MAX_AUTO_SLICE_HEIGHT = 2500;
+  const RULER_WIDTH = 50;
+
+  // Add ruler to image using native Canvas (runs in browser - fast and memory-efficient)
+  const addRulerToImage = async (dataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        let { naturalWidth: width, naturalHeight: height } = img;
+        
+        // Resize if too tall (prevents memory issues on backend)
+        let scale = 1;
+        if (height > MAX_AUTO_SLICE_HEIGHT) {
+          scale = MAX_AUTO_SLICE_HEIGHT / height;
+          width = Math.round(width * scale);
+          height = MAX_AUTO_SLICE_HEIGHT;
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width + RULER_WIDTH;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        // Fill ruler area with white
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, RULER_WIDTH, height);
+        
+        // Draw the email image to the right of the ruler
+        ctx.drawImage(img, RULER_WIDTH, 0, width, height);
+        
+        // Draw ruler markings (0 to 200)
+        ctx.fillStyle = '#000000';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.font = '10px monospace';
+        ctx.textBaseline = 'middle';
+        
+        for (let mark = 0; mark <= 200; mark++) {
+          const y = (mark / 200) * height;
+          
+          const isMajor = mark % 20 === 0;   // 0, 20, 40... 200
+          const isMedium = mark % 10 === 0;  // 10, 30, 50...
+          const isMinor = mark % 5 === 0;    // 5, 15, 25...
+          
+          let tickLength = 4;
+          if (isMajor) tickLength = 25;
+          else if (isMedium) tickLength = 18;
+          else if (isMinor) tickLength = 10;
+          
+          // Draw tick
+          ctx.beginPath();
+          ctx.moveTo(RULER_WIDTH - tickLength, y);
+          ctx.lineTo(RULER_WIDTH - 1, y);
+          ctx.stroke();
+          
+          // Draw number for major ticks
+          if (isMajor) {
+            ctx.fillText(mark.toString(), 2, y);
+          }
+        }
+        
+        // Draw vertical edge line
+        ctx.beginPath();
+        ctx.moveTo(RULER_WIDTH - 1, 0);
+        ctx.lineTo(RULER_WIDTH - 1, height);
+        ctx.stroke();
+        
+        // Export as PNG
+        resolve(canvas.toDataURL('image/png'));
+      };
+      
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = dataUrl;
+    });
+  };
+
   // Ruler-based automatic slice detection using Claude vision
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalysisStep('analyzing');
 
-    const ensurePngDataUrl = async (dataUrl: string): Promise<string> => {
-      if (dataUrl.startsWith('data:image/png')) return dataUrl;
-
-      return await new Promise<string>((resolve, reject) => {
-        const img = new window.Image();
-        img.crossOrigin = 'anonymous';
-
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            reject(new Error('Could not get canvas context'));
-            return;
-          }
-
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/png'));
-        };
-
-        img.onerror = () => reject(new Error('Failed to load image for PNG conversion'));
-        img.src = dataUrl;
-      });
-    };
-
     try {
-      console.log('Starting ruler-based auto-slice analysis...');
-
-      const pngImageDataUrl = await ensurePngDataUrl(imageDataUrl);
+      console.log('Adding ruler to image (frontend canvas)...');
+      const imageWithRuler = await addRulerToImage(imageDataUrl);
+      console.log('Ruler added, sending to backend...');
 
       const { data, error } = await supabase.functions.invoke('auto-slice-email', {
-        body: { imageDataUrl: pngImageDataUrl },
+        body: { imageDataUrl: imageWithRuler },
       });
 
       if (error) {
+        // Check for WORKER_LIMIT errors
+        if (error.message?.includes('WORKER_LIMIT') || (error as any).status === 546) {
+          throw new Error('Image too large. Try a shorter email or use manual slicing.');
+        }
         throw new Error(error.message);
       }
 
