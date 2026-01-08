@@ -52,6 +52,39 @@ interface AutoSliceResponse {
   error?: string;
 }
 
+// Parse OmniParser V2's Python-formatted element string into a JS array
+function parseOmniParserElementsString(elementsString: string): OmniParserElement[] {
+  const elements: OmniParserElement[] = [];
+  
+  // Split by "icon N: " pattern to get individual element strings
+  const parts = elementsString.split(/icon \d+:\s*/).filter(Boolean);
+  
+  for (const part of parts) {
+    try {
+      // Convert Python dict syntax to JSON:
+      // - Single quotes 'key' -> double quotes "key"
+      // - True/False -> true/false
+      let jsonStr = part.trim();
+      jsonStr = jsonStr.replace(/'/g, '"');
+      jsonStr = jsonStr.replace(/True/g, 'true');
+      jsonStr = jsonStr.replace(/False/g, 'false');
+      
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.bbox && Array.isArray(parsed.bbox) && parsed.bbox.length === 4) {
+        elements.push({
+          bbox: parsed.bbox as [number, number, number, number],
+          content: parsed.content || '',
+          type: parsed.type || 'unknown'
+        });
+      }
+    } catch (e) {
+      // Skip malformed elements silently
+    }
+  }
+  
+  return elements;
+}
+
 // Detect elements using Microsoft OmniParser V2 via Replicate
 async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniParserResult> {
   const replicateToken = Deno.env.get('REPLICATE_API_TOKEN');
@@ -121,37 +154,37 @@ async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniP
     throw new Error(`OmniParser timed out after ${attempts} seconds`);
   }
 
-  // Log output structure for debugging
+// Log output structure for debugging
   const outputKeys = result.output ? Object.keys(result.output) : [];
   console.log('OmniParser succeeded. Output keys:', outputKeys.join(', '));
   
-  // Handle different output formats - OmniParser may return parsed_content_list at different levels
-  let parsedContentList = [];
+  // OmniParser V2 returns { elements: "icon 0: {...}\nicon 1: {...}\n...", img: "..." }
+  // The 'elements' field is a Python-formatted STRING, not an array!
+  let parsedContentList: OmniParserElement[] = [];
   let labeledImage = null;
   
-  if (result.output?.parsed_content_list) {
-    parsedContentList = result.output.parsed_content_list;
-    labeledImage = result.output.labeled_image;
-  } else if (Array.isArray(result.output)) {
-    // Sometimes output is the array directly
-    parsedContentList = result.output;
-  } else if (result.output?.img) {
-    // Output might have { img: "...", ... } format - check for other keys
+  if (result.output?.img) {
     labeledImage = result.output.img;
-    // Look for parsed content in other keys
-    for (const key of outputKeys) {
-      if (Array.isArray(result.output[key])) {
-        parsedContentList = result.output[key];
-        break;
-      }
-    }
+  }
+  
+  if (result.output?.elements && typeof result.output.elements === 'string') {
+    // Parse the Python-style string format from OmniParser V2
+    console.log('Parsing OmniParser elements string...');
+    parsedContentList = parseOmniParserElementsString(result.output.elements);
+    console.log(`Parsed ${parsedContentList.length} elements from string`);
+  } else if (result.output?.parsed_content_list) {
+    // Fallback for potential alternative format
+    parsedContentList = result.output.parsed_content_list;
+    labeledImage = result.output.labeled_image || labeledImage;
+  } else if (Array.isArray(result.output)) {
+    parsedContentList = result.output;
   }
   
   console.log(`OmniParser returned ${parsedContentList.length} elements`);
   
   if (parsedContentList.length === 0) {
-    console.error('OmniParser output structure:', JSON.stringify(result.output).substring(0, 1000));
-    throw new Error('OmniParser returned no elements. Output structure unexpected - check logs.');
+    console.error('OmniParser output structure:', JSON.stringify(result.output).substring(0, 500));
+    throw new Error('OmniParser returned no elements. Check logs for output structure.');
   }
   
   return {
