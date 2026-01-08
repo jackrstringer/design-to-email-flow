@@ -171,12 +171,41 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalysisStep('analyzing');
-    
+
+    const ensurePngDataUrl = async (dataUrl: string): Promise<string> => {
+      if (dataUrl.startsWith('data:image/png')) return dataUrl;
+
+      return await new Promise<string>((resolve, reject) => {
+        const img = new window.Image();
+        img.crossOrigin = 'anonymous';
+
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+
+        img.onerror = () => reject(new Error('Failed to load image for PNG conversion'));
+        img.src = dataUrl;
+      });
+    };
+
     try {
       console.log('Starting ruler-based auto-slice analysis...');
-      
+
+      const pngImageDataUrl = await ensurePngDataUrl(imageDataUrl);
+
       const { data, error } = await supabase.functions.invoke('auto-slice-email', {
-        body: { imageDataUrl }
+        body: { imageDataUrl: pngImageDataUrl },
       });
 
       if (error) {
@@ -184,7 +213,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       }
 
       const response = data as AutoSliceResponse;
-      
+
       if (!response.success) {
         toast.error(response.error || 'Analysis failed');
         return;
