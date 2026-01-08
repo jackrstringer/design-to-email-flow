@@ -167,29 +167,42 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setAnalysisStep('idle');
   }, []);
 
-  // Automatic slice detection using Grounding DINO + Claude Opus 4.5
+  // Automatic slice detection using OmniParser V2 + Claude Opus 4.5
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalysisStep('detecting');
     
+    // Store timer IDs for cleanup
+    let progressTimer: ReturnType<typeof setTimeout> | null = null;
+    let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
+    
     try {
       // Simulate progress through steps (actual work happens server-side)
-      const progressTimer = setTimeout(() => setAnalysisStep('analyzing'), 3000);
-      const finalizeTimer = setTimeout(() => setAnalysisStep('finalizing'), 8000);
+      progressTimer = setTimeout(() => setAnalysisStep('analyzing'), 4000);
+      finalizeTimer = setTimeout(() => setAnalysisStep('finalizing'), 10000);
       
       const { data, error } = await supabase.functions.invoke('auto-slice-email', {
         body: { imageDataUrl }
       });
 
-      clearTimeout(progressTimer);
-      clearTimeout(finalizeTimer);
+      // Always clear timers when request completes
+      if (progressTimer) clearTimeout(progressTimer);
+      if (finalizeTimer) clearTimeout(finalizeTimer);
 
-      if (error) throw error;
+      // Handle network/invoke errors
+      if (error) {
+        console.error('Supabase invoke error:', error);
+        throw new Error(`Request failed: ${error.message}`);
+      }
 
       const response = data as AutoSliceResponse;
       
+      // Handle backend returning success:false with specific error message
       if (!response.success) {
-        throw new Error(response.error || 'Auto-slice failed');
+        const errorMsg = response.error || 'Auto-slice failed';
+        console.error('Auto-slice returned failure:', errorMsg);
+        toast.error(errorMsg);
+        return; // Exit without throwing - we already showed the error
       }
       
       setAutoSliceResponse(response);
@@ -226,8 +239,12 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       toast.success(`Detected ${response.slices.length} sections from ${elementCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
     } catch (error) {
       console.error('Auto-slice error:', error);
-      toast.error('Failed to analyze image. Try manual mode.');
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Analysis failed: ${message}`);
     } finally {
+      // Always clean up timers and reset state
+      if (progressTimer) clearTimeout(progressTimer);
+      if (finalizeTimer) clearTimeout(finalizeTimer);
       setIsAnalyzing(false);
       setAnalysisStep('idle');
     }

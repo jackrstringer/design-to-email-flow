@@ -62,14 +62,15 @@ async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniP
   
   console.log('Calling OmniParser V2 via Replicate...');
   
-  // Use model-based endpoint (auto-selects latest version)
-  const response = await fetch("https://api.replicate.com/v1/models/microsoft/omniparser-v2/predictions", {
+  // Use POST /v1/predictions with explicit version hash (from user's working example)
+  const response = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: {
       "Authorization": `Token ${replicateToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
+      version: "49cf3d41b8d3aca1360514e83be4c97131ce8f0d99abfc365526d8384caa88df",
       input: {
         image: imageDataUrl
       }
@@ -77,17 +78,18 @@ async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniP
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Replicate API error: ${error}`);
+    const errorText = await response.text();
+    console.error(`Replicate API error (${response.status}):`, errorText.substring(0, 500));
+    throw new Error(`Replicate API error (${response.status}): ${errorText.substring(0, 200)}`);
   }
 
   const prediction = await response.json();
-  console.log('OmniParser prediction created:', prediction.id);
+  console.log('OmniParser prediction created:', prediction.id, 'status:', prediction.status);
   
-  // Poll for completion (~4 seconds typical)
+  // Poll for completion (~4-10 seconds typical)
   let result = prediction;
   let attempts = 0;
-  const maxAttempts = 60;
+  const maxAttempts = 90; // 90 seconds max
   
   while (result.status !== "succeeded" && result.status !== "failed" && attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -98,24 +100,63 @@ async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniP
         "Authorization": `Token ${replicateToken}`
       }
     });
+    
+    if (!pollResponse.ok) {
+      console.error(`Poll failed (${pollResponse.status})`);
+      continue;
+    }
+    
     result = await pollResponse.json();
-    console.log(`OmniParser poll attempt ${attempts}: ${result.status}`);
+    if (attempts % 5 === 0) {
+      console.log(`OmniParser poll attempt ${attempts}: ${result.status}`);
+    }
   }
 
   if (result.status === "failed") {
+    console.error('OmniParser failed:', result.error);
     throw new Error(`OmniParser detection failed: ${result.error || 'Unknown error'}`);
   }
   
   if (result.status !== "succeeded") {
-    throw new Error('OmniParser timed out');
+    throw new Error(`OmniParser timed out after ${attempts} seconds`);
   }
 
-  console.log('OmniParser output:', JSON.stringify(result.output).substring(0, 500));
+  // Log output structure for debugging
+  const outputKeys = result.output ? Object.keys(result.output) : [];
+  console.log('OmniParser succeeded. Output keys:', outputKeys.join(', '));
   
-  // OmniParser returns: { parsed_content_list: [...], labeled_image: "..." }
+  // Handle different output formats - OmniParser may return parsed_content_list at different levels
+  let parsedContentList = [];
+  let labeledImage = null;
+  
+  if (result.output?.parsed_content_list) {
+    parsedContentList = result.output.parsed_content_list;
+    labeledImage = result.output.labeled_image;
+  } else if (Array.isArray(result.output)) {
+    // Sometimes output is the array directly
+    parsedContentList = result.output;
+  } else if (result.output?.img) {
+    // Output might have { img: "...", ... } format - check for other keys
+    labeledImage = result.output.img;
+    // Look for parsed content in other keys
+    for (const key of outputKeys) {
+      if (Array.isArray(result.output[key])) {
+        parsedContentList = result.output[key];
+        break;
+      }
+    }
+  }
+  
+  console.log(`OmniParser returned ${parsedContentList.length} elements`);
+  
+  if (parsedContentList.length === 0) {
+    console.error('OmniParser output structure:', JSON.stringify(result.output).substring(0, 1000));
+    throw new Error('OmniParser returned no elements. Output structure unexpected - check logs.');
+  }
+  
   return {
-    parsed_content_list: result.output?.parsed_content_list || [],
-    labeled_image: result.output?.labeled_image
+    parsed_content_list: parsedContentList,
+    labeled_image: labeledImage
   };
 }
 
@@ -463,20 +504,49 @@ serve(async (req) => {
     const dimensions = await getImageDimensions(imageDataUrl);
     console.log(`Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
-    // Run OmniParser and Claude in parallel - no silent failures
-    const [omniParserResult, semanticAnalysis] = await Promise.all([
-      detectElementsWithOmniParser(imageDataUrl),
-      getSemanticAnalysis(imageDataUrl)
-    ]);
+    // Run OmniParser FIRST - fail fast if it doesn't work (don't waste Claude tokens)
+    console.log('Step 1: Running OmniParser V2...');
+    let omniParserResult: OmniParserResult;
+    try {
+      omniParserResult = await detectElementsWithOmniParser(imageDataUrl);
+    } catch (omniError: unknown) {
+      const errorMessage = omniError instanceof Error ? omniError.message : String(omniError);
+      console.error('OmniParser failed:', errorMessage);
+      // Return HTTP 200 with success:false so client can show the real error
+      return new Response(
+        JSON.stringify({
+          success: false,
+          slices: [],
+          metadata: { imageWidth: dimensions.width, imageHeight: dimensions.height, omniParserElementCount: 0, processingTimeMs: Date.now() - startTime },
+          error: `OmniParser failed: ${errorMessage}. Please use manual mode.`
+        } as AutoSliceResponse),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const elementCount = omniParserResult.parsed_content_list.length;
-    
-    // Fail if OmniParser returned no elements - don't silently fall back to even distribution
-    if (elementCount === 0) {
-      throw new Error('OmniParser detected 0 elements. Element detection failed - please use manual mode.');
-    }
     console.log(`OmniParser: ${elementCount} elements detected`);
-    console.log(`Claude: ${semanticAnalysis.totalSections} sections`);
+    
+    // Step 2: Now call Claude for semantic analysis
+    console.log('Step 2: Running Claude semantic analysis...');
+    let semanticAnalysis: SemanticAnalysis;
+    try {
+      semanticAnalysis = await getSemanticAnalysis(imageDataUrl);
+    } catch (claudeError: unknown) {
+      const errorMessage = claudeError instanceof Error ? claudeError.message : String(claudeError);
+      console.error('Claude failed:', errorMessage);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          slices: [],
+          metadata: { imageWidth: dimensions.width, imageHeight: dimensions.height, omniParserElementCount: elementCount, processingTimeMs: Date.now() - startTime },
+          error: `Claude analysis failed: ${errorMessage}. Please use manual mode.`
+        } as AutoSliceResponse),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log(`Claude: ${semanticAnalysis.totalSections} sections identified`);
 
     // Snap OmniParser coordinates to Claude's sections
     const slices = snapOmniParserToSections(
