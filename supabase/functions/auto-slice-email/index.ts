@@ -350,11 +350,15 @@ function calculateColumnBounds(
   yStart: number,
   yEnd: number,
   columns: number,
-  imageWidth: number
+  imageWidth: number,
+  imageHeight: number
 ): { xStartPercent: number; xEndPercent: number }[] {
   // Find elements within this Y range
+  // NOTE: OmniParser returns NORMALIZED coords (0-1), must scale to pixels
   const relevantElements = elements.filter(el => {
-    const [, y1, , y2] = el.bbox;
+    const [, y1Norm, , y2Norm] = el.bbox;
+    const y1 = y1Norm * imageHeight;
+    const y2 = y2Norm * imageHeight;
     const elementMidY = (y1 + y2) / 2;
     return elementMidY >= yStart - 20 && elementMidY <= yEnd + 20;
   });
@@ -369,7 +373,9 @@ function calculateColumnBounds(
     let lastX2 = -Infinity;
     
     for (const el of sortedByX) {
-      const [x1, , x2] = el.bbox;
+      // Scale normalized X coords to pixels
+      const x1 = el.bbox[0] * imageWidth;
+      const x2 = el.bbox[2] * imageWidth;
       // If there's a significant gap, start a new column
       if (x1 - lastX2 > 20) {
         if (currentGroup.length > 0) {
@@ -388,11 +394,12 @@ function calculateColumnBounds(
     // If we have the right number of column groups, use their bounds
     if (columnGroups.length === columns) {
       return columnGroups.map(group => {
+        // bbox values are normalized (0-1), so multiply by 100 for percentage
         const minX = Math.min(...group.map(el => el.bbox[0]));
         const maxX = Math.max(...group.map(el => el.bbox[2]));
         return { 
-          xStartPercent: (minX / imageWidth) * 100, 
-          xEndPercent: (maxX / imageWidth) * 100 
+          xStartPercent: minX * 100, 
+          xEndPercent: maxX * 100 
         };
       });
     }
@@ -414,18 +421,20 @@ function snapOmniParserToSections(
   imageHeight: number
 ): AutoDetectedSlice[] {
   // Extract unique Y-coordinates from OmniParser bounding boxes
+  // IMPORTANT: OmniParser returns NORMALIZED coords (0-1), must scale to pixels
   const yCoordinates: number[] = [];
   elements.forEach(el => {
-    const [, y1, , y2] = el.bbox;
-    yCoordinates.push(y1); // Top edge
-    yCoordinates.push(y2); // Bottom edge
+    const [, y1Norm, , y2Norm] = el.bbox;
+    // Scale from normalized (0-1) to actual pixels
+    yCoordinates.push(Math.round(y1Norm * imageHeight)); // Top edge in pixels
+    yCoordinates.push(Math.round(y2Norm * imageHeight)); // Bottom edge in pixels
   });
   
   // Sort and deduplicate (within 15px tolerance)
   const sortedYs = [...new Set(yCoordinates)].sort((a, b) => a - b);
   const uniqueYs = sortedYs.filter((y, i, arr) => i === 0 || y - arr[i - 1] > 15);
   
-  console.log(`Extracted ${uniqueYs.length} unique Y coordinates from ${elements.length} elements`);
+  console.log(`Extracted ${uniqueYs.length} unique Y coordinates from ${elements.length} elements (scaled to ${imageHeight}px height)`);
   
   // We need (totalSections - 1) cut points
   const cutsNeeded = sections.length - 1;
@@ -456,7 +465,8 @@ function snapOmniParserToSections(
         yStart, 
         yEnd, 
         section.columns, 
-        imageWidth
+        imageWidth,
+        imageHeight
       );
     }
     
