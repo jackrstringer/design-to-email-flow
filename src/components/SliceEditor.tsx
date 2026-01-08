@@ -221,9 +221,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
         setFirstRegionColumns((firstCols >= 1 && firstCols <= 4 ? firstCols : 1) as 1 | 2 | 3 | 4);
       }
 
-      const boxCount = response.metadata.groundingDinoBoxCount;
+      const elementCount = response.metadata.omniParserElementCount;
       const timeMs = response.metadata.processingTimeMs;
-      toast.success(`Detected ${response.slices.length} sections from ${boxCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
+      toast.success(`Detected ${response.slices.length} sections from ${elementCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
     } catch (error) {
       console.error('Auto-slice error:', error);
       toast.error('Failed to analyze image. Try manual mode.');
@@ -338,10 +338,10 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
               disabled={isAnalyzing || isProcessing}
               className="gap-2"
             >
-              {isAnalyzing ? (
+          {isAnalyzing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  {analysisStep === 'detecting' && 'Detecting sections...'}
+                  {analysisStep === 'detecting' && 'Detecting elements...'}
                   {analysisStep === 'analyzing' && 'Analyzing layout...'}
                   {analysisStep === 'finalizing' && 'Finalizing slices...'}
                 </>
@@ -358,7 +358,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           {autoSliceResponse && sliceMode === 'automatic' && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
               <Check className="w-3 h-3" />
-              {autoSliceResponse.slices.length} sections • {autoSliceResponse.metadata.groundingDinoBoxCount} elements detected
+              {autoSliceResponse.slices.length} sections • {autoSliceResponse.metadata.omniParserElementCount} elements detected
             </div>
           )}
         </div>

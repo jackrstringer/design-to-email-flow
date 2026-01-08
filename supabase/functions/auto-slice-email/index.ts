@@ -5,12 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface BoundingBox {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  label: string;
+// OmniParser V2 element format
+interface OmniParserElement {
+  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+  content: string;
+  type?: string;
+}
+
+interface OmniParserResult {
+  parsed_content_list: OmniParserElement[];
+  labeled_image?: string;
 }
 
 interface Section {
@@ -42,65 +46,23 @@ interface AutoSliceResponse {
   metadata: {
     imageWidth: number;
     imageHeight: number;
-    groundingDinoBoxCount: number;
+    omniParserElementCount: number;
     processingTimeMs: number;
   };
   error?: string;
 }
 
-// Upload base64 image to Cloudinary and get URL for Replicate
-async function uploadImageForReplicate(imageDataUrl: string): Promise<string> {
-  const cloudName = Deno.env.get('CLOUDINARY_CLOUD_NAME');
-  const apiKey = Deno.env.get('CLOUDINARY_API_KEY');
-  const apiSecret = Deno.env.get('CLOUDINARY_API_SECRET');
-  
-  if (!cloudName || !apiKey || !apiSecret) {
-    throw new Error('Cloudinary credentials not configured');
-  }
-  
-  const timestamp = Math.floor(Date.now() / 1000);
-  const folder = 'auto-slice-temp';
-  
-  // Create signature
-  const signatureString = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(signatureString);
-  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
-  const formData = new FormData();
-  formData.append('file', imageDataUrl);
-  formData.append('api_key', apiKey);
-  formData.append('timestamp', timestamp.toString());
-  formData.append('signature', signature);
-  formData.append('folder', folder);
-  
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-    method: 'POST',
-    body: formData,
-  });
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Cloudinary upload failed: ${error}`);
-  }
-  
-  const result = await response.json();
-  return result.secure_url;
-}
-
-// Detect element coordinates using Grounding DINO via Replicate
-async function detectElementCoordinates(imageUrl: string): Promise<{ boxes: BoundingBox[]; width: number; height: number }> {
+// Detect elements using Microsoft OmniParser V2 via Replicate
+async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniParserResult> {
   const replicateToken = Deno.env.get('REPLICATE_API_TOKEN');
   
   if (!replicateToken) {
     throw new Error('REPLICATE_API_TOKEN not configured');
   }
   
-  console.log('Calling Grounding DINO via Replicate...');
+  console.log('Calling OmniParser V2 via Replicate...');
   
-  // Create prediction
+  // OmniParser accepts base64 data URL directly - no Cloudinary needed!
   const response = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: {
@@ -108,12 +70,9 @@ async function detectElementCoordinates(imageUrl: string): Promise<{ boxes: Boun
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      version: "efd10a8ddc57ea28773327e881ce95e20cc1d734c589f7dd01d2036921ed78aa",
+      version: "9e416170c1fbc7dbc4deda14914ea29d5c642ca66108a82cd8fc4ec873bfe6d4",
       input: {
-        image: imageUrl,
-        prompt: "horizontal divider. section boundary. header section. hero image. product image. call to action button. navigation menu. footer section. banner. text block.",
-        box_threshold: 0.25,
-        text_threshold: 0.25
+        image: imageDataUrl
       }
     })
   });
@@ -124,12 +83,12 @@ async function detectElementCoordinates(imageUrl: string): Promise<{ boxes: Boun
   }
 
   const prediction = await response.json();
-  console.log('Prediction created:', prediction.id);
+  console.log('OmniParser prediction created:', prediction.id);
   
-  // Poll for completion
+  // Poll for completion (~4 seconds typical)
   let result = prediction;
   let attempts = 0;
-  const maxAttempts = 60; // 60 seconds max
+  const maxAttempts = 60;
   
   while (result.status !== "succeeded" && result.status !== "failed" && attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -141,53 +100,24 @@ async function detectElementCoordinates(imageUrl: string): Promise<{ boxes: Boun
       }
     });
     result = await pollResponse.json();
-    console.log(`Poll attempt ${attempts}: ${result.status}`);
+    console.log(`OmniParser poll attempt ${attempts}: ${result.status}`);
   }
 
   if (result.status === "failed") {
-    throw new Error(`Grounding DINO detection failed: ${result.error || 'Unknown error'}`);
+    throw new Error(`OmniParser detection failed: ${result.error || 'Unknown error'}`);
   }
   
   if (result.status !== "succeeded") {
-    throw new Error('Grounding DINO timed out');
+    throw new Error('OmniParser timed out');
   }
 
-  // Parse output - Grounding DINO returns detections array
-  const output = result.output;
-  console.log('Grounding DINO output:', JSON.stringify(output));
+  console.log('OmniParser output:', JSON.stringify(result.output).substring(0, 500));
   
-  // The output format from this model is typically an annotated image URL
-  // and detections are embedded. We need to parse the actual detection data.
-  // Looking at the model, it returns: { detections: [...], image: "..." }
-  // Each detection has: { bbox: [x1, y1, x2, y2], label: "...", confidence: ... }
-  
-  const boxes: BoundingBox[] = [];
-  let imageWidth = 600;
-  let imageHeight = 2000;
-  
-  if (output && typeof output === 'object') {
-    // Handle different output formats
-    if (Array.isArray(output.detections)) {
-      for (const det of output.detections) {
-        if (det.bbox && Array.isArray(det.bbox)) {
-          boxes.push({
-            x1: det.bbox[0],
-            y1: det.bbox[1],
-            x2: det.bbox[2],
-            y2: det.bbox[3],
-            label: det.label || 'unknown'
-          });
-        }
-      }
-    } else if (output.image_dimensions) {
-      imageWidth = output.image_dimensions.width || imageWidth;
-      imageHeight = output.image_dimensions.height || imageHeight;
-    }
-  }
-  
-  console.log(`Detected ${boxes.length} bounding boxes`);
-  
-  return { boxes, width: imageWidth, height: imageHeight };
+  // OmniParser returns: { parsed_content_list: [...], labeled_image: "..." }
+  return {
+    parsed_content_list: result.output?.parsed_content_list || [],
+    labeled_image: result.output?.labeled_image
+  };
 }
 
 // Get semantic analysis from Claude Opus 4.5
@@ -217,7 +147,7 @@ async function getSemanticAnalysis(imageBase64: string): Promise<SemanticAnalysi
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5-20250514",
+      model: "claude-opus-4-5-20251101",
       max_tokens: 1500,
       messages: [{
         role: "user",
@@ -320,7 +250,6 @@ function selectBestCutPoints(
   
   for (let i = 1; i <= numCuts; i++) {
     const targetY = idealSpacing * i;
-    // Find closest candidate to target that hasn't been used
     let closest = candidates[0];
     let closestDist = Math.abs(candidates[0] - targetY);
     
@@ -342,26 +271,58 @@ function selectBestCutPoints(
   return selected.sort((a, b) => a - b);
 }
 
-// Calculate column bounds from bounding boxes
+// Calculate column bounds from OmniParser elements
 function calculateColumnBounds(
-  boxes: BoundingBox[],
+  elements: OmniParserElement[],
   yStart: number,
   yEnd: number,
   columns: number,
   imageWidth: number
 ): { xStartPercent: number; xEndPercent: number }[] {
-  // Find boxes within this Y range
-  const relevantBoxes = boxes.filter(box => 
-    box.y1 >= yStart - 20 && box.y2 <= yEnd + 20
-  );
-  
-  if (relevantBoxes.length >= columns) {
-    // Use detected box positions for columns
-    const sortedByX = [...relevantBoxes].sort((a, b) => a.x1 - b.x1);
-    return sortedByX.slice(0, columns).map(box => ({
-      xStartPercent: (box.x1 / imageWidth) * 100,
-      xEndPercent: (box.x2 / imageWidth) * 100
-    }));
+  // Find elements within this Y range
+  const relevantElements = elements.filter(el => {
+    const [, y1, , y2] = el.bbox;
+    const elementMidY = (y1 + y2) / 2;
+    return elementMidY >= yStart - 20 && elementMidY <= yEnd + 20;
+  });
+
+  if (relevantElements.length >= columns) {
+    // Sort by X position
+    const sortedByX = [...relevantElements].sort((a, b) => a.bbox[0] - b.bbox[0]);
+    
+    // Group elements into columns based on X position clustering
+    const columnGroups: OmniParserElement[][] = [];
+    let currentGroup: OmniParserElement[] = [];
+    let lastX2 = -Infinity;
+    
+    for (const el of sortedByX) {
+      const [x1, , x2] = el.bbox;
+      // If there's a significant gap, start a new column
+      if (x1 - lastX2 > 20) {
+        if (currentGroup.length > 0) {
+          columnGroups.push(currentGroup);
+        }
+        currentGroup = [el];
+      } else {
+        currentGroup.push(el);
+      }
+      lastX2 = x2;
+    }
+    if (currentGroup.length > 0) {
+      columnGroups.push(currentGroup);
+    }
+    
+    // If we have the right number of column groups, use their bounds
+    if (columnGroups.length === columns) {
+      return columnGroups.map(group => {
+        const minX = Math.min(...group.map(el => el.bbox[0]));
+        const maxX = Math.max(...group.map(el => el.bbox[2]));
+        return { 
+          xStartPercent: (minX / imageWidth) * 100, 
+          xEndPercent: (maxX / imageWidth) * 100 
+        };
+      });
+    }
   }
   
   // Fallback: divide evenly
@@ -372,28 +333,30 @@ function calculateColumnBounds(
   }));
 }
 
-// Main snapping logic
-function snapCoordinatesToSections(
-  boxes: BoundingBox[],
+// Main snapping logic: match OmniParser elements to Claude's sections
+function snapOmniParserToSections(
+  elements: OmniParserElement[],
   sections: Section[],
   imageWidth: number,
   imageHeight: number
 ): AutoDetectedSlice[] {
-  // Extract unique Y-coordinates from bounding boxes
+  // Extract unique Y-coordinates from OmniParser bounding boxes
   const yCoordinates: number[] = [];
-  boxes.forEach(box => {
-    yCoordinates.push(box.y1);
-    yCoordinates.push(box.y2);
+  elements.forEach(el => {
+    const [, y1, , y2] = el.bbox;
+    yCoordinates.push(y1); // Top edge
+    yCoordinates.push(y2); // Bottom edge
   });
   
-  // Sort and deduplicate (within 10px tolerance)
+  // Sort and deduplicate (within 15px tolerance)
   const sortedYs = [...new Set(yCoordinates)].sort((a, b) => a - b);
-  const uniqueYs = sortedYs.filter((y, i, arr) => i === 0 || y - arr[i - 1] > 10);
+  const uniqueYs = sortedYs.filter((y, i, arr) => i === 0 || y - arr[i - 1] > 15);
   
-  console.log(`Extracted ${uniqueYs.length} unique Y coordinates from ${boxes.length} boxes`);
+  console.log(`Extracted ${uniqueYs.length} unique Y coordinates from ${elements.length} elements`);
   
-  // We need (totalSections) slices, so (totalSections - 1) cut points
-  const cutPoints = selectBestCutPoints(uniqueYs, sections.length - 1, imageHeight);
+  // We need (totalSections - 1) cut points
+  const cutsNeeded = sections.length - 1;
+  const cutPoints = selectBestCutPoints(uniqueYs, cutsNeeded, imageHeight);
   const boundaries = [0, ...cutPoints, imageHeight];
   
   console.log(`Cut points (px): ${cutPoints.join(', ')}`);
@@ -405,8 +368,8 @@ function snapCoordinatesToSections(
     
     const slice: AutoDetectedSlice = {
       id: `slice-${index}`,
-      yStartPercent: (yStart / imageHeight) * 100,
-      yEndPercent: (yEnd / imageHeight) * 100,
+      yStartPercent: Number(((yStart / imageHeight) * 100).toFixed(2)),
+      yEndPercent: Number(((yEnd / imageHeight) * 100).toFixed(2)),
       type: section.type,
       columns: section.columns,
       label: section.label,
@@ -416,7 +379,7 @@ function snapCoordinatesToSections(
     // For multi-column sections, calculate column bounds
     if (section.columns > 1) {
       slice.columnBounds = calculateColumnBounds(
-        boxes, 
+        elements, 
         yStart, 
         yEnd, 
         section.columns, 
@@ -488,84 +451,47 @@ serve(async (req) => {
         JSON.stringify({ 
           success: false, 
           slices: [], 
-          metadata: { imageWidth: 0, imageHeight: 0, groundingDinoBoxCount: 0, processingTimeMs: 0 },
+          metadata: { imageWidth: 0, imageHeight: 0, omniParserElementCount: 0, processingTimeMs: 0 },
           error: 'imageDataUrl is required' 
         } as AutoSliceResponse),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Starting automatic slice detection with Grounding DINO + Claude Opus 4.5...');
+    console.log('Starting automatic slice detection with OmniParser V2 + Claude Opus 4.5...');
 
     // Get image dimensions
     const dimensions = await getImageDimensions(imageDataUrl);
     console.log(`Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
-    // Step 1: Upload image to Cloudinary for Replicate
-    let imageUrl: string;
-    try {
-      imageUrl = await uploadImageForReplicate(imageDataUrl);
-      console.log('Image uploaded to Cloudinary:', imageUrl);
-    } catch (e) {
-      console.error('Failed to upload image:', e);
-      // Fall back to semantic-only analysis
-      const semanticAnalysis = await getSemanticAnalysis(imageDataUrl);
-      const evenSlices: AutoDetectedSlice[] = semanticAnalysis.sections.map((section, index) => ({
-        id: `slice-${index}`,
-        yStartPercent: (index / semanticAnalysis.totalSections) * 100,
-        yEndPercent: ((index + 1) / semanticAnalysis.totalSections) * 100,
-        type: section.type,
-        columns: section.columns,
-        label: section.label,
-        clickable: section.clickable
-      }));
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          slices: evenSlices,
-          metadata: {
-            imageWidth: dimensions.width,
-            imageHeight: dimensions.height,
-            groundingDinoBoxCount: 0,
-            processingTimeMs: Date.now() - startTime
-          }
-        } as AutoSliceResponse),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Step 2: Run Grounding DINO and Claude in parallel
-    const [dinoResult, semanticAnalysis] = await Promise.all([
-      detectElementCoordinates(imageUrl).catch(e => {
-        console.error('Grounding DINO failed:', e);
-        return { boxes: [] as BoundingBox[], width: dimensions.width, height: dimensions.height };
+    // Run OmniParser and Claude in parallel
+    const [omniParserResult, semanticAnalysis] = await Promise.all([
+      detectElementsWithOmniParser(imageDataUrl).catch(e => {
+        console.error('OmniParser failed:', e);
+        return { parsed_content_list: [] } as OmniParserResult;
       }),
       getSemanticAnalysis(imageDataUrl)
     ]);
 
-    console.log(`Grounding DINO: ${dinoResult.boxes.length} boxes`);
+    const elementCount = omniParserResult.parsed_content_list.length;
+    console.log(`OmniParser: ${elementCount} elements detected`);
     console.log(`Claude: ${semanticAnalysis.totalSections} sections`);
 
-    // Use dimensions from DINO if available, otherwise use calculated
-    const imageWidth = dinoResult.width || dimensions.width;
-    const imageHeight = dinoResult.height || dimensions.height;
-
-    // Step 3: Snap coordinates to sections
-    const slices = snapCoordinatesToSections(
-      dinoResult.boxes,
+    // Snap OmniParser coordinates to Claude's sections
+    const slices = snapOmniParserToSections(
+      omniParserResult.parsed_content_list,
       semanticAnalysis.sections,
-      imageWidth,
-      imageHeight
+      dimensions.width,
+      dimensions.height
     );
 
     const response: AutoSliceResponse = {
       success: true,
       slices,
       metadata: {
-        imageWidth,
-        imageHeight,
-        groundingDinoBoxCount: dinoResult.boxes.length,
+        imageWidth: dimensions.width,
+        imageHeight: dimensions.height,
+        omniParserElementCount: elementCount,
         processingTimeMs: Date.now() - startTime
       }
     };
@@ -587,7 +513,7 @@ serve(async (req) => {
         metadata: {
           imageWidth: 0,
           imageHeight: 0,
-          groundingDinoBoxCount: 0,
+          omniParserElementCount: 0,
           processingTimeMs: Date.now() - startTime
         },
         error: error instanceof Error ? error.message : 'Unknown error'
