@@ -167,125 +167,30 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setAnalysisStep('idle');
   }, []);
 
-  // Automatic slice detection using OmniParser V2 + Claude Opus 4.5
-  // Uses polling to avoid long HTTP requests during OmniParser cold starts
+  // Ruler-based automatic slice detection using Claude vision
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
-    setAnalysisStep('detecting');
-    
-    const POLL_INTERVAL = 2000; // 2 seconds
-    const MAX_POLLS = 60; // 2 minutes max
-    const REQUEST_TIMEOUT = 30000; // 30s per request
+    setAnalysisStep('analyzing');
     
     try {
-      // Phase 1: Start the analysis (quick response)
-      console.log('Starting auto-slice analysis...');
+      console.log('Starting ruler-based auto-slice analysis...');
       
-      const startResult = await Promise.race([
-        supabase.functions.invoke('auto-slice-email', {
-          body: { action: 'start', imageDataUrl }
-        }),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Request timed out')), REQUEST_TIMEOUT)
-        )
-      ]) as { data: AutoSliceResponse | null; error: Error | null };
+      const { data, error } = await supabase.functions.invoke('auto-slice-email', {
+        body: { imageDataUrl }
+      });
 
-      if (startResult.error) {
-        throw new Error(`Start request failed: ${startResult.error.message}`);
+      if (error) {
+        throw new Error(error.message);
       }
 
-      const startResponse = startResult.data as AutoSliceResponse;
+      const response = data as AutoSliceResponse;
       
-      // If completed immediately (warm model), we're done
-      if (startResponse.success) {
-        applyAutoSliceResults(startResponse);
-        return;
-      }
-      
-      // If failed, show error
-      if (startResponse.status === 'failed') {
-        toast.error(startResponse.error || 'Auto-slice failed');
+      if (!response.success) {
+        toast.error(response.error || 'Analysis failed');
         return;
       }
 
-      // Phase 2: Poll for OmniParser completion
-      if (startResponse.status === 'processing' && startResponse.predictionId) {
-        setAnalysisStep('analyzing');
-        console.log(`Polling for prediction ${startResponse.predictionId}...`);
-        
-        let pollCount = 0;
-        let predictionReady = false;
-        
-        while (pollCount < MAX_POLLS && !predictionReady) {
-          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-          pollCount++;
-          
-          // Update UI with progress
-          if (pollCount > 15) {
-            // After 30 seconds, show waiting message
-            setAnalysisStep('finalizing'); // Repurpose as "waiting for model"
-          }
-          
-          const pollResult = await Promise.race([
-            supabase.functions.invoke('auto-slice-email', {
-              body: { action: 'poll', predictionId: startResponse.predictionId }
-            }),
-            new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Poll request timed out')), REQUEST_TIMEOUT)
-            )
-          ]) as { data: AutoSliceResponse | null; error: Error | null };
-
-          if (pollResult.error) {
-            console.warn(`Poll ${pollCount} failed:`, pollResult.error);
-            continue; // Retry polling
-          }
-
-          const pollResponse = pollResult.data as AutoSliceResponse;
-          
-          if (pollResponse.status === 'ready') {
-            predictionReady = true;
-          } else if (pollResponse.status === 'failed') {
-            toast.error(pollResponse.error || 'OmniParser failed');
-            return;
-          }
-          // else: still processing, continue polling
-        }
-        
-        if (!predictionReady) {
-          toast.error('Analysis timed out. Please try again or use manual mode.');
-          return;
-        }
-
-        // Phase 3: Finalize (run Claude + snapping)
-        setAnalysisStep('finalizing');
-        console.log('OmniParser ready, finalizing...');
-        
-        const finalResult = await Promise.race([
-          supabase.functions.invoke('auto-slice-email', {
-            body: { 
-              action: 'finalize', 
-              predictionId: startResponse.predictionId,
-              imageDataUrl 
-            }
-          }),
-          new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Finalize request timed out')), 60000) // 60s for Claude
-          )
-        ]) as { data: AutoSliceResponse | null; error: Error | null };
-
-        if (finalResult.error) {
-          throw new Error(`Finalize failed: ${finalResult.error.message}`);
-        }
-
-        const finalResponse = finalResult.data as AutoSliceResponse;
-        
-        if (!finalResponse.success) {
-          toast.error(finalResponse.error || 'Finalization failed');
-          return;
-        }
-
-        applyAutoSliceResults(finalResponse);
-      }
+      applyAutoSliceResults(response);
     } catch (error) {
       console.error('Auto-slice error:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -320,9 +225,8 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setSlicePositions(newPositions);
     setFirstRegionColumns(1);
 
-    const elementCount = response.metadata.omniParserElementCount;
     const timeMs = response.metadata.processingTimeMs;
-    toast.success(`Detected ${response.slices.length} sections from ${elementCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
+    toast.success(`Detected ${response.slices.length} sections (${(timeMs / 1000).toFixed(1)}s)`);
   };
 
   const handleProcess = () => {
@@ -433,9 +337,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           {isAnalyzing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  {analysisStep === 'detecting' && 'Starting analysis...'}
-                  {analysisStep === 'analyzing' && 'Detecting elements...'}
-                  {analysisStep === 'finalizing' && 'Waiting for model...'}
+                  Analyzing sections...
                 </>
               ) : (
                 <>
@@ -450,7 +352,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           {autoSliceResponse && sliceMode === 'automatic' && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
               <Check className="w-3 h-3" />
-              {autoSliceResponse.slices.length} sections • {autoSliceResponse.metadata.omniParserElementCount} elements detected
+              {autoSliceResponse.slices.length} sections detected
             </div>
           )}
         </div>

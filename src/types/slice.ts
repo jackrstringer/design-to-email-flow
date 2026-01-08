@@ -47,13 +47,13 @@ export interface AutoSliceResponse {
   metadata: {
     imageWidth: number;
     imageHeight: number;
-    omniParserElementCount: number;
     processingTimeMs: number;
   };
   error?: string;
-  // Polling support
-  status?: 'processing' | 'ready' | 'failed';
-  predictionId?: string;
+  debug?: {
+    cuts: number[];
+    sections: { type: string; label: string }[];
+  };
 }
 
 // Legacy types (kept for backward compatibility during transition)
