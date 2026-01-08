@@ -62,15 +62,14 @@ async function detectElementsWithOmniParser(imageDataUrl: string): Promise<OmniP
   
   console.log('Calling OmniParser V2 via Replicate...');
   
-  // OmniParser accepts base64 data URL directly - no Cloudinary needed!
-  const response = await fetch("https://api.replicate.com/v1/predictions", {
+  // Use model-based endpoint (auto-selects latest version)
+  const response = await fetch("https://api.replicate.com/v1/models/microsoft/omniparser-v2/predictions", {
     method: "POST",
     headers: {
       "Authorization": `Token ${replicateToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      version: "9e416170c1fbc7dbc4deda14914ea29d5c642ca66108a82cd8fc4ec873bfe6d4",
       input: {
         image: imageDataUrl
       }
@@ -464,16 +463,18 @@ serve(async (req) => {
     const dimensions = await getImageDimensions(imageDataUrl);
     console.log(`Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
-    // Run OmniParser and Claude in parallel
+    // Run OmniParser and Claude in parallel - no silent failures
     const [omniParserResult, semanticAnalysis] = await Promise.all([
-      detectElementsWithOmniParser(imageDataUrl).catch(e => {
-        console.error('OmniParser failed:', e);
-        return { parsed_content_list: [] } as OmniParserResult;
-      }),
+      detectElementsWithOmniParser(imageDataUrl),
       getSemanticAnalysis(imageDataUrl)
     ]);
 
     const elementCount = omniParserResult.parsed_content_list.length;
+    
+    // Fail if OmniParser returned no elements - don't silently fall back to even distribution
+    if (elementCount === 0) {
+      throw new Error('OmniParser detected 0 elements. Element detection failed - please use manual mode.');
+    }
     console.log(`OmniParser: ${elementCount} elements detected`);
     console.log(`Claude: ${semanticAnalysis.totalSections} sections`);
 
