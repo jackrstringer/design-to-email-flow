@@ -168,83 +168,161 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   }, []);
 
   // Automatic slice detection using OmniParser V2 + Claude Opus 4.5
+  // Uses polling to avoid long HTTP requests during OmniParser cold starts
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalysisStep('detecting');
     
-    // Store timer IDs for cleanup
-    let progressTimer: ReturnType<typeof setTimeout> | null = null;
-    let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const POLL_INTERVAL = 2000; // 2 seconds
+    const MAX_POLLS = 60; // 2 minutes max
+    const REQUEST_TIMEOUT = 30000; // 30s per request
     
     try {
-      // Simulate progress through steps (actual work happens server-side)
-      progressTimer = setTimeout(() => setAnalysisStep('analyzing'), 4000);
-      finalizeTimer = setTimeout(() => setAnalysisStep('finalizing'), 10000);
+      // Phase 1: Start the analysis (quick response)
+      console.log('Starting auto-slice analysis...');
       
-      const { data, error } = await supabase.functions.invoke('auto-slice-email', {
-        body: { imageDataUrl }
-      });
+      const startResult = await Promise.race([
+        supabase.functions.invoke('auto-slice-email', {
+          body: { action: 'start', imageDataUrl }
+        }),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Request timed out')), REQUEST_TIMEOUT)
+        )
+      ]) as { data: AutoSliceResponse | null; error: Error | null };
 
-      // Always clear timers when request completes
-      if (progressTimer) clearTimeout(progressTimer);
-      if (finalizeTimer) clearTimeout(finalizeTimer);
-
-      // Handle network/invoke errors
-      if (error) {
-        console.error('Supabase invoke error:', error);
-        throw new Error(`Request failed: ${error.message}`);
+      if (startResult.error) {
+        throw new Error(`Start request failed: ${startResult.error.message}`);
       }
 
-      const response = data as AutoSliceResponse;
+      const startResponse = startResult.data as AutoSliceResponse;
       
-      // Handle backend returning success:false with specific error message
-      if (!response.success) {
-        const errorMsg = response.error || 'Auto-slice failed';
-        console.error('Auto-slice returned failure:', errorMsg);
-        toast.error(errorMsg);
-        return; // Exit without throwing - we already showed the error
+      // If completed immediately (warm model), we're done
+      if (startResponse.success) {
+        applyAutoSliceResults(startResponse);
+        return;
       }
       
-      setAutoSliceResponse(response);
+      // If failed, show error
+      if (startResponse.status === 'failed') {
+        toast.error(startResponse.error || 'Auto-slice failed');
+        return;
+      }
 
-      // Convert auto-detected slices to SlicePosition format
-      // We need cut points between slices, not the slices themselves
-      const newPositions: SlicePosition[] = [];
-      
-      for (let i = 0; i < response.slices.length - 1; i++) {
-        const currentSlice = response.slices[i];
-        const nextSlice = response.slices[i + 1];
+      // Phase 2: Poll for OmniParser completion
+      if (startResponse.status === 'processing' && startResponse.predictionId) {
+        setAnalysisStep('analyzing');
+        console.log(`Polling for prediction ${startResponse.predictionId}...`);
         
-        // The cut point is at the end of the current slice (same as start of next)
-        newPositions.push({
-          position: currentSlice.yEndPercent,
-          type: 'image' as SliceType,
-          columns: 1 as 1 | 2 | 3 | 4, // Vertical-only slicing, always 1 column
-          sectionType: nextSlice.type,
-          label: nextSlice.label,
-          clickable: nextSlice.clickable
-        });
+        let pollCount = 0;
+        let predictionReady = false;
+        
+        while (pollCount < MAX_POLLS && !predictionReady) {
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+          pollCount++;
+          
+          // Update UI with progress
+          if (pollCount > 15) {
+            // After 30 seconds, show waiting message
+            setAnalysisStep('finalizing'); // Repurpose as "waiting for model"
+          }
+          
+          const pollResult = await Promise.race([
+            supabase.functions.invoke('auto-slice-email', {
+              body: { action: 'poll', predictionId: startResponse.predictionId }
+            }),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Poll request timed out')), REQUEST_TIMEOUT)
+            )
+          ]) as { data: AutoSliceResponse | null; error: Error | null };
+
+          if (pollResult.error) {
+            console.warn(`Poll ${pollCount} failed:`, pollResult.error);
+            continue; // Retry polling
+          }
+
+          const pollResponse = pollResult.data as AutoSliceResponse;
+          
+          if (pollResponse.status === 'ready') {
+            predictionReady = true;
+          } else if (pollResponse.status === 'failed') {
+            toast.error(pollResponse.error || 'OmniParser failed');
+            return;
+          }
+          // else: still processing, continue polling
+        }
+        
+        if (!predictionReady) {
+          toast.error('Analysis timed out. Please try again or use manual mode.');
+          return;
+        }
+
+        // Phase 3: Finalize (run Claude + snapping)
+        setAnalysisStep('finalizing');
+        console.log('OmniParser ready, finalizing...');
+        
+        const finalResult = await Promise.race([
+          supabase.functions.invoke('auto-slice-email', {
+            body: { 
+              action: 'finalize', 
+              predictionId: startResponse.predictionId,
+              imageDataUrl 
+            }
+          }),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Finalize request timed out')), 60000) // 60s for Claude
+          )
+        ]) as { data: AutoSliceResponse | null; error: Error | null };
+
+        if (finalResult.error) {
+          throw new Error(`Finalize failed: ${finalResult.error.message}`);
+        }
+
+        const finalResponse = finalResult.data as AutoSliceResponse;
+        
+        if (!finalResponse.success) {
+          toast.error(finalResponse.error || 'Finalization failed');
+          return;
+        }
+
+        applyAutoSliceResults(finalResponse);
       }
-
-      setSlicePositions(newPositions);
-      
-      // Set first region columns (always 1 for vertical-only slicing)
-      setFirstRegionColumns(1);
-
-      const elementCount = response.metadata.omniParserElementCount;
-      const timeMs = response.metadata.processingTimeMs;
-      toast.success(`Detected ${response.slices.length} sections from ${elementCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
     } catch (error) {
       console.error('Auto-slice error:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Analysis failed: ${message}`);
     } finally {
-      // Always clean up timers and reset state
-      if (progressTimer) clearTimeout(progressTimer);
-      if (finalizeTimer) clearTimeout(finalizeTimer);
       setIsAnalyzing(false);
       setAnalysisStep('idle');
     }
+  };
+  
+  // Helper to apply auto-slice results to state
+  const applyAutoSliceResults = (response: AutoSliceResponse) => {
+    setAutoSliceResponse(response);
+
+    // Convert auto-detected slices to SlicePosition format
+    const newPositions: SlicePosition[] = [];
+    
+    for (let i = 0; i < response.slices.length - 1; i++) {
+      const currentSlice = response.slices[i];
+      const nextSlice = response.slices[i + 1];
+      
+      newPositions.push({
+        position: currentSlice.yEndPercent,
+        type: 'image' as SliceType,
+        columns: 1 as 1 | 2 | 3 | 4,
+        sectionType: nextSlice.type,
+        label: nextSlice.label,
+        clickable: nextSlice.clickable
+      });
+    }
+
+    setSlicePositions(newPositions);
+    setFirstRegionColumns(1);
+
+    const elementCount = response.metadata.omniParserElementCount;
+    const timeMs = response.metadata.processingTimeMs;
+    toast.success(`Detected ${response.slices.length} sections from ${elementCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
   };
 
   const handleProcess = () => {
@@ -355,9 +433,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           {isAnalyzing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  {analysisStep === 'detecting' && 'Detecting elements...'}
-                  {analysisStep === 'analyzing' && 'Analyzing layout...'}
-                  {analysisStep === 'finalizing' && 'Finalizing slices...'}
+                  {analysisStep === 'detecting' && 'Starting analysis...'}
+                  {analysisStep === 'analyzing' && 'Detecting elements...'}
+                  {analysisStep === 'finalizing' && 'Waiting for model...'}
                 </>
               ) : (
                 <>

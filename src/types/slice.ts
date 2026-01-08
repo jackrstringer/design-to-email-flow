@@ -51,6 +51,9 @@ export interface AutoSliceResponse {
     processingTimeMs: number;
   };
   error?: string;
+  // Polling support
+  status?: 'processing' | 'ready' | 'failed';
+  predictionId?: string;
 }
 
 // Legacy types (kept for backward compatibility during transition)
