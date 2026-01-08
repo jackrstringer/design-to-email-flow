@@ -29,3 +29,20 @@ export interface SliceAnalysis {
   linkVerified?: boolean; // Was this link verified via web search?
   linkWarning?: string; // Warning if unverified or external
 }
+
+// Automatic slicing types
+export type AutoSectionType = 'header' | 'hero' | 'product_grid' | 'cta' | 'text_block' | 'divider' | 'footer' | 'unknown';
+
+export interface AutoDetectedSection {
+  type: AutoSectionType;
+  columns: 1 | 2 | 3 | 4;
+  description: string;
+  gutterPositions?: number[]; // X-percentages for column splits (from CV)
+}
+
+export interface AutoSliceResult {
+  slicePositions: number[];      // Y-percentages
+  sections: AutoDetectedSection[];
+  edgeCandidatesCount: number;
+  confidence: number;
+}

@@ -4,15 +4,19 @@ import { FooterCutoffHandle } from './FooterCutoffHandle';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut, Columns2, Columns3, Square, LayoutGrid } from 'lucide-react';
+import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut, Columns2, Columns3, Square, LayoutGrid, Wand2, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { SliceType } from '@/types/slice';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import type { SliceType, AutoSliceResult, AutoDetectedSection } from '@/types/slice';
 import type { ColumnConfig } from '@/lib/imageSlicing';
 
 interface SlicePosition {
   position: number;
   type: SliceType;
   columns: 1 | 2 | 3 | 4;
+  sectionType?: AutoDetectedSection['type'];
+  description?: string;
 }
 
 interface SliceEditorProps {
@@ -28,6 +32,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const [containerHeight, setContainerHeight] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(35); // Default 35% zoom
   const [activeColumnPopover, setActiveColumnPopover] = useState<number | null>(null);
+  const [sliceMode, setSliceMode] = useState<'manual' | 'automatic'>('manual');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [autoSliceResult, setAutoSliceResult] = useState<AutoSliceResult | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -71,7 +78,8 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   }, []);
 
   const handleImageClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current || isProcessing) return;
+    // Only allow click-to-add in manual mode
+    if (!containerRef.current || isProcessing || sliceMode === 'automatic') return;
     
     const rect = containerRef.current.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
@@ -85,7 +93,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       [...prev, { position: percentage, type: 'image' as SliceType, columns: 1 as const }]
         .sort((a, b) => a.position - b.position)
     );
-  }, [slicePositions, isProcessing, footerCutoff]);
+  }, [slicePositions, isProcessing, footerCutoff, sliceMode]);
 
   const updatePosition = useCallback((index: number, newPosition: number) => {
     setSlicePositions(prev => {
@@ -153,7 +161,51 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setSlicePositions([]);
     setFooterCutoff(100);
     setFirstRegionColumns(1);
+    setAutoSliceResult(null);
   }, []);
+
+  // Automatic slice detection using CV + LLM hybrid approach
+  const handleAutoAnalyze = async () => {
+    setIsAnalyzing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-slice-email', {
+        body: { imageDataUrl }
+      });
+
+      if (error) throw error;
+
+      const result = data as AutoSliceResult;
+      setAutoSliceResult(result);
+
+      // Convert auto-detected slices to SlicePosition format
+      const newPositions: SlicePosition[] = [];
+      
+      for (let i = 0; i < result.slicePositions.length; i++) {
+        const section = result.sections[i + 1]; // Section after this slice line
+        newPositions.push({
+          position: result.slicePositions[i],
+          type: 'image' as SliceType,
+          columns: section?.columns || 1,
+          sectionType: section?.type,
+          description: section?.description
+        });
+      }
+
+      setSlicePositions(newPositions);
+      
+      // Set first region columns from first section
+      if (result.sections.length > 0) {
+        setFirstRegionColumns(result.sections[0].columns);
+      }
+
+      toast.success(`Detected ${result.sections.length} sections (${(result.confidence * 100).toFixed(0)}% confidence)`);
+    } catch (error) {
+      console.error('Auto-slice error:', error);
+      toast.error('Failed to analyze image. Try manual mode.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleProcess = () => {
     // Filter out any slice positions that fall at or below the footer cutoff
@@ -210,17 +262,94 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 overflow-hidden">
       {/* Compact header */}
       <div className="flex items-center justify-between pb-3 border-b border-border mb-3 shrink-0">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Define Slice Points</h3>
-          <p className="text-sm text-muted-foreground">
-            Click to add slice lines. Click region badge to set columns.
-          </p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Define Slice Points</h3>
+            <p className="text-sm text-muted-foreground">
+              {sliceMode === 'manual' 
+                ? 'Click to add slice lines. Click region badge to set columns.'
+                : 'AI-detected slices. Adjust as needed.'}
+            </p>
+          </div>
+          
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+            <button
+              onClick={() => {
+                setSliceMode('manual');
+                if (autoSliceResult) {
+                  // Keep the slices when switching to manual
+                }
+              }}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                sliceMode === 'manual'
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Scissors className="w-4 h-4" />
+              Manual
+            </button>
+            <button
+              onClick={() => setSliceMode('automatic')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                sliceMode === 'automatic'
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Wand2 className="w-4 h-4" />
+              Automatic
+            </button>
+          </div>
+
+          {/* Auto-analyze button (only in automatic mode) */}
+          {sliceMode === 'automatic' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAutoAnalyze}
+              disabled={isAnalyzing || isProcessing}
+              className="gap-2"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4" />
+                  Analyze & Detect
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Confidence indicator */}
+          {autoSliceResult && sliceMode === 'automatic' && (
+            <div className={cn(
+              "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium",
+              autoSliceResult.confidence >= 0.7 
+                ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                : autoSliceResult.confidence >= 0.5
+                  ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400"
+                  : "bg-red-500/10 text-red-600 dark:text-red-400"
+            )}>
+              {autoSliceResult.confidence < 0.7 && (
+                <AlertTriangle className="w-3 h-3" />
+              )}
+              {(autoSliceResult.confidence * 100).toFixed(0)}% confidence
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={isProcessing}>
+          <Button variant="outline" onClick={onCancel} disabled={isProcessing || isAnalyzing}>
             Cancel
           </Button>
-          <Button onClick={handleProcess} disabled={isProcessing}>
+          <Button onClick={handleProcess} disabled={isProcessing || isAnalyzing}>
             {isProcessing ? (
               <>Processing...</>
             ) : (

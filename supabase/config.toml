@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.scrape-klaviyo-copy]
 verify_jwt = false
+
+[functions.auto-slice-email]
+verify_jwt = false
