@@ -28,7 +28,21 @@ export async function resizeImageForAI(
       
       // Check if resize is needed
       if (naturalWidth <= maxDimension && naturalHeight <= maxDimension) {
-        resolve(imageDataUrl); // Return original if within limits
+        // Still convert to PNG if not already (required for auto-slice)
+        if (imageDataUrl.startsWith('data:image/png')) {
+          resolve(imageDataUrl);
+        } else {
+          const canvas = document.createElement('canvas');
+          canvas.width = naturalWidth;
+          canvas.height = naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        }
         return;
       }
       
@@ -66,7 +80,7 @@ export async function resizeImageForAI(
       }
       
       ctx.drawImage(img, 0, 0, newWidth, newHeight);
-      resolve(canvas.toDataURL('image/jpeg', 0.85)); // Use JPEG for smaller size
+      resolve(canvas.toDataURL('image/png')); // PNG required for auto-slice
     };
     
     img.onerror = () => reject(new Error('Failed to load image for resizing'));
