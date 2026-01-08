@@ -4,19 +4,20 @@ import { FooterCutoffHandle } from './FooterCutoffHandle';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut, Columns2, Columns3, Square, LayoutGrid, Wand2, Loader2, AlertTriangle } from 'lucide-react';
+import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut, Columns2, Columns3, Square, LayoutGrid, Wand2, Loader2, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import type { SliceType, AutoSliceResult, AutoDetectedSection } from '@/types/slice';
+import type { SliceType, AutoSliceResponse, AutoDetectedSlice } from '@/types/slice';
 import type { ColumnConfig } from '@/lib/imageSlicing';
 
 interface SlicePosition {
   position: number;
   type: SliceType;
   columns: 1 | 2 | 3 | 4;
-  sectionType?: AutoDetectedSection['type'];
-  description?: string;
+  sectionType?: string;
+  label?: string;
+  clickable?: boolean;
 }
 
 interface SliceEditorProps {
@@ -34,7 +35,8 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const [activeColumnPopover, setActiveColumnPopover] = useState<number | null>(null);
   const [sliceMode, setSliceMode] = useState<'manual' | 'automatic'>('manual');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [autoSliceResult, setAutoSliceResult] = useState<AutoSliceResult | null>(null);
+  const [analysisStep, setAnalysisStep] = useState<'idle' | 'detecting' | 'analyzing' | 'finalizing'>('idle');
+  const [autoSliceResponse, setAutoSliceResponse] = useState<AutoSliceResponse | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -161,49 +163,73 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setSlicePositions([]);
     setFooterCutoff(100);
     setFirstRegionColumns(1);
-    setAutoSliceResult(null);
+    setAutoSliceResponse(null);
+    setAnalysisStep('idle');
   }, []);
 
-  // Automatic slice detection using CV + LLM hybrid approach
+  // Automatic slice detection using Grounding DINO + Claude Opus 4.5
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
+    setAnalysisStep('detecting');
+    
     try {
+      // Simulate progress through steps (actual work happens server-side)
+      const progressTimer = setTimeout(() => setAnalysisStep('analyzing'), 3000);
+      const finalizeTimer = setTimeout(() => setAnalysisStep('finalizing'), 8000);
+      
       const { data, error } = await supabase.functions.invoke('auto-slice-email', {
         body: { imageDataUrl }
       });
 
+      clearTimeout(progressTimer);
+      clearTimeout(finalizeTimer);
+
       if (error) throw error;
 
-      const result = data as AutoSliceResult;
-      setAutoSliceResult(result);
+      const response = data as AutoSliceResponse;
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Auto-slice failed');
+      }
+      
+      setAutoSliceResponse(response);
 
       // Convert auto-detected slices to SlicePosition format
+      // We need cut points between slices, not the slices themselves
       const newPositions: SlicePosition[] = [];
       
-      for (let i = 0; i < result.slicePositions.length; i++) {
-        const section = result.sections[i + 1]; // Section after this slice line
+      for (let i = 0; i < response.slices.length - 1; i++) {
+        const currentSlice = response.slices[i];
+        const nextSlice = response.slices[i + 1];
+        
+        // The cut point is at the end of the current slice (same as start of next)
         newPositions.push({
-          position: result.slicePositions[i],
+          position: currentSlice.yEndPercent,
           type: 'image' as SliceType,
-          columns: section?.columns || 1,
-          sectionType: section?.type,
-          description: section?.description
+          columns: (nextSlice.columns || 1) as 1 | 2 | 3 | 4,
+          sectionType: nextSlice.type,
+          label: nextSlice.label,
+          clickable: nextSlice.clickable
         });
       }
 
       setSlicePositions(newPositions);
       
-      // Set first region columns from first section
-      if (result.sections.length > 0) {
-        setFirstRegionColumns(result.sections[0].columns);
+      // Set first region columns from first slice
+      if (response.slices.length > 0) {
+        const firstCols = response.slices[0].columns;
+        setFirstRegionColumns((firstCols >= 1 && firstCols <= 4 ? firstCols : 1) as 1 | 2 | 3 | 4);
       }
 
-      toast.success(`Detected ${result.sections.length} sections (${(result.confidence * 100).toFixed(0)}% confidence)`);
+      const boxCount = response.metadata.groundingDinoBoxCount;
+      const timeMs = response.metadata.processingTimeMs;
+      toast.success(`Detected ${response.slices.length} sections from ${boxCount} elements (${(timeMs / 1000).toFixed(1)}s)`);
     } catch (error) {
       console.error('Auto-slice error:', error);
       toast.error('Failed to analyze image. Try manual mode.');
     } finally {
       setIsAnalyzing(false);
+      setAnalysisStep('idle');
     }
   };
 
@@ -277,9 +303,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
             <button
               onClick={() => {
                 setSliceMode('manual');
-                if (autoSliceResult) {
-                  // Keep the slices when switching to manual
-                }
+                // Keep the slices when switching to manual
               }}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
@@ -317,7 +341,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
               {isAnalyzing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Analyzing...
+                  {analysisStep === 'detecting' && 'Detecting sections...'}
+                  {analysisStep === 'analyzing' && 'Analyzing layout...'}
+                  {analysisStep === 'finalizing' && 'Finalizing slices...'}
                 </>
               ) : (
                 <>
@@ -328,20 +354,11 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
             </Button>
           )}
 
-          {/* Confidence indicator */}
-          {autoSliceResult && sliceMode === 'automatic' && (
-            <div className={cn(
-              "flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium",
-              autoSliceResult.confidence >= 0.7 
-                ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                : autoSliceResult.confidence >= 0.5
-                  ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400"
-                  : "bg-red-500/10 text-red-600 dark:text-red-400"
-            )}>
-              {autoSliceResult.confidence < 0.7 && (
-                <AlertTriangle className="w-3 h-3" />
-              )}
-              {(autoSliceResult.confidence * 100).toFixed(0)}% confidence
+          {/* Results indicator */}
+          {autoSliceResponse && sliceMode === 'automatic' && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
+              <Check className="w-3 h-3" />
+              {autoSliceResponse.slices.length} sections • {autoSliceResponse.metadata.groundingDinoBoxCount} elements detected
             </div>
           )}
         </div>
