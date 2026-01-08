@@ -219,7 +219,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
         newPositions.push({
           position: currentSlice.yEndPercent,
           type: 'image' as SliceType,
-          columns: (nextSlice.columns || 1) as 1 | 2 | 3 | 4,
+          columns: 1 as 1 | 2 | 3 | 4, // Vertical-only slicing, always 1 column
           sectionType: nextSlice.type,
           label: nextSlice.label,
           clickable: nextSlice.clickable
@@ -228,11 +228,8 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
 
       setSlicePositions(newPositions);
       
-      // Set first region columns from first slice
-      if (response.slices.length > 0) {
-        const firstCols = response.slices[0].columns;
-        setFirstRegionColumns((firstCols >= 1 && firstCols <= 4 ? firstCols : 1) as 1 | 2 | 3 | 4);
-      }
+      // Set first region columns (always 1 for vertical-only slicing)
+      setFirstRegionColumns(1);
 
       const elementCount = response.metadata.omniParserElementCount;
       const timeMs = response.metadata.processingTimeMs;
