@@ -167,75 +167,24 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setAnalysisStep('idle');
   }, []);
 
-  // Constants for auto-slice processing
-  const RULER_WIDTH = 50;
+  // Constants for auto-slice processing - ruler image is 29px wide
+  const RULER_WIDTH = 29;
 
-  // Create a ruler canvas that scales to any height
-  // The ruler goes from 0 at top to 200 at bottom
-  const createRulerCanvas = (height: number): HTMLCanvasElement => {
-    const canvas = document.createElement('canvas');
-    canvas.width = RULER_WIDTH;
-    canvas.height = height;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Could not get canvas context');
-    
-    // White background
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, RULER_WIDTH, height);
-    
-    // Draw ruler markings (0 to 200)
-    ctx.fillStyle = '#000000';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    
-    // Scale font based on height for readability
-    const fontSize = Math.max(10, Math.min(14, height / 150));
-    ctx.font = `bold ${fontSize}px Arial`;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'right';
-    
-    for (let mark = 0; mark <= 200; mark++) {
-      const y = (mark / 200) * height;
-      
-      const isMajor = mark % 10 === 0;   // 0, 10, 20... 200
-      const isMinor = mark % 5 === 0;    // 5, 15, 25...
-      
-      let tickLength = 3;
-      if (isMajor) tickLength = RULER_WIDTH - 4;
-      else if (isMinor) tickLength = 15;
-      
-      // Draw tick from right edge
-      ctx.beginPath();
-      ctx.moveTo(RULER_WIDTH - tickLength, y);
-      ctx.lineTo(RULER_WIDTH, y);
-      ctx.stroke();
-      
-      // Draw number for major ticks
-      if (isMajor) {
-        ctx.fillText(mark.toString(), RULER_WIDTH - tickLength - 2, y);
-      }
-    }
-    
-    return canvas;
-  };
-
-  // Attach ruler to left side of image
-  const addRulerToImage = async (dataUrl: string): Promise<string> => {
+  // Attach static ruler image to left side of email image
+  const addRulerToImage = async (emailDataUrl: string): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const img = new window.Image();
-      img.crossOrigin = 'anonymous';
+      const emailImg = new window.Image();
+      const rulerImg = new window.Image();
       
-      img.onload = () => {
-        const { naturalWidth: width, naturalHeight: height } = img;
+      let emailLoaded = false;
+      let rulerLoaded = false;
+      
+      const tryComposite = () => {
+        if (!emailLoaded || !rulerLoaded) return;
         
-        // Create ruler that matches image height exactly
-        const rulerCanvas = createRulerCanvas(height);
-        
-        // Create composite canvas
         const canvas = document.createElement('canvas');
-        canvas.width = width + RULER_WIDTH;
-        canvas.height = height;
+        canvas.width = emailImg.naturalWidth + RULER_WIDTH;
+        canvas.height = emailImg.naturalHeight;
         
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -243,18 +192,23 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           return;
         }
         
-        // Draw ruler on left
-        ctx.drawImage(rulerCanvas, 0, 0);
+        // Draw ruler (scaled to match email height)
+        ctx.drawImage(rulerImg, 0, 0, RULER_WIDTH, emailImg.naturalHeight);
         
-        // Draw email image on right
-        ctx.drawImage(img, RULER_WIDTH, 0);
+        // Draw email to the right
+        ctx.drawImage(emailImg, RULER_WIDTH, 0);
         
-        // Export as PNG
         resolve(canvas.toDataURL('image/png'));
       };
       
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = dataUrl;
+      emailImg.onload = () => { emailLoaded = true; tryComposite(); };
+      rulerImg.onload = () => { rulerLoaded = true; tryComposite(); };
+      emailImg.onerror = () => reject(new Error('Failed to load email image'));
+      rulerImg.onerror = () => reject(new Error('Failed to load ruler image'));
+      
+      emailImg.crossOrigin = 'anonymous';
+      emailImg.src = emailDataUrl;
+      rulerImg.src = '/ruler.png'; // Load from public folder
     });
   };
 
