@@ -900,7 +900,7 @@ Before returning your response, verify:
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 4096,
         messages: [{
           role: "user",
