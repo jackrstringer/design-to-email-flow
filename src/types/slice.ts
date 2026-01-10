@@ -78,6 +78,7 @@ export interface AutoSliceV2Response {
     paragraphCount: number;
     objectCount: number;
     logoCount: number;
+    edgeCount?: number;
     claudeSections?: { name: string; yTop: number; yBottom: number; hasCTA: boolean; ctaText: string | null }[];
     scaleFactor?: number;
     originalDimensions?: { width: number; height: number };

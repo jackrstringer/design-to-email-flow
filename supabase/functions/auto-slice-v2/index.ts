@@ -38,6 +38,13 @@ interface DetectedLogo {
   xRight: number;
 }
 
+interface HorizontalEdge {
+  y: number;
+  strength: number; // 0-1, how dramatic the color change is
+  colorAbove: { r: number; g: number; b: number };
+  colorBelow: { r: number; g: number; b: number };
+}
+
 interface SliceOutput {
   yTop: number;
   yBottom: number;
@@ -51,6 +58,7 @@ interface RawVisionData {
   paragraphs: Paragraph[];
   objects: DetectedObject[];
   logos: DetectedLogo[];
+  edges: HorizontalEdge[];
   imageWidth: number;
   imageHeight: number;
 }
@@ -82,6 +90,7 @@ interface AutoSliceV2Response {
     paragraphCount: number;
     objectCount: number;
     logoCount: number;
+    edgeCount?: number;
     claudeSections?: { name: string; yTop: number; yBottom: number; hasCTA: boolean; ctaText: string | null }[];
     scaleFactor?: number;
     originalDimensions?: { width: number; height: number };
@@ -291,6 +300,84 @@ async function detectLogos(
 }
 
 // ============================================================================
+// LAYER 4: HORIZONTAL EDGE DETECTION (Data Gathering Only)
+// ============================================================================
+
+function getRowAverageColor(image: any, y: number): { r: number; g: number; b: number } {
+  let r = 0, g = 0, b = 0;
+  
+  for (let x = 1; x <= image.width; x++) {
+    const pixel = image.getPixelAt(x, y + 1); // ImageScript uses 1-indexed
+    r += (pixel >> 24) & 0xFF;
+    g += (pixel >> 16) & 0xFF;
+    b += (pixel >> 8) & 0xFF;
+  }
+  
+  return {
+    r: Math.round(r / image.width),
+    g: Math.round(g / image.width),
+    b: Math.round(b / image.width)
+  };
+}
+
+function colorDistance(c1: { r: number; g: number; b: number }, c2: { r: number; g: number; b: number }): number {
+  return Math.sqrt(
+    Math.pow(c1.r - c2.r, 2) +
+    Math.pow(c1.g - c2.g, 2) +
+    Math.pow(c1.b - c2.b, 2)
+  );
+}
+
+async function detectHorizontalEdges(
+  imageBase64: string,
+  imageWidth: number,
+  imageHeight: number
+): Promise<HorizontalEdge[]> {
+  console.log("Layer 4: Detecting horizontal color edges...");
+  
+  try {
+    // Decode base64 to Uint8Array
+    const binaryStr = atob(imageBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    
+    const { Image } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
+    const image = await Image.decode(bytes);
+    
+    const edges: HorizontalEdge[] = [];
+    let previousRowAvg = getRowAverageColor(image, 0);
+    
+    for (let y = 1; y < image.height; y++) {
+      const currentRowAvg = getRowAverageColor(image, y);
+      const colorDiff = colorDistance(previousRowAvg, currentRowAvg);
+      
+      // Only record significant edges (threshold ~35)
+      if (colorDiff > 35) {
+        edges.push({
+          y: y,
+          strength: Math.min(colorDiff / 100, 1),
+          colorAbove: previousRowAvg,
+          colorBelow: currentRowAvg
+        });
+      }
+      
+      previousRowAvg = currentRowAvg;
+    }
+    
+    // Filter to keep only strong edges (reduce noise)
+    const filtered = edges.filter(e => e.strength > 0.3).sort((a, b) => a.y - b.y);
+    console.log(`  → Found ${filtered.length} significant horizontal edges`);
+    return filtered;
+    
+  } catch (error) {
+    console.error("Edge detection failed:", error);
+    return [];
+  }
+}
+
+// ============================================================================
 // UTILITY: IMAGE DIMENSION EXTRACTION
 // ============================================================================
 
@@ -460,6 +547,10 @@ function scaleRawData(rawData: RawVisionData, scaleFactor: number): RawVisionDat
       xLeft: l.xLeft * scaleFactor,
       xRight: l.xRight * scaleFactor
     })),
+    edges: rawData.edges.map(e => ({
+      ...e,
+      y: e.y * scaleFactor
+    })),
     imageWidth: rawData.imageWidth * scaleFactor,
     imageHeight: rawData.imageHeight * scaleFactor
   };
@@ -526,6 +617,14 @@ async function askClaude(
     xRight: Math.round(l.xRight)
   }));
 
+  // Format edge data for Claude
+  const edgeData = rawData.edges.map(e => ({
+    y: Math.round(e.y),
+    strength: Math.round(e.strength * 100) / 100,
+    colorAbove: e.colorAbove,
+    colorBelow: e.colorBelow
+  }));
+
   const prompt = `You are analyzing an email design screenshot to slice it into sections for use in Klaviyo email templates.
 
 ## CRITICAL CONTEXT: Why We're Slicing
@@ -547,6 +646,15 @@ ${JSON.stringify(objectData, null, 2)}
 
 ## Detected Logos
 ${JSON.stringify(logoData, null, 2)}
+
+## Detected Horizontal Edges (Color Transitions)
+${JSON.stringify(edgeData, null, 2)}
+
+Each edge represents a Y coordinate where a significant horizontal color change occurs:
+- "y": the pixel Y coordinate of the edge
+- "strength": how dramatic the color change is (0-1)
+- "colorAbove": average RGB color of the row above the edge
+- "colorBelow": average RGB color of the row below the edge
 
 ---
 
@@ -631,6 +739,30 @@ The footer is the "utility section" at the bottom of the email. It contains navi
 - Just the legal disclaimer
 
 The footer is the entire utility section. Look for where "marketing content" ends and "utility/navigation content" begins.
+
+### FOOTER BOUNDARY POSITIONING - CRITICAL
+
+After you identify the first element of the footer (semantically), you must set footerStartY to the correct VISUAL boundary:
+
+**If there's a hard edge (most common):**
+Look at the "Detected Horizontal Edges" data. Find the edge with the highest Y value that is ABOVE the first footer element (within 150px). Use that edge's Y coordinate as footerStartY.
+
+Example:
+- You identify "OUR PRODUCTS" text at Y=1850 as the first footer element
+- Edges data shows an edge at Y=1820 (strength 0.75)
+- Set footerStartY = 1820 (the edge), NOT 1850 (the text bounding box)
+
+**If there's a soft/gradient boundary (e.g., clouds, fades):**
+Some footers don't have a hard line - they fade in with gradients or decorative elements. In this case:
+- Look at the colorBelow values to identify the footer's main background color
+- Set footerStartY where that background color stabilizes
+- This may mean cutting through decorative gradient elements
+
+**Rules:**
+1. footerStartY should NEVER be at a text bounding box - always at a visual boundary above it
+2. When a hard edge exists above the first footer text (within 150px), USE IT
+3. Maximum lookback: 150px above the first footer element
+4. If no edge found within 150px, use 10-20px above the first footer element's yTop
 
 ---
 
@@ -901,15 +1033,21 @@ serve(async (req) => {
       detectLogos(imageBase64, imageHeight, imageWidth)
     ]);
 
+    // ========== DETECT HORIZONTAL EDGES ON RESIZED IMAGE (matches Claude's coordinate space) ==========
+    const edges = await detectHorizontalEdges(resized.base64, resized.newWidth, resized.newHeight);
+
+    // Build raw data with Vision API results (original coordinates) + edges (resized coordinates)
+    // Note: edges are already in resized coordinate space, will need inverse scaling applied
     const rawData: RawVisionData = {
       paragraphs: ocrResult.paragraphs,
       objects,
       logos,
+      edges: edges.map(e => ({ ...e, y: e.y / scaleFactor })), // Convert edges to original space
       imageWidth,
       imageHeight
     };
 
-    console.log(`Raw data gathered: ${rawData.paragraphs.length} paragraphs, ${rawData.objects.length} objects, ${rawData.logos.length} logos`);
+    console.log(`Raw data gathered: ${rawData.paragraphs.length} paragraphs, ${rawData.objects.length} objects, ${rawData.logos.length} logos, ${rawData.edges.length} edges`);
 
     // ========== SCALE RAW DATA TO MATCH RESIZED IMAGE (if scaled) ==========
     const scaledRawData = scaleRawData(rawData, scaleFactor);
@@ -976,6 +1114,7 @@ serve(async (req) => {
         paragraphCount: rawData.paragraphs.length,
         objectCount: rawData.objects.length,
         logoCount: rawData.logos.length,
+        edgeCount: rawData.edges.length,
         claudeSections: originalSpaceDecision.sections,
         scaleFactor,
         originalDimensions: { width: imageWidth, height: imageHeight },
