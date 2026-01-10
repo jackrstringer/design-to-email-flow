@@ -303,27 +303,20 @@ async function detectLogos(
 // LAYER 4: HORIZONTAL EDGE DETECTION (Data Gathering Only)
 // ============================================================================
 
-function getRowAverageColorSampled(
-  image: any, 
-  y: number,
-  sampleRate: number = 1
-): { r: number; g: number; b: number } {
+function getRowAverageColor(image: any, y: number): { r: number; g: number; b: number } {
   let r = 0, g = 0, b = 0;
-  let sampleCount = 0;
   
-  // Sample every Nth pixel instead of every pixel
-  for (let x = 1; x <= image.width; x += sampleRate) {
+  for (let x = 1; x <= image.width; x++) {
     const pixel = image.getPixelAt(x, y + 1); // ImageScript uses 1-indexed
     r += (pixel >> 24) & 0xFF;
     g += (pixel >> 16) & 0xFF;
     b += (pixel >> 8) & 0xFF;
-    sampleCount++;
   }
   
   return {
-    r: Math.round(r / sampleCount),
-    g: Math.round(g / sampleCount),
-    b: Math.round(b / sampleCount)
+    r: Math.round(r / image.width),
+    g: Math.round(g / image.width),
+    b: Math.round(b / image.width)
   };
 }
 
@@ -354,19 +347,10 @@ async function detectHorizontalEdges(
     const image = await Image.decode(bytes);
     
     const edges: HorizontalEdge[] = [];
+    let previousRowAvg = getRowAverageColor(image, 0);
     
-    // OPTIMIZATION: Sample every 5th row instead of every row
-    // For 7900 rows, this reduces to 1580 iterations
-    const ROW_SAMPLE_RATE = 5;
-    
-    // OPTIMIZATION: Sample every 10th pixel across each row
-    // For 1137px width, this reduces to ~114 samples per row
-    const PIXEL_SAMPLE_RATE = 10;
-    
-    let previousRowAvg = getRowAverageColorSampled(image, 0, PIXEL_SAMPLE_RATE);
-    
-    for (let y = ROW_SAMPLE_RATE; y < image.height; y += ROW_SAMPLE_RATE) {
-      const currentRowAvg = getRowAverageColorSampled(image, y, PIXEL_SAMPLE_RATE);
+    for (let y = 1; y < image.height; y++) {
+      const currentRowAvg = getRowAverageColor(image, y);
       const colorDiff = colorDistance(previousRowAvg, currentRowAvg);
       
       // Only record significant edges (threshold ~35)
@@ -382,17 +366,10 @@ async function detectHorizontalEdges(
       previousRowAvg = currentRowAvg;
     }
     
-    // Filter to keep only strong edges (increase threshold from 0.3 to 0.5)
-    const strongEdges = edges.filter(e => e.strength > 0.5);
-    
-    // Sort by strength descending, take top 30, then re-sort by Y for Claude
-    const topEdges = strongEdges
-      .sort((a, b) => b.strength - a.strength)
-      .slice(0, 30)
-      .sort((a, b) => a.y - b.y);
-    
-    console.log(`  → Found ${topEdges.length} significant horizontal edges (from ${edges.length} raw, top 30 by strength)`);
-    return topEdges;
+    // Filter to keep only strong edges (reduce noise)
+    const filtered = edges.filter(e => e.strength > 0.3).sort((a, b) => a.y - b.y);
+    console.log(`  → Found ${filtered.length} significant horizontal edges`);
+    return filtered;
     
   } catch (error) {
     console.error("Edge detection failed:", error);
@@ -900,7 +877,7 @@ Before returning your response, verify:
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-sonnet-4-5",
         max_tokens: 4096,
         messages: [{
           role: "user",
@@ -981,7 +958,7 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { imageDataUrl, precomputedEdges } = await req.json();
+    const { imageDataUrl } = await req.json();
     
     if (!imageDataUrl) {
       return new Response(JSON.stringify({
@@ -1056,39 +1033,11 @@ serve(async (req) => {
       detectLogos(imageBase64, imageHeight, imageWidth)
     ]);
 
-    // ========== USE PRECOMPUTED EDGES FROM FRONTEND OR DETECT ON BACKEND ==========
-    let edges: HorizontalEdge[];
-    
-    if (precomputedEdges && Array.isArray(precomputedEdges) && precomputedEdges.length > 0) {
-      // Validate and sanitize frontend edges
-      console.log(`Using ${precomputedEdges.length} precomputed edges from frontend`);
-      edges = precomputedEdges
-        .filter((e: any) => typeof e.y === 'number' && typeof e.strength === 'number')
-        .slice(0, 60) // Limit to prevent abuse
-        .map((e: any) => ({
-          y: e.y,
-          strength: Math.min(Math.max(e.strength, 0), 1),
-          colorAbove: { r: 128, g: 128, b: 128 }, // Placeholder - Claude uses y and strength primarily
-          colorBelow: { r: 128, g: 128, b: 128 }
-        }));
-      
-      // Scale precomputed edges to match Claude's resized image coordinate space
-      if (scaleFactor < 1) {
-        edges = edges.map(e => ({
-          ...e,
-          y: Math.round(e.y * scaleFactor)
-        }));
-        console.log(`Scaled precomputed edges by ${scaleFactor.toFixed(4)} to match Claude's image`);
-      }
-    } else {
-      // Fallback: compute edges on backend (CPU-heavy, may timeout on large images)
-      console.log('No precomputed edges, running backend edge detection (may timeout)...');
-      const backendEdges = await detectHorizontalEdges(resized.base64, resized.newWidth, resized.newHeight);
-      edges = backendEdges;
-    }
+    // ========== DETECT HORIZONTAL EDGES ON RESIZED IMAGE (matches Claude's coordinate space) ==========
+    const edges = await detectHorizontalEdges(resized.base64, resized.newWidth, resized.newHeight);
 
-    // Build raw data with Vision API results (original coordinates) + edges (Claude's coordinate space)
-    // Note: edges are now in Claude's coordinate space, need to convert to original for rawData
+    // Build raw data with Vision API results (original coordinates) + edges (resized coordinates)
+    // Note: edges are already in resized coordinate space, will need inverse scaling applied
     const rawData: RawVisionData = {
       paragraphs: ocrResult.paragraphs,
       objects,
