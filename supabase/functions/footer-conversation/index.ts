@@ -111,8 +111,9 @@ serve(async (req) => {
     const systemPrompt = `You are an expert email HTML developer. You create pixel-perfect email footers using table-based layouts for maximum email client compatibility.
 
 CRITICAL RULES:
+- **FOOTER WIDTH MUST BE EXACTLY 600px** - use width="600" attribute AND style="width: 600px; max-width: 600px;" on inner table
 - Table-based layout only (no flexbox, no grid)
-- 600px max width, centered
+- The outer wrapper is 100% width, the inner content table is EXACTLY 600px
 - ALL styles must be inline (no <style> tags)
 - Use provided asset URLs directly in img tags - DO NOT INVENT OR GUESS URLs
 - Match designs EXACTLY - colors, spacing, typography, alignment
@@ -120,6 +121,21 @@ CRITICAL RULES:
 - Mobile responsive where possible using max-width
 - EVERY clickable element MUST have the correct href from the link mappings
 - Use ESP placeholders (like {{ unsubscribe_url }}) exactly as provided
+
+MANDATORY STRUCTURE:
+\`\`\`html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
+  <tr>
+    <td align="center">
+      <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 600px; max-width: 600px; background-color: {BG_COLOR};">
+        <!-- All content here -->
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+    </td>
+  </tr>
+</table>
+\`\`\`
 
 ${assetsList ? `AVAILABLE ASSETS (USE THESE EXACT URLs - DO NOT INVENT URLs):
 ${assetsList}
