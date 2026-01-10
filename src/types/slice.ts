@@ -56,7 +56,7 @@ export interface AutoSliceResponse {
   };
 }
 
-// V2 Auto-slice response (OCR + LLM pipeline)
+// V2 Auto-slice response (Multi-layer OCR + Object Detection + Claude pipeline)
 export interface AutoSliceV2Response {
   success: boolean;
   footerStartY: number;
@@ -71,9 +71,11 @@ export interface AutoSliceV2Response {
   error?: string;
   debug?: {
     paragraphCount: number;
+    objectCount: number;
+    logoCount: number;
+    gapCount: number;
     forbiddenBandCount: number;
-    candidateCutCount: number;
-    llmBoundaries?: number[];
+    claudeBoundaries?: number[];
   };
 }
 
