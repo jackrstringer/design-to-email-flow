@@ -69,6 +69,7 @@ export interface AutoSliceV2Response {
     overall: 'high' | 'medium' | 'low';
   };
   error?: string;
+  warning?: string; // When Claude fails but fallback is used
   debug?: {
     paragraphCount: number;
     objectCount: number;
@@ -76,6 +77,9 @@ export interface AutoSliceV2Response {
     gapCount: number;
     forbiddenBandCount: number;
     claudeBoundaries?: number[];
+    scaleFactor?: number;
+    originalDimensions?: { width: number; height: number };
+    claudeImageDimensions?: { width: number; height: number };
   };
 }
 
