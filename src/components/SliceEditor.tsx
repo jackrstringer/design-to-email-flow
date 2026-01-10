@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { SliceType, AutoSliceResponse, AutoDetectedSlice, AutoSliceV2Response } from '@/types/slice';
 import { getImageDimensions } from '@/lib/imageSlicing';
+import { detectHorizontalEdges } from '@/lib/edgeDetection';
 import type { ColumnConfig } from '@/lib/imageSlicing';
 
 interface SlicePosition {
@@ -171,7 +172,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   // V2 Auto-slice using OCR + LLM pipeline
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
-    setAnalysisStep('analyzing');
+    setAnalysisStep('detecting');
 
     try {
       console.log('Starting V2 auto-slice analysis...');
@@ -180,15 +181,22 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       const dimensions = await getImageDimensions(imageDataUrl);
       console.log(`Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
-      // Call the new v2 endpoint with the raw image (no ruler needed)
+      // PHASE B: Compute edges on frontend (browser has unlimited CPU)
+      console.log('Computing edge detection on frontend...');
+      const precomputedEdges = await detectHorizontalEdges(imageDataUrl);
+      console.log(`Detected ${precomputedEdges.length} edges on frontend`);
+      
+      setAnalysisStep('analyzing');
+
+      // Call the v2 endpoint with image AND precomputed edges
       const { data, error } = await supabase.functions.invoke('auto-slice-v2', {
-        body: { imageDataUrl },
+        body: { imageDataUrl, precomputedEdges },
       });
 
       if (error) {
-        // Check for WORKER_LIMIT errors
+        // Check for WORKER_LIMIT errors - improved messaging
         if (error.message?.includes('WORKER_LIMIT') || (error as any).status === 546) {
-          throw new Error('Image too large. Try a shorter email or use manual slicing.');
+          throw new Error('Analysis timed out. Try a shorter email or use manual slicing.');
         }
         throw new Error(error.message);
       }
