@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save, Users, Check, Camera, CameraOff } from 'lucide-react';
+import { ChevronLeft, Rocket, FileText, Link, X, ExternalLink, CheckCircle, Sparkles, PanelLeftClose, PanelLeft, Loader2, Image, Code2, Type, Save, Users, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -14,7 +14,7 @@ import { CampaignPreviewFrame } from './CampaignPreviewFrame';
 import { CampaignChat, ChatMessage } from './CampaignChat';
 import { FooterSelector, BrandFooter } from './FooterSelector';
 import { PLATFORM_SLUGS } from '@/lib/socialIcons';
-import { useScreenCapture } from '@/hooks/useScreenCapture';
+import { useDomCapture } from '@/hooks/useDomCapture';
 
 const BASE_WIDTH = 600;
 
@@ -149,14 +149,8 @@ export function CampaignStudio({
   // Ref for just the comparison panels (reference + preview, excluding chat)
   const comparisonPanelsRef = useRef<HTMLDivElement>(null);
   
-  // Screen capture hook for pixel-perfect screenshots
-  const { 
-    isCapturing, 
-    isCaptureEnabled, 
-    enableCapture, 
-    captureScreenshot, 
-    stopCapture 
-  } = useScreenCapture({ targetRef: comparisonPanelsRef });
+  // DOM capture hook for reliable screenshots (no permission needed)
+  const { isCapturing, captureScreenshot } = useDomCapture({ targetRef: comparisonPanelsRef });
   
   // Claude conversation history - persisted across refinements
   const [claudeConversationHistory, setClaudeConversationHistory] = useState<ConversationMessage[]>(initialConversationHistory);
@@ -454,27 +448,23 @@ export function CampaignStudio({
     }
 
     // Footer mode: Use unified footer-conversation with side-by-side screenshot
-    if (!isCaptureEnabled) {
-      toast.error('Please enable screen capture first to use auto-refine');
-      return;
-    }
-    
+    // No permission needed - DOM capture works immediately
     setIsAutoRefining(true);
     setHasAutoRefined(true);
     
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Capturing your screen for pixel-perfect comparison]' }];
+    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Capturing comparison for pixel-perfect analysis]' }];
     setChatMessages(newMessages);
 
     try {
       // Wait a moment for the preview to fully render
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Capture the side-by-side screenshot using Screen Capture API
-      toast.info('Capturing screen...');
+      // Capture the side-by-side screenshot using DOM capture
+      toast.info('Capturing comparison...');
       const sideBySideScreenshotUrl = await captureScreenshot();
       
       if (!sideBySideScreenshotUrl) {
-        throw new Error('Failed to capture screen - make sure screen capture is enabled');
+        throw new Error('Failed to capture comparison panels');
       }
 
       // Call footer-conversation with refine action - include brand assets for logo context
@@ -525,16 +515,15 @@ export function CampaignStudio({
   };
 
   // Auto-refine on initial load for footer mode (after a short delay for render)
-  // Only triggers if screen capture is already enabled
   useEffect(() => {
-    if (isFooterMode && localFooterHtml && !hasAutoRefined && claudeConversationHistory.length > 0 && isCaptureEnabled) {
+    if (isFooterMode && localFooterHtml && !hasAutoRefined && claudeConversationHistory.length > 0) {
       // Wait for preview to render, then auto-refine
       const timer = setTimeout(() => {
         handleAutoRefine();
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isFooterMode, localFooterHtml, hasAutoRefined, claudeConversationHistory.length, isCaptureEnabled]);
+  }, [isFooterMode, localFooterHtml, hasAutoRefined, claudeConversationHistory.length]);
 
   const scaledWidth = BASE_WIDTH * (zoomLevel / 100);
 
@@ -581,26 +570,12 @@ export function CampaignStudio({
           {isFooterMode ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground/60">Footer Editor</span>
-              {/* Screen capture toggle for pixel-perfect comparison */}
-              <button
-                onClick={isCaptureEnabled ? stopCapture : enableCapture}
-                className={cn(
-                  "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
-                  isCaptureEnabled 
-                    ? "text-green-600 bg-green-50 hover:bg-green-100" 
-                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
-                )}
-                title={isCaptureEnabled ? "Screen capture active - click to stop" : "Enable screen capture for pixel-perfect refinement"}
-              >
-                {isCapturing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : isCaptureEnabled ? (
-                  <Camera className="w-3.5 h-3.5" />
-                ) : (
-                  <CameraOff className="w-3.5 h-3.5" />
-                )}
-                <span>{isCaptureEnabled ? 'Capture On' : 'Enable Capture'}</span>
-              </button>
+              {isCapturing && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Capturing...
+                </span>
+              )}
             </div>
           ) : (
             <>
