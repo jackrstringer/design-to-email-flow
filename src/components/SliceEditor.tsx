@@ -236,9 +236,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
           id: `slice_${i + 1}`,
           yStartPercent: (s.yTop / imageHeight) * 100,
           yEndPercent: (s.yBottom / imageHeight) * 100,
-          type: 'content',
-          label: `Section ${i + 1}`,
-          clickable: true
+          type: s.hasCTA ? 'cta' : 'content',
+          label: s.name || `Section ${i + 1}`,
+          clickable: s.hasCTA
         })),
         metadata: {
           imageWidth: response.imageWidth,
