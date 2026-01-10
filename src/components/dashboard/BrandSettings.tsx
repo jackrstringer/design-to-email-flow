@@ -712,6 +712,24 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       {/* Logos Section */}
       <div className="py-6 border-b border-border/30">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Logos</h2>
+        
+        {/* Missing logo warning */}
+        {(!brand.lightLogoUrl || !brand.darkLogoUrl) && (
+          <div className="flex items-start gap-2 p-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <Image className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800">
+              <p className="font-medium">Missing logo variant</p>
+              <p className="text-amber-700 text-xs mt-0.5">
+                {!brand.lightLogoUrl && !brand.darkLogoUrl 
+                  ? 'Upload both dark and light logo versions for best results'
+                  : !brand.lightLogoUrl 
+                    ? 'Upload a light logo for dark backgrounds (like footers)'
+                    : 'Upload a dark logo for light backgrounds'}
+              </p>
+            </div>
+          </div>
+        )}
+        
         <div className="grid grid-cols-2 gap-6">
           {/* Dark Logo */}
           <div className="space-y-2">
@@ -747,13 +765,13 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                 </div>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center h-24 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors">
+              <label className="flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
                 {uploadingLogo === 'dark' ? (
-                  <span className="text-xs text-muted-foreground">Uploading...</span>
+                  <span className="text-xs text-amber-700">Uploading...</span>
                 ) : (
                   <>
-                    <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                    <span className="text-xs text-muted-foreground">Drop or click to upload</span>
+                    <Upload className="h-5 w-5 text-amber-600 mb-1" />
+                    <span className="text-xs text-amber-700 font-medium">Upload dark logo</span>
                   </>
                 )}
                 <input
@@ -805,13 +823,13 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                 </div>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center h-24 rounded-lg border border-dashed border-border/50 cursor-pointer hover:bg-muted/20 transition-colors bg-zinc-900/50">
+              <label className="flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed border-amber-300 bg-zinc-900 cursor-pointer hover:bg-zinc-800 transition-colors">
                 {uploadingLogo === 'light' ? (
-                  <span className="text-xs text-muted-foreground">Uploading...</span>
+                  <span className="text-xs text-amber-400">Uploading...</span>
                 ) : (
                   <>
-                    <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                    <span className="text-xs text-muted-foreground">Drop or click to upload</span>
+                    <Upload className="h-5 w-5 text-amber-400 mb-1" />
+                    <span className="text-xs text-amber-400 font-medium">Upload light logo</span>
                   </>
                 )}
                 <input

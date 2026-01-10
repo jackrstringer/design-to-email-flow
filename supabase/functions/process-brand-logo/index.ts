@@ -17,16 +17,9 @@ async function sha1(message: string): Promise<string> {
 // Analyze image to determine if it's a "dark" logo (for light backgrounds) or "light" logo (for dark backgrounds)
 async function analyzeLogoBrightness(imageData: Uint8Array): Promise<'dark' | 'light'> {
   // Simple heuristic: sample some pixels and calculate average brightness
-  // This is a basic approach - for PNG with transparency, we look at the non-transparent pixels
   // A "dark" logo has dark pixels (low brightness) - used on light backgrounds
   // A "light" logo has light pixels (high brightness) - used on dark backgrounds
   
-  // For simplicity, we'll use a basic approach:
-  // If the image has more light pixels, it's a "light" logo
-  // If it has more dark pixels, it's a "dark" logo
-  
-  // Since we can't easily decode PNG in Deno without libraries,
-  // we'll use a heuristic based on the raw byte values
   let totalBrightness = 0;
   let sampleCount = 0;
   
@@ -39,7 +32,7 @@ async function analyzeLogoBrightness(imageData: Uint8Array): Promise<'dark' | 'l
   const avgBrightness = sampleCount > 0 ? totalBrightness / sampleCount : 128;
   
   // If average brightness is high, it's likely a light-colored logo
-  // Threshold at 128 (midpoint of 0-255)
+  // Threshold at 140 (slightly above midpoint)
   return avgBrightness > 140 ? 'light' : 'dark';
 }
 
@@ -137,48 +130,49 @@ serve(async (req) => {
     const uploadResult = await uploadResponse.json();
     console.log('Original logo uploaded:', uploadResult.public_id);
 
-    // Step 4: Generate the inverted version URL using Cloudinary transformation
-    // e_negate inverts all colors in the image
     const originalUrl = uploadResult.secure_url;
-    const invertedUrl = originalUrl.replace('/upload/', '/upload/e_negate/');
 
-    // Step 5: Determine which URL is dark logo and which is light
-    let darkLogoUrl: string;
-    let darkLogoPublicId: string;
-    let lightLogoUrl: string;
-    let lightLogoPublicId: string;
+    // Step 4: Determine which URL is dark logo and which is light
+    // IMPORTANT: We no longer generate inverted logos via e_negate as it produces poor results
+    // Instead, we only store the variant we actually have and flag that we need the other
+    let darkLogoUrl: string | null = null;
+    let darkLogoPublicId: string | null = null;
+    let lightLogoUrl: string | null = null;
+    let lightLogoPublicId: string | null = null;
+    let missingVariant: 'dark' | 'light';
 
     if (detectedType === 'dark') {
       // Original is dark logo (for light backgrounds)
-      // Inverted is light logo (for dark backgrounds)
       darkLogoUrl = originalUrl;
       darkLogoPublicId = uploadResult.public_id;
-      lightLogoUrl = invertedUrl;
-      lightLogoPublicId = uploadResult.public_id + '_inverted';
+      missingVariant = 'light';
+      console.log('Stored as dark logo - MISSING light variant (for dark backgrounds)');
     } else {
       // Original is light logo (for dark backgrounds)
-      // Inverted is dark logo (for light backgrounds)
       lightLogoUrl = originalUrl;
       lightLogoPublicId = uploadResult.public_id;
-      darkLogoUrl = invertedUrl;
-      darkLogoPublicId = uploadResult.public_id + '_inverted';
+      missingVariant = 'dark';
+      console.log('Stored as light logo - MISSING dark variant (for light backgrounds)');
     }
 
     console.log('Logo processing complete');
     console.log('Dark logo URL:', darkLogoUrl);
     console.log('Light logo URL:', lightLogoUrl);
+    console.log('Missing variant:', missingVariant);
 
     return new Response(
       JSON.stringify({
         success: true,
         originalUrl,
-        invertedUrl,
         detectedType,
         darkLogoUrl,
         darkLogoPublicId,
         lightLogoUrl,
         lightLogoPublicId,
         originalPublicId: uploadResult.public_id,
+        // New fields to indicate incomplete logo set
+        hasOnlyOneVariant: true,
+        missingVariant,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
