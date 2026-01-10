@@ -456,7 +456,7 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
 // UTILITY: IMAGE RESIZING FOR CLAUDE (Max 8000px per dimension)
 // ============================================================================
 
-const MAX_CLAUDE_DIMENSION = 7900; // Buffer under 8000px limit
+const MAX_CLAUDE_DIMENSION = 4000; // Aggressive resize for faster processing
 
 async function resizeImageForClaude(
   imageBase64: string,
