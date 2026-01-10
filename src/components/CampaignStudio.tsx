@@ -477,7 +477,7 @@ export function CampaignStudio({
         throw new Error('Failed to capture screen - make sure screen capture is enabled');
       }
 
-      // Call footer-conversation with refine action
+      // Call footer-conversation with refine action - include brand assets for logo context
       const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
           action: 'refine',
@@ -485,6 +485,16 @@ export function CampaignStudio({
           sideBySideScreenshotUrl,
           currentHtml: localFooterHtml,
           conversationHistory: claudeConversationHistory,
+          // Pass brand assets so Claude knows which logo URLs to use
+          assets: {
+            ...(brandContext?.lightLogoUrl ? { 
+              logo: brandContext.lightLogoUrl,
+              brand_logo_light: brandContext.lightLogoUrl 
+            } : {}),
+            ...(brandContext?.darkLogoUrl ? { 
+              brand_logo_dark: brandContext.darkLogoUrl 
+            } : {}),
+          },
         }
       });
 

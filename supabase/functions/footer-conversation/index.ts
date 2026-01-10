@@ -159,6 +159,11 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         throw new Error('Current HTML is required for refinement');
       }
 
+      // Build asset hint for logo URLs if available
+      const assetHint = assets && Object.keys(assets).length > 0 
+        ? `\n\nAvailable logo URLs (use exactly as provided):\n${Object.entries(assets).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\nFor dark backgrounds, use the "logo" or "brand_logo_light" URL.`
+        : '';
+
       newUserContent = [
         {
           type: 'image',
@@ -166,33 +171,27 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         },
         {
           type: 'text',
-          text: `This is a REAL SCREENSHOT of the user's screen captured via Screen Capture API.
+          text: `Side-by-side comparison screenshot.
 
-CRITICAL LAYOUT INFORMATION:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LEFT SIDE = REFERENCE DESIGN (what we want to match)
-RIGHT SIDE = CURRENT HTML RENDER (what the code currently produces)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEFT = Reference design (target)
+RIGHT = Current HTML render
 
-The labels at the top confirm: "← REFERENCE (TARGET)" on left, "CURRENT HTML →" on right.
+Make RIGHT look identical to LEFT.
 
-YOUR TASK:
-Look at BOTH sides and compare them pixel-by-pixel. The RIGHT side (current HTML) should look IDENTICAL to the LEFT side (reference).
+Check carefully:
+- Fonts (serif vs sans-serif) - use Georgia for serif, system-ui for sans-serif
+- Spacing (padding, margins, line-height)
+- Separator characters between nav items (• or |)
+- Element sizes and positioning
+- Overall height and compactness
+- Logo size and placement${assetHint}
 
-COMMON ISSUES TO FIX:
-1. If RIGHT is SHORTER/SMALLER than LEFT → INCREASE spacing, padding, font-sizes
-2. If RIGHT is TALLER/LARGER than LEFT → DECREASE spacing, padding, font-sizes  
-3. If colors differ → Match the LEFT side colors exactly
-4. If alignment differs → Match the LEFT side alignment exactly
-
-⚠️ DO NOT SHRINK FURTHER if the RIGHT side is already too small! Look at the heights carefully.
-
-Current HTML that produces the RIGHT side:
+Current HTML:
 \`\`\`html
 ${currentHtml}
 \`\`\`
 
-Return the CORRECTED HTML that will make the RIGHT side match the LEFT side. Return only the HTML code.`
+Return ONLY the corrected HTML.`
         }
       ];
 
