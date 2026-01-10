@@ -10,6 +10,12 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
 
 ## STRICT HTML EMAIL RULES - NEVER VIOLATE
 
+### WIDTH CONSTRAINT (CRITICAL - ALWAYS VERIFY)
+- Inner content table MUST be EXACTLY 600px wide
+- Use width="600" attribute AND style="width: 600px; max-width: 600px;"
+- Outer wrapper table is 100% width (for centering only)
+- If incoming HTML has incorrect width, FIX IT to 600px
+
 ### FORBIDDEN (will break email rendering)
 - NEVER use <div> elements - ALWAYS use <table> and <td>
 - NEVER use CSS margin - Use padding on <td> or spacer rows
@@ -37,13 +43,13 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
 - NEVER render the brand name as text when logo URL is provided
 - If current HTML has text instead of logo image, REPLACE it with <img>
 
-## STRUCTURE TEMPLATE
+## STRUCTURE TEMPLATE (MANDATORY - USE EXACTLY)
 \`\`\`html
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
   <tr>
     <td align="center">
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: {BG};">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 600px; max-width: 600px; background-color: {BG};">
         {CONTENT ROWS}
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
