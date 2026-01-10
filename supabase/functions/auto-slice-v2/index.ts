@@ -74,6 +74,9 @@ interface AutoSliceV2Response {
     objectCount: number;
     logoCount: number;
     claudeSections?: { name: string; yTop: number; yBottom: number }[];
+    scaleFactor?: number;
+    originalDimensions?: { width: number; height: number };
+    claudeImageDimensions?: { width: number; height: number };
   };
 }
 
@@ -331,6 +334,145 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
 }
 
 // ============================================================================
+// UTILITY: IMAGE RESIZING FOR CLAUDE (Max 8000px per dimension)
+// ============================================================================
+
+const MAX_CLAUDE_DIMENSION = 7900; // Buffer under 8000px limit
+
+async function resizeImageForClaude(
+  imageBase64: string,
+  mimeType: string,
+  originalWidth: number,
+  originalHeight: number
+): Promise<{ base64: string; mimeType: string; scaleFactor: number; newWidth: number; newHeight: number }> {
+  
+  const maxDimension = Math.max(originalWidth, originalHeight);
+  
+  // If image fits within limits, return as-is
+  if (maxDimension <= MAX_CLAUDE_DIMENSION) {
+    console.log(`  → Image ${originalWidth}x${originalHeight} fits within Claude limits`);
+    return {
+      base64: imageBase64,
+      mimeType,
+      scaleFactor: 1,
+      newWidth: originalWidth,
+      newHeight: originalHeight
+    };
+  }
+  
+  // Calculate scale factor
+  const scaleFactor = MAX_CLAUDE_DIMENSION / maxDimension;
+  const newWidth = Math.round(originalWidth * scaleFactor);
+  const newHeight = Math.round(originalHeight * scaleFactor);
+  
+  console.log(`  → Resizing image from ${originalWidth}x${originalHeight} to ${newWidth}x${newHeight} (scaleFactor: ${scaleFactor.toFixed(4)})`);
+  
+  // Use canvas-like approach with ImageMagick-style resize via a fetch to a service
+  // Since Deno edge functions don't have native canvas, we'll use Lovable AI's image model
+  // to resize by asking it to output the same image at smaller dimensions
+  
+  // Actually, for pure resizing, we should use a simpler approach
+  // Use the built-in Deno image processing
+  try {
+    // Decode base64 to Uint8Array
+    const binaryStr = atob(imageBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    
+    // Use ImageScript for image resizing (Deno-compatible)
+    const { Image } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
+    
+    const image = await Image.decode(bytes);
+    image.resize(newWidth, newHeight);
+    
+    // Encode back to JPEG (smaller file size for Claude)
+    const resizedBytes = await image.encodeJPEG(85);
+    
+    // Convert to base64
+    let binary = '';
+    const chunkSize = 32768;
+    for (let i = 0; i < resizedBytes.length; i += chunkSize) {
+      const chunk = resizedBytes.subarray(i, Math.min(i + chunkSize, resizedBytes.length));
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    const resizedBase64 = btoa(binary);
+    
+    console.log(`  → Successfully resized image to ${newWidth}x${newHeight}, new base64 length: ${resizedBase64.length}`);
+    
+    return {
+      base64: resizedBase64,
+      mimeType: 'image/jpeg',
+      scaleFactor,
+      newWidth,
+      newHeight
+    };
+    
+  } catch (error) {
+    console.error(`  → Image resize failed: ${error}`);
+    // Fallback: return original and hope for the best
+    // This shouldn't happen, but if it does, the Claude API will return 400
+    return {
+      base64: imageBase64,
+      mimeType,
+      scaleFactor: 1,
+      newWidth: originalWidth,
+      newHeight: originalHeight
+    };
+  }
+}
+
+// Scale raw vision data coordinates to match resized image
+function scaleRawData(rawData: RawVisionData, scaleFactor: number): RawVisionData {
+  if (scaleFactor === 1) return rawData;
+  
+  return {
+    paragraphs: rawData.paragraphs.map(p => ({
+      ...p,
+      yTop: p.yTop * scaleFactor,
+      yBottom: p.yBottom * scaleFactor,
+      xLeft: p.xLeft * scaleFactor,
+      xRight: p.xRight * scaleFactor,
+      height: p.height * scaleFactor,
+      width: p.width * scaleFactor
+    })),
+    objects: rawData.objects.map(o => ({
+      ...o,
+      yTop: o.yTop * scaleFactor,
+      yBottom: o.yBottom * scaleFactor,
+      xLeft: o.xLeft * scaleFactor,
+      xRight: o.xRight * scaleFactor
+    })),
+    logos: rawData.logos.map(l => ({
+      ...l,
+      yTop: l.yTop * scaleFactor,
+      yBottom: l.yBottom * scaleFactor,
+      xLeft: l.xLeft * scaleFactor,
+      xRight: l.xRight * scaleFactor
+    })),
+    imageWidth: rawData.imageWidth * scaleFactor,
+    imageHeight: rawData.imageHeight * scaleFactor
+  };
+}
+
+// Scale Claude's decision back to original image space
+function scaleClaudeDecision(decision: ClaudeDecision, scaleFactor: number): ClaudeDecision {
+  if (scaleFactor === 1) return decision;
+  
+  const inverseScale = 1 / scaleFactor;
+  
+  return {
+    footerStartY: decision.footerStartY * inverseScale,
+    sections: decision.sections.map(s => ({
+      name: s.name,
+      yTop: s.yTop * inverseScale,
+      yBottom: s.yBottom * inverseScale
+    }))
+  };
+}
+
+// ============================================================================
 // CLAUDE: THE SOLE DECISION MAKER
 // ============================================================================
 
@@ -577,7 +719,11 @@ serve(async (req) => {
     const imageHeight = headerDimensions.height;
     console.log(`TRUE image dimensions: ${imageWidth}x${imageHeight}`);
 
-    // ========== GATHER RAW DATA (Vision APIs in parallel) ==========
+    // ========== RESIZE IMAGE FOR CLAUDE IF NEEDED ==========
+    const resized = await resizeImageForClaude(imageBase64, mimeType, imageWidth, imageHeight);
+    const scaleFactor = resized.scaleFactor;
+    
+    // ========== GATHER RAW DATA (Vision APIs in parallel on ORIGINAL image) ==========
     const [ocrResult, objects, logos] = await Promise.all([
       extractTextGeometry(imageBase64),
       detectObjects(imageBase64, imageHeight, imageWidth),
@@ -594,8 +740,14 @@ serve(async (req) => {
 
     console.log(`Raw data gathered: ${rawData.paragraphs.length} paragraphs, ${rawData.objects.length} objects, ${rawData.logos.length} logos`);
 
-    // ========== ASK CLAUDE TO MAKE ALL DECISIONS ==========
-    const claudeResult = await askClaude(imageBase64, mimeType, rawData);
+    // ========== SCALE RAW DATA TO MATCH RESIZED IMAGE (if scaled) ==========
+    const scaledRawData = scaleRawData(rawData, scaleFactor);
+    if (scaleFactor !== 1) {
+      console.log(`Scaled raw data coordinates by ${scaleFactor.toFixed(4)} to match resized image`);
+    }
+
+    // ========== ASK CLAUDE TO MAKE ALL DECISIONS (with resized image) ==========
+    const claudeResult = await askClaude(resized.base64, resized.mimeType, scaledRawData);
 
     if (!claudeResult.success) {
       // If Claude fails, we fail - NO FALLBACK
@@ -611,7 +763,10 @@ serve(async (req) => {
         debug: {
           paragraphCount: rawData.paragraphs.length,
           objectCount: rawData.objects.length,
-          logoCount: rawData.logos.length
+          logoCount: rawData.logos.length,
+          scaleFactor,
+          originalDimensions: { width: imageWidth, height: imageHeight },
+          claudeImageDimensions: { width: resized.newWidth, height: resized.newHeight }
         }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -619,11 +774,14 @@ serve(async (req) => {
       });
     }
 
-    // ========== USE CLAUDE'S DECISIONS DIRECTLY ==========
-    const decision = claudeResult.decision;
+    // ========== SCALE CLAUDE'S DECISION BACK TO ORIGINAL IMAGE SPACE ==========
+    const originalSpaceDecision = scaleClaudeDecision(claudeResult.decision, scaleFactor);
+    if (scaleFactor !== 1) {
+      console.log(`Scaled Claude's decision back to original image space (inverse scale: ${(1/scaleFactor).toFixed(4)})`);
+    }
     
-    // Convert Claude's sections directly to slices - NO MODIFICATIONS
-    const slices: SliceOutput[] = decision.sections.map(section => ({
+    // Convert Claude's sections directly to slices - NO MODIFICATIONS (except scaling)
+    const slices: SliceOutput[] = originalSpaceDecision.sections.map(section => ({
       yTop: Math.round(section.yTop),
       yBottom: Math.round(section.yBottom)
     }));
@@ -632,7 +790,7 @@ serve(async (req) => {
 
     const response: AutoSliceV2Response = {
       success: true,
-      footerStartY: Math.round(decision.footerStartY),
+      footerStartY: Math.round(originalSpaceDecision.footerStartY),
       slices,
       imageHeight,
       imageWidth,
@@ -644,12 +802,16 @@ serve(async (req) => {
         paragraphCount: rawData.paragraphs.length,
         objectCount: rawData.objects.length,
         logoCount: rawData.logos.length,
-        claudeSections: decision.sections
+        claudeSections: originalSpaceDecision.sections,
+        scaleFactor,
+        originalDimensions: { width: imageWidth, height: imageHeight },
+        claudeImageDimensions: { width: resized.newWidth, height: resized.newHeight }
       }
     };
 
     console.log(`\n========== COMPLETE ==========`);
-    console.log(`Claude decided: ${slices.length} slices, footer at ${decision.footerStartY}px`);
+    console.log(`Claude decided: ${slices.length} slices, footer at ${originalSpaceDecision.footerStartY}px`);
+    console.log(`Scale factor: ${scaleFactor} (original: ${imageWidth}x${imageHeight}, Claude saw: ${resized.newWidth}x${resized.newHeight})`);
     console.log(`Processing time: ${processingTimeMs}ms`);
 
     return new Response(JSON.stringify(response), {
