@@ -201,9 +201,11 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
       }
 
       console.log(`V2 response: ${response.slices.length} slices, footer at ${response.footerStartY}px`);
+      console.log(`Backend reports imageHeight: ${response.imageHeight}, browser measured: ${dimensions.height}`);
       
-      // Use the imageHeight from the response (more accurate from OCR)
-      const imageHeight = response.imageHeight || dimensions.height;
+      // CRITICAL: Always use the browser's actual image dimensions for UI percentage mapping
+      // The backend's imageHeight (from OCR maxY) can differ significantly from the real image height
+      const imageHeight = dimensions.height;
       
       // Convert pixel footerStartY to percentage and set footer cutoff
       const footerPercent = (response.footerStartY / imageHeight) * 100;

@@ -557,20 +557,26 @@ function detectFooter(
 ): FooterDetection {
   console.log("Layer 6: Detecting footer...");
   
-  const bottomThreshold = imageHeight * 0.6;
+  // CRITICAL FIX: Only look at the bottom 20% of the image for footer detection
+  // Using 60% was way too aggressive and caused false positives on long emails
+  const bottomThreshold = imageHeight * 0.80; // Only bottom 20%
   const bottomParagraphs = paragraphs.filter(p => p.yTop >= bottomThreshold);
   
-  // Footer text patterns
-  const footerPatterns = [
+  // Strong footer text patterns (high confidence indicators)
+  const strongFooterPatterns = [
     /unsubscribe/i,
     /privacy\s*policy/i,
     /terms\s*(of\s*service|and\s*conditions)?/i,
+    /copyright|©|\(c\)/i,
+    /all\s*rights\s*reserved/i,
+  ];
+  
+  // Weak footer patterns (need multiple to count)
+  const weakFooterPatterns = [
     /\bfaq\b/i,
     /contact\s*us/i,
     /customer\s*service/i,
     /follow\s*us/i,
-    /copyright|©|\(c\)/i,
-    /all\s*rights\s*reserved/i,
     /statements?\s*(have\s*)?not\s*(been\s*)?evaluated/i,
     /\d{5}(-\d{4})?/, // ZIP code
     /\b[A-Z]{2}\s*\d{5}\b/, // State ZIP
@@ -578,46 +584,50 @@ function detectFooter(
   
   let footerStartY = imageHeight;
   let confidence: 'high' | 'medium' | 'low' = 'low';
-  let matchCount = 0;
+  let strongMatchCount = 0;
+  let weakMatchCount = 0;
   
   const sortedBottom = [...bottomParagraphs].sort((a, b) => a.yTop - b.yTop);
   
   for (const para of sortedBottom) {
     const text = para.text.toLowerCase();
-    const isFooterLike = footerPatterns.some(p => p.test(text));
+    const hasStrongMatch = strongFooterPatterns.some(p => p.test(text));
+    const hasWeakMatch = weakFooterPatterns.some(p => p.test(text));
     
-    if (isFooterLike) {
-      matchCount++;
+    if (hasStrongMatch) {
+      strongMatchCount++;
       if (para.yTop < footerStartY) {
         footerStartY = para.yTop;
       }
+    } else if (hasWeakMatch) {
+      weakMatchCount++;
     }
   }
   
-  // Check for dense small text blocks (footer characteristic)
-  const denseSmallBlocks = bottomParagraphs.filter(p => 
-    p.height < 30 && p.text.length > 10
-  );
+  // REMOVED: "Dense small blocks" heuristic was too aggressive
+  // It would incorrectly mark product captions and legal text as footer
   
-  if (denseSmallBlocks.length >= 3) {
-    const earliestDense = Math.min(...denseSmallBlocks.map(p => p.yTop));
-    if (earliestDense < footerStartY) {
-      footerStartY = earliestDense;
-      matchCount++;
-    }
-  }
-  
-  // Determine confidence
-  if (matchCount >= 3) {
+  // Determine confidence based on strong patterns only
+  if (strongMatchCount >= 2) {
     confidence = 'high';
-  } else if (matchCount >= 1) {
+  } else if (strongMatchCount >= 1) {
     confidence = 'medium';
+  } else if (weakMatchCount >= 3) {
+    // Multiple weak patterns in bottom 20% can indicate footer
+    confidence = 'low';
+    const weakMatches = sortedBottom.filter(p => 
+      weakFooterPatterns.some(pat => pat.test(p.text.toLowerCase()))
+    );
+    if (weakMatches.length > 0) {
+      footerStartY = Math.min(...weakMatches.map(p => p.yTop));
+    }
   } else {
-    footerStartY = Math.floor(imageHeight * 0.95);
+    // No footer detected - use 98% of image height as fallback
+    footerStartY = Math.floor(imageHeight * 0.98);
     confidence = 'low';
   }
   
-  console.log(`  → Footer at y=${footerStartY} (${confidence} confidence, ${matchCount} matches)`);
+  console.log(`  → Footer at y=${footerStartY} (${confidence} confidence, ${strongMatchCount} strong + ${weakMatchCount} weak matches)`);
   
   return { footerStartY, confidence };
 }
@@ -921,22 +931,54 @@ function postProcess(
 // UTILITY: IMAGE DIMENSION EXTRACTION
 // ============================================================================
 
-async function getImageDimensions(imageBase64: string): Promise<{ width: number; height: number }> {
-  const binaryStr = atob(imageBase64.substring(0, 100));
+function getImageDimensions(imageBase64: string): { width: number; height: number } | null {
+  // Decode enough bytes to find dimensions (JPEG markers can be further in)
+  const bytesToDecode = Math.min(imageBase64.length, 50000); // Decode up to ~37KB
+  const binaryStr = atob(imageBase64.substring(0, bytesToDecode));
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) {
     bytes[i] = binaryStr.charCodeAt(i);
   }
   
-  // PNG
+  // PNG: dimensions at fixed position in IHDR chunk
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
     const width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
     const height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+    console.log(`  → PNG dimensions from header: ${width}x${height}`);
     return { width, height };
   }
   
-  // JPEG fallback
-  return { width: 600, height: 2000 };
+  // JPEG: scan for SOF0/SOF2 markers (0xFFC0 or 0xFFC2)
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+    let offset = 2;
+    while (offset < bytes.length - 10) {
+      if (bytes[offset] !== 0xFF) {
+        offset++;
+        continue;
+      }
+      
+      const marker = bytes[offset + 1];
+      
+      // SOF0 (baseline) or SOF2 (progressive)
+      if (marker === 0xC0 || marker === 0xC2) {
+        const height = (bytes[offset + 5] << 8) | bytes[offset + 6];
+        const width = (bytes[offset + 7] << 8) | bytes[offset + 8];
+        console.log(`  → JPEG dimensions from SOF marker: ${width}x${height}`);
+        return { width, height };
+      }
+      
+      // Skip to next marker
+      if (marker >= 0xC0 && marker <= 0xFE && marker !== 0xD8 && marker !== 0xD9 && !(marker >= 0xD0 && marker <= 0xD7)) {
+        const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+        offset += 2 + length;
+      } else {
+        offset++;
+      }
+    }
+  }
+  
+  console.log(`  → Could not extract dimensions from image header`);
+  return null;
 }
 
 // ============================================================================
@@ -992,17 +1034,29 @@ serve(async (req) => {
     console.log(`\n========== AUTO-SLICE V2 ==========`);
     console.log(`Received image: ${mimeType}, base64 length: ${imageBase64.length}`);
 
-    // Get initial dimensions from image header
-    let { width: imageWidth, height: imageHeight } = await getImageDimensions(imageBase64);
-    console.log(`Initial dimensions: ${imageWidth}x${imageHeight}`);
-
+    // Get TRUE dimensions from image header (CRITICAL: do NOT use OCR maxY)
+    const headerDimensions = getImageDimensions(imageBase64);
+    
     // ========== LAYER 1: OCR ==========
     const { paragraphs, imageWidth: ocrWidth, imageHeight: ocrHeight } = await extractTextGeometry(imageBase64);
     
-    // Use OCR dimensions if available (more accurate)
-    if (ocrWidth > 0) imageWidth = ocrWidth;
-    if (ocrHeight > 0) imageHeight = ocrHeight;
-    console.log(`Final dimensions: ${imageWidth}x${imageHeight}`);
+    // CRITICAL FIX: Use header dimensions as the source of truth
+    // OCR dimensions (maxX/maxY) only represent the extent of detected text,
+    // NOT the actual image dimensions. This was causing massive coordinate misalignment.
+    let imageWidth: number;
+    let imageHeight: number;
+    
+    if (headerDimensions) {
+      imageWidth = headerDimensions.width;
+      imageHeight = headerDimensions.height;
+      console.log(`Using TRUE image dimensions from header: ${imageWidth}x${imageHeight}`);
+      console.log(`(OCR detected content up to: ${ocrWidth}x${ocrHeight})`);
+    } else {
+      // Fallback: if we couldn't read header, use OCR extent (less accurate)
+      imageWidth = ocrWidth > 0 ? ocrWidth : 600;
+      imageHeight = ocrHeight > 0 ? ocrHeight : 2000;
+      console.log(`WARNING: Could not read image header, using OCR extent: ${imageWidth}x${imageHeight}`);
+    }
 
     // Store original dimensions for debug
     const originalDimensions = { width: imageWidth, height: imageHeight };
