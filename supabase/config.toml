@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.auto-slice-email]
 verify_jwt = false
+
+[functions.auto-slice-v2]
+verify_jwt = false
