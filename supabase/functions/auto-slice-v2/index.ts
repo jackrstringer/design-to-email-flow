@@ -382,10 +382,17 @@ async function detectHorizontalEdges(
       previousRowAvg = currentRowAvg;
     }
     
-    // Filter to keep only strong edges (reduce noise)
-    const filtered = edges.filter(e => e.strength > 0.3).sort((a, b) => a.y - b.y);
-    console.log(`  → Found ${filtered.length} significant horizontal edges (sampled every ${ROW_SAMPLE_RATE} rows)`);
-    return filtered;
+    // Filter to keep only strong edges (increase threshold from 0.3 to 0.5)
+    const strongEdges = edges.filter(e => e.strength > 0.5);
+    
+    // Sort by strength descending, take top 30, then re-sort by Y for Claude
+    const topEdges = strongEdges
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 30)
+      .sort((a, b) => a.y - b.y);
+    
+    console.log(`  → Found ${topEdges.length} significant horizontal edges (from ${edges.length} raw, top 30 by strength)`);
+    return topEdges;
     
   } catch (error) {
     console.error("Edge detection failed:", error);
