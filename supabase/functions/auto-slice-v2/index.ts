@@ -456,7 +456,7 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
 // UTILITY: IMAGE RESIZING FOR CLAUDE (Max 8000px per dimension)
 // ============================================================================
 
-const MAX_CLAUDE_DIMENSION = 4000; // Aggressive resize for faster processing
+const MAX_CLAUDE_DIMENSION = 7900; // Buffer under 8000px limit
 
 async function resizeImageForClaude(
   imageBase64: string,
@@ -981,7 +981,7 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { imageDataUrl } = await req.json();
+    const { imageDataUrl, precomputedEdges } = await req.json();
     
     if (!imageDataUrl) {
       return new Response(JSON.stringify({
@@ -1056,11 +1056,39 @@ serve(async (req) => {
       detectLogos(imageBase64, imageHeight, imageWidth)
     ]);
 
-    // ========== DETECT HORIZONTAL EDGES ON RESIZED IMAGE (matches Claude's coordinate space) ==========
-    const edges = await detectHorizontalEdges(resized.base64, resized.newWidth, resized.newHeight);
+    // ========== USE PRECOMPUTED EDGES FROM FRONTEND OR DETECT ON BACKEND ==========
+    let edges: HorizontalEdge[];
+    
+    if (precomputedEdges && Array.isArray(precomputedEdges) && precomputedEdges.length > 0) {
+      // Validate and sanitize frontend edges
+      console.log(`Using ${precomputedEdges.length} precomputed edges from frontend`);
+      edges = precomputedEdges
+        .filter((e: any) => typeof e.y === 'number' && typeof e.strength === 'number')
+        .slice(0, 60) // Limit to prevent abuse
+        .map((e: any) => ({
+          y: e.y,
+          strength: Math.min(Math.max(e.strength, 0), 1),
+          colorAbove: { r: 128, g: 128, b: 128 }, // Placeholder - Claude uses y and strength primarily
+          colorBelow: { r: 128, g: 128, b: 128 }
+        }));
+      
+      // Scale precomputed edges to match Claude's resized image coordinate space
+      if (scaleFactor < 1) {
+        edges = edges.map(e => ({
+          ...e,
+          y: Math.round(e.y * scaleFactor)
+        }));
+        console.log(`Scaled precomputed edges by ${scaleFactor.toFixed(4)} to match Claude's image`);
+      }
+    } else {
+      // Fallback: compute edges on backend (CPU-heavy, may timeout on large images)
+      console.log('No precomputed edges, running backend edge detection (may timeout)...');
+      const backendEdges = await detectHorizontalEdges(resized.base64, resized.newWidth, resized.newHeight);
+      edges = backendEdges;
+    }
 
-    // Build raw data with Vision API results (original coordinates) + edges (resized coordinates)
-    // Note: edges are already in resized coordinate space, will need inverse scaling applied
+    // Build raw data with Vision API results (original coordinates) + edges (Claude's coordinate space)
+    // Note: edges are now in Claude's coordinate space, need to convert to original for rawData
     const rawData: RawVisionData = {
       paragraphs: ocrResult.paragraphs,
       objects,
