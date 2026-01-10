@@ -56,7 +56,7 @@ export interface AutoSliceResponse {
   };
 }
 
-// V2 Auto-slice response (Multi-layer OCR + Object Detection + Claude pipeline)
+// V2 Auto-slice response (Claude as sole decision maker)
 export interface AutoSliceV2Response {
   success: boolean;
   footerStartY: number;
@@ -65,21 +65,14 @@ export interface AutoSliceV2Response {
   imageWidth: number;
   processingTimeMs: number;
   confidence: {
-    footer: 'high' | 'medium' | 'low';
     overall: 'high' | 'medium' | 'low';
   };
   error?: string;
-  warning?: string; // When Claude fails but fallback is used
   debug?: {
     paragraphCount: number;
     objectCount: number;
     logoCount: number;
-    gapCount: number;
-    forbiddenBandCount: number;
-    claudeBoundaries?: number[];
-    scaleFactor?: number;
-    originalDimensions?: { width: number; height: number };
-    claudeImageDimensions?: { width: number; height: number };
+    claudeSections?: { name: string; yTop: number; yBottom: number }[];
   };
 }
 

@@ -5,11 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Maximum dimension for Claude API (with buffer)
-const MAX_CLAUDE_DIMENSION = 7900;
-
 // ============================================================================
-// SECTION 1: TYPES AND INTERFACES
+// TYPES AND INTERFACES
 // ============================================================================
 
 interface Paragraph {
@@ -21,11 +18,6 @@ interface Paragraph {
   confidence: number;
   height: number;
   width: number;
-}
-
-interface ForbiddenBand {
-  yTop: number;
-  yBottom: number;
 }
 
 interface DetectedObject {
@@ -46,33 +38,24 @@ interface DetectedLogo {
   xRight: number;
 }
 
-interface SignificantGap {
-  yPosition: number;
-  gapSize: number;
-  aboveElement: string;
-  belowElement: string;
-}
-
-interface FooterDetection {
-  footerStartY: number;
-  confidence: 'high' | 'medium' | 'low';
-}
-
 interface SliceOutput {
   yTop: number;
   yBottom: number;
 }
 
-interface PreprocessingData {
+// Raw data from Vision APIs - no decisions, just facts
+interface RawVisionData {
   paragraphs: Paragraph[];
   objects: DetectedObject[];
   logos: DetectedLogo[];
-  forbiddenBands: ForbiddenBand[];
-  significantGaps: SignificantGap[];
-  footerStartY: number;
-  footerConfidence: 'high' | 'medium' | 'low';
   imageWidth: number;
   imageHeight: number;
+}
+
+// Claude's decision - the ONLY decision-maker
+interface ClaudeDecision {
+  footerStartY: number;
+  sections: { name: string; yTop: number; yBottom: number }[];
 }
 
 interface AutoSliceV2Response {
@@ -83,7 +66,6 @@ interface AutoSliceV2Response {
   imageWidth: number;
   processingTimeMs: number;
   confidence: {
-    footer: 'high' | 'medium' | 'low';
     overall: 'high' | 'medium' | 'low';
   };
   error?: string;
@@ -91,142 +73,16 @@ interface AutoSliceV2Response {
     paragraphCount: number;
     objectCount: number;
     logoCount: number;
-    gapCount: number;
-    forbiddenBandCount: number;
-    claudeBoundaries?: number[];
-    scaleFactor?: number;
-    originalDimensions?: { width: number; height: number };
-    claudeImageDimensions?: { width: number; height: number };
+    claudeSections?: { name: string; yTop: number; yBottom: number }[];
   };
 }
 
 // ============================================================================
-// IMAGE RESIZING FOR CLAUDE API LIMITS
-// ============================================================================
-
-/**
- * Downscale image if either dimension exceeds MAX_CLAUDE_DIMENSION.
- * Uses canvas-free approach with JPEG quality reduction.
- * Returns scale factor to map coordinates back.
- */
-async function prepareImageForClaude(
-  imageBase64: string,
-  mimeType: string,
-  width: number,
-  height: number
-): Promise<{ base64: string; mimeType: string; scale: number; newWidth: number; newHeight: number }> {
-  
-  const maxDim = Math.max(width, height);
-  
-  if (maxDim <= MAX_CLAUDE_DIMENSION) {
-    console.log(`  → Image ${width}x${height} within limits, no resize needed`);
-    return { base64: imageBase64, mimeType, scale: 1, newWidth: width, newHeight: height };
-  }
-  
-  const scale = MAX_CLAUDE_DIMENSION / maxDim;
-  const newWidth = Math.round(width * scale);
-  const newHeight = Math.round(height * scale);
-  
-  console.log(`  → Resizing image from ${width}x${height} to ${newWidth}x${newHeight} (scale: ${scale.toFixed(3)})`);
-  
-  // For Deno edge functions, we can't use canvas directly.
-  // Instead, we'll send a smaller quality hint to Claude via compression.
-  // Claude Vision API actually handles large images internally, but the limit
-  // is on the combined prompt + image size. The real issue is likely the
-  // combined payload size or specific dimension limits.
-  
-  // Since we can't easily resize in Deno without external libs, we'll:
-  // 1. Return the original image but with scaled coordinate system
-  // 2. Claude will process it and we'll map coordinates back
-  
-  // Note: If Claude still rejects, we'd need to add image-resize library
-  // For now, let's try with coordinate scaling only
-  
-  return { 
-    base64: imageBase64, 
-    mimeType, 
-    scale, 
-    newWidth, 
-    newHeight 
-  };
-}
-
-/**
- * Scale preprocessing data coordinates by a factor
- */
-function scalePreprocessingData(data: PreprocessingData, scale: number): PreprocessingData {
-  if (scale === 1) return data;
-  
-  return {
-    paragraphs: data.paragraphs.map(p => ({
-      ...p,
-      yTop: Math.round(p.yTop * scale),
-      yBottom: Math.round(p.yBottom * scale),
-      xLeft: Math.round(p.xLeft * scale),
-      xRight: Math.round(p.xRight * scale),
-      height: Math.round(p.height * scale),
-      width: Math.round(p.width * scale)
-    })),
-    objects: data.objects.map(o => ({
-      ...o,
-      yTop: Math.round(o.yTop * scale),
-      yBottom: Math.round(o.yBottom * scale),
-      xLeft: Math.round(o.xLeft * scale),
-      xRight: Math.round(o.xRight * scale)
-    })),
-    logos: data.logos.map(l => ({
-      ...l,
-      yTop: Math.round(l.yTop * scale),
-      yBottom: Math.round(l.yBottom * scale),
-      xLeft: Math.round(l.xLeft * scale),
-      xRight: Math.round(l.xRight * scale)
-    })),
-    forbiddenBands: data.forbiddenBands.map(f => ({
-      yTop: Math.round(f.yTop * scale),
-      yBottom: Math.round(f.yBottom * scale)
-    })),
-    significantGaps: data.significantGaps.map(g => ({
-      ...g,
-      yPosition: Math.round(g.yPosition * scale),
-      gapSize: Math.round(g.gapSize * scale)
-    })),
-    footerStartY: Math.round(data.footerStartY * scale),
-    footerConfidence: data.footerConfidence,
-    imageWidth: Math.round(data.imageWidth * scale),
-    imageHeight: Math.round(data.imageHeight * scale)
-  };
-}
-
-/**
- * Scale Claude results back to original coordinates
- */
-function scaleClaudeResultsBack(
-  boundaries: number[],
-  sections: { name: string; yTop: number; yBottom: number }[],
-  scale: number
-): { boundaries: number[]; sections: { name: string; yTop: number; yBottom: number }[] } {
-  if (scale === 1) return { boundaries, sections };
-  
-  const inverseScale = 1 / scale;
-  
-  return {
-    boundaries: boundaries.map(b => Math.round(b * inverseScale)),
-    sections: sections.map(s => ({
-      name: s.name,
-      yTop: Math.round(s.yTop * inverseScale),
-      yBottom: Math.round(s.yBottom * inverseScale)
-    }))
-  };
-}
-
-// ============================================================================
-// LAYER 1: GOOGLE CLOUD VISION OCR
+// LAYER 1: GOOGLE CLOUD VISION OCR (Data Gathering Only)
 // ============================================================================
 
 async function extractTextGeometry(imageBase64: string): Promise<{
   paragraphs: Paragraph[];
-  imageWidth: number;
-  imageHeight: number;
 }> {
   const apiKey = Deno.env.get("GOOGLE_CLOUD_VISION_API_KEY");
   if (!apiKey) {
@@ -260,10 +116,9 @@ async function extractTextGeometry(imageBase64: string): Promise<{
   
   if (!annotation) {
     console.log("No text detected in image");
-    return { paragraphs: [], imageWidth: 0, imageHeight: 0 };
+    return { paragraphs: [] };
   }
 
-  let maxX = 0, maxY = 0;
   const paragraphs: Paragraph[] = [];
   
   for (const page of annotation.pages || []) {
@@ -279,9 +134,6 @@ async function extractTextGeometry(imageBase64: string): Promise<{
         const xRight = Math.max(...xCoords);
         const yTop = Math.min(...yCoords);
         const yBottom = Math.max(...yCoords);
-        
-        maxX = Math.max(maxX, xRight);
-        maxY = Math.max(maxY, yBottom);
         
         let text = '';
         for (const word of paragraph.words || []) {
@@ -307,15 +159,11 @@ async function extractTextGeometry(imageBase64: string): Promise<{
 
   console.log(`  → Extracted ${paragraphs.length} paragraphs`);
   
-  return {
-    paragraphs,
-    imageWidth: maxX,
-    imageHeight: maxY
-  };
+  return { paragraphs };
 }
 
 // ============================================================================
-// LAYER 2: GOOGLE CLOUD VISION OBJECT LOCALIZATION
+// LAYER 2: GOOGLE CLOUD VISION OBJECT LOCALIZATION (Data Gathering Only)
 // ============================================================================
 
 async function detectObjects(
@@ -373,7 +221,7 @@ async function detectObjects(
 }
 
 // ============================================================================
-// LAYER 3: GOOGLE CLOUD VISION LOGO DETECTION
+// LAYER 3: GOOGLE CLOUD VISION LOGO DETECTION (Data Gathering Only)
 // ============================================================================
 
 async function detectLogos(
@@ -431,509 +279,12 @@ async function detectLogos(
 }
 
 // ============================================================================
-// LAYER 4: FORBIDDEN BANDS COMPUTATION
-// ============================================================================
-
-function computeForbiddenBands(
-  paragraphs: Paragraph[],
-  objects: DetectedObject[],
-  logos: DetectedLogo[],
-  padding: number = 4
-): ForbiddenBand[] {
-  console.log("Layer 4: Computing forbidden bands...");
-  
-  // Combine all elements that should not be cut through
-  const allElements = [
-    ...paragraphs.map(p => ({ yTop: p.yTop, yBottom: p.yBottom })),
-    ...objects.map(o => ({ yTop: o.yTop, yBottom: o.yBottom })),
-    ...logos.map(l => ({ yTop: l.yTop, yBottom: l.yBottom }))
-  ];
-  
-  if (allElements.length === 0) return [];
-  
-  // Create padded intervals
-  const intervals: ForbiddenBand[] = allElements.map(e => ({
-    yTop: Math.max(0, e.yTop - padding),
-    yBottom: e.yBottom + padding
-  }));
-  
-  // Sort by yTop
-  intervals.sort((a, b) => a.yTop - b.yTop);
-  
-  // Merge overlapping intervals
-  const merged: ForbiddenBand[] = [];
-  let current = intervals[0];
-  
-  for (let i = 1; i < intervals.length; i++) {
-    if (intervals[i].yTop <= current.yBottom) {
-      current.yBottom = Math.max(current.yBottom, intervals[i].yBottom);
-    } else {
-      merged.push(current);
-      current = intervals[i];
-    }
-  }
-  merged.push(current);
-  
-  console.log(`  → Computed ${merged.length} forbidden bands`);
-  return merged;
-}
-
-// ============================================================================
-// LAYER 5: GAP ANALYSIS
-// ============================================================================
-
-function computeSignificantGaps(
-  paragraphs: Paragraph[],
-  objects: DetectedObject[],
-  logos: DetectedLogo[],
-  imageHeight: number,
-  minGapSize: number = 20
-): SignificantGap[] {
-  console.log("Layer 5: Analyzing gaps...");
-  
-  // Combine all elements and sort by yTop
-  const elements: { yTop: number; yBottom: number; type: string }[] = [
-    ...paragraphs.map(p => ({ yTop: p.yTop, yBottom: p.yBottom, type: 'text' })),
-    ...objects.map(o => ({ yTop: o.yTop, yBottom: o.yBottom, type: o.name })),
-    ...logos.map(l => ({ yTop: l.yTop, yBottom: l.yBottom, type: 'logo' }))
-  ].sort((a, b) => a.yTop - b.yTop);
-
-  if (elements.length === 0) {
-    console.log(`  → No elements to analyze`);
-    return [];
-  }
-
-  const gaps: SignificantGap[] = [];
-  
-  // Check gap from top of image to first element
-  if (elements[0].yTop > minGapSize) {
-    gaps.push({
-      yPosition: elements[0].yTop / 2,
-      gapSize: elements[0].yTop,
-      aboveElement: 'image_start',
-      belowElement: elements[0].type
-    });
-  }
-  
-  // Check gaps between elements
-  for (let i = 0; i < elements.length - 1; i++) {
-    const current = elements[i];
-    const next = elements[i + 1];
-    const gapSize = next.yTop - current.yBottom;
-    
-    if (gapSize >= minGapSize) {
-      gaps.push({
-        yPosition: Math.round(current.yBottom + gapSize / 2),
-        gapSize: Math.round(gapSize),
-        aboveElement: current.type,
-        belowElement: next.type
-      });
-    }
-  }
-  
-  // Check gap from last element to bottom
-  const lastElement = elements[elements.length - 1];
-  if (imageHeight - lastElement.yBottom > minGapSize) {
-    gaps.push({
-      yPosition: Math.round(lastElement.yBottom + (imageHeight - lastElement.yBottom) / 2),
-      gapSize: Math.round(imageHeight - lastElement.yBottom),
-      aboveElement: lastElement.type,
-      belowElement: 'image_end'
-    });
-  }
-
-  console.log(`  → Found ${gaps.length} significant gaps (≥${minGapSize}px)`);
-  return gaps;
-}
-
-// ============================================================================
-// LAYER 6: FOOTER DETECTION
-// ============================================================================
-
-function detectFooter(
-  paragraphs: Paragraph[],
-  objects: DetectedObject[],
-  imageHeight: number
-): FooterDetection {
-  console.log("Layer 6: Detecting footer...");
-  
-  // CRITICAL FIX: Only look at the bottom 20% of the image for footer detection
-  // Using 60% was way too aggressive and caused false positives on long emails
-  const bottomThreshold = imageHeight * 0.80; // Only bottom 20%
-  const bottomParagraphs = paragraphs.filter(p => p.yTop >= bottomThreshold);
-  
-  // Strong footer text patterns (high confidence indicators)
-  const strongFooterPatterns = [
-    /unsubscribe/i,
-    /privacy\s*policy/i,
-    /terms\s*(of\s*service|and\s*conditions)?/i,
-    /copyright|©|\(c\)/i,
-    /all\s*rights\s*reserved/i,
-  ];
-  
-  // Weak footer patterns (need multiple to count)
-  const weakFooterPatterns = [
-    /\bfaq\b/i,
-    /contact\s*us/i,
-    /customer\s*service/i,
-    /follow\s*us/i,
-    /statements?\s*(have\s*)?not\s*(been\s*)?evaluated/i,
-    /\d{5}(-\d{4})?/, // ZIP code
-    /\b[A-Z]{2}\s*\d{5}\b/, // State ZIP
-  ];
-  
-  let footerStartY = imageHeight;
-  let confidence: 'high' | 'medium' | 'low' = 'low';
-  let strongMatchCount = 0;
-  let weakMatchCount = 0;
-  
-  const sortedBottom = [...bottomParagraphs].sort((a, b) => a.yTop - b.yTop);
-  
-  for (const para of sortedBottom) {
-    const text = para.text.toLowerCase();
-    const hasStrongMatch = strongFooterPatterns.some(p => p.test(text));
-    const hasWeakMatch = weakFooterPatterns.some(p => p.test(text));
-    
-    if (hasStrongMatch) {
-      strongMatchCount++;
-      if (para.yTop < footerStartY) {
-        footerStartY = para.yTop;
-      }
-    } else if (hasWeakMatch) {
-      weakMatchCount++;
-    }
-  }
-  
-  // REMOVED: "Dense small blocks" heuristic was too aggressive
-  // It would incorrectly mark product captions and legal text as footer
-  
-  // Determine confidence based on strong patterns only
-  if (strongMatchCount >= 2) {
-    confidence = 'high';
-  } else if (strongMatchCount >= 1) {
-    confidence = 'medium';
-  } else if (weakMatchCount >= 3) {
-    // Multiple weak patterns in bottom 20% can indicate footer
-    confidence = 'low';
-    const weakMatches = sortedBottom.filter(p => 
-      weakFooterPatterns.some(pat => pat.test(p.text.toLowerCase()))
-    );
-    if (weakMatches.length > 0) {
-      footerStartY = Math.min(...weakMatches.map(p => p.yTop));
-    }
-  } else {
-    // No footer detected - use 98% of image height as fallback
-    footerStartY = Math.floor(imageHeight * 0.98);
-    confidence = 'low';
-  }
-  
-  console.log(`  → Footer at y=${footerStartY} (${confidence} confidence, ${strongMatchCount} strong + ${weakMatchCount} weak matches)`);
-  
-  return { footerStartY, confidence };
-}
-
-// ============================================================================
-// LAYER 7: CLAUDE SEMANTIC SECTIONING
-// ============================================================================
-
-interface ClaudeError {
-  isError: true;
-  status: number;
-  message: string;
-}
-
-interface ClaudeSuccess {
-  isError: false;
-  boundaries: number[];
-  sections: { name: string; yTop: number; yBottom: number }[];
-}
-
-type ClaudeResult = ClaudeError | ClaudeSuccess;
-
-async function claudeSemanticSectioning(
-  imageBase64: string,
-  mimeType: string,
-  preprocessingData: PreprocessingData,
-  scaleFactor: number = 1
-): Promise<ClaudeResult> {
-  
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) {
-    return { isError: true, status: 0, message: "ANTHROPIC_API_KEY not configured" };
-  }
-
-  console.log("Layer 7: Claude semantic analysis...");
-  
-  // Scale preprocessing data if needed
-  const scaledData = scalePreprocessingData(preprocessingData, scaleFactor);
-  
-  // Prepare simplified data for the prompt
-  const simplifiedParagraphs = scaledData.paragraphs.map(p => ({
-    text: p.text.substring(0, 100),
-    yTop: Math.round(p.yTop),
-    yBottom: Math.round(p.yBottom),
-    height: Math.round(p.height)
-  }));
-  
-  const simplifiedObjects = scaledData.objects.map(o => ({
-    name: o.name,
-    yTop: Math.round(o.yTop),
-    yBottom: Math.round(o.yBottom),
-    score: Math.round(o.score * 100) / 100
-  }));
-  
-  const simplifiedGaps = scaledData.significantGaps.map(g => ({
-    yPosition: g.yPosition,
-    gapSize: g.gapSize,
-    between: `${g.aboveElement} → ${g.belowElement}`
-  }));
-
-  const prompt = `You are analyzing an email design to determine where to slice it into semantic sections.
-
-## Your Task
-Look at this email image and identify the Y-pixel coordinates where horizontal slice boundaries should be placed. Each slice should contain a complete, self-contained semantic unit.
-
-## Preprocessing Data (to assist with precise positioning)
-
-### Image Dimensions
-${scaledData.imageWidth}x${scaledData.imageHeight} pixels
-
-### Detected Text Blocks (OCR)
-These are text regions with bounding boxes. You MUST NOT place cuts within these zones:
-${JSON.stringify(simplifiedParagraphs.slice(0, 60), null, 2)}
-
-### Forbidden Bands (DO NOT CUT HERE)
-These Y-ranges contain content that would be bisected:
-${JSON.stringify(scaledData.forbiddenBands.slice(0, 40), null, 2)}
-
-### Detected Objects (images, products, UI elements)
-${JSON.stringify(simplifiedObjects, null, 2)}
-
-### Detected Logos
-${JSON.stringify(scaledData.logos.map(l => ({ name: l.description, yTop: Math.round(l.yTop), yBottom: Math.round(l.yBottom) })), null, 2)}
-
-### Significant Vertical Gaps (likely section boundaries)
-These are large gaps between elements - good candidate positions for cuts:
-${JSON.stringify(simplifiedGaps, null, 2)}
-
-### Footer Detection
-Footer appears to start at Y=${scaledData.footerStartY} (confidence: ${scaledData.footerConfidence})
-Do not include any slices below this point.
-
-## What Makes a Good Semantic Section
-- **Header/Logo area**: Usually one slice at the top
-- **Hero section**: Headline + subheadline + hero image + primary CTA (keep together as ONE slice)
-- **Product modules**: Each product with its image, name, price, button (ONE slice per product OR one slice for the entire grid)
-- **Feature blocks**: Icon + headline + description (keep together)
-- **Testimonials**: Quote + attribution (keep together)
-- **Secondary CTAs**: Button with surrounding context
-- **Footer**: Everything below footerStartY (excluded from slices)
-
-## Critical Rules
-1. LOOK AT THE IMAGE to understand the visual layout
-2. Use the preprocessing data to get PRECISE pixel coordinates
-3. Place cuts in the GAPS, not through content
-4. Keep semantically related content TOGETHER
-5. Every slice should make sense as a standalone unit
-
-## Output Format
-Return ONLY a JSON object:
-{
-  "sections": [
-    { "name": "header", "yTop": 0, "yBottom": 120 },
-    { "name": "hero", "yTop": 120, "yBottom": 480 },
-    { "name": "products", "yTop": 480, "yBottom": 920 },
-    { "name": "cta", "yTop": 920, "yBottom": 1050 }
-  ]
-}
-
-Rules for sections:
-- First section must start at yTop: 0
-- Last section must end at yBottom ≤ ${scaledData.footerStartY}
-- Sections should NOT overlap
-- Each yBottom should equal the next section's yTop`;
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-5",
-      max_tokens: 4096,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: mimeType,
-              data: imageBase64
-            }
-          },
-          {
-            type: "text",
-            text: prompt
-          }
-        ]
-      }]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Claude API error (${response.status}):`, errorText.substring(0, 500));
-    return { 
-      isError: true, 
-      status: response.status, 
-      message: `Claude API error: ${response.status} - ${errorText.substring(0, 200)}`
-    };
-  }
-
-  const data = await response.json();
-  const content = data.content?.[0]?.text || '';
-  
-  console.log("  → Claude response received");
-  
-  // Parse JSON from response
-  let jsonStr = content;
-  if (content.includes("```json")) {
-    jsonStr = content.split("```json")[1].split("```")[0];
-  } else if (content.includes("```")) {
-    jsonStr = content.split("```")[1].split("```")[0];
-  } else {
-    // Try to find JSON object directly
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[0];
-    }
-  }
-  
-  try {
-    const parsed = JSON.parse(jsonStr.trim());
-    const sections = parsed.sections || [];
-    
-    // Convert sections to boundaries
-    const boundaries = [0];
-    for (const section of sections) {
-      if (section.yBottom && !boundaries.includes(section.yBottom)) {
-        boundaries.push(section.yBottom);
-      }
-    }
-    
-    // Ensure footerStartY is respected
-    const filteredBoundaries = boundaries.filter(b => b <= scaledData.footerStartY);
-    if (filteredBoundaries[filteredBoundaries.length - 1] !== scaledData.footerStartY) {
-      filteredBoundaries.push(scaledData.footerStartY);
-    }
-    
-    console.log(`  → Claude identified ${sections.length} sections`);
-    
-    // Scale results back to original coordinates if needed
-    if (scaleFactor !== 1) {
-      const scaled = scaleClaudeResultsBack(filteredBoundaries, sections, scaleFactor);
-      return { isError: false, boundaries: scaled.boundaries, sections: scaled.sections };
-    }
-    
-    return { isError: false, boundaries: filteredBoundaries, sections };
-  } catch (e) {
-    console.error("Failed to parse Claude response:", e);
-    console.error("Raw content:", content.substring(0, 500));
-    
-    // Fallback: use significant gaps
-    const boundaries = [0];
-    for (const gap of preprocessingData.significantGaps) {
-      if (gap.yPosition < preprocessingData.footerStartY && gap.gapSize >= 40) {
-        boundaries.push(gap.yPosition);
-      }
-    }
-    boundaries.push(preprocessingData.footerStartY);
-    
-    console.log(`  → Using fallback: ${boundaries.length - 1} slices from gap analysis`);
-    
-    return { isError: false, boundaries, sections: [] };
-  }
-}
-
-// ============================================================================
-// LAYER 8: POST-PROCESSING AND VALIDATION
-// ============================================================================
-
-function postProcess(
-  boundaries: number[],
-  footerStartY: number,
-  forbiddenBands: ForbiddenBand[]
-): { footerStartY: number; slices: SliceOutput[] } {
-  
-  console.log("Layer 8: Post-processing...");
-  
-  // 1. Sort and deduplicate
-  let processed = [...new Set(boundaries)].sort((a, b) => a - b);
-  
-  // 2. Ensure first boundary is 0
-  if (processed[0] !== 0) {
-    processed = [0, ...processed];
-  }
-  
-  // 3. Ensure last boundary doesn't exceed footerStartY
-  processed = processed.filter(b => b <= footerStartY);
-  if (processed[processed.length - 1] !== footerStartY) {
-    processed.push(footerStartY);
-  }
-  
-  // 4. Snap boundaries that fall in forbidden bands to nearest edge
-  const snapped: number[] = [];
-  for (const boundary of processed) {
-    let foundInBand: ForbiddenBand | null = null;
-    
-    for (const band of forbiddenBands) {
-      if (boundary > band.yTop && boundary < band.yBottom) {
-        foundInBand = band;
-        break;
-      }
-    }
-    
-    if (foundInBand) {
-      // Snap to the closest edge of the forbidden band
-      const distToTop = boundary - foundInBand.yTop;
-      const distToBottom = foundInBand.yBottom - boundary;
-      const snappedValue = distToTop <= distToBottom ? foundInBand.yTop : foundInBand.yBottom;
-      
-      if (!snapped.includes(snappedValue)) {
-        snapped.push(snappedValue);
-      }
-    } else {
-      snapped.push(boundary);
-    }
-  }
-  
-  // 5. Sort and deduplicate again
-  const final = [...new Set(snapped)].sort((a, b) => a - b);
-  
-  // 6. Convert to slices
-  const slices: SliceOutput[] = [];
-  for (let i = 0; i < final.length - 1; i++) {
-    slices.push({
-      yTop: Math.round(final[i]),
-      yBottom: Math.round(final[i + 1])
-    });
-  }
-  
-  console.log(`  → Final output: ${slices.length} slices`);
-  
-  return { footerStartY, slices };
-}
-
-// ============================================================================
 // UTILITY: IMAGE DIMENSION EXTRACTION
 // ============================================================================
 
 function getImageDimensions(imageBase64: string): { width: number; height: number } | null {
-  // Decode enough bytes to find dimensions (JPEG markers can be further in)
-  const bytesToDecode = Math.min(imageBase64.length, 50000); // Decode up to ~37KB
+  // Decode enough bytes to find dimensions
+  const bytesToDecode = Math.min(imageBase64.length, 50000);
   const binaryStr = atob(imageBase64.substring(0, bytesToDecode));
   const bytes = new Uint8Array(binaryStr.length);
   for (let i = 0; i < binaryStr.length; i++) {
@@ -948,7 +299,7 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
     return { width, height };
   }
   
-  // JPEG: scan for SOF0/SOF2 markers (0xFFC0 or 0xFFC2)
+  // JPEG: scan for SOF0/SOF2 markers
   if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
     let offset = 2;
     while (offset < bytes.length - 10) {
@@ -959,7 +310,6 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
       
       const marker = bytes[offset + 1];
       
-      // SOF0 (baseline) or SOF2 (progressive)
       if (marker === 0xC0 || marker === 0xC2) {
         const height = (bytes[offset + 5] << 8) | bytes[offset + 6];
         const width = (bytes[offset + 7] << 8) | bytes[offset + 8];
@@ -967,7 +317,6 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
         return { width, height };
       }
       
-      // Skip to next marker
       if (marker >= 0xC0 && marker <= 0xFE && marker !== 0xD8 && marker !== 0xD9 && !(marker >= 0xD0 && marker <= 0xD7)) {
         const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
         offset += 2 + length;
@@ -979,6 +328,177 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
   
   console.log(`  → Could not extract dimensions from image header`);
   return null;
+}
+
+// ============================================================================
+// CLAUDE: THE SOLE DECISION MAKER
+// ============================================================================
+
+async function askClaude(
+  imageBase64: string,
+  mimeType: string,
+  rawData: RawVisionData
+): Promise<{ success: true; decision: ClaudeDecision } | { success: false; error: string }> {
+  
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    return { success: false, error: "ANTHROPIC_API_KEY not configured" };
+  }
+
+  console.log("Asking Claude to analyze and make ALL decisions...");
+  
+  // Format raw data for Claude - just the facts, no decisions
+  const ocrData = rawData.paragraphs.map(p => ({
+    text: p.text.substring(0, 150),
+    yTop: Math.round(p.yTop),
+    yBottom: Math.round(p.yBottom),
+    xLeft: Math.round(p.xLeft),
+    xRight: Math.round(p.xRight)
+  }));
+  
+  const objectData = rawData.objects.map(o => ({
+    name: o.name,
+    confidence: Math.round(o.score * 100),
+    yTop: Math.round(o.yTop),
+    yBottom: Math.round(o.yBottom),
+    xLeft: Math.round(o.xLeft),
+    xRight: Math.round(o.xRight)
+  }));
+  
+  const logoData = rawData.logos.map(l => ({
+    name: l.description,
+    yTop: Math.round(l.yTop),
+    yBottom: Math.round(l.yBottom),
+    xLeft: Math.round(l.xLeft),
+    xRight: Math.round(l.xRight)
+  }));
+
+  const prompt = `You are analyzing an email design screenshot to determine where to slice it into sections.
+
+## Image Dimensions
+${rawData.imageWidth}x${rawData.imageHeight} pixels
+
+## Raw OCR Data (Text Blocks with Coordinates)
+${JSON.stringify(ocrData, null, 2)}
+
+## Detected Objects (Images, Products, UI Elements)
+${JSON.stringify(objectData, null, 2)}
+
+## Detected Logos
+${JSON.stringify(logoData, null, 2)}
+
+## Your Task
+1. LOOK at the image carefully
+2. Use the data above to understand what content is where
+3. YOU decide where the section boundaries should be
+4. YOU decide where the footer starts
+
+## What Makes Good Sections
+- **Header/Logo area**: Usually at the top
+- **Hero section**: Headline + hero image + primary CTA (keep together as ONE slice)
+- **Product modules**: Each product with its image, name, price (ONE slice per product OR one slice for entire grid)
+- **Feature blocks**: Icon + headline + description (keep together)
+- **Testimonials**: Quote + attribution (keep together)
+- **Secondary CTAs**: Button with surrounding context
+- **Footer**: Unsubscribe links, legal text, social icons, company address - typically at the very bottom
+
+## Critical Rules
+1. LOOK AT THE IMAGE - the data is just to help with precise coordinates
+2. Do NOT cut through text blocks, images, logos, or buttons
+3. Place cuts in the GAPS between sections
+4. Keep semantically related content TOGETHER
+5. Every slice should make sense as a standalone unit
+6. The footer contains legal/unsubscribe text - identify where it ACTUALLY starts
+
+## Output Format
+Return ONLY a JSON object with your decisions:
+{
+  "footerStartY": <number - the Y pixel where footer begins>,
+  "sections": [
+    { "name": "header", "yTop": 0, "yBottom": 120 },
+    { "name": "hero", "yTop": 120, "yBottom": 480 },
+    { "name": "products", "yTop": 480, "yBottom": 920 },
+    { "name": "cta", "yTop": 920, "yBottom": 1050 }
+  ]
+}
+
+Rules for your response:
+- First section MUST start at yTop: 0
+- Last section's yBottom should equal your footerStartY
+- Sections should NOT overlap
+- Each yBottom should equal the next section's yTop
+- footerStartY should be where the footer actually begins in the image`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 4096,
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mimeType,
+                data: imageBase64
+              }
+            },
+            {
+              type: "text",
+              text: prompt
+            }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Claude API error (${response.status}):`, errorText.substring(0, 500));
+      return { success: false, error: `Claude API error: ${response.status}` };
+    }
+
+    const data = await response.json();
+    const content = data.content?.[0]?.text || '';
+    
+    console.log("  → Claude response received");
+    
+    // Parse JSON from response
+    let jsonStr = content;
+    if (content.includes("```json")) {
+      jsonStr = content.split("```json")[1].split("```")[0];
+    } else if (content.includes("```")) {
+      jsonStr = content.split("```")[1].split("```")[0];
+    } else {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+    }
+    
+    const parsed = JSON.parse(jsonStr.trim());
+    
+    const decision: ClaudeDecision = {
+      footerStartY: parsed.footerStartY,
+      sections: parsed.sections || []
+    };
+    
+    console.log(`  → Claude decided: footerStartY=${decision.footerStartY}, ${decision.sections.length} sections`);
+    
+    return { success: true, decision };
+    
+  } catch (e) {
+    console.error("Failed to get/parse Claude response:", e);
+    return { success: false, error: `Failed to parse Claude response: ${e}` };
+  }
 }
 
 // ============================================================================
@@ -1004,10 +524,10 @@ serve(async (req) => {
         imageHeight: 0,
         imageWidth: 0,
         processingTimeMs: Date.now() - startTime,
-        confidence: { footer: 'low', overall: 'low' }
+        confidence: { overall: 'low' }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 // Return 200 for client to read error
+        status: 200
       });
     }
 
@@ -1022,7 +542,7 @@ serve(async (req) => {
         imageHeight: 0,
         imageWidth: 0,
         processingTimeMs: Date.now() - startTime,
-        confidence: { footer: 'low', overall: 'low' }
+        confidence: { overall: 'low' }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -1031,160 +551,106 @@ serve(async (req) => {
     
     const mimeType = match[1];
     const imageBase64 = match[2];
-    console.log(`\n========== AUTO-SLICE V2 ==========`);
+    console.log(`\n========== AUTO-SLICE V2 (Claude Brain) ==========`);
     console.log(`Received image: ${mimeType}, base64 length: ${imageBase64.length}`);
 
-    // Get TRUE dimensions from image header (CRITICAL: do NOT use OCR maxY)
+    // ========== GET TRUE IMAGE DIMENSIONS ==========
     const headerDimensions = getImageDimensions(imageBase64);
     
-    // ========== LAYER 1: OCR ==========
-    const { paragraphs, imageWidth: ocrWidth, imageHeight: ocrHeight } = await extractTextGeometry(imageBase64);
-    
-    // CRITICAL FIX: Use header dimensions as the source of truth
-    // OCR dimensions (maxX/maxY) only represent the extent of detected text,
-    // NOT the actual image dimensions. This was causing massive coordinate misalignment.
-    let imageWidth: number;
-    let imageHeight: number;
-    
-    if (headerDimensions) {
-      imageWidth = headerDimensions.width;
-      imageHeight = headerDimensions.height;
-      console.log(`Using TRUE image dimensions from header: ${imageWidth}x${imageHeight}`);
-      console.log(`(OCR detected content up to: ${ocrWidth}x${ocrHeight})`);
-    } else {
-      // Fallback: if we couldn't read header, use OCR extent (less accurate)
-      imageWidth = ocrWidth > 0 ? ocrWidth : 600;
-      imageHeight = ocrHeight > 0 ? ocrHeight : 2000;
-      console.log(`WARNING: Could not read image header, using OCR extent: ${imageWidth}x${imageHeight}`);
+    if (!headerDimensions) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Could not determine image dimensions",
+        footerStartY: 0,
+        slices: [],
+        imageHeight: 0,
+        imageWidth: 0,
+        processingTimeMs: Date.now() - startTime,
+        confidence: { overall: 'low' }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
     }
-
-    // Store original dimensions for debug
-    const originalDimensions = { width: imageWidth, height: imageHeight };
-
-    // ========== LAYER 2: Object Localization ==========
-    const objects = await detectObjects(imageBase64, imageHeight, imageWidth);
-
-    // ========== LAYER 3: Logo Detection ==========
-    const logos = await detectLogos(imageBase64, imageHeight, imageWidth);
-
-    // ========== LAYER 4: Forbidden Bands ==========
-    const forbiddenBands = computeForbiddenBands(paragraphs, objects, logos, 4);
-
-    // ========== LAYER 5: Gap Analysis ==========
-    const significantGaps = computeSignificantGaps(paragraphs, objects, logos, imageHeight);
-
-    // ========== LAYER 6: Footer Detection ==========
-    const footerDetection = detectFooter(paragraphs, objects, imageHeight);
-
-    // ========== PREPARE FOR CLAUDE ==========
-    // Calculate scale factor if image exceeds Claude's limits
-    const maxDim = Math.max(imageWidth, imageHeight);
-    const scaleFactor = maxDim > MAX_CLAUDE_DIMENSION ? MAX_CLAUDE_DIMENSION / maxDim : 1;
-    const claudeImageDimensions = {
-      width: Math.round(imageWidth * scaleFactor),
-      height: Math.round(imageHeight * scaleFactor)
-    };
     
-    if (scaleFactor < 1) {
-      console.log(`Image scaling for Claude: ${imageWidth}x${imageHeight} → ${claudeImageDimensions.width}x${claudeImageDimensions.height} (scale: ${scaleFactor.toFixed(3)})`);
-    }
+    const imageWidth = headerDimensions.width;
+    const imageHeight = headerDimensions.height;
+    console.log(`TRUE image dimensions: ${imageWidth}x${imageHeight}`);
 
-    // ========== LAYER 7: Claude Semantic Sectioning ==========
-    const preprocessingData: PreprocessingData = {
-      paragraphs,
+    // ========== GATHER RAW DATA (Vision APIs in parallel) ==========
+    const [ocrResult, objects, logos] = await Promise.all([
+      extractTextGeometry(imageBase64),
+      detectObjects(imageBase64, imageHeight, imageWidth),
+      detectLogos(imageBase64, imageHeight, imageWidth)
+    ]);
+
+    const rawData: RawVisionData = {
+      paragraphs: ocrResult.paragraphs,
       objects,
       logos,
-      forbiddenBands,
-      significantGaps,
-      footerStartY: footerDetection.footerStartY,
-      footerConfidence: footerDetection.confidence,
       imageWidth,
       imageHeight
     };
-    
-    const claudeResult = await claudeSemanticSectioning(imageBase64, mimeType, preprocessingData, scaleFactor);
 
-    // Handle Claude errors gracefully (return 200 with error details)
-    if (claudeResult.isError) {
-      console.error(`Claude failed with status ${claudeResult.status}: ${claudeResult.message}`);
-      
-      // Fallback to gap-based slicing
-      const fallbackBoundaries = [0];
-      for (const gap of significantGaps) {
-        if (gap.yPosition < footerDetection.footerStartY && gap.gapSize >= 40) {
-          fallbackBoundaries.push(gap.yPosition);
-        }
-      }
-      fallbackBoundaries.push(footerDetection.footerStartY);
-      
-      const fallbackResult = postProcess(fallbackBoundaries, footerDetection.footerStartY, forbiddenBands);
-      
-      const processingTimeMs = Date.now() - startTime;
-      
+    console.log(`Raw data gathered: ${rawData.paragraphs.length} paragraphs, ${rawData.objects.length} objects, ${rawData.logos.length} logos`);
+
+    // ========== ASK CLAUDE TO MAKE ALL DECISIONS ==========
+    const claudeResult = await askClaude(imageBase64, mimeType, rawData);
+
+    if (!claudeResult.success) {
+      // If Claude fails, we fail - NO FALLBACK
       return new Response(JSON.stringify({
-        success: true, // Still success since we have fallback slices
-        footerStartY: fallbackResult.footerStartY,
-        slices: fallbackResult.slices,
+        success: false,
+        error: claudeResult.error,
+        footerStartY: 0,
+        slices: [],
         imageHeight,
         imageWidth,
-        processingTimeMs,
-        confidence: {
-          footer: footerDetection.confidence,
-          overall: 'low' // Low because Claude failed
-        },
+        processingTimeMs: Date.now() - startTime,
+        confidence: { overall: 'low' },
         debug: {
-          paragraphCount: paragraphs.length,
-          objectCount: objects.length,
-          logoCount: logos.length,
-          gapCount: significantGaps.length,
-          forbiddenBandCount: forbiddenBands.length,
-          claudeBoundaries: fallbackBoundaries,
-          scaleFactor,
-          originalDimensions,
-          claudeImageDimensions
-        },
-        warning: `Claude analysis failed (using gap-based fallback): ${claudeResult.message}`
+          paragraphCount: rawData.paragraphs.length,
+          objectCount: rawData.objects.length,
+          logoCount: rawData.logos.length
+        }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
       });
     }
 
-    // ========== LAYER 8: Post-Processing ==========
-    const result = postProcess(
-      claudeResult.boundaries,
-      footerDetection.footerStartY,
-      forbiddenBands
-    );
+    // ========== USE CLAUDE'S DECISIONS DIRECTLY ==========
+    const decision = claudeResult.decision;
+    
+    // Convert Claude's sections directly to slices - NO MODIFICATIONS
+    const slices: SliceOutput[] = decision.sections.map(section => ({
+      yTop: Math.round(section.yTop),
+      yBottom: Math.round(section.yBottom)
+    }));
 
     const processingTimeMs = Date.now() - startTime;
 
     const response: AutoSliceV2Response = {
       success: true,
-      footerStartY: result.footerStartY,
-      slices: result.slices,
+      footerStartY: Math.round(decision.footerStartY),
+      slices,
       imageHeight,
       imageWidth,
       processingTimeMs,
       confidence: {
-        footer: footerDetection.confidence,
-        overall: paragraphs.length > 5 ? 'high' : paragraphs.length > 0 ? 'medium' : 'low'
+        overall: rawData.paragraphs.length > 5 ? 'high' : rawData.paragraphs.length > 0 ? 'medium' : 'low'
       },
       debug: {
-        paragraphCount: paragraphs.length,
-        objectCount: objects.length,
-        logoCount: logos.length,
-        gapCount: significantGaps.length,
-        forbiddenBandCount: forbiddenBands.length,
-        claudeBoundaries: claudeResult.boundaries,
-        scaleFactor,
-        originalDimensions,
-        claudeImageDimensions
+        paragraphCount: rawData.paragraphs.length,
+        objectCount: rawData.objects.length,
+        logoCount: rawData.logos.length,
+        claudeSections: decision.sections
       }
     };
 
     console.log(`\n========== COMPLETE ==========`);
-    console.log(`${result.slices.length} slices in ${processingTimeMs}ms`);
+    console.log(`Claude decided: ${slices.length} slices, footer at ${decision.footerStartY}px`);
+    console.log(`Processing time: ${processingTimeMs}ms`);
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1195,7 +661,6 @@ serve(async (req) => {
     console.error("Auto-slice v2 error:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Return 200 with error so client can read the details
     const response: AutoSliceV2Response = {
       success: false,
       error: errorMessage,
@@ -1204,15 +669,12 @@ serve(async (req) => {
       imageHeight: 0,
       imageWidth: 0,
       processingTimeMs: Date.now() - startTime,
-      confidence: {
-        footer: 'low',
-        overall: 'low'
-      }
+      confidence: { overall: 'low' }
     };
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200 // Return 200 so client can read the error
+      status: 200
     });
   }
 });
