@@ -60,7 +60,13 @@ export interface AutoSliceResponse {
 export interface AutoSliceV2Response {
   success: boolean;
   footerStartY: number;
-  slices: { yTop: number; yBottom: number }[];
+  slices: { 
+    yTop: number; 
+    yBottom: number;
+    name: string;
+    hasCTA: boolean;
+    ctaText: string | null;
+  }[];
   imageHeight: number;
   imageWidth: number;
   processingTimeMs: number;
@@ -72,7 +78,10 @@ export interface AutoSliceV2Response {
     paragraphCount: number;
     objectCount: number;
     logoCount: number;
-    claudeSections?: { name: string; yTop: number; yBottom: number }[];
+    claudeSections?: { name: string; yTop: number; yBottom: number; hasCTA: boolean; ctaText: string | null }[];
+    scaleFactor?: number;
+    originalDimensions?: { width: number; height: number };
+    claudeImageDimensions?: { width: number; height: number };
   };
 }
 

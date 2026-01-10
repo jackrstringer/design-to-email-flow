@@ -41,6 +41,9 @@ interface DetectedLogo {
 interface SliceOutput {
   yTop: number;
   yBottom: number;
+  name: string;
+  hasCTA: boolean;
+  ctaText: string | null;
 }
 
 // Raw data from Vision APIs - no decisions, just facts
@@ -55,7 +58,13 @@ interface RawVisionData {
 // Claude's decision - the ONLY decision-maker
 interface ClaudeDecision {
   footerStartY: number;
-  sections: { name: string; yTop: number; yBottom: number }[];
+  sections: { 
+    name: string; 
+    yTop: number; 
+    yBottom: number;
+    hasCTA: boolean;
+    ctaText: string | null;
+  }[];
 }
 
 interface AutoSliceV2Response {
@@ -73,7 +82,7 @@ interface AutoSliceV2Response {
     paragraphCount: number;
     objectCount: number;
     logoCount: number;
-    claudeSections?: { name: string; yTop: number; yBottom: number }[];
+    claudeSections?: { name: string; yTop: number; yBottom: number; hasCTA: boolean; ctaText: string | null }[];
     scaleFactor?: number;
     originalDimensions?: { width: number; height: number };
     claudeImageDimensions?: { width: number; height: number };
@@ -467,7 +476,9 @@ function scaleClaudeDecision(decision: ClaudeDecision, scaleFactor: number): Cla
     sections: decision.sections.map(s => ({
       name: s.name,
       yTop: s.yTop * inverseScale,
-      yBottom: s.yBottom * inverseScale
+      yBottom: s.yBottom * inverseScale,
+      hasCTA: s.hasCTA,
+      ctaText: s.ctaText
     }))
   };
 }
@@ -515,7 +526,15 @@ async function askClaude(
     xRight: Math.round(l.xRight)
   }));
 
-  const prompt = `You are analyzing an email design screenshot to determine where to slice it into sections.
+  const prompt = `You are analyzing an email design screenshot to slice it into sections for use in Klaviyo email templates.
+
+## CRITICAL CONTEXT: Why We're Slicing
+
+Each slice becomes a SEPARATE CLICKABLE IMAGE in Klaviyo. This means:
+- Each slice can only have ONE click destination (one URL)
+- If there are 2 buttons visible, they MUST be in separate slices
+- A slice containing multiple buttons is BROKEN - users can only click one link per image slice
+- This is for email marketing - every CTA needs its own clickable area
 
 ## Image Dimensions
 ${rawData.imageWidth}x${rawData.imageHeight} pixels
@@ -523,53 +542,199 @@ ${rawData.imageWidth}x${rawData.imageHeight} pixels
 ## Raw OCR Data (Text Blocks with Coordinates)
 ${JSON.stringify(ocrData, null, 2)}
 
-## Detected Objects (Images, Products, UI Elements)
+## Detected Objects
 ${JSON.stringify(objectData, null, 2)}
 
 ## Detected Logos
 ${JSON.stringify(logoData, null, 2)}
 
-## Your Task
-1. LOOK at the image carefully
-2. Use the data above to understand what content is where
-3. YOU decide where the section boundaries should be
-4. YOU decide where the footer starts
+---
 
-## What Makes Good Sections
-- **Header/Logo area**: Usually at the top
-- **Hero section**: Headline + hero image + primary CTA (keep together as ONE slice)
-- **Product modules**: Each product with its image, name, price (ONE slice per product OR one slice for entire grid)
-- **Feature blocks**: Icon + headline + description (keep together)
-- **Testimonials**: Quote + attribution (keep together)
-- **Secondary CTAs**: Button with surrounding context
-- **Footer**: Unsubscribe links, legal text, social icons, company address - typically at the very bottom
+## SLICING RULES
 
-## Critical Rules
-1. LOOK AT THE IMAGE - the data is just to help with precise coordinates
-2. Do NOT cut through text blocks, images, logos, or buttons
-3. Place cuts in the GAPS between sections
-4. Keep semantically related content TOGETHER
-5. Every slice should make sense as a standalone unit
-6. The footer contains legal/unsubscribe text - identify where it ACTUALLY starts
+### RULE 1: EVERY BUTTON = SEPARATE SLICE
 
-## Output Format
-Return ONLY a JSON object with your decisions:
+This is the most important rule. Each distinct CTA button MUST be its own slice.
+
+WRONG (broken - can't click both):
+- One slice containing "SHOP HYDROGLYPH" and "SHOP PLANTA" buttons
+
+CORRECT:
+- Slice 1: Content + "SHOP HYDROGLYPH" button
+- Slice 2: "SHOP PLANTA" button (with minimal context above/below)
+
+If you see vertically stacked buttons like:
+
+[SHOP NOW] [LEARN MORE]
+
+These are TWO slices, not one.
+
+### RULE 2: What Stays TOGETHER in One Slice
+
+Keep these as single units (as long as there's only ONE button):
+- Hero section: headline + subheadline + image + ONE CTA button
+- Product card: product image + name + price + ONE button
+- Content block: headline + body text + ONE button
+- Testimonial: quote + author name + photo (usually no button)
+- Feature: icon + headline + description (usually no button)
+
+### RULE 3: What Gets SEPARATED
+
+Split these into multiple slices:
+- Two or more buttons stacked vertically → each button = new slice
+- Product grid where each product has its own CTA → one slice per product
+- Side-by-side buttons → separate slices (cut horizontally between them if possible, or treat the row as needing special handling)
+- Any section with multiple click destinations
+
+### RULE 4: Slice Boundaries
+
+- Cut in visual GAPS between sections (whitespace, color changes, divider lines)
+- NEVER cut through: text blocks, images, logos, buttons, or faces
+- Each slice should make sense as a standalone visual unit
+- Typical email: 6-15 slices (more if there are many buttons)
+
+---
+
+## FOOTER DETECTION - CRITICAL
+
+The footer is the "utility section" at the bottom of the email. It contains navigation, legal info, and social links - NOT marketing content.
+
+### Footer Starts at the FIRST of These (whichever appears first):
+
+1. **Repeated brand logo** - The logo appearing again near the bottom
+2. **Social media icons row** - Instagram, Facebook, TikTok, YouTube, etc.
+3. **Navigation link stack** - Vertical list like:
+   - Shop
+   - About Us  
+   - Contact
+   - FAQ
+4. **Horizontal nav links** - "Shop | About | Contact" or "Terms | Privacy | Unsubscribe"
+5. **Certification badges row** - B Corp, Vegan, Cruelty Free, Climate Neutral, etc.
+6. **"Follow us" or "Connect with us"** text
+7. **Dense utility text block** - Terms, copyright, address all grouped together
+
+### Footer Detection Examples:
+
+| What You See | Footer Starts At |
+|--------------|------------------|
+| Social icons row above legal text | The social icons row |
+| "SOFAS · ACCESSORIES · BEANBAGS" nav | That navigation row |
+| Brand logo repeated + nav buttons below | The repeated logo |
+| Badge row (Vegan, 100% Delicious, Cruelty Free) | The badge row |
+| "ALL PRODUCTS / TAKE OUR QUIZ / CONTACT US" buttons | Those nav buttons |
+| "Follow us on Instagram | Facebook | YouTube" | That "Follow us" text |
+
+### Footer is NOT:
+
+- Just the "Unsubscribe" link at the very bottom
+- Just the copyright text
+- Just the legal disclaimer
+
+The footer is the entire utility section. Look for where "marketing content" ends and "utility/navigation content" begins.
+
+---
+
+## COMMON PATTERNS
+
+### Hero Section (1 slice)
+
+[Logo] [Headline] [Subheadline]
+[Hero Image] [CTA Button]
+
+→ All ONE slice (single click destination)
+
+### Dual CTA Section (2 slices)
+
+[Headline] [Body text] [BUTTON 1] [BUTTON 2]
+
+→ TWO slices:
+  - Slice A: Headline + Body + Button 1
+  - Slice B: Button 2
+
+### Product Showcase (1 slice per product if each has CTA)
+
+[Product 1 Image] [Product 2 Image] [Name + Price] [Name + Price] [SHOP NOW] [SHOP NOW]
+
+→ If products are side-by-side with separate CTAs, this may need to be ONE slice (user will link to collection page) OR you note that horizontal splitting isn't possible
+
+### Stacked Products (multiple slices)
+
+[Product 1 Image] [Product 1 Name] [SHOP PRODUCT 1]
+
+[Product 2 Image] [Product 2 Name]
+[SHOP PRODUCT 2]
+
+→ TWO slices (one per product)
+
+### Pricing Grid (usually 1 slice)
+
+[1 Pack - $20] [3 Pack - $50] [6 Pack - $90]
+
+→ ONE slice (links to pricing page)
+
+### Footer (1 slice OR excluded)
+
+[Brand Logo] [Social Icons] [Nav Links] [Legal Text]
+
+→ Usually ONE slice or excluded entirely via footerStartY
+
+---
+
+## OUTPUT FORMAT
+
+Return ONLY a valid JSON object:
+
 {
-  "footerStartY": <number - the Y pixel where footer begins>,
+  "footerStartY": <number - Y pixel where footer section begins>,
   "sections": [
-    { "name": "header", "yTop": 0, "yBottom": 120 },
-    { "name": "hero", "yTop": 120, "yBottom": 480 },
-    { "name": "products", "yTop": 480, "yBottom": 920 },
-    { "name": "cta", "yTop": 920, "yBottom": 1050 }
+    {
+      "name": "<descriptive name>",
+      "yTop": <number>,
+      "yBottom": <number>,
+      "hasCTA": <boolean - true if this slice contains a button>,
+      "ctaText": "<button text if hasCTA is true, otherwise null>"
+    }
   ]
 }
 
-Rules for your response:
-- First section MUST start at yTop: 0
-- Last section's yBottom should equal your footerStartY
-- Sections should NOT overlap
-- Each yBottom should equal the next section's yTop
-- footerStartY should be where the footer actually begins in the image`;
+### Output Rules:
+
+1. First section MUST have yTop: 0
+2. Last section's yBottom MUST equal footerStartY
+3. Sections MUST NOT overlap
+4. Each section's yBottom MUST equal the next section's yTop (no gaps)
+5. Every button in the email must be in its own slice
+6. footerStartY marks where utility content begins (see Footer Detection above)
+
+### Example Output:
+
+{
+  "footerStartY": 2450,
+  "sections": [
+    { "name": "header_hero", "yTop": 0, "yBottom": 580, "hasCTA": true, "ctaText": "SHOP NOW" },
+    { "name": "value_prop", "yTop": 580, "yBottom": 920, "hasCTA": false, "ctaText": null },
+    { "name": "product_1_cta", "yTop": 920, "yBottom": 1180, "hasCTA": true, "ctaText": "SHOP HYDROGLYPH" },
+    { "name": "product_2_cta", "yTop": 1180, "yBottom": 1440, "hasCTA": true, "ctaText": "SHOP PLANTA" },
+    { "name": "testimonial", "yTop": 1440, "yBottom": 1720, "hasCTA": false, "ctaText": null },
+    { "name": "final_cta", "yTop": 1720, "yBottom": 2100, "hasCTA": true, "ctaText": "GET STARTED" },
+    { "name": "pre_footer", "yTop": 2100, "yBottom": 2450, "hasCTA": false, "ctaText": null }
+  ]
+}
+
+---
+
+## FINAL CHECKLIST
+
+Before returning your response, verify:
+
+☐ Every visible button has its own slice
+☐ No slice contains two or more buttons
+☐ footerStartY is at the START of utility content (not the bottom of the email)
+☐ First section starts at yTop: 0
+☐ Last section ends at footerStartY
+☐ No gaps between sections
+☐ No overlapping sections
+☐ Cuts are in visual gaps, not through content`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -630,7 +795,13 @@ Rules for your response:
     
     const decision: ClaudeDecision = {
       footerStartY: parsed.footerStartY,
-      sections: parsed.sections || []
+      sections: (parsed.sections || []).map((s: any) => ({
+        name: s.name || '',
+        yTop: s.yTop,
+        yBottom: s.yBottom,
+        hasCTA: s.hasCTA ?? false,
+        ctaText: s.ctaText ?? null
+      }))
     };
     
     console.log(`  → Claude decided: footerStartY=${decision.footerStartY}, ${decision.sections.length} sections`);
@@ -783,7 +954,10 @@ serve(async (req) => {
     // Convert Claude's sections directly to slices - NO MODIFICATIONS (except scaling)
     const slices: SliceOutput[] = originalSpaceDecision.sections.map(section => ({
       yTop: Math.round(section.yTop),
-      yBottom: Math.round(section.yBottom)
+      yBottom: Math.round(section.yBottom),
+      name: section.name,
+      hasCTA: section.hasCTA,
+      ctaText: section.ctaText
     }));
 
     const processingTimeMs = Date.now() - startTime;
