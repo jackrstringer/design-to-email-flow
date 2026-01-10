@@ -56,6 +56,27 @@ export interface AutoSliceResponse {
   };
 }
 
+// V2 Auto-slice response (OCR + LLM pipeline)
+export interface AutoSliceV2Response {
+  success: boolean;
+  footerStartY: number;
+  slices: { yTop: number; yBottom: number }[];
+  imageHeight: number;
+  imageWidth: number;
+  processingTimeMs: number;
+  confidence: {
+    footer: 'high' | 'medium' | 'low';
+    overall: 'high' | 'medium' | 'low';
+  };
+  error?: string;
+  debug?: {
+    paragraphCount: number;
+    forbiddenBandCount: number;
+    candidateCutCount: number;
+    llmBoundaries?: number[];
+  };
+}
+
 // Legacy types (kept for backward compatibility during transition)
 export type AutoSectionType = 'header' | 'hero' | 'product_grid' | 'cta' | 'text_block' | 'divider' | 'footer' | 'unknown';
 

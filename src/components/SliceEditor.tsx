@@ -8,7 +8,8 @@ import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut, Column
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import type { SliceType, AutoSliceResponse, AutoDetectedSlice } from '@/types/slice';
+import type { SliceType, AutoSliceResponse, AutoDetectedSlice, AutoSliceV2Response } from '@/types/slice';
+import { getImageDimensions } from '@/lib/imageSlicing';
 import type { ColumnConfig } from '@/lib/imageSlicing';
 
 interface SlicePosition {
@@ -167,63 +168,21 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
     setAnalysisStep('idle');
   }, []);
 
-  // Constants for auto-slice processing - ruler image is 29px wide
-  const RULER_WIDTH = 29;
-
-  // Attach static ruler image to left side of email image
-  const addRulerToImage = async (emailDataUrl: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const emailImg = new window.Image();
-      const rulerImg = new window.Image();
-      
-      let emailLoaded = false;
-      let rulerLoaded = false;
-      
-      const tryComposite = () => {
-        if (!emailLoaded || !rulerLoaded) return;
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = emailImg.naturalWidth + RULER_WIDTH;
-        canvas.height = emailImg.naturalHeight;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Could not get canvas context'));
-          return;
-        }
-        
-        // Draw ruler (scaled to match email height)
-        ctx.drawImage(rulerImg, 0, 0, RULER_WIDTH, emailImg.naturalHeight);
-        
-        // Draw email to the right
-        ctx.drawImage(emailImg, RULER_WIDTH, 0);
-        
-        resolve(canvas.toDataURL('image/png'));
-      };
-      
-      emailImg.onload = () => { emailLoaded = true; tryComposite(); };
-      rulerImg.onload = () => { rulerLoaded = true; tryComposite(); };
-      emailImg.onerror = () => reject(new Error('Failed to load email image'));
-      rulerImg.onerror = () => reject(new Error('Failed to load ruler image'));
-      
-      emailImg.crossOrigin = 'anonymous';
-      emailImg.src = emailDataUrl;
-      rulerImg.src = '/ruler.png'; // Load from public folder
-    });
-  };
-
-  // Ruler-based automatic slice detection using Claude vision
+  // V2 Auto-slice using OCR + LLM pipeline
   const handleAutoAnalyze = async () => {
     setIsAnalyzing(true);
     setAnalysisStep('analyzing');
 
     try {
-      console.log('Adding ruler to image (frontend canvas)...');
-      const imageWithRuler = await addRulerToImage(imageDataUrl);
-      console.log('Ruler added, sending to backend...');
+      console.log('Starting V2 auto-slice analysis...');
+      
+      // Get image dimensions for converting pixel coords to percentages
+      const dimensions = await getImageDimensions(imageDataUrl);
+      console.log(`Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
-      const { data, error } = await supabase.functions.invoke('auto-slice-email', {
-        body: { imageDataUrl: imageWithRuler },
+      // Call the new v2 endpoint with the raw image (no ruler needed)
+      const { data, error } = await supabase.functions.invoke('auto-slice-v2', {
+        body: { imageDataUrl },
       });
 
       if (error) {
@@ -234,50 +193,75 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
         throw new Error(error.message);
       }
 
-      const response = data as AutoSliceResponse;
+      const response = data as AutoSliceV2Response;
 
       if (!response.success) {
         toast.error(response.error || 'Analysis failed');
         return;
       }
 
-      applyAutoSliceResults(response);
+      console.log(`V2 response: ${response.slices.length} slices, footer at ${response.footerStartY}px`);
+      
+      // Use the imageHeight from the response (more accurate from OCR)
+      const imageHeight = response.imageHeight || dimensions.height;
+      
+      // Convert pixel footerStartY to percentage and set footer cutoff
+      const footerPercent = (response.footerStartY / imageHeight) * 100;
+      setFooterCutoff(Math.min(100, footerPercent));
+      
+      // Convert pixel-based slices to percentage-based SlicePosition format
+      const newPositions: SlicePosition[] = [];
+      
+      for (let i = 0; i < response.slices.length - 1; i++) {
+        const slice = response.slices[i];
+        // The boundary is at the bottom of each slice (except last)
+        const positionPercent = (slice.yBottom / imageHeight) * 100;
+        
+        newPositions.push({
+          position: positionPercent,
+          type: 'image' as SliceType,
+          columns: 1 as 1 | 2 | 3 | 4,
+        });
+      }
+
+      setSlicePositions(newPositions);
+      setFirstRegionColumns(1);
+      
+      // Create a compatible response object for the legacy state
+      const legacyResponse: AutoSliceResponse = {
+        success: true,
+        slices: response.slices.map((s, i) => ({
+          id: `slice_${i + 1}`,
+          yStartPercent: (s.yTop / imageHeight) * 100,
+          yEndPercent: (s.yBottom / imageHeight) * 100,
+          type: 'content',
+          label: `Section ${i + 1}`,
+          clickable: true
+        })),
+        metadata: {
+          imageWidth: response.imageWidth,
+          imageHeight: response.imageHeight,
+          processingTimeMs: response.processingTimeMs
+        }
+      };
+      setAutoSliceResponse(legacyResponse);
+
+      const confidenceNote = response.confidence.overall === 'high' 
+        ? '' 
+        : ` (${response.confidence.overall} confidence)`;
+      
+      toast.success(
+        `Detected ${response.slices.length} sections${confidenceNote} (${(response.processingTimeMs / 1000).toFixed(1)}s)`
+      );
+      
     } catch (error) {
-      console.error('Auto-slice error:', error);
+      console.error('Auto-slice v2 error:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Analysis failed: ${message}`);
     } finally {
       setIsAnalyzing(false);
       setAnalysisStep('idle');
     }
-  };
-  
-  // Helper to apply auto-slice results to state
-  const applyAutoSliceResults = (response: AutoSliceResponse) => {
-    setAutoSliceResponse(response);
-
-    // Convert auto-detected slices to SlicePosition format
-    const newPositions: SlicePosition[] = [];
-    
-    for (let i = 0; i < response.slices.length - 1; i++) {
-      const currentSlice = response.slices[i];
-      const nextSlice = response.slices[i + 1];
-      
-      newPositions.push({
-        position: currentSlice.yEndPercent,
-        type: 'image' as SliceType,
-        columns: 1 as 1 | 2 | 3 | 4,
-        sectionType: nextSlice.type,
-        label: nextSlice.label,
-        clickable: nextSlice.clickable
-      });
-    }
-
-    setSlicePositions(newPositions);
-    setFirstRegionColumns(1);
-
-    const timeMs = response.metadata.processingTimeMs;
-    toast.success(`Detected ${response.slices.length} sections (${(timeMs / 1000).toFixed(1)}s)`);
   };
 
   const handleProcess = () => {
