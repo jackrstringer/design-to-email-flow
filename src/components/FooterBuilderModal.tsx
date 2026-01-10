@@ -286,8 +286,35 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       console.log('Extracted assets:', data);
 
+      // Pre-populate collected assets with brand's stored logos
+      // This ensures we always have the correct logo URLs available
+      const initialAssets: Record<string, string> = {};
+      if (brand.lightLogoUrl) {
+        initialAssets['logo'] = brand.lightLogoUrl;
+        initialAssets['brand_logo'] = brand.lightLogoUrl;
+        initialAssets['brand_logo_light'] = brand.lightLogoUrl;
+        console.log('Pre-populated light logo from brand:', brand.lightLogoUrl);
+      }
+      if (brand.darkLogoUrl) {
+        initialAssets['brand_logo_dark'] = brand.darkLogoUrl;
+        console.log('Pre-populated dark logo from brand:', brand.darkLogoUrl);
+      }
+      setCollectedAssets(initialAssets);
+
+      // Filter out logo assets from requires_upload if brand already has logo URLs
+      let assetsToUpload = data.requires_upload || [];
+      if (brand.lightLogoUrl || brand.darkLogoUrl) {
+        const beforeCount = assetsToUpload.length;
+        assetsToUpload = assetsToUpload.filter((asset: ExtractedAsset) => 
+          asset.category !== 'logo' && !asset.id.toLowerCase().includes('logo')
+        );
+        if (beforeCount !== assetsToUpload.length) {
+          console.log('Filtered out logo from requires_upload (brand already has logos)');
+        }
+      }
+      
       // Store extraction results
-      setAssetsNeeded(data.requires_upload || []);
+      setAssetsNeeded(assetsToUpload);
       setTextBasedElements(data.text_based_elements || []);
       const extractedClickables = data.clickable_elements || [];
       setClickableElements(extractedClickables);
@@ -347,7 +374,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       }
 
       // If there are assets that need upload, show the collection modal
-      if (data.requires_upload && data.requires_upload.length > 0) {
+      if (assetsToUpload.length > 0) {
         setShowAssetCollectionModal(true);
       }
 
@@ -384,7 +411,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     } finally {
       setIsExtractingAssets(false);
     }
-  }, [brand.domain, brand.name]);
+  }, [brand.domain, brand.name, brand.lightLogoUrl, brand.darkLogoUrl, brand.socialLinks]);
 
   // Update a single link URL
   const updateLinkUrl = useCallback((id: string, newUrl: string) => {
@@ -538,12 +565,32 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         url: link.searchedUrl
       }));
       
+      // Merge brand logo URLs with collected assets (brand logos take priority)
+      // This ensures the actual stored logo URLs are always available
+      const assetsWithBrandLogos: Record<string, string> = { ...collectedAssets };
+      
+      // Auto-inject brand logos if available - these are the REAL logos to use
+      if (brand.lightLogoUrl) {
+        assetsWithBrandLogos['brand_logo_light'] = brand.lightLogoUrl;
+        // Also add as generic "logo" for dark backgrounds (most common footer scenario)
+        if (!assetsWithBrandLogos['logo'] && !assetsWithBrandLogos['brand_logo']) {
+          assetsWithBrandLogos['logo'] = brand.lightLogoUrl;
+        }
+        console.log('Injected light logo from brand:', brand.lightLogoUrl);
+      }
+      if (brand.darkLogoUrl) {
+        assetsWithBrandLogos['brand_logo_dark'] = brand.darkLogoUrl;
+        console.log('Injected dark logo from brand:', brand.darkLogoUrl);
+      }
+      
+      console.log('Final assets for generation:', assetsWithBrandLogos);
+      
       // Use the unified footer-conversation function
       const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
           action: 'generate',
           referenceImageUrl,
-          assets: collectedAssets,
+          assets: assetsWithBrandLogos,  // Use merged assets with brand logos
           styles: extractedStyles,
           socialIcons: socialIconsForGeneration,
           links: linksForGeneration,

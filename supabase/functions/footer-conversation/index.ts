@@ -114,14 +114,17 @@ CRITICAL RULES:
 - Table-based layout only (no flexbox, no grid)
 - 600px max width, centered
 - ALL styles must be inline (no <style> tags)
-- Use provided asset URLs directly in img tags
+- Use provided asset URLs directly in img tags - DO NOT INVENT OR GUESS URLs
 - Match designs EXACTLY - colors, spacing, typography, alignment
 - VML fallbacks for Outlook backgrounds if needed
 - Mobile responsive where possible using max-width
 - EVERY clickable element MUST have the correct href from the link mappings
 - Use ESP placeholders (like {{ unsubscribe_url }}) exactly as provided
 
-${assetsList ? `AVAILABLE ASSETS:\n${assetsList}` : ''}
+${assetsList ? `AVAILABLE ASSETS (USE THESE EXACT URLs - DO NOT INVENT URLs):
+${assetsList}
+
+CRITICAL: If a "logo", "brand_logo", or "brand_logo_light" asset URL is provided above, you MUST use it exactly as the src for the logo <img> tag. Never make up or guess logo URLs. The light/white version of the logo is typically used on dark footer backgrounds.` : ''}
 ${stylesSection ? `STYLE TOKENS:\n${stylesSection}` : ''}
 ${linksSection ? `\n${linksSection}` : ''}
 
