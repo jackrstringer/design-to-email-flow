@@ -303,20 +303,27 @@ async function detectLogos(
 // LAYER 4: HORIZONTAL EDGE DETECTION (Data Gathering Only)
 // ============================================================================
 
-function getRowAverageColor(image: any, y: number): { r: number; g: number; b: number } {
+function getRowAverageColorSampled(
+  image: any, 
+  y: number,
+  sampleRate: number = 1
+): { r: number; g: number; b: number } {
   let r = 0, g = 0, b = 0;
+  let sampleCount = 0;
   
-  for (let x = 1; x <= image.width; x++) {
+  // Sample every Nth pixel instead of every pixel
+  for (let x = 1; x <= image.width; x += sampleRate) {
     const pixel = image.getPixelAt(x, y + 1); // ImageScript uses 1-indexed
     r += (pixel >> 24) & 0xFF;
     g += (pixel >> 16) & 0xFF;
     b += (pixel >> 8) & 0xFF;
+    sampleCount++;
   }
   
   return {
-    r: Math.round(r / image.width),
-    g: Math.round(g / image.width),
-    b: Math.round(b / image.width)
+    r: Math.round(r / sampleCount),
+    g: Math.round(g / sampleCount),
+    b: Math.round(b / sampleCount)
   };
 }
 
@@ -347,10 +354,19 @@ async function detectHorizontalEdges(
     const image = await Image.decode(bytes);
     
     const edges: HorizontalEdge[] = [];
-    let previousRowAvg = getRowAverageColor(image, 0);
     
-    for (let y = 1; y < image.height; y++) {
-      const currentRowAvg = getRowAverageColor(image, y);
+    // OPTIMIZATION: Sample every 5th row instead of every row
+    // For 7900 rows, this reduces to 1580 iterations
+    const ROW_SAMPLE_RATE = 5;
+    
+    // OPTIMIZATION: Sample every 10th pixel across each row
+    // For 1137px width, this reduces to ~114 samples per row
+    const PIXEL_SAMPLE_RATE = 10;
+    
+    let previousRowAvg = getRowAverageColorSampled(image, 0, PIXEL_SAMPLE_RATE);
+    
+    for (let y = ROW_SAMPLE_RATE; y < image.height; y += ROW_SAMPLE_RATE) {
+      const currentRowAvg = getRowAverageColorSampled(image, y, PIXEL_SAMPLE_RATE);
       const colorDiff = colorDistance(previousRowAvg, currentRowAvg);
       
       // Only record significant edges (threshold ~35)
@@ -368,7 +384,7 @@ async function detectHorizontalEdges(
     
     // Filter to keep only strong edges (reduce noise)
     const filtered = edges.filter(e => e.strength > 0.3).sort((a, b) => a.y - b.y);
-    console.log(`  → Found ${filtered.length} significant horizontal edges`);
+    console.log(`  → Found ${filtered.length} significant horizontal edges (sampled every ${ROW_SAMPLE_RATE} rows)`);
     return filtered;
     
   } catch (error) {
