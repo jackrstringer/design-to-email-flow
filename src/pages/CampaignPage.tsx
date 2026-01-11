@@ -24,6 +24,7 @@ interface LocationState {
   }>;
   figmaDesignData?: any;
   earlyGenerationSessionKey?: string; // Session key for early SL/PT lookup
+  brandLogo?: string; // Brand logo for inbox preview
 }
 
 export default function CampaignPage() {
@@ -314,6 +315,10 @@ export default function CampaignPage() {
     }
 
     // Navigate to send page with all campaign data
+    // Get brand logo (prefer dark logo, fallback to light)
+    const brandLogo = (brand as any)?.dark_logo_url || (brand as any)?.darkLogoUrl || 
+                      (brand as any)?.light_logo_url || (brand as any)?.lightLogoUrl;
+    
     navigate(`/campaign/${id}/send`, {
       state: {
         slices,
@@ -321,6 +326,7 @@ export default function CampaignPage() {
         brandName: (brand as any)?.name,
         brandDomain: (brand as any)?.domain,
         brandId: (brand as any)?.id,
+        brandLogo, // Pass brand logo for inbox preview
         klaviyoApiKey: apiKey,
         klaviyoLists,
         selectedListId,
