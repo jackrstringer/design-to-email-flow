@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
+import { InboxPreview } from '@/components/InboxPreview';
 import type { ProcessedSlice } from '@/types/slice';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -20,6 +21,7 @@ interface LocationState {
   brandName?: string;
   brandDomain?: string;
   brandId?: string;
+  brandLogo?: string; // Brand logo for inbox preview
   klaviyoApiKey?: string;
   klaviyoLists?: Array<{ id: string; name: string }>;
   selectedListId?: string;
@@ -51,6 +53,7 @@ export default function CampaignSend() {
   const [brandName, setBrandName] = useState<string>('');
   const [brandDomain, setBrandDomain] = useState<string>('');
   const [brandId, setBrandId] = useState<string>('');
+  const [brandLogo, setBrandLogo] = useState<string>('');
   const [klaviyoApiKey, setKlaviyoApiKey] = useState<string>('');
   
   // Segment state
@@ -184,6 +187,7 @@ export default function CampaignSend() {
       setBrandName(state.brandName || '');
       setBrandDomain(state.brandDomain || '');
       setBrandId(state.brandId || '');
+      setBrandLogo(state.brandLogo || '');
       setKlaviyoApiKey(state.klaviyoApiKey || '');
       setKlaviyoLists(state.klaviyoLists || []);
       
@@ -868,24 +872,32 @@ export default function CampaignSend() {
             </div>
 
             {/* SL/PT Section - Two Columns */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               <h3 className="text-sm font-medium">Subject Line & Preview Text</h3>
 
-              {/* Current selection summary */}
-              {(selectedSubject || selectedPreview) && (
-                <div className="p-4 rounded-lg bg-primary/10 border-2 border-primary shadow-sm">
-                  <div className="flex gap-6">
-                    <div className="flex-1">
-                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">Subject Line</span>
-                      <p className="mt-1 text-lg font-bold text-foreground">{selectedSubject || 'Select one →'}</p>
-                    </div>
-                    <div className="flex-1">
-                      <span className="text-xs font-semibold text-primary uppercase tracking-wider">Preview Text</span>
-                      <p className="mt-1 text-base font-medium text-foreground">{selectedPreview || 'Select one →'}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Gmail-style Inbox Preview */}
+              <InboxPreview
+                brandName={brandName}
+                brandLogo={brandLogo}
+                subjectLine={selectedSubject}
+                previewText={selectedPreview}
+                onSubjectLineChange={(text) => {
+                  // Update the selected subject line's text
+                  if (selectedSLId) {
+                    setSubjectLines(prev => prev.map(s => 
+                      s.id === selectedSLId ? { ...s, text } : s
+                    ));
+                  }
+                }}
+                onPreviewTextChange={(text) => {
+                  // Update the selected preview text's text
+                  if (selectedPTId) {
+                    setPreviewTexts(prev => prev.map(p => 
+                      p.id === selectedPTId ? { ...p, text } : p
+                    ));
+                  }
+                }}
+              />
 
               {/* Chat refinement input */}
               <div className="flex gap-2">
@@ -1035,10 +1047,10 @@ function CopyItemCard({
   return (
     <div
       className={cn(
-        "relative flex items-start gap-2 p-3 rounded-lg border transition-all cursor-pointer group",
+        "relative flex items-center gap-2 p-2 rounded-md border transition-all cursor-pointer group",
         isSelected
           ? "border-primary bg-primary/5"
-          : "border-border/40 hover:border-border"
+          : "border-border/30 hover:border-border/60"
       )}
       onClick={() => {
         if (!item.isEditing) onSelect();
@@ -1059,7 +1071,7 @@ function CopyItemCard({
           onToggleFavorite();
         }}
         className={cn(
-          "flex-shrink-0 p-0.5 rounded transition-colors mt-0.5",
+          "flex-shrink-0 p-0.5 rounded transition-colors",
           item.isFavorite
             ? "text-red-500"
             : "text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100"
@@ -1131,9 +1143,10 @@ function CopyItemCard({
         ) : (
           <p
             className={cn(
-              "text-sm leading-snug",
-              type === 'sl' ? "font-medium" : "text-muted-foreground"
+              "text-xs leading-snug truncate",
+              type === 'sl' ? "font-medium text-foreground" : "text-muted-foreground"
             )}
+            title={item.text}
           >
             {item.text}
           </p>
