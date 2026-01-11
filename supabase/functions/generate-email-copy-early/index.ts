@@ -189,7 +189,6 @@ Respond in JSON:
         type: 'image',
         source: {
           type: 'url',
-          media_type: 'image/png',
           url: imageUrl
         }
       });
