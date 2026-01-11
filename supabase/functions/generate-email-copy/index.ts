@@ -123,7 +123,7 @@ You must write SL/PT pairs that:
 
 - Feel human-written (never robotic or templated)
 
-- Are concise and punchy
+- Are concise and punchy (prioritize short over long when possible)
 
 - Reflect real editorial judgment about what matters most in the email
 
@@ -131,7 +131,11 @@ You must write SL/PT pairs that:
 
 ${brandVoiceSection}
 
-## EMAIL CONTENT BEING SENT:
+## EMAIL BEING SENT:
+
+Brand: ${brandContext?.name || 'Unknown brand'}
+
+Domain: ${brandContext?.domain || 'unknown'}
 
 ${sliceContext || 'No specific content provided'}
 
@@ -167,37 +171,13 @@ You must intentionally vary tone across the set while staying on-brand.
 
 Distribute subject lines across these tone bands:
 
-1. Elevated & clean  
+1. Elevated & clean (polished, minimal, low hype)
 
-   - Polished, minimal, premium  
+2. Warm & conversational (friendly, human)
 
-   - Low hype, high trust  
+3. Lightly energetic (some energy, occasional exclamation point allowed)
 
-   - Example: "This one's on us"
-
-2. Warm & conversational  
-
-   - Friendly, human, natural  
-
-   - Feels like a person, not a brand  
-
-   - Example: "We added something extra for you"
-
-3. Lightly energetic  
-
-   - Uses energy sparingly (may include occasional exclamation points)  
-
-   - Still tasteful, not loud  
-
-   - Example: "Two free gifts, your pick!"
-
-4. Soft curiosity  
-
-   - Invites intrigue without clickbait  
-
-   - Still clear and honest  
-
-   - Example: "Which one are you grabbing?"
+4. Soft curiosity (invites intrigue without clickbait)
 
 Avoid producing ${pairCount} lines that feel like the same voice.
 
@@ -205,47 +185,47 @@ Avoid producing ${pairCount} lines that feel like the same voice.
 
 ## SUBJECT LINE RULES
 
-### 1. Clarity > cleverness
+### 1. Clarity > cleverness  
 
-Reader should understand the intent immediately.
+Reader should immediately understand the intent.
 
-### 2. Specific > vague
+### 2. Specific > vague  
 
-Concrete offers, products, or benefits beat generic phrasing.
+Concrete offers, products, and benefits beat generic phrasing.
 
-### 3. Brevity matters
+### 3. Brevity matters  
 
-Most strong subject lines are:
+Strong subject lines are usually:
 
-- 4–9 words
+- 4–9 words  
 
-- Rarely longer than 12 words
+- Rarely longer than 12 words  
 
 If it feels long, rewrite shorter.
 
-### 4. Avoid robotic or corporate phrasing
+### 4. Avoid robotic or corporate phrasing  
 
 Avoid phrases like:
 
-- "With any purchase"
+- "With any purchase"  
 
-- "Includes complimentary"
+- "Includes complimentary"  
 
-- "Marked down"
+- "Marked down"  
 
-- "Your order qualifies"
+- "Your order qualifies"  
 
-- "Choose from the following"
+- "Choose from the following"  
 
-- "All products are"
+- "All products are"  
 
 Prefer natural, conversational phrasing.
 
-### 5. Real urgency only
+### 5. Real urgency only  
 
 Never fabricate deadlines or pressure.
 
-### 6. Avoid template repetition
+### 6. Avoid template repetition  
 
 Do NOT produce multiple lines that are just minor rewrites of the same structure.
 
@@ -259,7 +239,7 @@ Bad pattern:
 
 Each line should feel meaningfully different in structure, rhythm, or framing.
 
-### 7. Controlled energy (exclamation points)
+### 7. Controlled energy (exclamation points)  
 
 Exclamation points are allowed, but must be used sparingly and intentionally.
 
@@ -271,11 +251,11 @@ Good:
 
 Bad:
 
-- Overuse across many lines
+- Overuse across many lines  
 
-- Multiple exclamation points
+- Multiple exclamation points  
 
-- Hype phrasing ("Huge!", "Insane!", "Don't miss out!")
+- Hype phrasing ("Huge!", "Insane!", "Don't miss out!")  
 
 Only some lines in the set should include an exclamation point.
 
@@ -287,13 +267,13 @@ You must include a small number of emoji options per set.
 
 Requirements:
 
-- 2–3 subject lines should include a single emoji
+- Exactly 2–3 subject lines should include a single emoji
 
 - The rest should contain no emojis
 
 - Emojis must feel tasteful and natural, not promotional spam
 
-Allowed emoji types (when relevant):
+Allowed emoji types (only when relevant):
 
 - 🎁 gift
 
@@ -361,7 +341,7 @@ Each SL/PT pair must pass all of these tests:
 
 - Does this avoid sounding like a template?
 
-If not, rewrite.
+If not, rewrite internally before outputting.
 
 ---
 
