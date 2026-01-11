@@ -153,6 +153,7 @@ export type Database = {
           blocks: Json | null
           brand_id: string
           created_at: string
+          generated_copy: Json | null
           generated_html: string | null
           id: string
           klaviyo_template_id: string | null
@@ -166,6 +167,7 @@ export type Database = {
           blocks?: Json | null
           brand_id: string
           created_at?: string
+          generated_copy?: Json | null
           generated_html?: string | null
           id?: string
           klaviyo_template_id?: string | null
@@ -179,6 +181,7 @@ export type Database = {
           blocks?: Json | null
           brand_id?: string
           created_at?: string
+          generated_copy?: Json | null
           generated_html?: string | null
           id?: string
           klaviyo_template_id?: string | null

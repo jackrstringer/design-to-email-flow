@@ -213,6 +213,23 @@ export function CampaignCreator({
 
       if (campaignError) throw campaignError;
 
+      // Start background subject line generation (fire and forget)
+      supabase.functions.invoke('generate-email-copy-background', {
+        body: {
+          campaignId: campaign.id,
+          slices: processedSlices.map(s => ({ 
+            altText: s.altText, 
+            link: s.link,
+            imageUrl: s.imageUrl 
+          })),
+          brandContext: { 
+            name: selectedBrand.name, 
+            domain: selectedBrand.domain 
+          },
+          brandId: selectedBrand.id,
+        }
+      }).catch(err => console.log('Background SL generation triggered:', err?.message || 'started'));
+
       onCampaignProcessed();
 
       // Navigate to campaign studio with processed slices
