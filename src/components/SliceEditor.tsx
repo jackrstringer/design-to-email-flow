@@ -42,6 +42,9 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
   const imageRef = useRef<HTMLImageElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Track if we've already started auto-analysis
+  const hasAutoStartedRef = useRef(false);
+
   useEffect(() => {
     const updateHeight = () => {
       if (imageRef.current) {
@@ -60,6 +63,19 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
 
     window.addEventListener('resize', updateHeight);
     return () => window.removeEventListener('resize', updateHeight);
+  }, [imageDataUrl]);
+
+  // Auto-start analysis on mount
+  useEffect(() => {
+    if (imageDataUrl && !hasAutoStartedRef.current && slicePositions.length === 0 && !isAnalyzing) {
+      hasAutoStartedRef.current = true;
+      // Small delay to let UI render, then start auto-analysis
+      const timer = setTimeout(() => {
+        setSliceMode('automatic');
+        handleAutoAnalyze();
+      }, 200);
+      return () => clearTimeout(timer);
+    }
   }, [imageDataUrl]);
 
   // Trackpad/scroll wheel zoom support
