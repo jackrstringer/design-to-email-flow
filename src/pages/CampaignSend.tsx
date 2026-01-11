@@ -126,6 +126,19 @@ export default function CampaignSend() {
     return null;
   };
 
+  // Poll for pre-generated copy with retries
+  const pollForCopy = async (campaignId: string, maxAttempts = 10): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      const preCopy = await checkPreGeneratedCopy(campaignId);
+      if (preCopy?.subjectLines?.length > 0) {
+        return preCopy;
+      }
+      // Wait 1.5s between polls
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    return null; // Give up after ~15 seconds
+  };
+
   useEffect(() => {
     if (state) {
       setSlices(state.slices || []);
@@ -145,49 +158,59 @@ export default function CampaignSend() {
       }
       
       // Check for pre-generated copy first (from background task)
-      if (id) {
-        checkPreGeneratedCopy(id).then(preCopy => {
-          if (preCopy && preCopy.subjectLines.length > 0) {
-            console.log('Using pre-generated subject lines');
-            // Use pre-generated copy immediately - no loading!
-            const newSLs = preCopy.subjectLines.map((text, i) => ({
-              id: `sl-pre-${i}`,
-              text,
-              isFavorite: false,
-              isEditing: false,
-            }));
-            const newPTs = preCopy.previewTexts.map((text, i) => ({
-              id: `pt-pre-${i}`,
-              text,
-              isFavorite: false,
-              isEditing: false,
-            }));
-            setSubjectLines(newSLs);
-            setPreviewTexts(newPTs);
-            setSelectedSLId(newSLs[0]?.id || null);
-            setSelectedPTId(newPTs[0]?.id || null);
-          } else {
-            // Fall back to generating on-demand
-            console.log('No pre-generated copy, generating on-demand');
-            if (state.brandId) {
-              fetchCopyExamples(state.brandId).then(examples => {
-                generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
-              });
-            } else {
-              generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
-            }
+      const loadCopy = async () => {
+        if (id) {
+          // First check if already ready
+          const immediateCopy = await checkPreGeneratedCopy(id);
+          if (immediateCopy && immediateCopy.subjectLines.length > 0) {
+            console.log('Using pre-generated subject lines (immediate)');
+            applyPreGeneratedCopy(immediateCopy);
+            return;
           }
-        });
-      } else {
-        // No campaign ID, generate on-demand
-        if (state.brandId) {
-          fetchCopyExamples(state.brandId).then(examples => {
-            generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
-          });
+          
+          // Not ready yet - show loading and poll
+          setIsGenerating(true);
+          console.log('Polling for background-generated copy...');
+          const polledCopy = await pollForCopy(id);
+          
+          if (polledCopy && polledCopy.subjectLines.length > 0) {
+            console.log('Using pre-generated subject lines (polled)');
+            applyPreGeneratedCopy(polledCopy);
+            setIsGenerating(false);
+            return;
+          }
+          
+          // Fall back to generating on-demand
+          console.log('No pre-generated copy after polling, generating on-demand');
+          const examples = state.brandId ? await fetchCopyExamples(state.brandId) : undefined;
+          await generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
         } else {
-          generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
+          // No campaign ID, generate on-demand
+          const examples = state.brandId ? await fetchCopyExamples(state.brandId) : undefined;
+          await generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
         }
-      }
+      };
+
+      const applyPreGeneratedCopy = (preCopy: { subjectLines: string[]; previewTexts: string[] }) => {
+        const newSLs = preCopy.subjectLines.map((text, i) => ({
+          id: `sl-pre-${i}`,
+          text,
+          isFavorite: false,
+          isEditing: false,
+        }));
+        const newPTs = preCopy.previewTexts.map((text, i) => ({
+          id: `pt-pre-${i}`,
+          text,
+          isFavorite: false,
+          isEditing: false,
+        }));
+        setSubjectLines(newSLs);
+        setPreviewTexts(newPTs);
+        setSelectedSLId(newSLs[0]?.id || null);
+        setSelectedPTId(newPTs[0]?.id || null);
+      };
+
+      loadCopy();
     } else {
       navigate('/');
     }

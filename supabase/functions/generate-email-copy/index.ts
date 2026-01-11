@@ -96,20 +96,24 @@ serve(async (req) => {
       ? `\n\nUSER'S REQUEST: "${refinementPrompt}"\nFollow this direction for tone, style, or focus.`
       : '';
 
-    // Build brand voice examples section if available
+    // Build brand voice examples section ONLY if we have real examples
     let brandVoiceSection = '';
-    if (copyExamples?.subjectLines?.length > 0 || copyExamples?.previewTexts?.length > 0) {
+    const hasSLExamples = copyExamples?.subjectLines?.length > 0;
+    const hasPTExamples = copyExamples?.previewTexts?.length > 0;
+    
+    if (hasSLExamples || hasPTExamples) {
       brandVoiceSection = `
 ## BRAND VOICE EXAMPLES - MATCH THIS EXACT STYLE:
-${copyExamples.subjectLines?.length > 0 ? `
+${hasSLExamples ? `
 Past subject lines from this brand:
 ${copyExamples.subjectLines.slice(0, 20).map((s: string) => `- "${s}"`).join('\n')}` : ''}
-${copyExamples.previewTexts?.length > 0 ? `
+${hasPTExamples ? `
 
 Past preview texts from this brand:
 ${copyExamples.previewTexts.slice(0, 20).map((p: string) => `- "${p}"`).join('\n')}` : ''}
 `;
     }
+    // If no examples exist, brandVoiceSection stays empty and won't be included in prompt
 
     const textPrompt = `You are an expert email copywriter for ${brandContext?.name || 'a brand'}. Generate subject lines and preview texts that drive opens without sacrificing trust, clarity, or brand integrity.
 
