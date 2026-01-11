@@ -74,6 +74,9 @@ export function CampaignCreator({
   const [viewState, setViewState] = useState<ViewState>('upload');
   const [uploadedImageDataUrl, setUploadedImageDataUrl] = useState<string | null>(null);
   
+  // Early SL/PT generation session key
+  const [earlyGenerationSessionKey, setEarlyGenerationSessionKey] = useState<string | null>(null);
+  
   // Figma source state
   const [sourceType, setSourceType] = useState<SourceType>('image');
   const [figmaUrl, setFigmaUrl] = useState('');
@@ -109,6 +112,49 @@ export function CampaignCreator({
       setViewState('slice-editor');
     }
   }, [pendingCampaign, selectedBrand, viewState]);
+
+  // Fire-and-forget: Upload image and start early SL/PT generation immediately
+  const startEarlyGeneration = async (dataUrl: string, brand: Brand) => {
+    const sessionKey = crypto.randomUUID();
+    setEarlyGenerationSessionKey(sessionKey);
+    console.log('[EARLY] Starting immediate SL/PT generation, session:', sessionKey);
+
+    try {
+      // Upload to Cloudinary first (need a URL for the edge function)
+      const { data: uploadResult, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: { imageData: dataUrl }
+      });
+
+      if (uploadError || !uploadResult?.url) {
+        console.error('[EARLY] Failed to upload for early generation:', uploadError);
+        return;
+      }
+
+      // Fetch copy examples for the brand
+      const { data: brandData } = await supabase
+        .from('brands')
+        .select('copy_examples')
+        .eq('id', brand.id)
+        .single();
+
+      const copyExamples = brandData?.copy_examples as { subjectLines: string[]; previewTexts: string[] } | null;
+
+      // Fire the early generation (don't await - this runs in background)
+      supabase.functions.invoke('generate-email-copy-early', {
+        body: {
+          sessionKey,
+          imageUrl: uploadResult.url,
+          brandContext: { name: brand.name, domain: brand.domain },
+          brandId: brand.id,
+          copyExamples
+        }
+      }).catch(err => console.log('[EARLY] Background generation started:', err?.message || 'ok'));
+
+      console.log('[EARLY] Triggered generation for session:', sessionKey);
+    } catch (err) {
+      console.error('[EARLY] Error starting early generation:', err);
+    }
+  };
 
   const processSlices = async (slicePositions: number[], sliceTypes: SliceType[], columnConfigs: ColumnConfig[]) => {
     if (!selectedBrand?.klaviyoApiKey || !uploadedImageDataUrl) return;
@@ -240,6 +286,7 @@ export function CampaignCreator({
           includeFooter,
           slices: processedSlices,
           figmaDesignData, // Pass along for HTML generation
+          earlyGenerationSessionKey, // Pass session key for early SL/PT lookup
         }
       });
     } catch (error) {
@@ -433,6 +480,9 @@ export function CampaignCreator({
 
         // If we already have a configured brand selected, skip detection
         if (selectedBrand?.klaviyoApiKey) {
+          // IMMEDIATELY start SL/PT generation - don't wait for slicing!
+          startEarlyGeneration(dataUrl, selectedBrand);
+          
           setUploadedImageDataUrl(dataUrl);
           setViewState('slice-editor');
           setIsProcessing(false);
@@ -476,6 +526,10 @@ export function CampaignCreator({
           if (matchedBrand) {
             console.log('AI matched existing brand:', matchedBrand.name);
             onBrandSelect(matchedBrand.id);
+            
+            // IMMEDIATELY start SL/PT generation - don't wait for slicing!
+            startEarlyGeneration(dataUrl, matchedBrand);
+            
             setUploadedImageDataUrl(dataUrl);
             setViewState('slice-editor');
             return;

@@ -201,6 +201,47 @@ export type Database = {
           },
         ]
       }
+      early_generated_copy: {
+        Row: {
+          brand_id: string | null
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          image_url: string | null
+          preview_texts: Json | null
+          session_key: string
+          subject_lines: Json | null
+        }
+        Insert: {
+          brand_id?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          image_url?: string | null
+          preview_texts?: Json | null
+          session_key: string
+          subject_lines?: Json | null
+        }
+        Update: {
+          brand_id?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          image_url?: string | null
+          preview_texts?: Json | null
+          session_key?: string
+          subject_lines?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "early_generated_copy_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       segment_presets: {
         Row: {
           brand_id: string
