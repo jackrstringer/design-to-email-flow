@@ -111,6 +111,21 @@ export default function CampaignSend() {
     return item?.text || '';
   }, [previewTexts, selectedPTId]);
 
+  // Check for pre-generated copy from background task
+  const checkPreGeneratedCopy = async (campaignId: string): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+    const { data } = await supabase
+      .from('campaigns')
+      .select('generated_copy')
+      .eq('id', campaignId)
+      .single();
+    
+    const copy = data?.generated_copy as { subjectLines: string[]; previewTexts: string[]; generatedAt: string } | null;
+    if (copy?.subjectLines?.length > 0) {
+      return { subjectLines: copy.subjectLines, previewTexts: copy.previewTexts };
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (state) {
       setSlices(state.slices || []);
@@ -127,12 +142,51 @@ export default function CampaignSend() {
       
       if (state.brandId) {
         loadPresets(state.brandId);
-        // Fetch copy examples for this brand
-        fetchCopyExamples(state.brandId).then(examples => {
-          generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
+      }
+      
+      // Check for pre-generated copy first (from background task)
+      if (id) {
+        checkPreGeneratedCopy(id).then(preCopy => {
+          if (preCopy && preCopy.subjectLines.length > 0) {
+            console.log('Using pre-generated subject lines');
+            // Use pre-generated copy immediately - no loading!
+            const newSLs = preCopy.subjectLines.map((text, i) => ({
+              id: `sl-pre-${i}`,
+              text,
+              isFavorite: false,
+              isEditing: false,
+            }));
+            const newPTs = preCopy.previewTexts.map((text, i) => ({
+              id: `pt-pre-${i}`,
+              text,
+              isFavorite: false,
+              isEditing: false,
+            }));
+            setSubjectLines(newSLs);
+            setPreviewTexts(newPTs);
+            setSelectedSLId(newSLs[0]?.id || null);
+            setSelectedPTId(newPTs[0]?.id || null);
+          } else {
+            // Fall back to generating on-demand
+            console.log('No pre-generated copy, generating on-demand');
+            if (state.brandId) {
+              fetchCopyExamples(state.brandId).then(examples => {
+                generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
+              });
+            } else {
+              generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
+            }
+          }
         });
       } else {
-        generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
+        // No campaign ID, generate on-demand
+        if (state.brandId) {
+          fetchCopyExamples(state.brandId).then(examples => {
+            generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain, examples);
+          });
+        } else {
+          generateCopy(state.slices, state.brandName || '', undefined, state.brandDomain);
+        }
       }
     } else {
       navigate('/');

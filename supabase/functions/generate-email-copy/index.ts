@@ -100,7 +100,7 @@ serve(async (req) => {
     let brandVoiceSection = '';
     if (copyExamples?.subjectLines?.length > 0 || copyExamples?.previewTexts?.length > 0) {
       brandVoiceSection = `
-BRAND VOICE EXAMPLES - MATCH THIS STYLE:
+## BRAND VOICE EXAMPLES - MATCH THIS EXACT STYLE:
 ${copyExamples.subjectLines?.length > 0 ? `
 Past subject lines from this brand:
 ${copyExamples.subjectLines.slice(0, 20).map((s: string) => `- "${s}"`).join('\n')}` : ''}
@@ -108,31 +108,81 @@ ${copyExamples.previewTexts?.length > 0 ? `
 
 Past preview texts from this brand:
 ${copyExamples.previewTexts.slice(0, 20).map((p: string) => `- "${p}"`).join('\n')}` : ''}
-
-IMPORTANT: Match this brand's tone, style, emoji usage, and formatting patterns. These examples show how this specific brand communicates.
 `;
     }
 
-    const textPrompt = `You are a creative email copywriter. Generate diverse, engaging subject lines and preview texts.
+    const textPrompt = `You are an expert email copywriter for ${brandContext?.name || 'a brand'}. Generate subject lines and preview texts that drive opens without sacrificing trust, clarity, or brand integrity.
 
-BRAND: ${brandContext?.name || 'Unknown'}${brandContext?.domain ? ` (${brandContext.domain})` : ''}
 ${brandVoiceSection}
-EMAIL CONTENT:
-${sliceContext || 'No specific content'}
-${linkContext ? `\nLINKS IN EMAIL: ${linkContext}` : ''}
+
+## EMAIL CONTENT BEING SENT:
+${sliceContext || 'No specific content provided'}
+${linkContext ? `Links in email: ${linkContext}` : ''}
+${sliceImages.length > 0 ? 'Analyze the email section images provided to understand the products, offers, or message being sent.' : ''}
 ${favoriteContext}${userDirection}
 
-${sliceImages.length > 0 ? 'IMPORTANT: Look at the email section images provided to understand what the email is about. The images show the actual email content - use this visual context to write relevant subject lines about the products, offers, or message shown.' : ''}
+## SUBJECT LINE PRINCIPLES (follow these strictly):
 
-GUIDELINES (flexible):
-- Subject lines: 3-10 words typically
-- Preview texts: Complement the subject, add intrigue
-- VARIETY IS KEY: Mix tones (playful, urgent, curious, direct, mysterious)
-- Mix structures (questions, statements, commands, teasers)
-- Some with emojis, some without
-- Each should feel distinctly different
-- Reference specific products, offers, or content from the email
-${brandVoiceSection ? '- CRITICALLY IMPORTANT: Your output should sound like it was written by this brand based on the examples above' : ''}
+### 1. CLARITY BEATS CLEVERNESS
+- Reader should understand the general intent from subject line alone
+- If it could apply to any brand or any email, it's weak
+- GOOD: "Your order is on the way", "Last day for free express shipping", "Meet the new Denner 2.0"
+- BAD: "You won't believe this...", "This changed everything", "We need to talk"
+
+### 2. SPECIFICITY WINS
+- Specific always beats vague
+- STRONGER: "Free express shipping ends tonight", "Why filtered water matters for hair health"
+- WEAKER: "Last chance", "You need to see this", "Big news"
+
+### 3. URGENCY MUST BE REAL
+- Only use urgency if it's defensible (sale ending, limited inventory, shipping cutoff)
+- Never fake urgency - it destroys trust
+- REAL: "Sale ending", "Pre-orders close tonight"
+- FAKE: "Ending soon" when it runs all week
+
+### 4. MATCH INTENT TO CONTENT
+- Promotional email → clearly communicate offer or urgency
+- Product launch → name the product or indicate newness
+- Educational → signal learning, insight, value
+- Brand storytelling → reflect narrative, not urgency bait
+
+### 5. SUBJECT LINE FORMATS TO USE:
+- Communicate a real incentive (offer, value, access)
+- Signal relevance (for you, for your problem)
+- Create honest curiosity (without manipulation)
+- Reinforce brand positioning
+
+## PREVIEW TEXT PRINCIPLES:
+
+### Preview text MUST:
+- Add NEW information (never repeat the subject line)
+- Strengthen the value proposition
+- Clarify what the email is about
+- Support the click decision
+
+### STRONG PAIRINGS:
+- SL: "Up to 25% off ends tonight" → PT: "Free express shipping included"
+- SL: "New: The Denner 2.0" → PT: "Refined design, improved structure"
+
+### WEAK PAIRINGS TO AVOID:
+- SL: "Don't miss this" → PT: "Something exciting is inside"
+- Repeating the subject line
+- Generic: "Open for surprise", "You won't want to miss this"
+
+## QUALITY CHECKLIST (each line must pass ALL):
+✓ Is this clear?
+✓ Is this accurate to the email content?
+✓ Does this feel like the brand?
+✓ Is there real value communicated?
+✓ Would a subscriber trust this?
+
+## MISTAKES TO AVOID:
+- Mystery hooks ("Wait until you see this")
+- Overusing emojis without purpose
+- ALL CAPS without reason
+- Clickbait framing
+- Generic copy that could be from any brand
+- Promising things the email doesn't deliver
 
 Generate ${pairCount} unique subject lines and ${pairCount} unique preview texts.
 
