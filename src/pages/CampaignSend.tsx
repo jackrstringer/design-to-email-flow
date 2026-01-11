@@ -23,6 +23,7 @@ interface LocationState {
   klaviyoApiKey?: string;
   klaviyoLists?: Array<{ id: string; name: string }>;
   selectedListId?: string;
+  earlyGenerationSessionKey?: string; // Session key for early SL/PT lookup
 }
 
 interface CopyItem {
@@ -111,7 +112,7 @@ export default function CampaignSend() {
     return item?.text || '';
   }, [previewTexts, selectedPTId]);
 
-  // Check for pre-generated copy from background task
+  // Check for pre-generated copy from background task (campaigns table)
   const checkPreGeneratedCopy = async (campaignId: string): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
     const { data } = await supabase
       .from('campaigns')
@@ -124,6 +125,43 @@ export default function CampaignSend() {
       return { subjectLines: copy.subjectLines, previewTexts: copy.previewTexts };
     }
     return null;
+  };
+
+  // Check for EARLY generated copy (from immediate upload trigger)
+  const checkEarlyGeneratedCopy = async (sessionKey: string): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+    console.log('[EARLY] Checking for early generated copy, session:', sessionKey);
+    const { data, error } = await supabase
+      .from('early_generated_copy')
+      .select('subject_lines, preview_texts')
+      .eq('session_key', sessionKey)
+      .single();
+    
+    if (error) {
+      console.log('[EARLY] No early copy found:', error.message);
+      return null;
+    }
+    
+    const subjectLines = data?.subject_lines as string[] | null;
+    const previewTexts = data?.preview_texts as string[] | null;
+    
+    if (subjectLines?.length > 0) {
+      console.log(`[EARLY] Found early copy: ${subjectLines.length} SLs, ${previewTexts?.length || 0} PTs`);
+      return { subjectLines, previewTexts: previewTexts || [] };
+    }
+    return null;
+  };
+
+  // Poll for early copy with retries (it may still be generating)
+  const pollForEarlyCopy = async (sessionKey: string, maxAttempts = 8): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      const earlyCopy = await checkEarlyGeneratedCopy(sessionKey);
+      if (earlyCopy?.subjectLines?.length > 0) {
+        return earlyCopy;
+      }
+      // Wait 2s between polls
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    return null; // Give up after ~16 seconds
   };
 
   // Poll for pre-generated copy with retries
@@ -157,19 +195,49 @@ export default function CampaignSend() {
         loadPresets(state.brandId);
       }
       
-      // Check for pre-generated copy first (from background task)
+      // PRIORITY 1: Check for EARLY generated copy (started on image drop)
       const loadCopy = async () => {
+        const earlySessionKey = state.earlyGenerationSessionKey;
+        
+        // First priority: Check early generation (started immediately on image drop)
+        if (earlySessionKey) {
+          console.log('[EARLY] Checking early copy first, session:', earlySessionKey);
+          
+          // Immediate check
+          const earlyCopy = await checkEarlyGeneratedCopy(earlySessionKey);
+          if (earlyCopy && earlyCopy.subjectLines.length > 0) {
+            console.log('[EARLY] Using early-generated copy (immediate)');
+            applyPreGeneratedCopy(earlyCopy);
+            return;
+          }
+          
+          // Poll for a bit - it may still be generating
+          setIsGenerating(true);
+          console.log('[EARLY] Polling for early-generated copy...');
+          const polledEarlyCopy = await pollForEarlyCopy(earlySessionKey);
+          
+          if (polledEarlyCopy && polledEarlyCopy.subjectLines.length > 0) {
+            console.log('[EARLY] Using early-generated copy (polled)');
+            applyPreGeneratedCopy(polledEarlyCopy);
+            setIsGenerating(false);
+            return;
+          }
+          
+          console.log('[EARLY] No early copy found, falling back to campaign copy...');
+        }
+        
+        // Second priority: Check campaign's generated_copy (from background task)
         if (id) {
-          // First check if already ready
           const immediateCopy = await checkPreGeneratedCopy(id);
           if (immediateCopy && immediateCopy.subjectLines.length > 0) {
             console.log('Using pre-generated subject lines (immediate)');
             applyPreGeneratedCopy(immediateCopy);
+            setIsGenerating(false);
             return;
           }
           
           // Not ready yet - show loading and poll
-          setIsGenerating(true);
+          if (!isGenerating) setIsGenerating(true);
           console.log('Polling for background-generated copy...');
           const polledCopy = await pollForCopy(id);
           

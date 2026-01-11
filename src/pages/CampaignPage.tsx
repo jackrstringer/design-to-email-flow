@@ -23,6 +23,7 @@ interface LocationState {
     html?: string | null;
   }>;
   figmaDesignData?: any;
+  earlyGenerationSessionKey?: string; // Session key for early SL/PT lookup
 }
 
 export default function CampaignPage() {
@@ -41,6 +42,9 @@ export default function CampaignPage() {
   const [initialFooterHtml, setInitialFooterHtml] = useState<string | undefined>();
   const [initialFooterId, setInitialFooterId] = useState<string | null>(null);
   
+  // Early generation session key (for SL/PT lookup)
+  const [earlyGenerationSessionKey, setEarlyGenerationSessionKey] = useState<string | null>(null);
+  
   // Klaviyo lists state
   const [klaviyoLists, setKlaviyoLists] = useState<{ id: string; name: string }[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
@@ -57,6 +61,7 @@ export default function CampaignPage() {
       setOriginalImageUrl(state.imageUrl);
       setBrand(state.brand);
       setFigmaDesignData(state.figmaDesignData || null);
+      setEarlyGenerationSessionKey(state.earlyGenerationSessionKey || null);
       
       const processedSlices: ProcessedSlice[] = state.slices.map((slice: any) => ({
         imageUrl: slice.imageUrl,
@@ -319,6 +324,7 @@ export default function CampaignPage() {
         klaviyoApiKey: apiKey,
         klaviyoLists,
         selectedListId,
+        earlyGenerationSessionKey, // Pass for early SL/PT lookup
       }
     });
   };

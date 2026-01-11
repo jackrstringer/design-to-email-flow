@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.auto-slice-v2]
 verify_jwt = false
+
+[functions.generate-email-copy-early]
+verify_jwt = false
