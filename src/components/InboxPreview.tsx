@@ -98,7 +98,7 @@ export function InboxPreview({
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full">
       {/* Gmail-style header bar */}
       <div className="bg-muted/40 border border-border/50 rounded-t-lg px-4 py-2 flex items-center gap-3">
         <div className="flex items-center gap-2">

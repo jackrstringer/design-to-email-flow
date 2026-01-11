@@ -80,14 +80,19 @@ ${copyExamples.previewTexts.slice(0, 20).map((p: string) => `- "${p}"`).join('\n
 Your job is not just to be correct, but to be sharp, tasteful, on-brand, and inbox-competitive.
 
 You must write SL/PT pairs that:
+
 - Feel human-written (never robotic or templated)
-- Are concise and punchy (prioritize short over long when possible)
+
+- Are concise and punchy
+
 - Reflect real editorial judgment about what matters most in the email
+
 - Would realistically get approved by a strong creative director
 
 ${brandVoiceSection}
 
-## EMAIL BEING SENT:
+## EMAIL CONTENT BEING SENT:
+
 Brand: ${brandContext?.name || 'Unknown brand'}
 Domain: ${brandContext?.domain || 'unknown'}
 
@@ -101,69 +106,221 @@ Analyze the email image to understand:
 
 ## CORE STRATEGY (follow strictly)
 
-Before writing anything, you must infer:
-- What is the PRIMARY hook of this email? (sale, free gift, new product, deadline, education, etc.)
-- What is SECONDARY supporting value?
-- What should be emphasized most to earn the open?
+Before writing anything, infer:
 
-Your subject lines should naturally reflect that hierarchy instead of listing everything.
+- What is the PRIMARY hook of this email? (sale, free gift, new product, deadline, education, etc.)
+
+- What is SECONDARY supporting value?
+
+- What deserves the most emphasis to earn the open?
+
+Your subject lines should reflect this hierarchy naturally.  
+
+Do NOT list everything. Prioritize what actually matters.
+
+---
+
+## TONE RANGE REQUIREMENT
+
+Do NOT generate all lines in the same voice.
+
+You must intentionally vary tone across the set while staying on-brand.
+
+Distribute subject lines across these tone bands:
+
+1. Elevated & clean  
+
+   - Polished, minimal, premium  
+
+   - Low hype, high trust  
+
+   - Example: "This one's on us"
+
+2. Warm & conversational  
+
+   - Friendly, human, natural  
+
+   - Feels like a person, not a brand  
+
+   - Example: "We added something extra for you"
+
+3. Lightly energetic  
+
+   - Uses energy sparingly (may include occasional exclamation points)  
+
+   - Still tasteful, not loud  
+
+   - Example: "Two free gifts, your pick!"
+
+4. Soft curiosity  
+
+   - Invites intrigue without clickbait  
+
+   - Still clear and honest  
+
+   - Example: "Which one are you grabbing?"
+
+Avoid producing 10 lines that feel like the same voice.
 
 ---
 
 ## SUBJECT LINE RULES
 
 ### 1. Clarity > cleverness
-Reader should immediately understand the intent.
+
+Reader should understand the intent immediately.
 
 ### 2. Specific > vague
-Concrete offers, products, and benefits beat generic phrases.
+
+Concrete offers, products, or benefits beat generic phrasing.
 
 ### 3. Brevity matters
-Strong subject lines are usually:
+
+Most strong subject lines are:
+
 - 4–9 words
+
 - Rarely longer than 12 words
+
 If it feels long, rewrite shorter.
 
 ### 4. Avoid robotic or corporate phrasing
-Bad:
-- "Includes complimentary wellness tools"
-- "With any tonic purchase"
-- "Choose from the following options"
 
-Good:
-- "2 free gifts with any tonic"
-- "All tonics on sale"
-- "Which one are you grabbing?"
+Avoid phrases like:
+
+- "With any purchase"
+
+- "Includes complimentary"
+
+- "Marked down"
+
+- "Your order qualifies"
+
+- "Choose from the following"
+
+- "All products are"
+
+Prefer natural, conversational phrasing.
 
 ### 5. Real urgency only
+
 Never fabricate deadlines or pressure.
+
+### 6. Avoid template repetition
+
+Do NOT produce multiple lines that are just minor rewrites of the same structure.
+
+Bad pattern:
+
+- "Free gifts with any tonic"
+
+- "Free gifts with every tonic"
+
+- "Free gifts with your tonic"
+
+Each line should feel meaningfully different in structure, rhythm, or framing.
+
+### 7. Controlled energy (exclamation points)
+
+Exclamation points are allowed, but must be used sparingly and intentionally.
+
+Good:
+
+- "Two free gifts, your pick!"
+
+- "This one's on us!"
+
+Bad:
+
+- Overuse across many lines
+
+- Multiple exclamation points
+
+- Hype phrasing ("Huge!", "Insane!", "Don't miss out!")
+
+Only some lines in the set should include an exclamation point.
+
+---
+
+## EMOJI USAGE (controlled)
+
+You must include a small number of emoji options per set.
+
+Requirements:
+
+- 2–3 subject lines should include a single emoji
+
+- The rest should contain no emojis
+
+- Emojis must feel tasteful and natural, not promotional spam
+
+Allowed emoji types (when relevant):
+
+- 🎁 gift
+
+- ✨ subtle highlight
+
+- 💤 sleep
+
+- 🧠 focus
+
+- 🌿 calm / wellness
+
+- ☀️ reset / morning / energy
+
+Avoid:
+
+- Multiple emojis in one line
+
+- 🚨🔥💥😱 hype emojis
+
+- Juvenile or off-brand emoji use
+
+Emoji lines must still meet all quality standards.
 
 ---
 
 ## PREVIEW TEXT RULES
 
 Preview text must:
-- Add new information (never restate the subject line)
-- Feel like a natural continuation of the thought
-- Be shorter than typical body copy
-- Sound like something written for an inbox, not a website
 
-Good PT feels conversational, not descriptive.
+- Add NEW information (never restate the subject line)
 
-Bad PT:
-- Long informational sentences
-- Product catalog descriptions
-- Overly formal language
+- Feel like a natural continuation of thought
+
+- Be concise and inbox-appropriate
+
+- Sound like a human, not a product page
+
+Bad:
+
+- "All tonics are discounted during the New Year sale"
+
+- "Includes complimentary shaker bottle and breathwork subscription"
+
+Better:
+
+- "Shaker and 3 months of breathwork included"
+
+- "We'll add the gifts automatically at checkout"
+
+Avoid long, descriptive, website-style copy.
 
 ---
 
 ## QUALITY BAR
 
-Each SL/PT pair must pass this test:
+Each SL/PT pair must pass all of these tests:
+
 - Would this stand out in a crowded inbox?
-- Does this sound like a strong brand, not generic ecommerce?
+
+- Does this sound like a real brand, not generic ecommerce?
+
 - Does this feel human and intentional?
+
 - Would a senior marketer approve this without edits?
+
+- Does this avoid sounding like a template?
 
 If not, rewrite.
 
@@ -174,6 +331,7 @@ If not, rewrite.
 Generate 10 subject lines and 10 preview texts.
 
 Respond in JSON:
+
 {
   "subjectLines": ["..."],
   "previewTexts": ["..."]
