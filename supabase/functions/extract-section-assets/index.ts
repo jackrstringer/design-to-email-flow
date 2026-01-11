@@ -27,15 +27,40 @@ serve(async (req) => {
 
     const prompt = `Analyze this email section/footer design and categorize ALL visual elements.
 
-Your job is to classify elements into FIVE categories:
+Your job is to classify elements into SIX categories:
 
-## 1. REQUIRES_UPLOAD (True image assets that MUST be uploaded)
+## 1. LOGO_ANALYSIS (Critical - analyze the footer's logo requirements)
+Examine the footer background color and any visible logo:
+- Is there a logo visible in the footer? (true/false)
+- What is the footer's background luminance? (dark/light)
+  - Dark backgrounds: black, very dark gray, navy, deep colors
+  - Light backgrounds: white, cream, light gray, pastel colors
+- What logo variant is needed for this background?
+  - Dark backgrounds need LIGHT/WHITE logos
+  - Light backgrounds need DARK/BLACK logos
+- Where is the logo positioned? (center, left, right, bottom-center, etc.)
+- Estimate the logo's relative size
+
+Return as:
+{
+  "logo_visible": true,
+  "background_is_dark": true,
+  "needed_variant": "light",
+  "logo_position": "center",
+  "estimated_size": { "width_percent": 15, "height_percent": 8 }
+}
+
+## 2. REQUIRES_UPLOAD (True image assets that MUST be uploaded)
 These are actual image files that cannot be recreated with text/CSS:
-- Brand logos (wordmarks, icons, mascots)
+- Brand logos (wordmarks, icons, mascots) - **ALWAYS include if visible**
 - Custom illustrations or graphics
 - Product photos
 - Badges, seals, certifications with complex graphics
 - Background images or patterns
+
+IMPORTANT: If a logo is visible, ALWAYS include it in requires_upload with:
+- id: "brand_logo" (use this exact id for main logo)
+- category: "logo"
 
 For each, provide:
 - id: unique snake_case identifier
@@ -48,7 +73,7 @@ For each, provide:
   - width_percent: width of asset as % of full image width
   - height_percent: height of asset as % of full image height
 
-## 2. TEXT_BASED_ELEMENTS (Achievable with text/CSS - NO upload needed)
+## 3. TEXT_BASED_ELEMENTS (Achievable with text/CSS - NO upload needed)
 These elements can be recreated with Unicode characters or CSS:
 - Simple arrows (→ ← ↑ ↓ › ‹ ›› « »)
 - Bullets (• ◦ ‣ ○)
@@ -60,11 +85,11 @@ For each, provide:
 - description: what it represents
 - recommendation: exact Unicode character or CSS approach to use
 
-## 3. SOCIAL ICONS
+## 4. SOCIAL ICONS
 Standard social media platform icons - we handle these separately.
 Just list: platform names detected (instagram, facebook, tiktok, twitter, youtube, linkedin, pinterest, snapchat, threads, etc.)
 
-## 4. CLICKABLE_ELEMENTS (All text links and buttons that need URLs)
+## 5. CLICKABLE_ELEMENTS (All text links and buttons that need URLs)
 Identify ALL clickable text elements in the footer:
 - Navigation links (shop categories, pages)
 - CTA buttons (e.g., "JOIN THE FACEBOOK GROUP")
@@ -77,7 +102,7 @@ For each, provide:
 - category: "navigation" | "button" | "social" | "email_action"
 - likely_destination: description of where this likely links to
 
-## 5. STYLES
+## 6. STYLES
 Extract visual style tokens:
 - background_color: hex value
 - text_color: primary text hex
@@ -86,13 +111,20 @@ Extract visual style tokens:
 
 Return ONLY valid JSON:
 {
+  "logo_analysis": {
+    "logo_visible": true,
+    "background_is_dark": true,
+    "needed_variant": "light",
+    "logo_position": "center",
+    "estimated_size": { "width_percent": 15, "height_percent": 8 }
+  },
   "requires_upload": [
     {
-      "id": "owl_logo",
-      "description": "Owl brand mark with spread wings",
-      "location": "bottom left corner",
+      "id": "brand_logo",
+      "description": "Brand wordmark/logo in white",
+      "location": "center, above social icons",
       "category": "logo",
-      "crop_hint": { "x_percent": 5, "y_percent": 80, "width_percent": 12, "height_percent": 15 }
+      "crop_hint": { "x_percent": 35, "y_percent": 10, "width_percent": 30, "height_percent": 12 }
     }
   ],
   "text_based_elements": [
@@ -133,6 +165,8 @@ Return ONLY valid JSON:
 
 IMPORTANT CLASSIFICATION RULES:
 - Simple arrows are ALWAYS text_based_elements, not requires_upload
+- ALWAYS analyze and return logo_analysis - this is critical for proper logo handling
+- If a logo is visible, ALWAYS include it in requires_upload with id "brand_logo"
 - Only flag as requires_upload if it's a complex graphic that CANNOT be a Unicode character
 - Be conservative - when in doubt, it's probably text-based
 - crop_hint: x_percent/y_percent = TOP-LEFT corner of the asset bounding box
@@ -186,6 +220,7 @@ IMPORTANT CLASSIFICATION RULES:
 
     return new Response(JSON.stringify({ 
       success: true,
+      logo_analysis: extractedData.logo_analysis || null,
       requires_upload: extractedData.requires_upload || [],
       text_based_elements: extractedData.text_based_elements || [],
       clickable_elements: extractedData.clickable_elements || [],

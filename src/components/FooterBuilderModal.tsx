@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle, CheckCircle2, Clock, Wand2, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -114,6 +114,20 @@ interface StyleTokens {
   accent_color?: string;
 }
 
+interface LogoAnalysis {
+  logo_visible: boolean;
+  background_is_dark: boolean;
+  needed_variant: 'light' | 'dark';
+  logo_position?: string;
+  estimated_size?: { width_percent: number; height_percent: number };
+}
+
+interface LogoConversionNeeded {
+  sourceUrl: string;
+  targetVariant: 'light' | 'dark';
+  canAutoConvert: boolean;
+}
+
 export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
   const [sourceType, setSourceType] = useState<SourceType>(null);
@@ -140,6 +154,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [socialPlatforms, setSocialPlatforms] = useState<string[]>([]);
   const [extractedStyles, setExtractedStyles] = useState<StyleTokens | null>(null);
   const [socialIconColor, setSocialIconColor] = useState<string>('#ffffff');
+  
+  // Logo analysis state - NEW
+  const [logoAnalysis, setLogoAnalysis] = useState<LogoAnalysis | null>(null);
+  const [logoConversionNeeded, setLogoConversionNeeded] = useState<LogoConversionNeeded | null>(null);
+  const [isInvertingLogo, setIsInvertingLogo] = useState(false);
   
   // Asset collection modal state
   const [showAssetCollectionModal, setShowAssetCollectionModal] = useState(false);
@@ -273,6 +292,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   // Extract assets from reference image - SIMPLIFIED: one pass, then show modal if needed
   const extractAssetsFromImage = useCallback(async (imageUrl: string) => {
     setIsExtractingAssets(true);
+    setLogoAnalysis(null);
+    setLogoConversionNeeded(null);
+    
     try {
       const { data, error } = await supabase.functions.invoke('extract-section-assets', {
         body: { referenceImageUrl: imageUrl }
@@ -286,12 +308,14 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       console.log('Extracted assets:', data);
 
+      // Store logo analysis result
+      const logoAnalysisResult = data.logo_analysis as LogoAnalysis | null;
+      setLogoAnalysis(logoAnalysisResult);
+      console.log('Logo analysis:', logoAnalysisResult);
+
       // Pre-populate collected assets with brand's stored logos
-      // This ensures we always have the correct logo URLs available
       const initialAssets: Record<string, string> = {};
       if (brand.lightLogoUrl) {
-        initialAssets['logo'] = brand.lightLogoUrl;
-        initialAssets['brand_logo'] = brand.lightLogoUrl;
         initialAssets['brand_logo_light'] = brand.lightLogoUrl;
         console.log('Pre-populated light logo from brand:', brand.lightLogoUrl);
       }
@@ -299,19 +323,82 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         initialAssets['brand_logo_dark'] = brand.darkLogoUrl;
         console.log('Pre-populated dark logo from brand:', brand.darkLogoUrl);
       }
-      setCollectedAssets(initialAssets);
 
-      // Filter out logo assets from requires_upload if brand already has logo URLs
+      // Smart logo handling based on logo analysis
       let assetsToUpload = data.requires_upload || [];
-      if (brand.lightLogoUrl || brand.darkLogoUrl) {
-        const beforeCount = assetsToUpload.length;
+      
+      if (logoAnalysisResult?.logo_visible) {
+        const neededVariant = logoAnalysisResult.needed_variant; // 'light' or 'dark'
+        const hasCorrectLogo = neededVariant === 'light' 
+          ? !!brand.lightLogoUrl 
+          : !!brand.darkLogoUrl;
+        const hasAlternativeLogo = neededVariant === 'light'
+          ? !!brand.darkLogoUrl
+          : !!brand.lightLogoUrl;
+
+        console.log(`Logo analysis: needs ${neededVariant} variant, hasCorrect: ${hasCorrectLogo}, hasAlternative: ${hasAlternativeLogo}`);
+
+        if (hasCorrectLogo) {
+          // We have the correct logo variant - use it
+          const correctLogoUrl = neededVariant === 'light' ? brand.lightLogoUrl : brand.darkLogoUrl;
+          initialAssets['logo'] = correctLogoUrl!;
+          initialAssets['brand_logo'] = correctLogoUrl!;
+          
+          // Filter out logo from requires_upload since we have it
+          assetsToUpload = assetsToUpload.filter((asset: ExtractedAsset) => 
+            asset.category !== 'logo' && !asset.id.toLowerCase().includes('logo')
+          );
+          console.log('Using correct logo variant:', correctLogoUrl);
+        } else if (hasAlternativeLogo) {
+          // We have the wrong variant - offer to auto-invert
+          const sourceUrl = neededVariant === 'light' ? brand.darkLogoUrl : brand.lightLogoUrl;
+          setLogoConversionNeeded({
+            sourceUrl: sourceUrl!,
+            targetVariant: neededVariant,
+            canAutoConvert: true
+          });
+          console.log('Logo variant mismatch - offering auto-invert');
+          
+          // Filter out logo from requires_upload - we'll handle it via conversion
+          assetsToUpload = assetsToUpload.filter((asset: ExtractedAsset) => 
+            asset.category !== 'logo' && !asset.id.toLowerCase().includes('logo')
+          );
+        } else {
+          // No logo at all - ensure it's in the assets to upload
+          const hasLogoInAssets = assetsToUpload.some((asset: ExtractedAsset) => 
+            asset.category === 'logo' || asset.id.toLowerCase().includes('logo')
+          );
+          
+          if (!hasLogoInAssets) {
+            // Add logo requirement explicitly
+            assetsToUpload.unshift({
+              id: `brand_logo_${neededVariant}`,
+              description: `${neededVariant === 'light' ? 'White/light' : 'Dark/black'} version of your brand logo for the footer`,
+              location: logoAnalysisResult.logo_position || 'center',
+              category: 'logo',
+              crop_hint: logoAnalysisResult.estimated_size ? {
+                x_percent: 50 - (logoAnalysisResult.estimated_size.width_percent / 2),
+                y_percent: 10,
+                width_percent: logoAnalysisResult.estimated_size.width_percent,
+                height_percent: logoAnalysisResult.estimated_size.height_percent
+              } : undefined
+            });
+            console.log('Added logo requirement to assets needed');
+          }
+        }
+      } else {
+        // No logo visible in footer - still pre-populate brand logos if available
+        if (brand.lightLogoUrl) {
+          initialAssets['logo'] = brand.lightLogoUrl;
+          initialAssets['brand_logo'] = brand.lightLogoUrl;
+        }
+        // Filter out any logo assets since footer doesn't have one
         assetsToUpload = assetsToUpload.filter((asset: ExtractedAsset) => 
           asset.category !== 'logo' && !asset.id.toLowerCase().includes('logo')
         );
-        if (beforeCount !== assetsToUpload.length) {
-          console.log('Filtered out logo from requires_upload (brand already has logos)');
-        }
       }
+
+      setCollectedAssets(initialAssets);
       
       // Store extraction results
       setAssetsNeeded(assetsToUpload);
@@ -373,7 +460,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           });
       }
 
-      // If there are assets that need upload, show the collection modal
+      // If there are assets that need upload OR logo conversion is needed, show appropriate UI
       if (assetsToUpload.length > 0) {
         setShowAssetCollectionModal(true);
       }
@@ -422,10 +509,71 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   // Handle asset collection complete
   const handleAssetCollectionComplete = useCallback((collected: Record<string, string>) => {
-    setCollectedAssets(collected);
+    setCollectedAssets(prev => ({ ...prev, ...collected }));
     setShowAssetCollectionModal(false);
     toast.success('Assets collected');
   }, []);
+
+  // Handle auto-invert logo
+  const handleAutoInvertLogo = useCallback(async () => {
+    if (!logoConversionNeeded) return;
+    
+    setIsInvertingLogo(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('invert-logo', {
+        body: {
+          logoUrl: logoConversionNeeded.sourceUrl,
+          brandDomain: brand.domain,
+          targetVariant: logoConversionNeeded.targetVariant
+        }
+      });
+
+      if (error) throw error;
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to invert logo');
+      }
+
+      console.log('Logo inverted successfully:', data.invertedUrl);
+      
+      // Update collected assets with the inverted logo
+      setCollectedAssets(prev => ({
+        ...prev,
+        'logo': data.invertedUrl,
+        'brand_logo': data.invertedUrl,
+        [`brand_logo_${logoConversionNeeded.targetVariant}`]: data.invertedUrl
+      }));
+      
+      setLogoConversionNeeded(null);
+      toast.success(`Created ${logoConversionNeeded.targetVariant} logo variant`);
+    } catch (error) {
+      console.error('Logo inversion error:', error);
+      toast.error('Failed to invert logo. Please upload the correct variant manually.');
+    } finally {
+      setIsInvertingLogo(false);
+    }
+  }, [logoConversionNeeded, brand.domain]);
+
+  // Handle manual logo upload for missing variant
+  const handleUploadMissingLogo = useCallback(() => {
+    if (!logoConversionNeeded) return;
+    
+    // Add the missing logo to assets needed
+    setAssetsNeeded(prev => {
+      const hasLogo = prev.some(a => a.category === 'logo');
+      if (hasLogo) return prev;
+      
+      return [{
+        id: `brand_logo_${logoConversionNeeded.targetVariant}`,
+        description: `${logoConversionNeeded.targetVariant === 'light' ? 'White/light' : 'Dark/black'} version of your brand logo`,
+        location: logoAnalysis?.logo_position || 'center',
+        category: 'logo'
+      }, ...prev];
+    });
+    
+    setLogoConversionNeeded(null);
+    setShowAssetCollectionModal(true);
+  }, [logoConversionNeeded, logoAnalysis]);
 
   const handleCropComplete = useCallback(async (croppedImageData: string) => {
     setIsUploadingCrop(true);
@@ -970,6 +1118,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   {approvedLinks.length > 0 && (
                     <p>• {approvedLinks.filter(l => l.verified).length}/{approvedLinks.length} links verified</p>
                   )}
+                  {logoAnalysis?.logo_visible && (
+                    <p>• Logo detected ({logoAnalysis.needed_variant} variant needed)</p>
+                  )}
                 </div>
                 
                 {/* Button to open asset collection modal if there are uncollected assets */}
@@ -984,6 +1135,47 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     Collect Assets
                   </Button>
                 )}
+              </div>
+            )}
+
+            {/* Logo variant mismatch warning */}
+            {logoConversionNeeded && !isProcessingReference && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-sm">Logo variant mismatch</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This footer has a {logoConversionNeeded.targetVariant === 'light' ? 'dark' : 'light'} background, 
+                      but you only have a {logoConversionNeeded.targetVariant === 'light' ? 'dark' : 'light'} logo stored.
+                      {logoConversionNeeded.canAutoConvert && ' We can automatically create an inverted version.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 ml-8">
+                  {logoConversionNeeded.canAutoConvert && (
+                    <Button 
+                      size="sm" 
+                      onClick={handleAutoInvertLogo}
+                      disabled={isInvertingLogo}
+                    >
+                      {isInvertingLogo ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4 mr-1" />
+                      )}
+                      Auto-invert logo
+                    </Button>
+                  )}
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleUploadMissingLogo}
+                  >
+                    <Upload className="w-4 h-4 mr-1" />
+                    Upload {logoConversionNeeded.targetVariant} logo
+                  </Button>
+                </div>
               </div>
             )}
 

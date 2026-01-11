@@ -202,78 +202,101 @@ export function AssetCollectionModal({
 
         <div className="flex-1 overflow-auto py-4 space-y-4">
           {/* Assets needing upload */}
-          {assetsNeeded.map(asset => (
-            <div key={asset.id} className="border border-border rounded-lg p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                {/* Cropped preview from reference */}
-                <CroppedPreview 
-                  referenceImageUrl={referenceImageUrl} 
-                  cropHint={asset.crop_hint} 
-                />
-                
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{asset.description}</p>
-                  <p className="text-xs text-muted-foreground">{asset.location}</p>
-                </div>
-              </div>
-
-              {/* Upload dropzone */}
-              {uploadedAssets[asset.id] ? (
-                <div className="flex items-center gap-3 p-2 bg-muted/30 rounded-md">
-                  <div className="w-12 h-12 rounded border border-border/50 overflow-hidden bg-muted/20 flex items-center justify-center">
-                    <img src={uploadedAssets[asset.id]} alt="Uploaded" className="max-w-full max-h-full object-contain" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-primary flex items-center gap-1">
-                      <Check className="w-4 h-4" /> Uploaded
-                    </p>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => setUploadedAssets(prev => {
-                      const next = { ...prev };
-                      delete next[asset.id];
-                      return next;
-                    })}
-                  >
-                    Replace
-                  </Button>
-                </div>
-              ) : (
-                <label
-                  onDrop={(e) => handleDrop(asset.id, e)}
-                  onDragOver={(e) => { e.preventDefault(); setDragOverAsset(asset.id); }}
-                  onDragLeave={() => setDragOverAsset(null)}
-                  className={`flex flex-col items-center justify-center gap-2 h-20 rounded-md border-2 border-dashed cursor-pointer transition-colors ${
-                    dragOverAsset === asset.id 
-                      ? 'border-primary bg-primary/10' 
-                      : 'border-border hover:border-primary/50 hover:bg-muted/20'
-                  }`}
-                >
-                  {uploadingAsset === asset.id ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                  ) : (
-                    <>
-                      <Upload className="w-5 h-5 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Drop file or click to upload</span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileUpload(asset.id, file);
-                      e.target.value = '';
-                    }}
-                    disabled={uploadingAsset !== null}
+          {assetsNeeded.map(asset => {
+            const isLogo = asset.category === 'logo' || asset.id.toLowerCase().includes('logo');
+            const isLightLogo = asset.id.includes('light');
+            const isDarkLogo = asset.id.includes('dark');
+            
+            return (
+              <div key={asset.id} className={`border rounded-lg p-4 space-y-3 ${isLogo ? 'border-primary/50 bg-primary/5' : 'border-border'}`}>
+                <div className="flex items-start gap-3">
+                  {/* Cropped preview from reference */}
+                  <CroppedPreview 
+                    referenceImageUrl={referenceImageUrl} 
+                    cropHint={asset.crop_hint} 
                   />
-                </label>
-              )}
-            </div>
-          ))}
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{asset.description}</p>
+                      {isLogo && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                          {isLightLogo ? 'Light/White' : isDarkLogo ? 'Dark/Black' : 'Logo'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{asset.location}</p>
+                    {isLogo && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {isLightLogo 
+                          ? 'Upload a white or light-colored version for dark backgrounds'
+                          : isDarkLogo 
+                            ? 'Upload a dark or black version for light backgrounds'
+                            : 'Upload the appropriate logo version for the footer background'
+                        }
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Upload dropzone */}
+                {uploadedAssets[asset.id] ? (
+                  <div className="flex items-center gap-3 p-2 bg-muted/30 rounded-md">
+                    <div className={`w-12 h-12 rounded border border-border/50 overflow-hidden flex items-center justify-center ${isLogo ? 'bg-gray-800' : 'bg-muted/20'}`}>
+                      <img src={uploadedAssets[asset.id]} alt="Uploaded" className="max-w-full max-h-full object-contain" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-primary flex items-center gap-1">
+                        <Check className="w-4 h-4" /> Uploaded
+                      </p>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setUploadedAssets(prev => {
+                        const next = { ...prev };
+                        delete next[asset.id];
+                        return next;
+                      })}
+                    >
+                      Replace
+                    </Button>
+                  </div>
+                ) : (
+                  <label
+                    onDrop={(e) => handleDrop(asset.id, e)}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverAsset(asset.id); }}
+                    onDragLeave={() => setDragOverAsset(null)}
+                    className={`flex flex-col items-center justify-center gap-2 h-20 rounded-md border-2 border-dashed cursor-pointer transition-colors ${
+                      dragOverAsset === asset.id 
+                        ? 'border-primary bg-primary/10' 
+                        : 'border-border hover:border-primary/50 hover:bg-muted/20'
+                    }`}
+                  >
+                    {uploadingAsset === asset.id ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Drop file or click to upload</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileUpload(asset.id, file);
+                        e.target.value = '';
+                      }}
+                      disabled={uploadingAsset !== null}
+                    />
+                  </label>
+                )}
+              </div>
+            );
+          })}
 
           {/* Text-based elements - just informational */}
           {textBasedElements.length > 0 && (

@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.generate-email-copy-early]
 verify_jwt = false
+
+[functions.invert-logo]
+verify_jwt = false
