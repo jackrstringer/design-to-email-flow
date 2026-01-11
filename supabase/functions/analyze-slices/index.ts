@@ -161,7 +161,7 @@ Return JSON with exactly ${slices.length} slices:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-1-20250805',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4000,
         tools: [
           {
