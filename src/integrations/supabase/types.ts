@@ -210,6 +210,7 @@ export type Database = {
           image_url: string | null
           preview_texts: Json | null
           session_key: string
+          spelling_errors: Json | null
           subject_lines: Json | null
         }
         Insert: {
@@ -220,6 +221,7 @@ export type Database = {
           image_url?: string | null
           preview_texts?: Json | null
           session_key: string
+          spelling_errors?: Json | null
           subject_lines?: Json | null
         }
         Update: {
@@ -230,6 +232,7 @@ export type Database = {
           image_url?: string | null
           preview_texts?: Json | null
           session_key?: string
+          spelling_errors?: Json | null
           subject_lines?: Json | null
         }
         Relationships: [
