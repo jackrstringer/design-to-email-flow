@@ -24,7 +24,7 @@ serve(async (req) => {
       throw new Error('campaignId is required');
     }
 
-    console.log(`[Background] Starting generation for campaign ${campaignId}`);
+    console.log(`[Background SL] Starting generation for campaign ${campaignId}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -47,7 +47,7 @@ serve(async (req) => {
         
         if (campaignData?.original_image_url) {
           campaignImageUrl = campaignData.original_image_url;
-          console.log(`[Background] Using campaign image: ${campaignImageUrl!.substring(0, 80)}...`);
+          console.log(`[Background SL] Using campaign image for QA: ${campaignImageUrl!.substring(0, 80)}...`);
         }
         
         if (brandId) {
@@ -59,91 +59,64 @@ serve(async (req) => {
           
           if (brandData?.copy_examples) {
             copyExamples = brandData.copy_examples as { subjectLines: string[]; previewTexts: string[] };
-            console.log(`[Background] Found ${copyExamples.subjectLines?.length || 0} copy examples`);
+            console.log(`[Background SL] Found ${copyExamples.subjectLines?.length || 0} copy examples`);
           }
         }
 
-        // Run SL/PT generation and spelling QA in parallel
-        const [generateResponse, qaResponse] = await Promise.all([
-          // Generate subject lines and preview texts
-          fetch(`${supabaseUrl}/functions/v1/generate-email-copy`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({
-              slices: slices.map((s: any) => ({
-                altText: s.altText,
-                link: s.link,
-                imageUrl: s.imageUrl,
-              })),
-              brandContext,
-              pairCount: 10,
-              copyExamples,
-              campaignImageUrl,
-            }),
+        // Call the generate-email-copy function
+        const generateResponse = await fetch(`${supabaseUrl}/functions/v1/generate-email-copy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            slices: slices.map((s: any) => ({
+              altText: s.altText,
+              link: s.link,
+              imageUrl: s.imageUrl,
+            })),
+            brandContext,
+            pairCount: 10,
+            copyExamples,
+            campaignImageUrl, // Pass full campaign image for QA
           }),
-          // Run spelling QA with imageUrl (background-friendly)
-          campaignImageUrl ? fetch(`${supabaseUrl}/functions/v1/qa-spelling-check`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({ imageUrl: campaignImageUrl }),
-          }) : Promise.resolve(null),
-        ]);
+        });
 
         if (!generateResponse.ok) {
           const errorText = await generateResponse.text();
-          console.error(`[Background] Generation failed:`, errorText);
+          console.error(`[Background SL] Generation failed:`, errorText);
           return;
         }
 
         const generateData = await generateResponse.json();
         
         if (!generateData.subjectLines?.length && !generateData.previewTexts?.length) {
-          console.error('[Background] No content generated');
+          console.error('[Background SL] No content generated');
           return;
         }
 
-        // Process spelling QA results
-        let spellingErrors: Array<{ text: string; correction: string; location: string }> = [];
-        if (qaResponse && qaResponse.ok) {
-          const qaData = await qaResponse.json();
-          if (qaData?.errors?.length > 0) {
-            spellingErrors = qaData.errors;
-            console.log(`[Background] Found ${spellingErrors.length} spelling errors`);
-          } else {
-            console.log('[Background] No spelling errors found');
-          }
-        } else if (qaResponse) {
-          console.error('[Background] QA check failed:', await qaResponse.text());
-        }
-
-        // Save to campaign with spelling errors
+        // Save to campaign - spelling QA is now handled by dedicated function
         const { error: updateError } = await supabase
           .from('campaigns')
           .update({
             generated_copy: {
               subjectLines: generateData.subjectLines || [],
               previewTexts: generateData.previewTexts || [],
-              spellingErrors,
               generatedAt: new Date().toISOString(),
             },
           })
           .eq('id', campaignId);
 
         if (updateError) {
-          console.error('[Background] Failed to save:', updateError);
+          console.error('[Background SL] Failed to save:', updateError);
           return;
         }
 
         const elapsed = Date.now() - startTime;
-        console.log(`[Background] Completed for campaign ${campaignId} in ${elapsed}ms - ${generateData.subjectLines?.length} SLs, ${generateData.previewTexts?.length} PTs, ${spellingErrors.length} spelling errors`);
+        console.log(`[Background SL] Completed for campaign ${campaignId} in ${elapsed}ms - ${generateData.subjectLines?.length} SLs, ${generateData.previewTexts?.length} PTs`);
       } catch (err) {
-        console.error('[Background] Background task error:', err);
+        console.error('[Background SL] Background task error:', err);
       }
     };
 
@@ -157,7 +130,7 @@ serve(async (req) => {
     );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Background] Error:', errorMessage);
+    console.error('[Background SL] Error:', errorMessage);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -125,20 +125,14 @@ export default function CampaignSend() {
   }, [previewTexts, selectedPTId]);
 
   // Check for pre-generated copy from background task (campaigns table)
-  interface PreGeneratedCopy {
-    subjectLines: string[];
-    previewTexts: string[];
-    spellingErrors?: SpellingError[];
-  }
-  
-  const checkPreGeneratedCopy = async (campaignId: string): Promise<PreGeneratedCopy | null> => {
+  const checkPreGeneratedCopy = async (campaignId: string): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[] } | null> => {
     const { data } = await supabase
       .from('campaigns')
       .select('generated_copy')
       .eq('id', campaignId)
       .single();
     
-    const copy = data?.generated_copy as unknown as { subjectLines: string[]; previewTexts: string[]; spellingErrors?: SpellingError[]; generatedAt: string } | null;
+    const copy = data?.generated_copy as { subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[]; generatedAt: string } | null;
     if (copy?.subjectLines?.length > 0) {
       return { subjectLines: copy.subjectLines, previewTexts: copy.previewTexts, spellingErrors: copy.spellingErrors };
     }
@@ -146,7 +140,7 @@ export default function CampaignSend() {
   };
 
   // Check for EARLY generated copy (from immediate upload trigger)
-  const checkEarlyGeneratedCopy = async (sessionKey: string): Promise<PreGeneratedCopy | null> => {
+  const checkEarlyGeneratedCopy = async (sessionKey: string): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
     console.log('[EARLY] Checking for early generated copy, session:', sessionKey);
     const { data, error } = await supabase
       .from('early_generated_copy')
@@ -159,9 +153,9 @@ export default function CampaignSend() {
       return null;
     }
     
-    const subjectLines = data?.subject_lines as unknown as string[] | null;
-    const previewTexts = data?.preview_texts as unknown as string[] | null;
-    const spellingErrorsData = data?.spelling_errors as unknown as SpellingError[] | null;
+    const subjectLines = data?.subject_lines as string[] | null;
+    const previewTexts = data?.preview_texts as string[] | null;
+    const spellingErrorsData = data?.spelling_errors as string[] | null;
     
     if (subjectLines?.length > 0) {
       console.log(`[EARLY] Found early copy: ${subjectLines.length} SLs, ${previewTexts?.length || 0} PTs, ${spellingErrorsData?.length || 0} spelling errors`);
@@ -171,7 +165,7 @@ export default function CampaignSend() {
   };
 
   // Poll for early copy with retries (it may still be generating)
-  const pollForEarlyCopy = async (sessionKey: string, maxAttempts = 8): Promise<PreGeneratedCopy | null> => {
+  const pollForEarlyCopy = async (sessionKey: string, maxAttempts = 8): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
     for (let i = 0; i < maxAttempts; i++) {
       const earlyCopy = await checkEarlyGeneratedCopy(sessionKey);
       if (earlyCopy?.subjectLines?.length > 0) {
@@ -184,7 +178,7 @@ export default function CampaignSend() {
   };
 
   // Poll for pre-generated copy with retries
-  const pollForCopy = async (campaignId: string, maxAttempts = 10): Promise<PreGeneratedCopy | null> => {
+  const pollForCopy = async (campaignId: string, maxAttempts = 10): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[] } | null> => {
     for (let i = 0; i < maxAttempts; i++) {
       const preCopy = await checkPreGeneratedCopy(campaignId);
       if (preCopy?.subjectLines?.length > 0) {
@@ -279,7 +273,7 @@ export default function CampaignSend() {
         }
       };
 
-      const applyPreGeneratedCopy = (preCopy: PreGeneratedCopy) => {
+      const applyPreGeneratedCopy = (preCopy: { subjectLines: string[]; previewTexts: string[] }) => {
         const newSLs = preCopy.subjectLines.map((text, i) => ({
           id: `sl-pre-${i}`,
           text,
@@ -296,15 +290,65 @@ export default function CampaignSend() {
         setPreviewTexts(newPTs);
         setSelectedSLId(newSLs[0]?.id || null);
         setSelectedPTId(newPTs[0]?.id || null);
-        
-        // Apply spelling errors if present (generated in background)
-        if (preCopy.spellingErrors && preCopy.spellingErrors.length > 0) {
-          setSpellingErrors(preCopy.spellingErrors);
-          console.log('[QA] Applied pre-generated spelling errors:', preCopy.spellingErrors.length);
-        } else {
+      };
+
+      // Dedicated spelling QA - runs in parallel with copy generation
+      const runSpellingQA = async (campaignId: string) => {
+        setIsCheckingSpelling(true);
+        try {
+          const { data: campaign } = await supabase
+            .from('campaigns')
+            .select('original_image_url')
+            .eq('id', campaignId)
+            .single();
+          
+          if (!campaign?.original_image_url) {
+            console.log('[QA] No campaign image found');
+            return;
+          }
+
+          console.log('[QA] Fetching image for spelling check...');
+          
+          // Fetch image and convert to base64 on frontend (avoids Deno stack overflow)
+          const imageResponse = await fetch(campaign.original_image_url);
+          if (!imageResponse.ok) {
+            throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+          }
+          
+          const blob = await imageResponse.blob();
+          const imageBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+
+          console.log('[QA] Running dedicated spelling check...');
+          const { data, error } = await supabase.functions.invoke('qa-spelling-check', {
+            body: { imageBase64 }
+          });
+
+          if (error) throw error;
+
+          if (data?.errors?.length > 0) {
+            setSpellingErrors(data.errors);
+            console.log('[QA] Found spelling errors:', data.errors);
+          } else {
+            setSpellingErrors([]);
+            console.log('[QA] No spelling errors found');
+          }
+        } catch (err) {
+          console.error('[QA] Spelling check failed:', err);
           setSpellingErrors([]);
+        } finally {
+          setIsCheckingSpelling(false);
         }
       };
+
+      // Run QA in parallel with copy loading
+      if (id) {
+        runSpellingQA(id);
+      }
 
       loadCopy();
     } else {

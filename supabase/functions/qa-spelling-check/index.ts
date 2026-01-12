@@ -11,51 +11,17 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    const { imageBase64, imageUrl } = body;
+    const { imageBase64 } = await req.json();
     
-    if (!imageBase64 && !imageUrl) {
+    if (!imageBase64) {
       return new Response(
-        JSON.stringify({ error: 'imageBase64 or imageUrl required', hasErrors: false, errors: [] }),
+        JSON.stringify({ error: 'imageBase64 required', hasErrors: false, errors: [] }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let base64Data: string;
-    let mediaType = 'image/png';
-    
-    if (imageBase64) {
-      // Strip data URL prefix if present and extract media type
-      const dataUrlMatch = imageBase64.match(/^data:(image\/\w+);base64,/);
-      if (dataUrlMatch) {
-        mediaType = dataUrlMatch[1];
-        base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      } else {
-        base64Data = imageBase64;
-      }
-    } else {
-      // Fetch image from URL and convert to base64 (for background tasks)
-      console.log('[QA] Fetching image from URL:', imageUrl.substring(0, 80));
-      const imageResponse = await fetch(imageUrl);
-      if (!imageResponse.ok) {
-        throw new Error(`Failed to fetch image: ${imageResponse.status}`);
-      }
-      
-      const contentType = imageResponse.headers.get('content-type') || 'image/png';
-      mediaType = contentType.split(';')[0];
-      
-      const arrayBuffer = await imageResponse.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      
-      // Convert to base64 in chunks to avoid stack overflow
-      const chunkSize = 32768;
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.subarray(i, i + chunkSize);
-        binary += String.fromCharCode.apply(null, Array.from(chunk));
-      }
-      base64Data = btoa(binary);
-    }
+    // Strip data URL prefix if present
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
     console.log('[QA] Starting spelling check, base64 length:', base64Data.length);
 
@@ -76,7 +42,7 @@ serve(async (req) => {
               type: 'image',
               source: {
                 type: 'base64',
-                media_type: mediaType,
+                media_type: 'image/png',
                 data: base64Data
               }
             },
