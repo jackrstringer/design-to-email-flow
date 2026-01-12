@@ -77,8 +77,14 @@ export default function CampaignSend() {
   const [selectedSLId, setSelectedSLId] = useState<string | null>(null);
   const [selectedPTId, setSelectedPTId] = useState<string | null>(null);
   
-  // Spelling QA
-  const [spellingErrors, setSpellingErrors] = useState<string[]>([]);
+  // Spelling QA - structured errors from dedicated QA function
+  interface SpellingError {
+    text: string;
+    correction: string;
+    location: string;
+  }
+  const [spellingErrors, setSpellingErrors] = useState<SpellingError[]>([]);
+  const [isCheckingSpelling, setIsCheckingSpelling] = useState(false);
   
   // Chat refinement
   const [refinementPrompt, setRefinementPrompt] = useState('');
@@ -267,7 +273,7 @@ export default function CampaignSend() {
         }
       };
 
-      const applyPreGeneratedCopy = (preCopy: { subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[] }) => {
+      const applyPreGeneratedCopy = (preCopy: { subjectLines: string[]; previewTexts: string[] }) => {
         const newSLs = preCopy.subjectLines.map((text, i) => ({
           id: `sl-pre-${i}`,
           text,
@@ -284,8 +290,49 @@ export default function CampaignSend() {
         setPreviewTexts(newPTs);
         setSelectedSLId(newSLs[0]?.id || null);
         setSelectedPTId(newPTs[0]?.id || null);
-        setSpellingErrors(preCopy.spellingErrors || []);
       };
+
+      // Dedicated spelling QA - runs in parallel with copy generation
+      const runSpellingQA = async (campaignId: string) => {
+        setIsCheckingSpelling(true);
+        try {
+          const { data: campaign } = await supabase
+            .from('campaigns')
+            .select('original_image_url')
+            .eq('id', campaignId)
+            .single();
+          
+          if (!campaign?.original_image_url) {
+            console.log('[QA] No campaign image found');
+            return;
+          }
+
+          console.log('[QA] Running dedicated spelling check...');
+          const { data, error } = await supabase.functions.invoke('qa-spelling-check', {
+            body: { imageUrl: campaign.original_image_url }
+          });
+
+          if (error) throw error;
+
+          if (data?.errors?.length > 0) {
+            setSpellingErrors(data.errors);
+            console.log('[QA] Found spelling errors:', data.errors);
+          } else {
+            setSpellingErrors([]);
+            console.log('[QA] No spelling errors found');
+          }
+        } catch (err) {
+          console.error('[QA] Spelling check failed:', err);
+          setSpellingErrors([]);
+        } finally {
+          setIsCheckingSpelling(false);
+        }
+      };
+
+      // Run QA in parallel with copy loading
+      if (id) {
+        runSpellingQA(id);
+      }
 
       loadCopy();
     } else {
@@ -409,10 +456,7 @@ export default function CampaignSend() {
       setSubjectLines(newSLs);
       setPreviewTexts(newPTs);
       
-      // Set spelling errors from response
-      if (data.spellingErrors) {
-        setSpellingErrors(data.spellingErrors);
-      }
+      // Note: Spelling QA is now handled by dedicated qa-spelling-check function
       
       // Auto-select first if nothing selected
       if (!selectedSLId && newSLs.length > 0) {
@@ -911,19 +955,29 @@ export default function CampaignSend() {
 
               {/* QA Section */}
               <div className="border border-border/50 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">QA Check</h4>
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Spelling QA</h4>
                 
-                {spellingErrors.length === 0 ? (
+                {isCheckingSpelling ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Checking for spelling errors...</span>
+                  </div>
+                ) : spellingErrors.length === 0 ? (
                   <div className="flex items-center gap-2 text-sm text-green-600">
                     <Check className="w-4 h-4" />
                     <span>No spelling errors detected</span>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {spellingErrors.map((error, i) => (
-                      <div key={i} className="flex items-start gap-2 text-sm text-amber-600">
+                      <div key={i} className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 p-2 rounded">
                         <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        <span>{error}</span>
+                        <div>
+                          <span className="font-medium">"{error.text}"</span>
+                          <span className="mx-1">→</span>
+                          <span className="font-medium">"{error.correction}"</span>
+                          <span className="text-muted-foreground text-xs ml-2">({error.location})</span>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.invert-logo]
 verify_jwt = false
+
+[functions.generate-email-copy-background]
+verify_jwt = false
+
+[functions.qa-spelling-check]
+verify_jwt = false
