@@ -34,8 +34,22 @@ serve(async (req) => {
     // Start the background task
     const backgroundTask = async () => {
       try {
-        // Fetch copy examples for brand if brandId provided
+        // Fetch copy examples and campaign image URL for brand if brandId provided
         let copyExamples: { subjectLines: string[]; previewTexts: string[] } | undefined;
+        let campaignImageUrl: string | undefined;
+        
+        // Fetch campaign's original_image_url for QA analysis
+        const { data: campaignData } = await supabase
+          .from('campaigns')
+          .select('original_image_url')
+          .eq('id', campaignId)
+          .single();
+        
+        if (campaignData?.original_image_url) {
+          campaignImageUrl = campaignData.original_image_url;
+          console.log(`[Background SL] Using campaign image for QA: ${campaignImageUrl!.substring(0, 80)}...`);
+        }
+        
         if (brandId) {
           const { data: brandData } = await supabase
             .from('brands')
@@ -65,6 +79,7 @@ serve(async (req) => {
             brandContext,
             pairCount: 10,
             copyExamples,
+            campaignImageUrl, // Pass full campaign image for QA
           }),
         });
 
@@ -81,13 +96,14 @@ serve(async (req) => {
           return;
         }
 
-        // Save to campaign
+        // Save to campaign - include spellingErrors
         const { error: updateError } = await supabase
           .from('campaigns')
           .update({
             generated_copy: {
               subjectLines: generateData.subjectLines || [],
               previewTexts: generateData.previewTexts || [],
+              spellingErrors: generateData.spellingErrors || [],
               generatedAt: new Date().toISOString(),
             },
           })
@@ -99,7 +115,7 @@ serve(async (req) => {
         }
 
         const elapsed = Date.now() - startTime;
-        console.log(`[Background SL] Completed for campaign ${campaignId} in ${elapsed}ms - ${generateData.subjectLines?.length} SLs, ${generateData.previewTexts?.length} PTs`);
+        console.log(`[Background SL] Completed for campaign ${campaignId} in ${elapsed}ms - ${generateData.subjectLines?.length} SLs, ${generateData.previewTexts?.length} PTs, ${generateData.spellingErrors?.length || 0} spelling issues`);
       } catch (err) {
         console.error('[Background SL] Background task error:', err);
       }

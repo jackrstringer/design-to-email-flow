@@ -119,16 +119,16 @@ export default function CampaignSend() {
   }, [previewTexts, selectedPTId]);
 
   // Check for pre-generated copy from background task (campaigns table)
-  const checkPreGeneratedCopy = async (campaignId: string): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+  const checkPreGeneratedCopy = async (campaignId: string): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[] } | null> => {
     const { data } = await supabase
       .from('campaigns')
       .select('generated_copy')
       .eq('id', campaignId)
       .single();
     
-    const copy = data?.generated_copy as { subjectLines: string[]; previewTexts: string[]; generatedAt: string } | null;
+    const copy = data?.generated_copy as { subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[]; generatedAt: string } | null;
     if (copy?.subjectLines?.length > 0) {
-      return { subjectLines: copy.subjectLines, previewTexts: copy.previewTexts };
+      return { subjectLines: copy.subjectLines, previewTexts: copy.previewTexts, spellingErrors: copy.spellingErrors };
     }
     return null;
   };
@@ -172,7 +172,7 @@ export default function CampaignSend() {
   };
 
   // Poll for pre-generated copy with retries
-  const pollForCopy = async (campaignId: string, maxAttempts = 10): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+  const pollForCopy = async (campaignId: string, maxAttempts = 10): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[] } | null> => {
     for (let i = 0; i < maxAttempts; i++) {
       const preCopy = await checkPreGeneratedCopy(campaignId);
       if (preCopy?.subjectLines?.length > 0) {
