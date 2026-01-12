@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2 } from 'lucide-react';
+import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import { InboxPreview } from '@/components/InboxPreview';
@@ -77,6 +77,9 @@ export default function CampaignSend() {
   const [selectedSLId, setSelectedSLId] = useState<string | null>(null);
   const [selectedPTId, setSelectedPTId] = useState<string | null>(null);
   
+  // Spelling QA
+  const [spellingErrors, setSpellingErrors] = useState<string[]>([]);
+  
   // Chat refinement
   const [refinementPrompt, setRefinementPrompt] = useState('');
   const [lastRefinement, setLastRefinement] = useState<string | null>(null);
@@ -131,11 +134,11 @@ export default function CampaignSend() {
   };
 
   // Check for EARLY generated copy (from immediate upload trigger)
-  const checkEarlyGeneratedCopy = async (sessionKey: string): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+  const checkEarlyGeneratedCopy = async (sessionKey: string): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
     console.log('[EARLY] Checking for early generated copy, session:', sessionKey);
     const { data, error } = await supabase
       .from('early_generated_copy')
-      .select('subject_lines, preview_texts')
+      .select('subject_lines, preview_texts, spelling_errors')
       .eq('session_key', sessionKey)
       .single();
     
@@ -146,16 +149,17 @@ export default function CampaignSend() {
     
     const subjectLines = data?.subject_lines as string[] | null;
     const previewTexts = data?.preview_texts as string[] | null;
+    const spellingErrorsData = data?.spelling_errors as string[] | null;
     
     if (subjectLines?.length > 0) {
-      console.log(`[EARLY] Found early copy: ${subjectLines.length} SLs, ${previewTexts?.length || 0} PTs`);
-      return { subjectLines, previewTexts: previewTexts || [] };
+      console.log(`[EARLY] Found early copy: ${subjectLines.length} SLs, ${previewTexts?.length || 0} PTs, ${spellingErrorsData?.length || 0} spelling errors`);
+      return { subjectLines, previewTexts: previewTexts || [], spellingErrors: spellingErrorsData || [] };
     }
     return null;
   };
 
   // Poll for early copy with retries (it may still be generating)
-  const pollForEarlyCopy = async (sessionKey: string, maxAttempts = 8): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> => {
+  const pollForEarlyCopy = async (sessionKey: string, maxAttempts = 8): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
     for (let i = 0; i < maxAttempts; i++) {
       const earlyCopy = await checkEarlyGeneratedCopy(sessionKey);
       if (earlyCopy?.subjectLines?.length > 0) {
@@ -263,7 +267,7 @@ export default function CampaignSend() {
         }
       };
 
-      const applyPreGeneratedCopy = (preCopy: { subjectLines: string[]; previewTexts: string[] }) => {
+      const applyPreGeneratedCopy = (preCopy: { subjectLines: string[]; previewTexts: string[]; spellingErrors?: string[] }) => {
         const newSLs = preCopy.subjectLines.map((text, i) => ({
           id: `sl-pre-${i}`,
           text,
@@ -280,6 +284,7 @@ export default function CampaignSend() {
         setPreviewTexts(newPTs);
         setSelectedSLId(newSLs[0]?.id || null);
         setSelectedPTId(newPTs[0]?.id || null);
+        setSpellingErrors(preCopy.spellingErrors || []);
       };
 
       loadCopy();
@@ -403,6 +408,11 @@ export default function CampaignSend() {
 
       setSubjectLines(newSLs);
       setPreviewTexts(newPTs);
+      
+      // Set spelling errors from response
+      if (data.spellingErrors) {
+        setSpellingErrors(data.spellingErrors);
+      }
       
       // Auto-select first if nothing selected
       if (!selectedSLId && newSLs.length > 0) {
@@ -898,6 +908,27 @@ export default function CampaignSend() {
                   }
                 }}
               />
+
+              {/* QA Section */}
+              <div className="border border-border/50 rounded-lg p-3">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">QA Check</h4>
+                
+                {spellingErrors.length === 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <Check className="w-4 h-4" />
+                    <span>No spelling errors detected</span>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {spellingErrors.map((error, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm text-amber-600">
+                        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>{error}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Chat refinement input */}
               <div className="flex gap-2">

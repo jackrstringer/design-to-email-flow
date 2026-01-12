@@ -307,6 +307,26 @@ If not, rewrite internally before outputting.
 
 ---
 
+## SPELLING & TYPO QA
+
+While analyzing the email, also scan for any blatant spelling errors, typos, or obvious grammatical mistakes visible in the email content.
+
+Only flag issues that are clearly wrong:
+- Misspelled words (e.g., "recieve" instead of "receive")
+- Missing or extra letters (e.g., "teh" instead of "the")
+- Obvious typos (e.g., "New Yera Sale")
+- Broken or incomplete words
+
+Do NOT flag:
+- Intentional brand stylizations (e.g., "Ur" for "Your" if clearly intentional)
+- Product names or brand names you're unsure about
+- Capitalization choices (these are often intentional)
+- Minor punctuation preferences
+
+If no spelling errors are found, return an empty array.
+
+---
+
 ## OUTPUT FORMAT
 
 Generate 10 subject lines and 10 preview texts.
@@ -315,7 +335,8 @@ Respond in JSON:
 
 {
   "subjectLines": ["..."],
-  "previewTexts": ["..."]
+  "previewTexts": ["..."],
+  "spellingErrors": ["'New Yera' should be 'New Year' (visible in hero section)", "..."]
 }`;
 
     // Build message content with image
@@ -360,7 +381,7 @@ Respond in JSON:
     
     console.log('[EARLY] Raw response:', content.substring(0, 300));
 
-    let result = { subjectLines: [] as string[], previewTexts: [] as string[] };
+    let result = { subjectLines: [] as string[], previewTexts: [] as string[], spellingErrors: [] as string[] };
     
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -370,9 +391,14 @@ Respond in JSON:
           result = {
             subjectLines: parsed.pairs.map((p: any) => p.subjectLine),
             previewTexts: parsed.pairs.map((p: any) => p.previewText),
+            spellingErrors: parsed.spellingErrors || [],
           };
         } else {
-          result = parsed;
+          result = {
+            subjectLines: parsed.subjectLines || [],
+            previewTexts: parsed.previewTexts || [],
+            spellingErrors: parsed.spellingErrors || [],
+          };
         }
       }
     } catch (parseErr) {
@@ -380,7 +406,7 @@ Respond in JSON:
       throw new Error('Failed to parse AI response');
     }
 
-    console.log(`[EARLY] Generated ${result.subjectLines?.length || 0} SLs, ${result.previewTexts?.length || 0} PTs`);
+    console.log(`[EARLY] Generated ${result.subjectLines?.length || 0} SLs, ${result.previewTexts?.length || 0} PTs, ${result.spellingErrors?.length || 0} spelling issues`);
 
     // Store in early_generated_copy table
     const { error: insertError } = await supabase
@@ -391,6 +417,7 @@ Respond in JSON:
         image_url: imageUrl,
         subject_lines: result.subjectLines,
         preview_texts: result.previewTexts,
+        spelling_errors: result.spellingErrors,
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
       }, { onConflict: 'session_key' });
 
