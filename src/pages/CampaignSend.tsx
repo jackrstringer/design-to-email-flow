@@ -307,9 +307,25 @@ export default function CampaignSend() {
             return;
           }
 
+          console.log('[QA] Fetching image for spelling check...');
+          
+          // Fetch image and convert to base64 on frontend (avoids Deno stack overflow)
+          const imageResponse = await fetch(campaign.original_image_url);
+          if (!imageResponse.ok) {
+            throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+          }
+          
+          const blob = await imageResponse.blob();
+          const imageBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+
           console.log('[QA] Running dedicated spelling check...');
           const { data, error } = await supabase.functions.invoke('qa-spelling-check', {
-            body: { imageUrl: campaign.original_image_url }
+            body: { imageBase64 }
           });
 
           if (error) throw error;
