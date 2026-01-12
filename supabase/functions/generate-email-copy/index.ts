@@ -359,29 +359,6 @@ If not, rewrite internally before outputting.
 
 ---
 
-## SPELLING & TYPO QA
-
-CAREFULLY scan the email image for blatant spelling errors, typos, or obvious grammatical mistakes.
-
-You MUST flag:
-- Misspelled words (e.g., "recieve" instead of "receive")
-- Missing or extra letters (e.g., "teh" instead of "the", "oned" instead of "one")  
-- Obvious typos (e.g., "New Yera Sale", "Which oned will you pick?")
-- Broken or incomplete words
-- Words with wrong letters (e.g., "ypur" instead of "your")
-
-Do NOT flag:
-- Intentional brand stylizations (e.g., "Ur" for "Your" if clearly intentional)
-- Product names or brand names you're unsure about
-- Capitalization choices (these are often intentional)
-- Minor punctuation or apostrophe style preferences (e.g., "FAQ'S" vs "FAQs")
-
-IMPORTANT: Look closely at ALL text in the email image. Typos are often in headlines or buttons.
-
-If no spelling errors are found, return an empty array.
-
----
-
 ## OUTPUT FORMAT
 
 Generate ${pairCount} subject lines and ${pairCount} preview texts.
@@ -390,8 +367,7 @@ Respond in JSON:
 
 {
   "subjectLines": ["..."],
-  "previewTexts": ["..."],
-  "spellingErrors": ["'New Yera' should be 'New Year' (visible in hero section)", "..."]
+  "previewTexts": ["..."]
 }`;
 
     // Build message content - text first, then images if available
@@ -433,7 +409,7 @@ Respond in JSON:
     
     console.log('Raw response:', content.substring(0, 500));
 
-    let result = { subjectLines: [] as string[], previewTexts: [] as string[], spellingErrors: [] as string[] };
+    let result = { subjectLines: [] as string[], previewTexts: [] as string[] };
     
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -443,13 +419,11 @@ Respond in JSON:
           result = {
             subjectLines: parsed.pairs.map((p: any) => p.subjectLine),
             previewTexts: parsed.pairs.map((p: any) => p.previewText),
-            spellingErrors: parsed.spellingErrors || [],
           };
         } else {
           result = {
             subjectLines: parsed.subjectLines || [],
             previewTexts: parsed.previewTexts || [],
-            spellingErrors: parsed.spellingErrors || [],
           };
         }
       }
@@ -458,11 +432,10 @@ Respond in JSON:
       result = {
         subjectLines: Array(pairCount).fill(0).map((_, i) => `Email Subject ${i + 1}`),
         previewTexts: Array(pairCount).fill(0).map((_, i) => `Preview text ${i + 1}`),
-        spellingErrors: [],
       };
     }
 
-    console.log(`Generated ${result.subjectLines?.length || 0} SLs, ${result.previewTexts?.length || 0} PTs, ${result.spellingErrors?.length || 0} spelling issues`);
+    console.log(`Generated ${result.subjectLines?.length || 0} SLs, ${result.previewTexts?.length || 0} PTs`);
 
     return new Response(
       JSON.stringify(result),

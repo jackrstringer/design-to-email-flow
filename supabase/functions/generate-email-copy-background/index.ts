@@ -96,14 +96,13 @@ serve(async (req) => {
           return;
         }
 
-        // Save to campaign - include spellingErrors
+        // Save to campaign - spelling QA is now handled by dedicated function
         const { error: updateError } = await supabase
           .from('campaigns')
           .update({
             generated_copy: {
               subjectLines: generateData.subjectLines || [],
               previewTexts: generateData.previewTexts || [],
-              spellingErrors: generateData.spellingErrors || [],
               generatedAt: new Date().toISOString(),
             },
           })
@@ -115,7 +114,7 @@ serve(async (req) => {
         }
 
         const elapsed = Date.now() - startTime;
-        console.log(`[Background SL] Completed for campaign ${campaignId} in ${elapsed}ms - ${generateData.subjectLines?.length} SLs, ${generateData.previewTexts?.length} PTs, ${generateData.spellingErrors?.length || 0} spelling issues`);
+        console.log(`[Background SL] Completed for campaign ${campaignId} in ${elapsed}ms - ${generateData.subjectLines?.length} SLs, ${generateData.previewTexts?.length} PTs`);
       } catch (err) {
         console.error('[Background SL] Background task error:', err);
       }
