@@ -37,7 +37,7 @@ serve(async (req) => {
   }
 
   try {
-    const { slices, brandContext, existingFavorites, pairCount = 10, refinementPrompt, copyExamples } = await req.json();
+    const { slices, brandContext, existingFavorites, pairCount = 10, refinementPrompt, copyExamples, campaignImageUrl } = await req.json();
     
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
@@ -45,7 +45,8 @@ serve(async (req) => {
     }
 
     const hasCopyExamples = copyExamples?.subjectLines?.length > 0 || copyExamples?.previewTexts?.length > 0;
-    console.log(`Generating ${pairCount} SL/PT for ${brandContext?.name || 'brand'} (${brandContext?.domain || 'no domain'})${hasCopyExamples ? ` with ${copyExamples.subjectLines?.length || 0} SL examples` : ''}${refinementPrompt ? ` | direction: "${refinementPrompt}"` : ''}`);
+    console.log(`Generating ${pairCount} SL/PT for ${brandContext?.name || 'brand'} (${brandContext?.domain || 'no domain'})${hasCopyExamples ? ` with ${copyExamples.subjectLines?.length || 0} SL examples` : ''}${refinementPrompt ? ` | direction: "${refinementPrompt}"` : ''}${campaignImageUrl ? ' | with full campaign image' : ''}`);
+    console.log(`Campaign image URL provided: ${campaignImageUrl ? 'YES' : 'NO'}`);
 
     // Check if alt texts are generic (fallback values from failed analysis)
     const hasGenericAltTexts = (slices || []).every((s: any) => 
@@ -54,19 +55,32 @@ serve(async (req) => {
 
     // Build slice context - if alt texts are generic but we have image URLs, note that
     let sliceContext = '';
-    const sliceImages: Array<{ type: string; source: { type: string; media_type: string; url: string } }> = [];
+    const sliceImages: Array<{ type: string; source: { type: string; url: string } }> = [];
+
+    // ALWAYS include the full campaign image if provided (for QA/typo detection)
+    if (campaignImageUrl) {
+      console.log('Adding full campaign image for QA analysis');
+      sliceImages.push({
+        type: 'image',
+        source: {
+          type: 'url',
+          url: campaignImageUrl
+        }
+      });
+    }
 
     if (hasGenericAltTexts && slices?.length > 0) {
       console.log('Alt texts are generic, will use vision to analyze images');
       // Collect image URLs for vision analysis (limit to first 3 to avoid token limits)
-      for (let i = 0; i < Math.min(slices.length, 3); i++) {
+      // Only add if we don't already have campaign image, or add fewer
+      const maxSliceImages = campaignImageUrl ? 2 : 3;
+      for (let i = 0; i < Math.min(slices.length, maxSliceImages); i++) {
         const slice = slices[i];
         if (slice.imageUrl) {
           sliceImages.push({
             type: 'image',
             source: {
               type: 'url',
-              media_type: 'image/png',
               url: slice.imageUrl
             }
           });
@@ -347,19 +361,22 @@ If not, rewrite internally before outputting.
 
 ## SPELLING & TYPO QA
 
-While analyzing the email, also scan for any blatant spelling errors, typos, or obvious grammatical mistakes visible in the email content.
+CAREFULLY scan the email image for blatant spelling errors, typos, or obvious grammatical mistakes.
 
-Only flag issues that are clearly wrong:
+You MUST flag:
 - Misspelled words (e.g., "recieve" instead of "receive")
-- Missing or extra letters (e.g., "teh" instead of "the")
-- Obvious typos (e.g., "New Yera Sale")
+- Missing or extra letters (e.g., "teh" instead of "the", "oned" instead of "one")  
+- Obvious typos (e.g., "New Yera Sale", "Which oned will you pick?")
 - Broken or incomplete words
+- Words with wrong letters (e.g., "ypur" instead of "your")
 
 Do NOT flag:
 - Intentional brand stylizations (e.g., "Ur" for "Your" if clearly intentional)
 - Product names or brand names you're unsure about
 - Capitalization choices (these are often intentional)
-- Minor punctuation preferences
+- Minor punctuation or apostrophe style preferences (e.g., "FAQ'S" vs "FAQs")
+
+IMPORTANT: Look closely at ALL text in the email image. Typos are often in headlines or buttons.
 
 If no spelling errors are found, return an empty array.
 
