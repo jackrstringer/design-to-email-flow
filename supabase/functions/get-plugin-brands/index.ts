@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-plugin-token',
 };
 
 serve(async (req) => {
@@ -47,27 +47,44 @@ serve(async (req) => {
     const userId = tokenData.user_id;
     console.log('[get-plugin-brands] Fetching brands for user:', userId);
 
-    // Fetch all brands for this user
+    // Update last_used_at for the token
+    await supabase
+      .from('plugin_tokens')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('token', token);
+
+    // Fetch all brands for this user with correct column names
     const { data: brands, error: brandsError } = await supabase
       .from('brands')
-      .select('id, name, domain, logo_url, primary_color')
+      .select('id, name, domain, dark_logo_url, light_logo_url, primary_color')
       .eq('user_id', userId)
       .order('name', { ascending: true });
 
     if (brandsError) {
       console.error('[get-plugin-brands] Failed to fetch brands:', brandsError);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch brands' }),
+        JSON.stringify({ error: 'Failed to fetch brands', code: brandsError.code }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[get-plugin-brands] Found', brands?.length || 0, 'brands');
+    // Map response to include backwards-compatible logo_url
+    const mappedBrands = (brands || []).map(brand => ({
+      id: brand.id,
+      name: brand.name,
+      domain: brand.domain,
+      primary_color: brand.primary_color,
+      dark_logo_url: brand.dark_logo_url,
+      light_logo_url: brand.light_logo_url,
+      logo_url: brand.dark_logo_url || brand.light_logo_url || null
+    }));
+
+    console.log('[get-plugin-brands] Found', mappedBrands.length, 'brands');
 
     return new Response(
       JSON.stringify({
         success: true,
-        brands: brands || []
+        brands: mappedBrands
       }),
       { 
         status: 200, 
