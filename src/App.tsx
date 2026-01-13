@@ -14,6 +14,7 @@ import OverlayTest from "./pages/OverlayTest";
 import CampaignPage from "./pages/CampaignPage";
 import CampaignSend from "./pages/CampaignSend";
 import CampaignQueue from "./pages/CampaignQueue";
+import Settings from "./pages/Settings";
 import FooterEditor from "./pages/FooterEditor";
 import NotFound from "./pages/NotFound";
 
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/brands/:id" element={<AuthGuard><BrandDetail /></AuthGuard>} />
           <Route path="/campaign/:id" element={<AuthGuard><CampaignPage /></AuthGuard>} />
           <Route path="/campaign/:id/send" element={<AuthGuard><CampaignSend /></AuthGuard>} />
+          <Route path="/settings" element={<AuthGuard><Settings /></AuthGuard>} />
           <Route path="/footer-editor/:brandId" element={<AuthGuard><FooterEditor /></AuthGuard>} />
           <Route path="/test-overlay" element={<OverlayTest />} />
           

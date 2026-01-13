@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Filter } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Filter, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,6 +8,8 @@ import { QueueTable } from '@/components/queue/QueueTable';
 import { QueueFlyout } from '@/components/queue/QueueFlyout';
 import { useCampaignQueue, CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 type StatusFilter = 'all' | 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed';
 
@@ -20,6 +22,8 @@ export default function CampaignQueue() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [flyoutItem, setFlyoutItem] = useState<CampaignQueueItem | null>(null);
+  const [isBulkApproving, setIsBulkApproving] = useState(false);
+  const [isBulkSending, setIsBulkSending] = useState(false);
 
   const filteredItems = items.filter(item => {
     const matchesSearch = !search || 
@@ -50,6 +54,90 @@ export default function CampaignQueue() {
 
   const handleRowClick = (item: CampaignQueueItem) => {
     setFlyoutItem(item);
+  };
+
+  const handleBulkApprove = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    setIsBulkApproving(true);
+    
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ status: 'approved' })
+      .in('id', ids);
+    
+    setIsBulkApproving(false);
+
+    if (error) {
+      toast.error('Failed to approve campaigns');
+      return;
+    }
+
+    setSelectedIds(new Set());
+    refresh();
+    toast.success(`${ids.length} campaign${ids.length > 1 ? 's' : ''} approved`);
+  };
+
+  const handleBulkSendToKlaviyo = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    const itemsToSend = items.filter(item => selectedIds.has(item.id));
+    
+    // Validate all have SL/PT selected
+    const incomplete = itemsToSend.filter(
+      item => !item.selected_subject_line || !item.selected_preview_text
+    );
+    
+    if (incomplete.length > 0) {
+      toast.error(`${incomplete.length} campaign${incomplete.length > 1 ? 's' : ''} missing subject line or preview text`);
+      return;
+    }
+
+    setIsBulkSending(true);
+    
+    let successCount = 0;
+    for (const item of itemsToSend) {
+      try {
+        const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
+          body: {
+            brandId: item.brand_id,
+            campaignName: item.name,
+            subjectLine: item.selected_subject_line,
+            previewText: item.selected_preview_text,
+            slices: item.slices,
+            imageUrl: item.image_url
+          }
+        });
+        
+        if (!error && data) {
+          await supabase
+            .from('campaign_queue')
+            .update({
+              status: 'sent_to_klaviyo',
+              klaviyo_template_id: data.templateId,
+              klaviyo_campaign_id: data.campaignId,
+              klaviyo_campaign_url: data.campaignUrl,
+              sent_to_klaviyo_at: new Date().toISOString()
+            })
+            .eq('id', item.id);
+          successCount++;
+        }
+      } catch (err) {
+        console.error(`Failed to send ${item.name}:`, err);
+      }
+    }
+
+    setIsBulkSending(false);
+    setSelectedIds(new Set());
+    refresh();
+    
+    if (successCount === ids.length) {
+      toast.success(`${successCount} campaign${successCount > 1 ? 's' : ''} sent to Klaviyo`);
+    } else {
+      toast.warning(`${successCount}/${ids.length} campaigns sent to Klaviyo`);
+    }
   };
 
   return (
@@ -97,6 +185,11 @@ export default function CampaignQueue() {
               <Button variant="outline" size="icon" onClick={refresh}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
+
+              {/* Settings */}
+              <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
+                <Settings className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
@@ -124,11 +217,18 @@ export default function CampaignQueue() {
                 <Button variant="outline" onClick={() => setSelectedIds(new Set())}>
                   Clear Selection
                 </Button>
-                <Button variant="secondary">
-                  Approve Selected
+                <Button 
+                  variant="secondary" 
+                  onClick={handleBulkApprove}
+                  disabled={isBulkApproving}
+                >
+                  {isBulkApproving ? 'Approving...' : 'Approve Selected'}
                 </Button>
-                <Button>
-                  Send to Klaviyo
+                <Button 
+                  onClick={handleBulkSendToKlaviyo}
+                  disabled={isBulkSending}
+                >
+                  {isBulkSending ? 'Sending...' : 'Send to Klaviyo'}
                 </Button>
               </div>
             </div>

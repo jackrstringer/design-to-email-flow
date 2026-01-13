@@ -6,7 +6,9 @@ import { Separator } from '@/components/ui/separator';
 import { StatusBadge } from './StatusBadge';
 import { SubjectLineSelector } from './SubjectLineSelector';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
+import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from 'sonner';
 
 interface QueueFlyoutProps {
   item: CampaignQueueItem | null;
@@ -15,9 +17,138 @@ interface QueueFlyoutProps {
 }
 
 export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
   if (!item) return null;
 
   const slices = (item.slices as Array<{ link?: string; altText?: string }>) || [];
+
+  const handleSubjectLineSelect = async (value: string) => {
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ selected_subject_line: value })
+      .eq('id', item.id);
+    
+    if (error) {
+      toast.error('Failed to update subject line');
+      return;
+    }
+    toast.success('Subject line updated');
+    onUpdate();
+  };
+
+  const handlePreviewTextSelect = async (value: string) => {
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ selected_preview_text: value })
+      .eq('id', item.id);
+    
+    if (error) {
+      toast.error('Failed to update preview text');
+      return;
+    }
+    toast.success('Preview text updated');
+    onUpdate();
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this campaign?')) return;
+    
+    setIsDeleting(true);
+    const { error } = await supabase
+      .from('campaign_queue')
+      .delete()
+      .eq('id', item.id);
+    setIsDeleting(false);
+
+    if (error) {
+      toast.error('Failed to delete campaign');
+      return;
+    }
+    
+    toast.success('Campaign deleted');
+    onClose();
+    onUpdate();
+  };
+
+  const handleReprocess = async () => {
+    setIsReprocessing(true);
+    
+    const { error: updateError } = await supabase
+      .from('campaign_queue')
+      .update({ 
+        status: 'processing', 
+        processing_step: 'reprocessing',
+        processing_percent: 0,
+        error_message: null,
+        retry_count: (item.retry_count || 0) + 1
+      })
+      .eq('id', item.id);
+    
+    if (updateError) {
+      toast.error('Failed to start reprocessing');
+      setIsReprocessing(false);
+      return;
+    }
+
+    // Trigger reprocessing edge function
+    const { error: invokeError } = await supabase.functions.invoke('process-campaign-queue', {
+      body: { campaignQueueId: item.id }
+    });
+    
+    setIsReprocessing(false);
+
+    if (invokeError) {
+      toast.error('Failed to trigger reprocessing');
+      return;
+    }
+    
+    toast.success('Reprocessing started');
+    onUpdate();
+  };
+
+  const handleSendToKlaviyo = async () => {
+    if (!item.selected_subject_line || !item.selected_preview_text) {
+      toast.error('Please select a subject line and preview text first');
+      return;
+    }
+    
+    setIsSending(true);
+    
+    const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
+      body: {
+        brandId: item.brand_id,
+        campaignName: item.name,
+        subjectLine: item.selected_subject_line,
+        previewText: item.selected_preview_text,
+        slices: item.slices,
+        imageUrl: item.image_url
+      }
+    });
+    
+    if (error) {
+      toast.error('Failed to send to Klaviyo');
+      setIsSending(false);
+      return;
+    }
+    
+    await supabase
+      .from('campaign_queue')
+      .update({
+        status: 'sent_to_klaviyo',
+        klaviyo_template_id: data?.templateId,
+        klaviyo_campaign_id: data?.campaignId,
+        klaviyo_campaign_url: data?.campaignUrl,
+        sent_to_klaviyo_at: new Date().toISOString()
+      })
+      .eq('id', item.id);
+    
+    setIsSending(false);
+    toast.success('Sent to Klaviyo!');
+    onUpdate();
+  };
 
   return (
     <Sheet open={!!item} onOpenChange={(open) => !open && onClose()}>
@@ -104,10 +235,7 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
               selected={item.selected_subject_line}
               provided={item.provided_subject_line}
               generated={item.generated_subject_lines}
-              onSelect={(value) => {
-                // Update subject line
-                console.log('Select subject line:', value);
-              }}
+              onSelect={handleSubjectLineSelect}
             />
 
             <SubjectLineSelector
@@ -115,10 +243,7 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
               selected={item.selected_preview_text}
               provided={item.provided_preview_text}
               generated={item.generated_preview_texts}
-              onSelect={(value) => {
-                // Update preview text
-                console.log('Select preview text:', value);
-              }}
+              onSelect={handlePreviewTextSelect}
             />
 
             <Separator />
@@ -169,19 +294,34 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-destructive hover:text-destructive"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
             <Trash2 className="h-4 w-4 mr-1" />
-            Delete Campaign
+            {isDeleting ? 'Deleting...' : 'Delete Campaign'}
           </Button>
 
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Reprocess
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleReprocess}
+              disabled={isReprocessing || item.status === 'processing'}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${isReprocessing ? 'animate-spin' : ''}`} />
+              {isReprocessing ? 'Reprocessing...' : 'Reprocess'}
             </Button>
-            <Button size="sm" disabled={item.status === 'processing'}>
+            <Button 
+              size="sm" 
+              disabled={item.status === 'processing' || isSending}
+              onClick={handleSendToKlaviyo}
+            >
               <Send className="h-4 w-4 mr-1" />
-              Send to Klaviyo
+              {isSending ? 'Sending...' : 'Send to Klaviyo'}
             </Button>
           </div>
         </div>
