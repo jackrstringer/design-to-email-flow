@@ -148,6 +148,119 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_queue: {
+        Row: {
+          brand_id: string | null
+          created_at: string | null
+          error_message: string | null
+          footer_start_percent: number | null
+          generated_preview_texts: Json | null
+          generated_subject_lines: Json | null
+          id: string
+          image_height: number | null
+          image_url: string | null
+          image_width: number | null
+          klaviyo_campaign_id: string | null
+          klaviyo_campaign_url: string | null
+          klaviyo_template_id: string | null
+          name: string | null
+          processing_percent: number | null
+          processing_step: string | null
+          provided_preview_text: string | null
+          provided_subject_line: string | null
+          qa_flags: Json | null
+          retry_count: number | null
+          retry_from_step: string | null
+          selected_preview_text: string | null
+          selected_subject_line: string | null
+          sent_to_klaviyo_at: string | null
+          slices: Json | null
+          source: string
+          source_metadata: Json | null
+          source_url: string | null
+          spelling_errors: Json | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          brand_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          footer_start_percent?: number | null
+          generated_preview_texts?: Json | null
+          generated_subject_lines?: Json | null
+          id?: string
+          image_height?: number | null
+          image_url?: string | null
+          image_width?: number | null
+          klaviyo_campaign_id?: string | null
+          klaviyo_campaign_url?: string | null
+          klaviyo_template_id?: string | null
+          name?: string | null
+          processing_percent?: number | null
+          processing_step?: string | null
+          provided_preview_text?: string | null
+          provided_subject_line?: string | null
+          qa_flags?: Json | null
+          retry_count?: number | null
+          retry_from_step?: string | null
+          selected_preview_text?: string | null
+          selected_subject_line?: string | null
+          sent_to_klaviyo_at?: string | null
+          slices?: Json | null
+          source: string
+          source_metadata?: Json | null
+          source_url?: string | null
+          spelling_errors?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          brand_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          footer_start_percent?: number | null
+          generated_preview_texts?: Json | null
+          generated_subject_lines?: Json | null
+          id?: string
+          image_height?: number | null
+          image_url?: string | null
+          image_width?: number | null
+          klaviyo_campaign_id?: string | null
+          klaviyo_campaign_url?: string | null
+          klaviyo_template_id?: string | null
+          name?: string | null
+          processing_percent?: number | null
+          processing_step?: string | null
+          provided_preview_text?: string | null
+          provided_subject_line?: string | null
+          qa_flags?: Json | null
+          retry_count?: number | null
+          retry_from_step?: string | null
+          selected_preview_text?: string | null
+          selected_subject_line?: string | null
+          sent_to_klaviyo_at?: string | null
+          slices?: Json | null
+          source?: string
+          source_metadata?: Json | null
+          source_url?: string | null
+          spelling_errors?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_queue_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           blocks: Json | null
@@ -244,6 +357,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      plugin_tokens: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_used_at: string | null
+          name: string | null
+          token: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          name?: string | null
+          token?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          name?: string | null
+          token?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          figma_access_token: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          figma_access_token?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          figma_access_token?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       segment_presets: {
         Row: {
