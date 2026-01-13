@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Filter, Settings, Plus } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Filter, Settings, Plus, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +14,11 @@ import { toast } from 'sonner';
 
 type StatusFilter = 'all' | 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed';
 
+interface Brand {
+  id: string;
+  name: string;
+}
+
 export default function CampaignQueue() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -21,11 +26,31 @@ export default function CampaignQueue() {
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [brandFilter, setBrandFilter] = useState<string>('all');
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [flyoutItem, setFlyoutItem] = useState<CampaignQueueItem | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [isBulkSending, setIsBulkSending] = useState(false);
   const [showTestUpload, setShowTestUpload] = useState(false);
+
+  // Fetch brands for filter dropdown
+  useEffect(() => {
+    async function fetchBrands() {
+      if (!user) return;
+      const { data } = await supabase
+        .from('brands')
+        .select('id, name')
+        .order('name');
+      if (data) setBrands(data);
+    }
+    fetchBrands();
+  }, [user]);
+
+  // Extract unique brands from items for quick access
+  const brandsInQueue = Array.from(
+    new Set(items.filter(i => i.brand_id).map(i => i.brand_id))
+  );
 
   const filteredItems = items.filter(item => {
     const matchesSearch = !search || 
@@ -33,8 +58,13 @@ export default function CampaignQueue() {
     
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
     
-    return matchesSearch && matchesStatus;
+    const matchesBrand = brandFilter === 'all' || item.brand_id === brandFilter;
+    
+    return matchesSearch && matchesStatus && matchesBrand;
   });
+
+  // Group items by brand for display
+  const groupedByBrand = brandFilter === 'all' && brandsInQueue.length > 1;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -166,8 +196,22 @@ export default function CampaignQueue() {
                   className="pl-9 w-64"
                 />
               </div>
+
+              {/* Brand Filter */}
+              <Select value={brandFilter} onValueChange={setBrandFilter}>
+                <SelectTrigger className="w-40">
+                  <Building className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="All Brands" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Brands</SelectItem>
+                  {brands.map(brand => (
+                    <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               
-              {/* Filter */}
+              {/* Status Filter */}
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
                 <SelectTrigger className="w-40">
                   <Filter className="h-4 w-4 mr-2" />

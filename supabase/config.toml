@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.process-campaign-queue]
 verify_jwt = false
+
+[functions.get-plugin-brands]
+verify_jwt = false
