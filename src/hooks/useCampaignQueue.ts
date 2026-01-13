@@ -83,15 +83,31 @@ export function useCampaignQueue() {
           schema: 'public',
           table: 'campaign_queue',
         },
-        (payload) => {
+        async (payload) => {
           if (payload.eventType === 'INSERT') {
-            setItems(prev => [payload.new as CampaignQueueItem, ...prev]);
+            // Fetch full item with brands join
+            const { data: fullItem } = await supabase
+              .from('campaign_queue')
+              .select('*, brands(id, name)')
+              .eq('id', payload.new.id)
+              .single();
+            if (fullItem) {
+              setItems(prev => [fullItem as CampaignQueueItem, ...prev]);
+            }
           } else if (payload.eventType === 'UPDATE') {
-            setItems(prev => 
-              prev.map(item => 
-                item.id === payload.new.id ? payload.new as CampaignQueueItem : item
-              )
-            );
+            // Fetch full item with brands join to get complete data
+            const { data: fullItem } = await supabase
+              .from('campaign_queue')
+              .select('*, brands(id, name)')
+              .eq('id', payload.new.id)
+              .single();
+            if (fullItem) {
+              setItems(prev => 
+                prev.map(item => 
+                  item.id === fullItem.id ? fullItem as CampaignQueueItem : item
+                )
+              );
+            }
           } else if (payload.eventType === 'DELETE') {
             setItems(prev => prev.filter(item => item.id !== payload.old.id));
           }

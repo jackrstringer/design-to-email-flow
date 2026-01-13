@@ -8,9 +8,11 @@ import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { EditableSliceRow } from './EditableSliceRow';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
+import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import type { ProcessedSlice } from '@/types/slice';
 
 interface ExpandedRowPanelProps {
   item: CampaignQueueItem;
@@ -261,11 +263,22 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   );
   const allHaveAltText = hasSlices && slicesWithPlaceholderAlt.length === 0;
 
+  // Convert slices to ProcessedSlice format for CampaignPreviewFrame
+  const previewSlices: ProcessedSlice[] = slices.map((s, i) => ({
+    imageUrl: s.imageUrl || '',
+    altText: s.altText || `Slice ${i + 1}`,
+    link: s.link || null,
+    isClickable: !!s.link,
+    type: 'image' as const,
+    yStartPercent: s.yStartPercent || 0,
+    yEndPercent: s.yEndPercent || 100,
+  }));
+
   return (
     <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200">
-      {/* TOP ROW - Full width controls */}
-      <div className="flex gap-4 mb-4">
-        {/* Inbox Preview */}
+      {/* TOP ROW - Compact controls bar */}
+      <div className="flex items-start gap-4 mb-4">
+        {/* Inbox Preview - compact */}
         <div className="flex-1 min-w-0">
           <InboxPreview
             senderName={brandName}
@@ -274,79 +287,58 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           />
         </div>
 
-        {/* Segments */}
-        <div className="w-64 flex-shrink-0 space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">Segments</div>
-          
+        {/* Segments - inline */}
+        <div className="flex-shrink-0 space-y-1">
+          <div className="text-[10px] font-medium text-muted-foreground">Segments</div>
           {listLoadError ? (
-            <div className="text-xs text-destructive">{listLoadError}</div>
+            <div className="text-[10px] text-destructive">{listLoadError}</div>
           ) : (
-            <>
-              {/* Included */}
-              <div className="flex flex-wrap gap-1">
-                {includedSegments.map(id => {
-                  const list = klaviyoLists.find(l => l.id === id);
-                  return (
-                    <Badge key={id} variant="secondary" className="gap-1 text-xs py-0">
-                      {list?.name || id}
-                      <button onClick={() => removeSegment(id, 'include')}>
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </Badge>
-                  );
-                })}
-                <Select onValueChange={(v) => addSegment(v, 'include')}>
-                  <SelectTrigger className="h-6 text-xs w-auto px-2 border-dashed">
-                    <Plus className="h-3 w-3" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingLists ? (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : availableLists.length === 0 ? (
-                      <SelectItem value="none" disabled>No segments available</SelectItem>
-                    ) : (
-                      availableLists.map(list => (
-                        <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Excluded */}
-              <div className="flex flex-wrap gap-1">
-                {excludedSegments.map(id => {
-                  const list = klaviyoLists.find(l => l.id === id);
-                  return (
-                    <Badge key={id} variant="outline" className="gap-1 text-xs py-0 text-destructive">
-                      {list?.name || id}
-                      <button onClick={() => removeSegment(id, 'exclude')}>
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </Badge>
-                  );
-                })}
-                {availableLists.length > 0 && (
-                  <Select onValueChange={(v) => addSegment(v, 'exclude')}>
-                    <SelectTrigger className="h-6 text-xs w-auto px-2 border-dashed text-destructive">
-                      <X className="h-3 w-3" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableLists.map(list => (
-                        <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </>
+            <div className="flex flex-wrap gap-1 max-w-[200px]">
+              {includedSegments.map(id => {
+                const list = klaviyoLists.find(l => l.id === id);
+                return (
+                  <Badge key={id} variant="secondary" className="gap-0.5 text-[10px] py-0 h-5">
+                    {list?.name || id}
+                    <button onClick={() => removeSegment(id, 'include')}>
+                      <X className="h-2 w-2" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              {excludedSegments.map(id => {
+                const list = klaviyoLists.find(l => l.id === id);
+                return (
+                  <Badge key={id} variant="outline" className="gap-0.5 text-[10px] py-0 h-5 text-destructive">
+                    {list?.name || id}
+                    <button onClick={() => removeSegment(id, 'exclude')}>
+                      <X className="h-2 w-2" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              <Select onValueChange={(v) => addSegment(v, 'include')}>
+                <SelectTrigger className="h-5 text-[10px] w-auto px-1.5 border-dashed">
+                  <Plus className="h-2.5 w-2.5" />
+                </SelectTrigger>
+                <SelectContent>
+                  {isLoadingLists ? (
+                    <SelectItem value="loading" disabled>Loading...</SelectItem>
+                  ) : availableLists.length === 0 ? (
+                    <SelectItem value="none" disabled>No segments</SelectItem>
+                  ) : (
+                    availableLists.map(list => (
+                      <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
 
-        {/* QA Status */}
-        <div className="w-48 flex-shrink-0 space-y-1">
-          <div className="text-xs font-medium text-muted-foreground">QA Check</div>
-          
+        {/* QA Status - compact */}
+        <div className="flex-shrink-0 space-y-0.5">
+          <div className="text-[10px] font-medium text-muted-foreground">QA</div>
           <SpellingErrorsPanel
             campaignId={item.id}
             spellingErrors={spellingErrors}
@@ -355,36 +347,34 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             sourceMetadata={item.source_metadata as Record<string, unknown> | undefined}
             onErrorFixed={onUpdate}
           />
-
-          <div className="space-y-0.5 text-xs">
+          <div className="space-y-0 text-[10px]">
             {!hasSlices ? (
-              <div className="flex items-center gap-1.5 text-amber-600">
-                <AlertTriangle className="h-3 w-3" />
-                <span>No slices generated</span>
+              <div className="flex items-center gap-1 text-amber-600">
+                <AlertTriangle className="h-2.5 w-2.5" />
+                <span>No slices</span>
               </div>
             ) : (
               <>
                 {allHaveLinks ? (
-                  <div className="flex items-center gap-1.5 text-green-600">
-                    <Check className="h-3 w-3" />
-                    <span>All slices have links</span>
+                  <div className="flex items-center gap-1 text-green-600">
+                    <Check className="h-2.5 w-2.5" />
+                    <span>Links ✓</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-amber-600">
-                    <AlertTriangle className="h-3 w-3" />
-                    <span>{slicesMissingLinks.length} missing links</span>
+                  <div className="flex items-center gap-1 text-amber-600">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    <span>{slicesMissingLinks.length} links</span>
                   </div>
                 )}
-                
                 {allHaveAltText ? (
-                  <div className="flex items-center gap-1.5 text-green-600">
-                    <Check className="h-3 w-3" />
-                    <span>Alt text complete</span>
+                  <div className="flex items-center gap-1 text-green-600">
+                    <Check className="h-2.5 w-2.5" />
+                    <span>Alt ✓</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-amber-600">
-                    <AlertTriangle className="h-3 w-3" />
-                    <span>{slicesWithPlaceholderAlt.length} need alt text</span>
+                  <div className="flex items-center gap-1 text-amber-600">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    <span>{slicesWithPlaceholderAlt.length} alt</span>
                   </div>
                 )}
               </>
@@ -392,96 +382,81 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-col gap-2 flex-shrink-0">
+        {/* Actions - compact buttons */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {item.status === 'sent_to_klaviyo' && item.klaviyo_campaign_url ? (
-            <Button size="sm" variant="outline" asChild>
+            <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
               <a href={item.klaviyo_campaign_url} target="_blank" rel="noopener noreferrer">
-                View in Klaviyo <ExternalLink className="h-3.5 w-3.5 ml-1" />
+                Klaviyo <ExternalLink className="h-3 w-3 ml-1" />
               </a>
             </Button>
           ) : (
             <>
               <Button
                 size="sm"
+                className="h-7 text-xs"
                 disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview}
                 onClick={handleSendToKlaviyo}
               >
-                <Send className="h-3.5 w-3.5 mr-1" />
-                {isSending ? 'Sending...' : 'Send to Klaviyo'}
+                <Send className="h-3 w-3 mr-1" />
+                {isSending ? 'Sending...' : 'Send'}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
+                className="h-7 text-xs"
                 onClick={handleReprocess}
                 disabled={isReprocessing || item.status === 'processing'}
               >
-                <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isReprocessing && "animate-spin")} />
-                Reprocess
+                <RefreshCw className={cn("h-3 w-3", isReprocessing && "animate-spin")} />
               </Button>
             </>
           )}
           <Button
             variant="ghost"
             size="sm"
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={handleDelete}
             disabled={isDeleting}
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1" />
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            <Trash2 className="h-3 w-3" />
           </Button>
         </div>
       </div>
 
       <Separator className="mb-4" />
 
-      {/* BOTTOM SECTION - 30/70 split */}
-      <div className="flex gap-4">
-        {/* Left 30% - Slice images stacked */}
-        <div className="w-[30%] flex-shrink-0 space-y-1">
-          <div className="text-xs font-medium text-muted-foreground mb-2">
-            Slices ({slices.length})
+      {/* MAIN CONTENT - Two column layout like legacy */}
+      <div className="flex gap-6">
+        {/* Left: Full email preview (40%) - NO vertical cutoff */}
+        <div className="w-[40%] flex-shrink-0">
+          <div className="text-[10px] font-medium text-muted-foreground mb-2">
+            Email Preview
           </div>
-          <div className="space-y-0.5 max-h-[400px] overflow-y-auto pr-1">
-            {slices.map((slice, index) => (
-              <div key={index} className="relative">
-                {slice.imageUrl ? (
-                  <img
-                    src={slice.imageUrl}
-                    alt={slice.altText || `Slice ${index + 1}`}
-                    className="w-full rounded border border-border"
-                  />
-                ) : (
-                  <div className="w-full h-16 bg-muted rounded border border-border flex items-center justify-center text-xs text-muted-foreground">
-                    Slice {index + 1}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Footer HTML */}
-            {footerHtml && (
-              <div className="mt-2">
-                <div className="text-xs font-medium text-muted-foreground mb-1">Footer</div>
-                <div 
-                  className="rounded border border-border overflow-hidden bg-white"
-                  dangerouslySetInnerHTML={{ __html: footerHtml }}
-                />
+          <div className="border border-border rounded-lg overflow-hidden bg-white">
+            {hasSlices ? (
+              <CampaignPreviewFrame
+                slices={previewSlices}
+                footerHtml={footerHtml || undefined}
+                width={320}
+              />
+            ) : (
+              <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
+                No slices to preview
               </div>
             )}
           </div>
         </div>
 
-        {/* Right 70% - Editable slice details (matching SliceResults.tsx exactly) */}
+        {/* Right: Compact slice details (60%) */}
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-muted-foreground mb-2">
-            Slice Details
+          <div className="text-[10px] font-medium text-muted-foreground mb-2">
+            Slice Details ({slices.length})
           </div>
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+          <div className="space-y-0.5 border border-border rounded-lg p-2 bg-background">
             {slices.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-4 text-center">
-                No slices available. Try reprocessing the campaign.
+              <div className="text-xs text-muted-foreground py-4 text-center">
+                No slices. Try reprocessing.
               </div>
             ) : (
               slices.map((slice, index) => (
