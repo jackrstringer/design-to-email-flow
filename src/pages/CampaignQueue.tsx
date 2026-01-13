@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Search, Filter, Settings } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Filter, Settings, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QueueTable } from '@/components/queue/QueueTable';
 import { QueueFlyout } from '@/components/queue/QueueFlyout';
+import { TestUploadModal } from '@/components/queue/TestUploadModal';
 import { useCampaignQueue, CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,6 +25,7 @@ export default function CampaignQueue() {
   const [flyoutItem, setFlyoutItem] = useState<CampaignQueueItem | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [isBulkSending, setIsBulkSending] = useState(false);
+  const [showTestUpload, setShowTestUpload] = useState(false);
 
   const filteredItems = items.filter(item => {
     const matchesSearch = !search || 
@@ -186,6 +188,12 @@ export default function CampaignQueue() {
                 <RefreshCw className="h-4 w-4" />
               </Button>
 
+              {/* Test Upload */}
+              <Button variant="outline" onClick={() => setShowTestUpload(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Test Upload
+              </Button>
+
               {/* Settings */}
               <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
                 <Settings className="h-4 w-4" />
@@ -241,6 +249,13 @@ export default function CampaignQueue() {
         item={flyoutItem}
         onClose={() => setFlyoutItem(null)}
         onUpdate={refresh}
+      />
+
+      {/* Test Upload Modal */}
+      <TestUploadModal
+        open={showTestUpload}
+        onClose={() => setShowTestUpload(false)}
+        onSuccess={refresh}
       />
     </div>
   );
