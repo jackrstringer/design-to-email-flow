@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QueueTable } from '@/components/queue/QueueTable';
-import { QueueFlyout } from '@/components/queue/QueueFlyout';
 import { TestUploadModal } from '@/components/queue/TestUploadModal';
 import { useCampaignQueue, CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { useAuth } from '@/hooks/useAuth';
@@ -29,7 +28,7 @@ export default function CampaignQueue() {
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [flyoutItem, setFlyoutItem] = useState<CampaignQueueItem | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [isBulkSending, setIsBulkSending] = useState(false);
   const [showTestUpload, setShowTestUpload] = useState(false);
@@ -47,11 +46,6 @@ export default function CampaignQueue() {
     fetchBrands();
   }, [user]);
 
-  // Extract unique brands from items for quick access
-  const brandsInQueue = Array.from(
-    new Set(items.filter(i => i.brand_id).map(i => i.brand_id))
-  );
-
   const filteredItems = items.filter(item => {
     const matchesSearch = !search || 
       item.name?.toLowerCase().includes(search.toLowerCase());
@@ -62,9 +56,6 @@ export default function CampaignQueue() {
     
     return matchesSearch && matchesStatus && matchesBrand;
   });
-
-  // Group items by brand for display
-  const groupedByBrand = brandFilter === 'all' && brandsInQueue.length > 1;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -84,8 +75,8 @@ export default function CampaignQueue() {
     setSelectedIds(newSelected);
   };
 
-  const handleRowClick = (item: CampaignQueueItem) => {
-    setFlyoutItem(item);
+  const handleToggleExpand = (id: string) => {
+    setExpandedId(prev => prev === id ? null : id);
   };
 
   const handleBulkApprove = async () => {
@@ -175,7 +166,7 @@ export default function CampaignQueue() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-4">
@@ -253,14 +244,16 @@ export default function CampaignQueue() {
           items={filteredItems}
           loading={loading}
           selectedIds={selectedIds}
+          expandedId={expandedId}
           onSelectAll={handleSelectAll}
           onSelectItem={handleSelectItem}
-          onRowClick={handleRowClick}
+          onToggleExpand={handleToggleExpand}
+          onUpdate={refresh}
         />
 
         {/* Bulk Actions Footer */}
         {selectedIds.size > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-background p-4">
+          <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-background p-4 z-40">
             <div className="container mx-auto flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
                 {selectedIds.size} selected
@@ -287,13 +280,6 @@ export default function CampaignQueue() {
           </div>
         )}
       </main>
-
-      {/* Flyout */}
-      <QueueFlyout
-        item={flyoutItem}
-        onClose={() => setFlyoutItem(null)}
-        onUpdate={refresh}
-      />
 
       {/* Test Upload Modal */}
       <TestUploadModal

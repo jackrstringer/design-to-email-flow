@@ -7,7 +7,6 @@ import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle } 
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { QueueSlicePreview } from './QueueSlicePreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
-import { InboxPreview } from '@/components/InboxPreview';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -54,8 +53,11 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     sliceIndex?: number;
   }>) || [];
 
-  // QA Flags (unused but kept for future use)
-  const _qaFlags = item.qa_flags;
+  // Sync with item updates
+  useEffect(() => {
+    setSelectedSubject(item.selected_subject_line || '');
+    setSelectedPreview(item.selected_preview_text || '');
+  }, [item.selected_subject_line, item.selected_preview_text]);
 
   // Load Klaviyo lists on mount
   useEffect(() => {
@@ -88,22 +90,6 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
 
     loadKlaviyoLists();
   }, [item.brand_id]);
-
-  const handleSubjectChange = async (value: string) => {
-    setSelectedSubject(value);
-    await supabase
-      .from('campaign_queue')
-      .update({ selected_subject_line: value })
-      .eq('id', item.id);
-  };
-
-  const handlePreviewChange = async (value: string) => {
-    setSelectedPreview(value);
-    await supabase
-      .from('campaign_queue')
-      .update({ selected_preview_text: value })
-      .eq('id', item.id);
-  };
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this campaign?')) return;
@@ -233,8 +219,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   );
 
   return (
-    <div className="bg-muted/30 border-t p-6">
-      <div className="grid grid-cols-[1fr,1px,1fr] gap-6">
+    <div className="bg-muted/20 border-t p-6 animate-in slide-in-from-top-2 duration-200">
+      <div className="grid grid-cols-[1fr,1px,1fr] gap-6 max-w-6xl mx-auto">
         {/* Left Side - Campaign Preview */}
         <div className="space-y-4">
           {item.image_url ? (
@@ -254,7 +240,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           {/* Slices List */}
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Slices ({slices.length})</h4>
-            <div className="space-y-1 text-sm max-h-40 overflow-y-auto">
+            <div className="space-y-1 text-sm max-h-32 overflow-y-auto">
               {slices.map((slice, index) => (
                 <div
                   key={index}
@@ -263,7 +249,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                   <span className="text-muted-foreground truncate flex-1">
                     {index + 1}. {slice.altText || `Slice ${index + 1}`}
                   </span>
-                  <span className="text-xs truncate max-w-[140px] text-muted-foreground">
+                  <span className="text-xs truncate max-w-[120px] text-muted-foreground">
                     {slice.link || '— no link'}
                   </span>
                 </div>
@@ -279,13 +265,27 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           {/* Inbox Preview */}
           <div>
             <h4 className="text-sm font-medium mb-3">Inbox Preview</h4>
-            <InboxPreview
-              brandName={brandName}
-              subjectLine={selectedSubject}
-              previewText={selectedPreview}
-              onSubjectLineChange={handleSubjectChange}
-              onPreviewTextChange={handlePreviewChange}
-            />
+            <div className="border rounded-lg bg-background p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+                  {brandName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm truncate">{brandName}</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">now</span>
+                  </div>
+                </div>
+              </div>
+              <div className="pl-10">
+                <p className="font-medium text-sm truncate">
+                  {selectedSubject || <span className="text-muted-foreground italic">No subject line selected</span>}
+                </p>
+                <p className="text-sm text-muted-foreground truncate">
+                  {selectedPreview || <span className="italic">No preview text selected</span>}
+                </p>
+              </div>
+            </div>
           </div>
 
           <Separator />
@@ -414,7 +414,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             <Button
               variant="ghost"
               size="sm"
-              className="text-destructive hover:text-destructive"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
               onClick={handleDelete}
               disabled={isDeleting}
             >
