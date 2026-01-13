@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
-import { QueueSlicePreview } from './QueueSlicePreview';
+import { InboxPreview } from './InboxPreview';
+import { EditableSliceRow } from './EditableSliceRow';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -22,6 +23,16 @@ interface KlaviyoList {
   name: string;
 }
 
+interface SliceData {
+  imageUrl?: string;
+  altText?: string;
+  link?: string | null;
+  linkVerified?: boolean;
+  linkWarning?: string;
+  yStartPercent?: number;
+  yEndPercent?: number;
+}
+
 export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
@@ -29,22 +40,21 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const [selectedSubject, setSelectedSubject] = useState(item.selected_subject_line || '');
   const [selectedPreview, setSelectedPreview] = useState(item.selected_preview_text || '');
   
+  // Local slices state for editing
+  const [slices, setSlices] = useState<SliceData[]>([]);
+
   // Segment state
   const [klaviyoLists, setKlaviyoLists] = useState<KlaviyoList[]>([]);
   const [includedSegments, setIncludedSegments] = useState<string[]>([]);
   const [excludedSegments, setExcludedSegments] = useState<string[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(false);
+  const [listLoadError, setListLoadError] = useState<string | null>(null);
+
+  // Footer HTML
+  const [footerHtml, setFooterHtml] = useState<string | null>(null);
 
   // Get brand info
   const brandName = (item as any).brands?.name || 'Brand';
-
-  const slices = (item.slices as Array<{
-    link?: string;
-    altText?: string;
-    imageUrl?: string;
-    yStartPercent?: number;
-    yEndPercent?: number;
-  }>) || [];
 
   const spellingErrors = (item.spelling_errors as Array<{
     text: string;
@@ -53,43 +63,71 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     sliceIndex?: number;
   }>) || [];
 
-  // Sync with item updates
+  // Initialize slices from item
+  useEffect(() => {
+    const itemSlices = (item.slices as SliceData[]) || [];
+    setSlices(itemSlices);
+  }, [item.slices]);
+
+  // Sync subject/preview with item updates
   useEffect(() => {
     setSelectedSubject(item.selected_subject_line || '');
     setSelectedPreview(item.selected_preview_text || '');
   }, [item.selected_subject_line, item.selected_preview_text]);
 
-  // Load Klaviyo lists on mount
+  // Load Klaviyo lists and footer on mount
   useEffect(() => {
-    const loadKlaviyoLists = async () => {
+    const loadBrandData = async () => {
       if (!item.brand_id) return;
       
       setIsLoadingLists(true);
+      setListLoadError(null);
+      
       try {
         const { data: brand } = await supabase
           .from('brands')
-          .select('klaviyo_api_key')
+          .select('klaviyo_api_key, footer_html')
           .eq('id', item.brand_id)
           .single();
 
+        if (brand?.footer_html) {
+          setFooterHtml(brand.footer_html);
+        }
+
         if (brand?.klaviyo_api_key) {
           const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
-            body: { apiKey: brand.klaviyo_api_key }
+            body: { klaviyoApiKey: brand.klaviyo_api_key }
           });
           
-          if (!error && data?.lists) {
+          if (error) {
+            setListLoadError('Failed to load segments');
+          } else if (data?.lists) {
             setKlaviyoLists(data.lists);
           }
         }
       } catch (err) {
-        console.error('Failed to load Klaviyo lists:', err);
+        console.error('Failed to load brand data:', err);
+        setListLoadError('Failed to load brand data');
       } finally {
         setIsLoadingLists(false);
       }
     };
 
-    loadKlaviyoLists();
+    loadBrandData();
   }, [item.brand_id]);
+
+  // Update slice in local state and database
+  const updateSlice = async (index: number, updates: Partial<SliceData>) => {
+    const newSlices = [...slices];
+    newSlices[index] = { ...newSlices[index], ...updates };
+    setSlices(newSlices);
+
+    // Persist to database
+    await supabase
+      .from('campaign_queue')
+      .update({ slices: JSON.parse(JSON.stringify(newSlices)) })
+      .eq('id', item.id);
+  };
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this campaign?')) return;
@@ -111,7 +149,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     onUpdate();
   };
 
-  const handleReprocess = async (newSlices?: any[], footerPercent?: number) => {
+  const handleReprocess = async () => {
     setIsReprocessing(true);
     
     const updates: Record<string, unknown> = {
@@ -121,13 +159,6 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       error_message: null,
       retry_count: (item.retry_count || 0) + 1
     };
-
-    if (newSlices) {
-      updates.slices = newSlices;
-    }
-    if (footerPercent !== undefined) {
-      updates.footer_start_percent = footerPercent;
-    }
 
     const { error: updateError } = await supabase
       .from('campaign_queue')
@@ -169,7 +200,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
         campaignName: item.name,
         subjectLine: selectedSubject,
         previewText: selectedPreview,
-        slices: item.slices,
+        slices: slices,
         imageUrl: item.image_url,
         includedSegments,
         excludedSegments,
@@ -218,239 +249,250 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     l => !includedSegments.includes(l.id) && !excludedSegments.includes(l.id)
   );
 
-  return (
-    <div className="bg-muted/20 border-t p-6 animate-in slide-in-from-top-2 duration-200">
-      <div className="grid grid-cols-[1fr,1px,1fr] gap-6 max-w-6xl mx-auto">
-        {/* Left Side - Campaign Preview */}
-        <div className="space-y-4">
-          {item.image_url ? (
-            <QueueSlicePreview
-              imageUrl={item.image_url}
-              slices={slices}
-              footerStartPercent={item.footer_start_percent}
-              onReprocess={handleReprocess}
-              isReprocessing={isReprocessing}
-            />
-          ) : (
-            <div className="border rounded-lg h-64 flex items-center justify-center bg-muted">
-              <span className="text-muted-foreground">No preview available</span>
-            </div>
-          )}
+  // QA calculations with proper empty array handling
+  const hasSlices = slices.length > 0;
+  const slicesWithLinks = slices.filter(s => s.link);
+  const slicesMissingLinks = slices.filter(s => !s.link);
+  const allHaveLinks = hasSlices && slicesMissingLinks.length === 0;
+  
+  const placeholderPattern = /^(Slice|Section|Email section|Email Section)\s*\d+$/i;
+  const slicesWithPlaceholderAlt = slices.filter(s => 
+    !s.altText || placeholderPattern.test(s.altText.trim())
+  );
+  const allHaveAltText = hasSlices && slicesWithPlaceholderAlt.length === 0;
 
-          {/* Slices List */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Slices ({slices.length})</h4>
-            <div className="space-y-1 text-sm max-h-32 overflow-y-auto">
-              {slices.map((slice, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between py-1.5 px-2 rounded bg-background"
-                >
-                  <span className="text-muted-foreground truncate flex-1">
-                    {index + 1}. {slice.altText || `Slice ${index + 1}`}
-                  </span>
-                  <span className="text-xs truncate max-w-[120px] text-muted-foreground">
-                    {slice.link || '— no link'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+  return (
+    <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200">
+      {/* TOP ROW - Full width controls */}
+      <div className="flex gap-4 mb-4">
+        {/* Inbox Preview */}
+        <div className="flex-1 min-w-0">
+          <InboxPreview
+            senderName={brandName}
+            subjectLine={selectedSubject}
+            previewText={selectedPreview}
+          />
         </div>
 
-        <Separator orientation="vertical" />
-
-        {/* Right Side - Send Controls */}
-        <div className="space-y-5">
-          {/* Inbox Preview */}
-          <div>
-            <h4 className="text-sm font-medium mb-3">Inbox Preview</h4>
-            <div className="border rounded-lg bg-background p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                  {brandName.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm truncate">{brandName}</span>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">now</span>
-                  </div>
-                </div>
-              </div>
-              <div className="pl-10">
-                <p className="font-medium text-sm truncate">
-                  {selectedSubject || <span className="text-muted-foreground italic">No subject line selected</span>}
-                </p>
-                <p className="text-sm text-muted-foreground truncate">
-                  {selectedPreview || <span className="italic">No preview text selected</span>}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Segment Selection */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium">Segments</h4>
-            
-            {/* Included */}
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Include</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
+        {/* Segments */}
+        <div className="w-64 flex-shrink-0 space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">Segments</div>
+          
+          {listLoadError ? (
+            <div className="text-xs text-destructive">{listLoadError}</div>
+          ) : (
+            <>
+              {/* Included */}
+              <div className="flex flex-wrap gap-1">
                 {includedSegments.map(id => {
                   const list = klaviyoLists.find(l => l.id === id);
                   return (
-                    <Badge key={id} variant="secondary" className="gap-1">
+                    <Badge key={id} variant="secondary" className="gap-1 text-xs py-0">
                       {list?.name || id}
                       <button onClick={() => removeSegment(id, 'include')}>
-                        <X className="h-3 w-3" />
+                        <X className="h-2.5 w-2.5" />
                       </button>
                     </Badge>
                   );
                 })}
-                {includedSegments.length === 0 && (
-                  <span className="text-xs text-muted-foreground italic">No segments selected</span>
-                )}
+                <Select onValueChange={(v) => addSegment(v, 'include')}>
+                  <SelectTrigger className="h-6 text-xs w-auto px-2 border-dashed">
+                    <Plus className="h-3 w-3" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isLoadingLists ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : availableLists.length === 0 ? (
+                      <SelectItem value="none" disabled>No segments available</SelectItem>
+                    ) : (
+                      availableLists.map(list => (
+                        <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select onValueChange={(v) => addSegment(v, 'include')}>
-                <SelectTrigger className="h-8 text-xs">
-                  <Plus className="h-3 w-3 mr-1" />
-                  <span>Add segment</span>
-                </SelectTrigger>
-                <SelectContent>
-                  {isLoadingLists ? (
-                    <SelectItem value="loading" disabled>Loading...</SelectItem>
-                  ) : availableLists.length === 0 ? (
-                    <SelectItem value="none" disabled>No segments available</SelectItem>
-                  ) : (
-                    availableLists.map(list => (
-                      <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
 
-            {/* Excluded */}
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Exclude</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
+              {/* Excluded */}
+              <div className="flex flex-wrap gap-1">
                 {excludedSegments.map(id => {
                   const list = klaviyoLists.find(l => l.id === id);
                   return (
-                    <Badge key={id} variant="outline" className="gap-1 text-destructive">
+                    <Badge key={id} variant="outline" className="gap-1 text-xs py-0 text-destructive">
                       {list?.name || id}
                       <button onClick={() => removeSegment(id, 'exclude')}>
-                        <X className="h-3 w-3" />
+                        <X className="h-2.5 w-2.5" />
                       </button>
                     </Badge>
                   );
                 })}
+                {availableLists.length > 0 && (
+                  <Select onValueChange={(v) => addSegment(v, 'exclude')}>
+                    <SelectTrigger className="h-6 text-xs w-auto px-2 border-dashed text-destructive">
+                      <X className="h-3 w-3" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableLists.map(list => (
+                        <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
-              {excludedSegments.length === 0 && availableLists.length > 0 && (
-                <Select onValueChange={(v) => addSegment(v, 'exclude')}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <Plus className="h-3 w-3 mr-1" />
-                    <span>Add exclusion</span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableLists.map(list => (
-                      <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+            </>
+          )}
+        </div>
+
+        {/* QA Status */}
+        <div className="w-48 flex-shrink-0 space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">QA Check</div>
+          
+          <SpellingErrorsPanel
+            campaignId={item.id}
+            spellingErrors={spellingErrors}
+            slices={slices}
+            source={item.source}
+            sourceMetadata={item.source_metadata as Record<string, unknown> | undefined}
+            onErrorFixed={onUpdate}
+          />
+
+          <div className="space-y-0.5 text-xs">
+            {!hasSlices ? (
+              <div className="flex items-center gap-1.5 text-amber-600">
+                <AlertTriangle className="h-3 w-3" />
+                <span>No slices generated</span>
+              </div>
+            ) : (
+              <>
+                {allHaveLinks ? (
+                  <div className="flex items-center gap-1.5 text-green-600">
+                    <Check className="h-3 w-3" />
+                    <span>All slices have links</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-amber-600">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>{slicesMissingLinks.length} missing links</span>
+                  </div>
+                )}
+                
+                {allHaveAltText ? (
+                  <div className="flex items-center gap-1.5 text-green-600">
+                    <Check className="h-3 w-3" />
+                    <span>Alt text complete</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-amber-600">
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>{slicesWithPlaceholderAlt.length} need alt text</span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
+        </div>
 
-          <Separator />
-
-          {/* QA Status */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium">QA Check</h4>
-            
-            <SpellingErrorsPanel
-              campaignId={item.id}
-              spellingErrors={spellingErrors}
-              slices={slices}
-              source={item.source}
-              sourceMetadata={item.source_metadata as Record<string, unknown> | undefined}
-              onErrorFixed={onUpdate}
-            />
-
-            {/* Other QA flags */}
-            <div className="space-y-1 text-sm">
-              {slices.every(s => s.link) ? (
-                <div className="flex items-center gap-2 text-green-600">
-                  <Check className="h-4 w-4" />
-                  <span>All slices have links</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-yellow-600">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span>{slices.filter(s => !s.link).length} slice(s) missing links</span>
-                </div>
-              )}
-              
-              {slices.every(s => s.altText && !s.altText.match(/^(Slice|Section) \d+$/)) ? (
-                <div className="flex items-center gap-2 text-green-600">
-                  <Check className="h-4 w-4" />
-                  <span>Alt text complete</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-yellow-600">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span>Some slices need alt text review</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Actions */}
-          <div className="flex items-center justify-between pt-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
-              <Trash2 className="h-4 w-4 mr-1" />
-              {isDeleting ? 'Deleting...' : 'Delete'}
+        {/* Actions */}
+        <div className="flex flex-col gap-2 flex-shrink-0">
+          {item.status === 'sent_to_klaviyo' && item.klaviyo_campaign_url ? (
+            <Button size="sm" variant="outline" asChild>
+              <a href={item.klaviyo_campaign_url} target="_blank" rel="noopener noreferrer">
+                View in Klaviyo <ExternalLink className="h-3.5 w-3.5 ml-1" />
+              </a>
             </Button>
+          ) : (
+            <>
+              <Button
+                size="sm"
+                disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview}
+                onClick={handleSendToKlaviyo}
+              >
+                <Send className="h-3.5 w-3.5 mr-1" />
+                {isSending ? 'Sending...' : 'Send to Klaviyo'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReprocess}
+                disabled={isReprocessing || item.status === 'processing'}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isReprocessing && "animate-spin")} />
+                Reprocess
+              </Button>
+            </>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
+      </div>
 
-            <div className="flex gap-2">
-              {item.status === 'sent_to_klaviyo' && item.klaviyo_campaign_url ? (
-                <Button size="sm" variant="outline" asChild>
-                  <a href={item.klaviyo_campaign_url} target="_blank" rel="noopener noreferrer">
-                    View in Klaviyo <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
-                  </a>
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleReprocess()}
-                    disabled={isReprocessing || item.status === 'processing'}
-                  >
-                    <RefreshCw className={cn("h-4 w-4 mr-1", isReprocessing && "animate-spin")} />
-                    Reprocess
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview}
-                    onClick={handleSendToKlaviyo}
-                  >
-                    <Send className="h-4 w-4 mr-1" />
-                    {isSending ? 'Sending...' : 'Send to Klaviyo'}
-                  </Button>
-                </>
-              )}
-            </div>
+      <Separator className="mb-4" />
+
+      {/* BOTTOM SECTION - 30/70 split */}
+      <div className="flex gap-4">
+        {/* Left 30% - Slice images stacked */}
+        <div className="w-[30%] flex-shrink-0 space-y-1">
+          <div className="text-xs font-medium text-muted-foreground mb-2">
+            Slices ({slices.length})
+          </div>
+          <div className="space-y-0.5 max-h-[400px] overflow-y-auto pr-1">
+            {slices.map((slice, index) => (
+              <div key={index} className="relative">
+                {slice.imageUrl ? (
+                  <img
+                    src={slice.imageUrl}
+                    alt={slice.altText || `Slice ${index + 1}`}
+                    className="w-full rounded border border-border"
+                  />
+                ) : (
+                  <div className="w-full h-16 bg-muted rounded border border-border flex items-center justify-center text-xs text-muted-foreground">
+                    Slice {index + 1}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Footer HTML */}
+            {footerHtml && (
+              <div className="mt-2">
+                <div className="text-xs font-medium text-muted-foreground mb-1">Footer</div>
+                <div 
+                  className="rounded border border-border overflow-hidden bg-white"
+                  dangerouslySetInnerHTML={{ __html: footerHtml }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right 70% - Editable slice details */}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-muted-foreground mb-2">
+            Slice Details
+          </div>
+          <div className="space-y-0 max-h-[400px] overflow-y-auto pr-1">
+            {slices.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-4 text-center">
+                No slices available. Try reprocessing the campaign.
+              </div>
+            ) : (
+              slices.map((slice, index) => (
+                <EditableSliceRow
+                  key={index}
+                  slice={slice}
+                  index={index}
+                  onUpdate={(updates) => updateSlice(index, updates)}
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
