@@ -33,10 +33,11 @@ export function QueueTable({
               <TableHead className="w-12"></TableHead>
               <TableHead className="w-24">Status</TableHead>
               <TableHead className="w-20">Preview</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Subject Line</TableHead>
-              <TableHead className="w-24">Links</TableHead>
-              <TableHead className="w-24">Actions</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Subject Line</TableHead>
+            <TableHead>Preview Text</TableHead>
+            <TableHead className="w-24">Links</TableHead>
+            <TableHead className="w-24">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -85,6 +86,7 @@ export function QueueTable({
             <TableHead className="w-20">Preview</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Subject Line</TableHead>
+            <TableHead>Preview Text</TableHead>
             <TableHead className="w-24">Links</TableHead>
             <TableHead className="w-24">Actions</TableHead>
           </TableRow>
