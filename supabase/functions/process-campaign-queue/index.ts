@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,25 @@ async function updateQueueItem(
   if (error) {
     console.error('[process] Failed to update queue item:', error);
   }
+}
+
+// Helper to convert base64 to Uint8Array
+function base64ToBytes(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// Helper to convert Uint8Array to base64
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 // Step 1: Fetch image from URL or use existing uploaded image
@@ -56,6 +76,43 @@ async function fetchAndUploadImage(
   // Legacy: For items without pre-uploaded images (shouldn't happen with new flow)
   console.error('[process] No image_url found on queue item');
   return null;
+}
+
+// Step 1.5: Start early SL/PT generation immediately (matches CampaignCreator.startEarlyGeneration)
+async function startEarlyGeneration(
+  supabase: any,
+  imageUrl: string,
+  brandContext: { name: string; domain: string } | null,
+  brandId: string | null,
+  copyExamples: any
+): Promise<string> {
+  const sessionKey = crypto.randomUUID();
+  console.log('[process] Step 1.5: Starting early SL/PT generation, session:', sessionKey);
+
+  try {
+    // Fire and forget - matches manual flow exactly
+    const earlyGenUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/generate-email-copy-early';
+    fetch(earlyGenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({
+        sessionKey,
+        imageUrl,
+        brandContext: brandContext || { name: 'Unknown', domain: null },
+        brandId: brandId || null,
+        copyExamples: copyExamples || null
+      })
+    }).catch(err => console.log('[process] Early generation triggered:', err?.message || 'ok'));
+
+    console.log('[process] Early generation fired for session:', sessionKey);
+  } catch (err) {
+    console.error('[process] Error starting early generation:', err);
+  }
+
+  return sessionKey;
 }
 
 // Step 2: Detect brand from image
@@ -131,7 +188,7 @@ async function autoSliceImage(
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
       },
       body: JSON.stringify({
-        imageBase64,
+        imageDataUrl: `data:image/png;base64,${imageBase64}`,
         imageWidth,
         imageHeight
       })
@@ -164,21 +221,92 @@ async function autoSliceImage(
   }
 }
 
-// Step 3.5: Analyze slices for alt text and links
+// Step 3.5: Crop and upload each slice individually (matches CampaignCreator.processSlices)
+async function cropAndUploadSlices(
+  imageBase64: string,
+  sliceBoundaries: any[],
+  imageWidth: number,
+  imageHeight: number
+): Promise<any[]> {
+  console.log('[process] Step 3.5: Cropping and uploading slices...');
+
+  try {
+    // Decode the full image
+    const imageBytes = base64ToBytes(imageBase64);
+    const fullImage = await Image.decode(imageBytes);
+
+    const uploadedSlices: any[] = [];
+
+    for (let i = 0; i < sliceBoundaries.length; i++) {
+      const slice = sliceBoundaries[i];
+      const yTop = slice.yTop;
+      const yBottom = slice.yBottom;
+      const height = yBottom - yTop;
+      
+      console.log(`[process] Cropping slice ${i + 1}/${sliceBoundaries.length}: y=${yTop}-${yBottom}, h=${height}`);
+
+      // Clone and crop the slice region
+      const sliceImage = fullImage.clone().crop(0, yTop, imageWidth, height);
+      
+      // Encode as JPEG (matches client-side sliceImage which uses JPEG)
+      const sliceBytes = await sliceImage.encodeJPEG(90);
+      const sliceBase64 = bytesToBase64(sliceBytes);
+      const sliceDataUrl = `data:image/jpeg;base64,${sliceBase64}`;
+
+      // Upload to Cloudinary via edge function
+      const uploadUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/upload-to-cloudinary';
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        },
+        body: JSON.stringify({ imageData: sliceDataUrl })
+      });
+
+      let uploadResult = null;
+      if (uploadResponse.ok) {
+        uploadResult = await uploadResponse.json();
+        console.log(`[process] Slice ${i + 1} uploaded:`, uploadResult?.url?.substring(0, 50));
+      } else {
+        console.error(`[process] Failed to upload slice ${i + 1}:`, await uploadResponse.text());
+      }
+
+      uploadedSlices.push({
+        ...slice,
+        imageUrl: uploadResult?.url || null,
+        dataUrl: sliceDataUrl,
+        width: imageWidth,
+        height: height,
+        startPercent: (yTop / imageHeight) * 100,
+        endPercent: (yBottom / imageHeight) * 100,
+        type: slice.hasCta ? 'cta' : 'image',
+      });
+    }
+
+    console.log('[process] Uploaded', uploadedSlices.length, 'slices');
+    return uploadedSlices;
+
+  } catch (err) {
+    console.error('[process] Slice cropping error:', err);
+    return [];
+  }
+}
+
+// Step 4: Analyze slices for alt text and links (uses cropped slice dataUrls)
 async function analyzeSlices(
   slices: any[],
-  imageBase64: string,
+  fullImageDataUrl: string,
   brandDomain: string | null
 ): Promise<any[] | null> {
-  console.log('[process] Step 3.5: Analyzing slices for alt text and links...');
+  console.log('[process] Step 4: Analyzing slices for alt text and links...');
 
   try {
     const analyzeUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/analyze-slices';
     
-    // Convert slices to format analyze-slices expects
-    // Each slice needs its own image data - we'll use the full image and let the endpoint handle it
+    // CRITICAL: Pass the actual cropped slice dataUrls (matches CampaignCreator line 208)
     const sliceInputs = slices.map((slice, index) => ({
-      dataUrl: slice.imageDataUrl || `data:image/png;base64,${imageBase64}`,
+      dataUrl: slice.dataUrl, // Use the cropped slice's dataUrl, NOT the full image
       index
     }));
     
@@ -191,7 +319,7 @@ async function analyzeSlices(
       body: JSON.stringify({
         slices: sliceInputs,
         brandDomain,
-        fullCampaignImage: `data:image/png;base64,${imageBase64}`
+        fullCampaignImage: fullImageDataUrl
       })
     });
 
@@ -209,13 +337,24 @@ async function analyzeSlices(
 
     console.log('[process] Analyzed', result.analyses.length, 'slices');
     
+    // Build a Map keyed by index for reliable lookup (matches CampaignCreator)
+    const analysisByIndex = new Map<number, any>();
+    for (const a of result.analyses) {
+      analysisByIndex.set(a.index, a);
+    }
+    
     // Merge analysis into slices
-    return slices.map((slice, i) => ({
-      ...slice,
-      altText: result.analyses[i]?.altText || `Email section ${i + 1}`,
-      link: result.analyses[i]?.suggestedLink || slice.link || null,
-      isClickable: result.analyses[i]?.isClickable ?? true
-    }));
+    return slices.map((slice, i) => {
+      const analysis = analysisByIndex.get(i);
+      return {
+        ...slice,
+        altText: analysis?.altText || `Email section ${i + 1}`,
+        link: analysis?.suggestedLink || slice.link || null,
+        isClickable: analysis?.isClickable ?? true,
+        linkVerified: analysis?.linkVerified || false,
+        linkWarning: analysis?.linkWarning,
+      };
+    });
 
   } catch (err) {
     console.error('[process] Slice analysis error:', err);
@@ -223,14 +362,14 @@ async function analyzeSlices(
   }
 }
 
-// Step 4: Generate subject lines and preview texts
+// Step 5: Generate subject lines and preview texts (with pairCount: 10 to match manual)
 async function generateCopy(
   slices: any[],
   brandContext: any,
   imageUrl: string,
   copyExamples?: any
 ): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> {
-  console.log('[process] Step 4: Generating copy...');
+  console.log('[process] Step 5: Generating copy (pairCount: 10)...');
 
   try {
     const copyUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/generate-email-copy';
@@ -243,7 +382,7 @@ async function generateCopy(
       body: JSON.stringify({
         slices,
         brandContext,
-        pairCount: 5,
+        pairCount: 10, // CRITICAL: Match manual flow (was 5)
         copyExamples,
         campaignImageUrl: imageUrl
       })
@@ -269,11 +408,11 @@ async function generateCopy(
   }
 }
 
-// Step 5: QA spelling check
+// Step 6: QA spelling check
 async function qaSpellingCheck(
   imageBase64: string
 ): Promise<{ hasErrors: boolean; errors: any[] }> {
-  console.log('[process] Step 5: QA spelling check...');
+  console.log('[process] Step 6: QA spelling check...');
 
   try {
     const qaUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/qa-spelling-check';
@@ -303,6 +442,38 @@ async function qaSpellingCheck(
   } catch (err) {
     console.error('[process] QA check error:', err);
     return { hasErrors: false, errors: [] };
+  }
+}
+
+// Step 7: Retrieve early generation results
+async function retrieveEarlyCopy(
+  supabase: any,
+  sessionKey: string
+): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: any[] } | null> {
+  console.log('[process] Step 7: Checking for early generated copy...');
+
+  try {
+    const { data, error } = await supabase
+      .from('early_generated_copy')
+      .select('*')
+      .eq('session_key', sessionKey)
+      .single();
+
+    if (error || !data) {
+      console.log('[process] No early copy found for session:', sessionKey);
+      return null;
+    }
+
+    console.log('[process] Found early copy:', data.subject_lines?.length || 0, 'SLs');
+    
+    return {
+      subjectLines: data.subject_lines || [],
+      previewTexts: data.preview_texts || [],
+      spellingErrors: data.spelling_errors || []
+    };
+  } catch (err) {
+    console.error('[process] Error retrieving early copy:', err);
+    return null;
   }
 }
 
@@ -372,24 +543,12 @@ serve(async (req) => {
       processing_percent: 10
     });
 
-    // === STEP 2: Detect brand (25%) ===
-    // Skip brand detection if already set from plugin
+    // === STEP 1.5: Start early SL/PT generation immediately (matches manual flow) ===
     let brandId = item.brand_id;
-    
-    if (!brandId) {
-      await updateQueueItem(supabase, campaignQueueId, {
-        processing_step: 'detecting_brand',
-        processing_percent: 15
-      });
-
-      brandId = await detectBrand(supabase, imageResult.imageBase64);
-    } else {
-      console.log('[process] Using brand from plugin:', brandId);
-    }
-    
-    let brandContext = null;
+    let brandContext: { name: string; domain: string } | null = null;
     let copyExamples = null;
     
+    // Get brand info first for early generation
     if (brandId) {
       const { data: brand } = await supabase
         .from('brands')
@@ -401,10 +560,48 @@ serve(async (req) => {
         brandContext = {
           name: brand.name,
           domain: brand.domain,
-          primaryColor: brand.primary_color
         };
         copyExamples = brand.copy_examples;
       }
+    }
+
+    // Fire early generation immediately (matches CampaignCreator.startEarlyGeneration)
+    const earlySessionKey = await startEarlyGeneration(
+      supabase,
+      imageResult.imageUrl,
+      brandContext,
+      brandId,
+      copyExamples
+    );
+
+    // === STEP 2: Detect brand (25%) ===
+    // Skip brand detection if already set from plugin
+    if (!brandId) {
+      await updateQueueItem(supabase, campaignQueueId, {
+        processing_step: 'detecting_brand',
+        processing_percent: 15
+      });
+
+      brandId = await detectBrand(supabase, imageResult.imageBase64);
+      
+      // Get brand info if newly detected
+      if (brandId) {
+        const { data: brand } = await supabase
+          .from('brands')
+          .select('*')
+          .eq('id', brandId)
+          .single();
+        
+        if (brand) {
+          brandContext = {
+            name: brand.name,
+            domain: brand.domain,
+          };
+          copyExamples = brand.copy_examples;
+        }
+      }
+    } else {
+      console.log('[process] Using brand from plugin:', brandId);
     }
 
     await updateQueueItem(supabase, campaignQueueId, {
@@ -412,7 +609,7 @@ serve(async (req) => {
       processing_percent: 25
     });
 
-    // === STEP 3: Auto-slice image (45%) ===
+    // === STEP 3: Auto-slice image (35%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'slicing_image',
       processing_percent: 30
@@ -424,43 +621,73 @@ serve(async (req) => {
       item.image_height || 2000
     );
 
-    let currentSlices = sliceResult?.slices || [];
-
-    if (sliceResult) {
+    if (!sliceResult || sliceResult.slices.length === 0) {
       await updateQueueItem(supabase, campaignQueueId, {
-        slices: sliceResult.slices,
-        footer_start_percent: sliceResult.footerStartPercent,
-        processing_percent: 45
+        status: 'failed',
+        processing_step: 'slicing_image',
+        error_message: 'Failed to auto-slice image'
       });
-    } else {
-      await updateQueueItem(supabase, campaignQueueId, {
-        processing_percent: 45
-      });
-    }
-
-    // === STEP 3.5: Analyze slices for alt text + links (60%) ===
-    if (currentSlices.length > 0) {
-      await updateQueueItem(supabase, campaignQueueId, {
-        processing_step: 'analyzing_slices',
-        processing_percent: 50
-      });
-
-      const enrichedSlices = await analyzeSlices(
-        currentSlices,
-        imageResult.imageBase64,
-        brandContext?.domain || null
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to slice image' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-
-      if (enrichedSlices) {
-        currentSlices = enrichedSlices;
-        await updateQueueItem(supabase, campaignQueueId, {
-          slices: enrichedSlices,
-          processing_percent: 60
-        });
-      }
     }
 
-    // === STEP 4: Generate copy (80%) ===
+    await updateQueueItem(supabase, campaignQueueId, {
+      footer_start_percent: sliceResult.footerStartPercent,
+      processing_percent: 35
+    });
+
+    // === STEP 3.5: Crop and upload each slice individually (45%) ===
+    await updateQueueItem(supabase, campaignQueueId, {
+      processing_step: 'uploading_slices',
+      processing_percent: 40
+    });
+
+    const uploadedSlices = await cropAndUploadSlices(
+      imageResult.imageBase64,
+      sliceResult.slices,
+      item.image_width || 600,
+      item.image_height || 2000
+    );
+
+    if (uploadedSlices.length === 0) {
+      await updateQueueItem(supabase, campaignQueueId, {
+        status: 'failed',
+        processing_step: 'uploading_slices',
+        error_message: 'Failed to crop and upload slices'
+      });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to upload slices' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    await updateQueueItem(supabase, campaignQueueId, {
+      slices: uploadedSlices,
+      processing_percent: 45
+    });
+
+    // === STEP 4: Analyze slices for alt text + links (60%) ===
+    await updateQueueItem(supabase, campaignQueueId, {
+      processing_step: 'analyzing_slices',
+      processing_percent: 50
+    });
+
+    const enrichedSlices = await analyzeSlices(
+      uploadedSlices,
+      `data:image/png;base64,${imageResult.imageBase64}`,
+      brandContext?.domain || null
+    );
+
+    let currentSlices = enrichedSlices || uploadedSlices;
+
+    await updateQueueItem(supabase, campaignQueueId, {
+      slices: currentSlices,
+      processing_percent: 60
+    });
+
+    // === STEP 5: Generate copy (80%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'generating_copy',
       processing_percent: 65
@@ -487,7 +714,7 @@ serve(async (req) => {
       });
     }
 
-    // === STEP 5: QA spelling check (95%) ===
+    // === STEP 6: QA spelling check (90%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'qa_check',
       processing_percent: 85
@@ -498,10 +725,45 @@ serve(async (req) => {
     await updateQueueItem(supabase, campaignQueueId, {
       spelling_errors: qaResult.errors,
       qa_flags: qaResult.hasErrors ? { spelling: true } : null,
+      processing_percent: 90
+    });
+
+    // === STEP 7: Merge early copy if available (95%) ===
+    await updateQueueItem(supabase, campaignQueueId, {
+      processing_step: 'finalizing',
       processing_percent: 95
     });
 
-    // === STEP 6: Complete (100%) ===
+    // Check if early generation completed with results
+    const earlyCopy = await retrieveEarlyCopy(supabase, earlySessionKey);
+    
+    if (earlyCopy && earlyCopy.subjectLines.length > 0) {
+      console.log('[process] Merging early copy results');
+      // Use early copy if it has more results or late copy failed
+      const finalSubjectLines = earlyCopy.subjectLines.length > (copyResult?.subjectLines?.length || 0) 
+        ? earlyCopy.subjectLines 
+        : (copyResult?.subjectLines || earlyCopy.subjectLines);
+      const finalPreviewTexts = earlyCopy.previewTexts.length > (copyResult?.previewTexts?.length || 0)
+        ? earlyCopy.previewTexts
+        : (copyResult?.previewTexts || earlyCopy.previewTexts);
+      
+      // Merge spelling errors from early copy
+      const allSpellingErrors = [...(qaResult.errors || []), ...(earlyCopy.spellingErrors || [])];
+      const uniqueSpellingErrors = allSpellingErrors.filter((e, i, arr) => 
+        arr.findIndex(x => x.word === e.word && x.location === e.location) === i
+      );
+
+      await updateQueueItem(supabase, campaignQueueId, {
+        generated_subject_lines: finalSubjectLines,
+        generated_preview_texts: finalPreviewTexts,
+        selected_subject_line: finalSubjectLines[0] || null,
+        selected_preview_text: finalPreviewTexts[0] || null,
+        spelling_errors: uniqueSpellingErrors,
+        qa_flags: uniqueSpellingErrors.length > 0 ? { spelling: true } : null,
+      });
+    }
+
+    // === STEP 8: Complete (100%) ===
     const processingTime = Date.now() - startTime;
     console.log('[process] Completed in', processingTime, 'ms');
 

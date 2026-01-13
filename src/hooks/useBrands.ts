@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from './useAuth';
 import type { Brand, SocialLink, SocialIconAsset } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -30,6 +31,7 @@ function parseSocialIcons(json: Json | null): SocialIconAsset[] {
 }
 
 export function useBrands() {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const findBrandByDomain = useCallback(async (domain: string): Promise<Brand | null> => {
@@ -78,11 +80,17 @@ export function useBrands() {
   }, []);
 
   const createBrand = useCallback(async (brand: Omit<Brand, 'id' | 'createdAt' | 'updatedAt'>): Promise<Brand | null> => {
+    if (!user) {
+      console.error('Cannot create brand: no user logged in');
+      return null;
+    }
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('brands')
         .insert({
+          user_id: user.id, // Include user_id for RLS
           name: brand.name,
           domain: brand.domain,
           website_url: brand.websiteUrl,
