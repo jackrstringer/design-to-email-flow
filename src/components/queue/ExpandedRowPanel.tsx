@@ -473,12 +473,12 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           </div>
         </div>
 
-        {/* Right 70% - Editable slice details */}
+        {/* Right 70% - Editable slice details (matching SliceResults.tsx exactly) */}
         <div className="flex-1 min-w-0">
           <div className="text-xs font-medium text-muted-foreground mb-2">
             Slice Details
           </div>
-          <div className="space-y-0 max-h-[400px] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
             {slices.length === 0 ? (
               <div className="text-sm text-muted-foreground py-4 text-center">
                 No slices available. Try reprocessing the campaign.
