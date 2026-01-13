@@ -223,30 +223,6 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {/* Figma OAuth (Coming Soon) */}
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ExternalLink className="h-5 w-5" />
-                  Figma Account
-                </CardTitle>
-                <CardDescription>
-                  Connect your Figma account to automatically fetch design files.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" disabled>
-                      Connect Figma Account
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Coming soon</p>
-                  </TooltipContent>
-                </Tooltip>
-              </CardContent>
-            </Card>
           </section>
         </div>
       </main>
