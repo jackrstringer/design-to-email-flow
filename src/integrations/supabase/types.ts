@@ -86,6 +86,7 @@ export type Database = {
           text_primary_color: string | null
           typography: Json | null
           updated_at: string
+          user_id: string | null
           website_url: string | null
         }
         Insert: {
@@ -115,6 +116,7 @@ export type Database = {
           text_primary_color?: string | null
           typography?: Json | null
           updated_at?: string
+          user_id?: string | null
           website_url?: string | null
         }
         Update: {
@@ -144,6 +146,7 @@ export type Database = {
           text_primary_color?: string | null
           typography?: Json | null
           updated_at?: string
+          user_id?: string | null
           website_url?: string | null
         }
         Relationships: []

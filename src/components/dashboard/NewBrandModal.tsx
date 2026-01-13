@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { FooterBuilderModal } from '@/components/FooterBuilderModal';
+import { useAuth } from '@/hooks/useAuth';
 import type { Brand } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
 
@@ -46,6 +47,7 @@ export function NewBrandModal({
   pendingCampaignImageUrl
 }: NewBrandModalProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [brandName, setBrandName] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#3b82f6');
@@ -333,6 +335,11 @@ export function NewBrandModal({
       return;
     }
 
+    if (!user) {
+      toast.error('You must be logged in to create a brand');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const domain = extractDomain(websiteUrl);
@@ -340,6 +347,7 @@ export function NewBrandModal({
       const { data, error } = await supabase
         .from('brands')
         .insert({
+          user_id: user.id, // Include user_id for RLS
           name: brandName.trim(),
           domain,
           website_url: websiteUrl,
