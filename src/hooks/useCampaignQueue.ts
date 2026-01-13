@@ -35,6 +35,8 @@ export interface CampaignQueueItem {
   sent_to_klaviyo_at: string | null;
   created_at: string;
   updated_at: string;
+  // Joined brand data
+  brands?: { id: string; name: string } | null;
 }
 
 export function useCampaignQueue() {
@@ -52,7 +54,7 @@ export function useCampaignQueue() {
     setLoading(true);
     const { data, error } = await supabase
       .from('campaign_queue')
-      .select('*')
+      .select('*, brands(id, name)')
       .order('created_at', { ascending: false });
 
     if (error) {

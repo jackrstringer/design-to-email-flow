@@ -18,6 +18,7 @@ interface IngestPayload {
   frames: FrameData[];
   subjectLine?: string;
   previewText?: string;
+  brandId?: string; // Optional brand selection from plugin dropdown
 }
 
 serve(async (req) => {
@@ -32,9 +33,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const payload: IngestPayload = await req.json();
-    const { pluginToken, frames, subjectLine, previewText } = payload;
+    const { pluginToken, frames, subjectLine, previewText, brandId } = payload;
 
-    console.log('[figma-ingest] Received request with', frames?.length || 0, 'frames');
+    console.log('[figma-ingest] Received request with', frames?.length || 0, 'frames, brandId:', brandId || 'none');
 
     // 1. Validate plugin token
     if (!pluginToken) {
@@ -68,7 +69,25 @@ serve(async (req) => {
       .update({ last_used_at: new Date().toISOString() })
       .eq('token', pluginToken);
 
-    // 4. Validate frames
+    // 4. Validate brand if provided
+    let validBrandId: string | null = null;
+    if (brandId) {
+      const { data: brand, error: brandError } = await supabase
+        .from('brands')
+        .select('id')
+        .eq('id', brandId)
+        .eq('user_id', userId)
+        .single();
+
+      if (brand && !brandError) {
+        validBrandId = brand.id;
+        console.log('[figma-ingest] Using brand:', validBrandId);
+      } else {
+        console.warn('[figma-ingest] Invalid brandId provided, ignoring');
+      }
+    }
+
+    // 5. Validate frames
     if (!frames || frames.length === 0) {
       return new Response(
         JSON.stringify({ error: 'At least one frame is required' }),
@@ -76,7 +95,7 @@ serve(async (req) => {
       );
     }
 
-    // 5. Process each frame
+    // 6. Process each frame
     const campaignIds: string[] = [];
     const errors: Array<{ frame: string; error: string }> = [];
 
@@ -131,6 +150,7 @@ serve(async (req) => {
           .from('campaign_queue')
           .insert({
             user_id: userId,
+            brand_id: validBrandId, // Use plugin-provided brand, skip auto-detect if set
             source: 'figma',
             source_metadata: {
               frameName: frame.name,
@@ -180,7 +200,7 @@ serve(async (req) => {
 
     console.log('[figma-ingest] Created', campaignIds.length, 'campaigns');
 
-    // 6. Return response
+    // 7. Return response
     return new Response(
       JSON.stringify({
         success: campaignIds.length > 0,

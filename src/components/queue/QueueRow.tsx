@@ -1,10 +1,15 @@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from './StatusBadge';
 import { LinksTooltip } from './LinksTooltip';
+import { InlineEditableText } from './InlineEditableText';
+import { InlineDropdownSelector } from './InlineDropdownSelector';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { ExternalLink, Send, Eye } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface QueueRowProps {
   item: CampaignQueueItem;
@@ -25,16 +30,67 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         .map(([key]) => ({ type: key }))
     : null;
 
-  const handleActionClick = (e: React.MouseEvent) => {
+  // Get brand name from joined data
+  const brandName = (item as any).brands?.name;
+
+  const handleNameSave = async (newName: string) => {
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ name: newName })
+      .eq('id', item.id);
+
+    if (error) {
+      toast.error('Failed to update name');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubjectLineSelect = async (value: string) => {
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ selected_subject_line: value })
+      .eq('id', item.id);
+
+    if (error) {
+      toast.error('Failed to update subject line');
+      return false;
+    }
+    return true;
+  };
+
+  const handlePreviewTextSelect = async (value: string) => {
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ selected_preview_text: value })
+      .eq('id', item.id);
+
+    if (error) {
+      toast.error('Failed to update preview text');
+      return false;
+    }
+    return true;
+  };
+
+  const handleReviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Handle action
+    onClick();
+  };
+
+  const handleSendClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // TODO: implement send to Klaviyo
+    toast.info('Send to Klaviyo coming soon');
+  };
+
+  const handleRetryClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // TODO: implement retry
+    toast.info('Retry coming soon');
   };
 
   return (
-    <TableRow 
-      className="cursor-pointer hover:bg-muted/50"
-      onClick={onClick}
-    >
+    <TableRow className="hover:bg-muted/50">
       <TableCell onClick={(e) => e.stopPropagation()}>
         <Checkbox
           checked={selected}
@@ -43,7 +99,7 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         />
       </TableCell>
       
-      <TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
         <StatusBadge 
           status={item.status} 
           processingStep={item.processing_step}
@@ -52,7 +108,10 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         />
       </TableCell>
       
-      <TableCell>
+      <TableCell 
+        className="cursor-pointer"
+        onClick={onClick}
+      >
         {item.image_url ? (
           <img
             src={item.image_url}
@@ -66,36 +125,39 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         )}
       </TableCell>
       
-      <TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
         <div>
-          <p className="font-medium truncate max-w-[200px]">
-            {item.name || 'Untitled Campaign'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {item.source === 'figma' && 'From Figma'}
-            {item.source === 'upload' && 'Uploaded'}
-            {item.source === 'clickup' && 'From ClickUp'}
-          </p>
+          <InlineEditableText
+            value={item.name || 'Untitled Campaign'}
+            onSave={handleNameSave}
+          />
+          <div className="flex items-center gap-1 mt-0.5">
+            {brandName && (
+              <Badge variant="outline" className="text-xs px-1 py-0 h-4">
+                {brandName}
+              </Badge>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {item.source === 'figma' && 'Figma'}
+              {item.source === 'upload' && 'Uploaded'}
+              {item.source === 'clickup' && 'ClickUp'}
+            </span>
+          </div>
         </div>
       </TableCell>
       
-      <TableCell>
-        {item.status === 'processing' ? (
-          <span className="text-sm text-muted-foreground">Generating...</span>
-        ) : item.selected_subject_line ? (
-          <p className="text-sm truncate max-w-[250px]">
-            "{item.selected_subject_line}"
-          </p>
-        ) : item.generated_subject_lines?.length ? (
-          <Button variant="ghost" size="sm" className="h-auto py-1 px-2 text-muted-foreground">
-            Select subject line →
-          </Button>
-        ) : (
-          <span className="text-sm text-muted-foreground">—</span>
-        )}
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <InlineDropdownSelector
+          selected={item.selected_subject_line}
+          options={item.generated_subject_lines}
+          provided={item.provided_subject_line}
+          onSelect={handleSubjectLineSelect}
+          placeholder="Select subject line →"
+          isProcessing={item.status === 'processing'}
+        />
       </TableCell>
       
-      <TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
         <LinksTooltip
           slices={slices}
           linkCount={linkCount}
@@ -108,13 +170,13 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
           <span className="text-xs text-muted-foreground">···</span>
         )}
         {item.status === 'ready_for_review' && (
-          <Button size="sm" variant="outline" onClick={handleActionClick}>
+          <Button size="sm" variant="outline" onClick={handleReviewClick}>
             <Eye className="h-3 w-3 mr-1" />
             Review
           </Button>
         )}
         {item.status === 'approved' && (
-          <Button size="sm" onClick={handleActionClick}>
+          <Button size="sm" onClick={handleSendClick}>
             <Send className="h-3 w-3 mr-1" />
             Send
           </Button>
@@ -127,7 +189,7 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
           </Button>
         )}
         {item.status === 'failed' && (
-          <Button size="sm" variant="destructive" onClick={handleActionClick}>
+          <Button size="sm" variant="destructive" onClick={handleRetryClick}>
             Retry
           </Button>
         )}

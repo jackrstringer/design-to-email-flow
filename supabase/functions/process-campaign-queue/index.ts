@@ -164,6 +164,65 @@ async function autoSliceImage(
   }
 }
 
+// Step 3.5: Analyze slices for alt text and links
+async function analyzeSlices(
+  slices: any[],
+  imageBase64: string,
+  brandDomain: string | null
+): Promise<any[] | null> {
+  console.log('[process] Step 3.5: Analyzing slices for alt text and links...');
+
+  try {
+    const analyzeUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/analyze-slices';
+    
+    // Convert slices to format analyze-slices expects
+    // Each slice needs its own image data - we'll use the full image and let the endpoint handle it
+    const sliceInputs = slices.map((slice, index) => ({
+      dataUrl: slice.imageDataUrl || `data:image/png;base64,${imageBase64}`,
+      index
+    }));
+    
+    const response = await fetch(analyzeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({
+        slices: sliceInputs,
+        brandDomain,
+        fullCampaignImage: `data:image/png;base64,${imageBase64}`
+      })
+    });
+
+    if (!response.ok) {
+      console.error('[process] Slice analysis failed:', await response.text());
+      return null;
+    }
+
+    const result = await response.json();
+    
+    if (!result.analyses || !Array.isArray(result.analyses)) {
+      console.error('[process] Slice analysis returned invalid data');
+      return null;
+    }
+
+    console.log('[process] Analyzed', result.analyses.length, 'slices');
+    
+    // Merge analysis into slices
+    return slices.map((slice, i) => ({
+      ...slice,
+      altText: result.analyses[i]?.altText || `Email section ${i + 1}`,
+      link: result.analyses[i]?.suggestedLink || slice.link || null,
+      isClickable: result.analyses[i]?.isClickable ?? true
+    }));
+
+  } catch (err) {
+    console.error('[process] Slice analysis error:', err);
+    return null;
+  }
+}
+
 // Step 4: Generate subject lines and preview texts
 async function generateCopy(
   slices: any[],
@@ -313,13 +372,20 @@ serve(async (req) => {
       processing_percent: 10
     });
 
-    // === STEP 2: Detect brand (30%) ===
-    await updateQueueItem(supabase, campaignQueueId, {
-      processing_step: 'detecting_brand',
-      processing_percent: 15
-    });
+    // === STEP 2: Detect brand (25%) ===
+    // Skip brand detection if already set from plugin
+    let brandId = item.brand_id;
+    
+    if (!brandId) {
+      await updateQueueItem(supabase, campaignQueueId, {
+        processing_step: 'detecting_brand',
+        processing_percent: 15
+      });
 
-    const brandId = await detectBrand(supabase, imageResult.imageBase64);
+      brandId = await detectBrand(supabase, imageResult.imageBase64);
+    } else {
+      console.log('[process] Using brand from plugin:', brandId);
+    }
     
     let brandContext = null;
     let copyExamples = null;
@@ -343,13 +409,13 @@ serve(async (req) => {
 
     await updateQueueItem(supabase, campaignQueueId, {
       brand_id: brandId,
-      processing_percent: 30
+      processing_percent: 25
     });
 
-    // === STEP 3: Auto-slice image (50%) ===
+    // === STEP 3: Auto-slice image (45%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'slicing_image',
-      processing_percent: 35
+      processing_percent: 30
     });
 
     const sliceResult = await autoSliceImage(
@@ -358,26 +424,50 @@ serve(async (req) => {
       item.image_height || 2000
     );
 
+    let currentSlices = sliceResult?.slices || [];
+
     if (sliceResult) {
       await updateQueueItem(supabase, campaignQueueId, {
         slices: sliceResult.slices,
         footer_start_percent: sliceResult.footerStartPercent,
-        processing_percent: 50
+        processing_percent: 45
       });
     } else {
       await updateQueueItem(supabase, campaignQueueId, {
-        processing_percent: 50
+        processing_percent: 45
       });
     }
 
-    // === STEP 4: Generate copy (85%) ===
+    // === STEP 3.5: Analyze slices for alt text + links (60%) ===
+    if (currentSlices.length > 0) {
+      await updateQueueItem(supabase, campaignQueueId, {
+        processing_step: 'analyzing_slices',
+        processing_percent: 50
+      });
+
+      const enrichedSlices = await analyzeSlices(
+        currentSlices,
+        imageResult.imageBase64,
+        brandContext?.domain || null
+      );
+
+      if (enrichedSlices) {
+        currentSlices = enrichedSlices;
+        await updateQueueItem(supabase, campaignQueueId, {
+          slices: enrichedSlices,
+          processing_percent: 60
+        });
+      }
+    }
+
+    // === STEP 4: Generate copy (80%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'generating_copy',
-      processing_percent: 55
+      processing_percent: 65
     });
 
     const copyResult = await generateCopy(
-      sliceResult?.slices || [],
+      currentSlices,
       brandContext,
       imageResult.imageUrl,
       copyExamples
@@ -389,18 +479,18 @@ serve(async (req) => {
         generated_preview_texts: copyResult.previewTexts,
         selected_subject_line: copyResult.subjectLines[0] || null,
         selected_preview_text: copyResult.previewTexts[0] || null,
-        processing_percent: 85
+        processing_percent: 80
       });
     } else {
       await updateQueueItem(supabase, campaignQueueId, {
-        processing_percent: 85
+        processing_percent: 80
       });
     }
 
     // === STEP 5: QA spelling check (95%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'qa_check',
-      processing_percent: 90
+      processing_percent: 85
     });
 
     const qaResult = await qaSpellingCheck(imageResult.imageBase64);
