@@ -16,24 +16,44 @@ export function useAuth() {
   });
 
   useEffect(() => {
+    // Helper to ensure profile exists for a user
+    const ensureProfile = async (user: User) => {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({ id: user.id, email: user.email }, { onConflict: 'id' });
+      if (error) {
+        console.error('Failed to ensure profile:', error);
+      }
+    };
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         setAuthState({
           session,
           user: session?.user ?? null,
           loading: false,
         });
+        
+        // Ensure profile exists when user signs in
+        if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          setTimeout(() => ensureProfile(session.user), 0);
+        }
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setAuthState({
         session,
         user: session?.user ?? null,
         loading: false,
       });
+      
+      // Ensure profile exists for existing session
+      if (session?.user) {
+        setTimeout(() => ensureProfile(session.user), 0);
+      }
     });
 
     return () => subscription.unsubscribe();
