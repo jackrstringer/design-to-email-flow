@@ -18,6 +18,13 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
   const linkCount = slices.filter(s => s.link).length;
   const missingLinks = slices.filter(s => !s.link).length;
 
+  // Convert qa_flags object to array for display
+  const qaFlagsArray = item.qa_flags && typeof item.qa_flags === 'object' && !Array.isArray(item.qa_flags)
+    ? Object.entries(item.qa_flags as Record<string, unknown>)
+        .filter(([_, value]) => Boolean(value))
+        .map(([key]) => ({ type: key }))
+    : null;
+
   const handleActionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     // Handle action
@@ -41,7 +48,7 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
           status={item.status} 
           processingStep={item.processing_step}
           processingPercent={item.processing_percent}
-          qaFlags={item.qa_flags as unknown[] | null}
+          qaFlags={qaFlagsArray}
         />
       </TableCell>
       

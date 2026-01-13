@@ -16,6 +16,15 @@ interface QueueFlyoutProps {
   onUpdate: () => void;
 }
 
+const formatQaFlag = (key: string): string => {
+  const messages: Record<string, string> = {
+    spelling: 'Spelling errors detected',
+    links: 'Link issues found',
+    altText: 'Missing alt text',
+  };
+  return messages[key] || key.replace(/([A-Z])/g, ' $1').trim();
+};
+
 export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
@@ -24,6 +33,13 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
   if (!item) return null;
 
   const slices = (item.slices as Array<{ link?: string; altText?: string }>) || [];
+  
+  // Convert qa_flags object to array for display
+  const qaFlagsArray = item.qa_flags && typeof item.qa_flags === 'object' && !Array.isArray(item.qa_flags)
+    ? Object.entries(item.qa_flags as Record<string, unknown>)
+        .filter(([_, value]) => Boolean(value))
+        .map(([key]) => ({ type: key }))
+    : null;
 
   const handleSubjectLineSelect = async (value: string) => {
     const { error } = await supabase
@@ -179,7 +195,7 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
               status={item.status}
               processingStep={item.processing_step}
               processingPercent={item.processing_percent}
-              qaFlags={item.qa_flags as unknown[] | null}
+              qaFlags={qaFlagsArray}
             />
           </div>
         </SheetHeader>
@@ -251,7 +267,7 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
             <div>
               <h3 className="text-sm font-medium mb-2">QA Check</h3>
               <div className="space-y-1 text-sm">
-                {!item.spelling_errors?.length && !item.qa_flags?.length ? (
+                {!item.spelling_errors?.length && (!qaFlagsArray || qaFlagsArray.length === 0) ? (
                   <>
                     <p className="text-green-600">✓ No spelling errors</p>
                     <p className="text-green-600">✓ All links verified</p>
@@ -259,8 +275,8 @@ export function QueueFlyout({ item, onClose, onUpdate }: QueueFlyoutProps) {
                   </>
                 ) : (
                   <>
-                    {(item.qa_flags as Array<{ message: string }>)?.map((flag, i) => (
-                      <p key={i} className="text-yellow-600">⚠️ {flag.message}</p>
+                    {qaFlagsArray?.map((flag, i) => (
+                      <p key={i} className="text-yellow-600">⚠️ {formatQaFlag(flag.type)}</p>
                     ))}
                   </>
                 )}

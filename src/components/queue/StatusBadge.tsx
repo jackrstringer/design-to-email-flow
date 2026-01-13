@@ -6,7 +6,7 @@ interface StatusBadgeProps {
   status: 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed';
   processingStep?: string | null;
   processingPercent?: number;
-  qaFlags?: unknown[] | null;
+  qaFlags?: Array<{ type: string }> | null;
 }
 
 export function StatusBadge({ status, processingStep, processingPercent = 0, qaFlags }: StatusBadgeProps) {
