@@ -194,16 +194,19 @@ export default function Dashboard() {
   }, []);
 
   // Compute header view (maps 'brand-settings' to 'brands' for nav highlighting)
-  const headerView: 'campaign' | 'brands' = view === 'campaign' ? 'campaign' : 'brands';
+  const headerView: 'campaign' | 'brands' | 'queue' = view === 'campaign' ? 'campaign' : 'brands';
 
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader 
         view={headerView} 
         onViewChange={(v) => {
-          setView(v);
-          if (v === 'brands') {
-            setSettingsBrandId(null);
+          // Only handle campaign and brands locally, queue navigates away
+          if (v === 'campaign' || v === 'brands') {
+            setView(v);
+            if (v === 'brands') {
+              setSettingsBrandId(null);
+            }
           }
         }}
       />

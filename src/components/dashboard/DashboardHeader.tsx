@@ -1,6 +1,9 @@
+import { useNavigate } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
-type ViewMode = 'campaign' | 'brands';
+type ViewMode = 'campaign' | 'brands' | 'queue';
 
 interface DashboardHeaderProps {
   view: ViewMode;
@@ -8,6 +11,16 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ view, onViewChange }: DashboardHeaderProps) {
+  const navigate = useNavigate();
+
+  const handleViewChange = (newView: ViewMode) => {
+    if (newView === 'queue') {
+      navigate('/queue');
+    } else {
+      onViewChange(newView);
+    }
+  };
+
   return (
     <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4">
@@ -17,7 +30,7 @@ export function DashboardHeader({ view, onViewChange }: DashboardHeaderProps) {
             
             <nav className="flex items-center gap-1">
               <button
-                onClick={() => onViewChange('campaign')}
+                onClick={() => handleViewChange('campaign')}
                 className={cn(
                   "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
                   view === 'campaign'
@@ -28,7 +41,18 @@ export function DashboardHeader({ view, onViewChange }: DashboardHeaderProps) {
                 New Campaign
               </button>
               <button
-                onClick={() => onViewChange('brands')}
+                onClick={() => handleViewChange('queue')}
+                className={cn(
+                  "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                  view === 'queue'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                Queue
+              </button>
+              <button
+                onClick={() => handleViewChange('brands')}
                 className={cn(
                   "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
                   view === 'brands'
@@ -40,6 +64,10 @@ export function DashboardHeader({ view, onViewChange }: DashboardHeaderProps) {
               </button>
             </nav>
           </div>
+
+          <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </header>
