@@ -7,18 +7,20 @@ import { LinksTooltip } from './LinksTooltip';
 import { InlineEditableText } from './InlineEditableText';
 import { InlineDropdownSelector } from './InlineDropdownSelector';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
-import { ExternalLink, Send, Eye } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, RotateCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface QueueRowProps {
   item: CampaignQueueItem;
   selected: boolean;
+  isExpanded: boolean;
   onSelect: (checked: boolean) => void;
-  onClick: () => void;
+  onToggleExpand: () => void;
 }
 
-export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
+export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
   const missingLinks = slices.filter(s => !s.link).length;
@@ -72,26 +74,43 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
     return true;
   };
 
-  const handleReviewClick = (e: React.MouseEvent) => {
+  const handleRetryClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    onClick();
-  };
+    
+    const { error: updateError } = await supabase
+      .from('campaign_queue')
+      .update({
+        status: 'processing',
+        processing_step: 'retrying',
+        processing_percent: 0,
+        error_message: null,
+        retry_count: (item.retry_count || 0) + 1
+      })
+      .eq('id', item.id);
 
-  const handleSendClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // TODO: implement send to Klaviyo
-    toast.info('Send to Klaviyo coming soon');
-  };
+    if (updateError) {
+      toast.error('Failed to start retry');
+      return;
+    }
 
-  const handleRetryClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // TODO: implement retry
-    toast.info('Retry coming soon');
+    supabase.functions.invoke('process-campaign-queue', {
+      body: { campaignQueueId: item.id }
+    });
+
+    toast.success('Retrying...');
   };
 
   return (
-    <TableRow className="hover:bg-muted/50">
-      <TableCell onClick={(e) => e.stopPropagation()}>
+    <TableRow 
+      className={cn(
+        "group transition-colors cursor-pointer",
+        "hover:bg-muted/40",
+        isExpanded && "bg-muted/30 border-b-0"
+      )}
+      onClick={onToggleExpand}
+    >
+      {/* Checkbox */}
+      <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
         <Checkbox
           checked={selected}
           onCheckedChange={onSelect}
@@ -99,7 +118,8 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         />
       </TableCell>
       
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      {/* Status */}
+      <TableCell className="w-28" onClick={(e) => e.stopPropagation()}>
         <StatusBadge 
           status={item.status} 
           processingStep={item.processing_step}
@@ -108,56 +128,71 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         />
       </TableCell>
       
-      <TableCell 
-        className="cursor-pointer"
-        onClick={onClick}
-      >
+      {/* Preview Thumbnail */}
+      <TableCell className="w-16">
         {item.image_url ? (
           <img
             src={item.image_url}
             alt={item.name || 'Campaign preview'}
-            className="h-16 w-10 object-cover object-top rounded border"
+            className="h-14 w-9 object-cover object-top rounded border"
           />
         ) : (
-          <div className="h-16 w-10 bg-muted rounded border flex items-center justify-center">
+          <div className="h-14 w-9 bg-muted rounded border flex items-center justify-center">
             <span className="text-xs text-muted-foreground">—</span>
           </div>
         )}
       </TableCell>
       
+      {/* Name */}
       <TableCell onClick={(e) => e.stopPropagation()}>
         <div>
           <InlineEditableText
             value={item.name || 'Untitled Campaign'}
             onSave={handleNameSave}
           />
-          <div className="flex items-center gap-1 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5">
             {brandName && (
-              <Badge variant="outline" className="text-xs px-1 py-0 h-4">
+              <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 font-normal">
                 {brandName}
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">
               {item.source === 'figma' && 'Figma'}
-              {item.source === 'upload' && 'Uploaded'}
+              {item.source === 'upload' && 'Upload'}
               {item.source === 'clickup' && 'ClickUp'}
             </span>
           </div>
         </div>
       </TableCell>
       
+      {/* Subject Line */}
       <TableCell onClick={(e) => e.stopPropagation()}>
         <InlineDropdownSelector
           selected={item.selected_subject_line}
           options={item.generated_subject_lines}
           provided={item.provided_subject_line}
           onSelect={handleSubjectLineSelect}
-          placeholder="Select subject line →"
+          placeholder="Select subject line..."
+          maxWidth="220px"
+          isProcessing={item.status === 'processing'}
+        />
+      </TableCell>
+
+      {/* Preview Text */}
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <InlineDropdownSelector
+          selected={item.selected_preview_text}
+          options={item.generated_preview_texts}
+          provided={item.provided_preview_text}
+          onSelect={handlePreviewTextSelect}
+          placeholder="Select preview text..."
+          maxWidth="220px"
           isProcessing={item.status === 'processing'}
         />
       </TableCell>
       
-      <TableCell onClick={(e) => e.stopPropagation()}>
+      {/* Links */}
+      <TableCell className="w-20" onClick={(e) => e.stopPropagation()}>
         <LinksTooltip
           slices={slices}
           linkCount={linkCount}
@@ -165,34 +200,45 @@ export function QueueRow({ item, selected, onSelect, onClick }: QueueRowProps) {
         />
       </TableCell>
       
-      <TableCell onClick={(e) => e.stopPropagation()}>
-        {item.status === 'processing' && (
-          <span className="text-xs text-muted-foreground">···</span>
-        )}
-        {item.status === 'ready_for_review' && (
-          <Button size="sm" variant="outline" onClick={handleReviewClick}>
-            <Eye className="h-3 w-3 mr-1" />
-            Review
+      {/* Actions */}
+      <TableCell className="w-24" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1">
+          {item.status === 'failed' && (
+            <Button size="sm" variant="ghost" onClick={handleRetryClick} className="h-7 px-2">
+              <RotateCw className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          
+          {item.klaviyo_campaign_url && (
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="h-7 px-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(item.klaviyo_campaign_url!, '_blank');
+              }}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          )}
+
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            className="h-7 px-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand();
+            }}
+          >
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
           </Button>
-        )}
-        {item.status === 'approved' && (
-          <Button size="sm" onClick={handleSendClick}>
-            <Send className="h-3 w-3 mr-1" />
-            Send
-          </Button>
-        )}
-        {item.status === 'sent_to_klaviyo' && item.klaviyo_campaign_url && (
-          <Button size="sm" variant="ghost" asChild>
-            <a href={item.klaviyo_campaign_url} target="_blank" rel="noopener noreferrer">
-              View <ExternalLink className="h-3 w-3 ml-1" />
-            </a>
-          </Button>
-        )}
-        {item.status === 'failed' && (
-          <Button size="sm" variant="destructive" onClick={handleRetryClick}>
-            Retry
-          </Button>
-        )}
+        </div>
       </TableCell>
     </TableRow>
   );
