@@ -26,111 +26,35 @@ async function updateQueueItem(
   }
 }
 
-// Step 1: Fetch image from Figma or use provided URL
+// Step 1: Fetch image from URL or use existing uploaded image
 async function fetchAndUploadImage(
   supabase: any,
   item: any
 ): Promise<{ imageUrl: string; imageBase64: string } | null> {
   console.log('[process] Step 1: Fetching image...');
 
-  // If source is 'upload' and we already have image_url, just fetch it as base64
-  if (item.source === 'upload' && item.image_url) {
-    console.log('[process] Using existing uploaded image URL');
+  // If image_url already exists (from figma plugin or upload), just fetch it as base64
+  if (item.image_url) {
+    console.log('[process] Image already uploaded, fetching as base64...');
     try {
       const response = await fetch(item.image_url);
       if (!response.ok) throw new Error('Failed to fetch image');
       const buffer = await response.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const uint8Array = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < uint8Array.length; i++) {
+        binary += String.fromCharCode(uint8Array[i]);
+      }
+      const base64 = btoa(binary);
       return { imageUrl: item.image_url, imageBase64: base64 };
     } catch (err) {
-      console.error('[process] Failed to fetch uploaded image:', err);
+      console.error('[process] Failed to fetch image from URL:', err);
       return null;
     }
   }
 
-  // For Figma source, fetch from Figma API
-  if (item.source === 'figma') {
-    const metadata = item.source_metadata;
-    const figmaToken = metadata?.figmaToken;
-    
-    if (!figmaToken) {
-      console.error('[process] No Figma token available');
-      return null;
-    }
-
-    const fileKey = metadata?.fileKey;
-    const nodeId = metadata?.nodeId;
-
-    if (!fileKey || !nodeId) {
-      console.error('[process] Missing Figma file/node info');
-      return null;
-    }
-
-    console.log('[process] Fetching from Figma:', fileKey, nodeId);
-
-    try {
-      // Get image URL from Figma API
-      const figmaApiUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=2`;
-      
-      const figmaResponse = await fetch(figmaApiUrl, {
-        headers: { 'X-Figma-Token': figmaToken }
-      });
-
-      if (!figmaResponse.ok) {
-        console.error('[process] Figma API error:', await figmaResponse.text());
-        return null;
-      }
-
-      const figmaData = await figmaResponse.json();
-      const imageUrl = figmaData.images?.[nodeId];
-
-      if (!imageUrl) {
-        console.error('[process] No image URL returned from Figma');
-        return null;
-      }
-
-      console.log('[process] Got Figma image URL, downloading...');
-
-      // Download the image
-      const imageResponse = await fetch(imageUrl);
-      if (!imageResponse.ok) throw new Error('Failed to download Figma image');
-      
-      const imageBuffer = await imageResponse.arrayBuffer();
-      const imageBase64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
-
-      // Upload to Cloudinary
-      console.log('[process] Uploading to Cloudinary...');
-      
-      const cloudinaryUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/upload-to-cloudinary';
-      const uploadResponse = await fetch(cloudinaryUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-        },
-        body: JSON.stringify({
-          imageBase64: `data:image/png;base64,${imageBase64}`,
-          folder: 'campaign-queue'
-        })
-      });
-
-      if (!uploadResponse.ok) {
-        console.error('[process] Cloudinary upload failed');
-        // Fall back to Figma URL (temporary)
-        return { imageUrl, imageBase64 };
-      }
-
-      const uploadData = await uploadResponse.json();
-      const finalUrl = uploadData.url || uploadData.secure_url || imageUrl;
-
-      return { imageUrl: finalUrl, imageBase64 };
-
-    } catch (err) {
-      console.error('[process] Figma fetch error:', err);
-      return null;
-    }
-  }
-
+  // Legacy: For items without pre-uploaded images (shouldn't happen with new flow)
+  console.error('[process] No image_url found on queue item');
   return null;
 }
 

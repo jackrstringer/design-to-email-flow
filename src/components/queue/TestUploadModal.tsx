@@ -70,7 +70,7 @@ export function TestUploadModal({ open, onClose, onSuccess }: TestUploadModalPro
       // Upload to Cloudinary
       const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
         body: {
-          imageBase64: base64Data,
+          imageData: base64Data,
           folder: 'campaign-queue'
         }
       });

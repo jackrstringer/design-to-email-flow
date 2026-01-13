@@ -6,18 +6,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface FigmaFrame {
-  fileKey: string;
-  nodeId: string;
+interface FrameData {
   name: string;
-  pageName?: string;
   width: number;
   height: number;
+  imageBase64: string; // Raw base64 or data URL
 }
 
-interface IngestRequest {
-  frames: FigmaFrame[];
+interface IngestPayload {
   pluginToken: string;
+  frames: FrameData[];
   subjectLine?: string;
   previewText?: string;
 }
@@ -29,12 +27,16 @@ serve(async (req) => {
   }
 
   try {
-    const body: IngestRequest = await req.json();
-    const { frames, pluginToken, subjectLine, previewText } = body;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const payload: IngestPayload = await req.json();
+    const { pluginToken, frames, subjectLine, previewText } = payload;
 
     console.log('[figma-ingest] Received request with', frames?.length || 0, 'frames');
 
-    // Validate input
+    // 1. Validate plugin token
     if (!pluginToken) {
       return new Response(
         JSON.stringify({ error: 'Plugin token is required' }),
@@ -42,20 +44,7 @@ serve(async (req) => {
       );
     }
 
-    if (!frames || !Array.isArray(frames) || frames.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'At least one frame is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Initialize Supabase client with service role key for admin operations
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Validate plugin token and get user_id
-    console.log('[figma-ingest] Validating plugin token...');
+    // 2. Look up token to get user_id
     const { data: tokenData, error: tokenError } = await supabase
       .from('plugin_tokens')
       .select('user_id')
@@ -73,93 +62,135 @@ serve(async (req) => {
     const userId = tokenData.user_id;
     console.log('[figma-ingest] Token valid for user:', userId);
 
-    // Update last_used_at for the token
+    // 3. Update last_used_at on the token
     await supabase
       .from('plugin_tokens')
       .update({ last_used_at: new Date().toISOString() })
       .eq('token', pluginToken);
 
-    // Get user's Figma access token from profiles
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('figma_access_token')
-      .eq('id', userId)
-      .single();
+    // 4. Validate frames
+    if (!frames || frames.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'At least one frame is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const figmaToken = profileData?.figma_access_token;
-    console.log('[figma-ingest] User has Figma token:', !!figmaToken);
-
-    // Create campaign queue entries for each frame
-    const createdIds: string[] = [];
+    // 5. Process each frame
+    const campaignIds: string[] = [];
     const errors: Array<{ frame: string; error: string }> = [];
 
     for (const frame of frames) {
-      const sourceUrl = `https://www.figma.com/file/${frame.fileKey}?node-id=${encodeURIComponent(frame.nodeId)}`;
-      
-      const queueItem = {
-        user_id: userId,
-        source: 'figma',
-        source_url: sourceUrl,
-        source_metadata: {
-          fileKey: frame.fileKey,
-          nodeId: frame.nodeId,
-          pageName: frame.pageName || null,
-          frameName: frame.name,
-          width: frame.width,
-          height: frame.height,
-          figmaToken: figmaToken || null // Pass token for processing
-        },
-        name: frame.name,
-        image_width: frame.width,
-        image_height: frame.height,
-        status: 'processing',
-        processing_step: 'queued',
-        processing_percent: 0,
-        provided_subject_line: subjectLine || null,
-        provided_preview_text: previewText || null
-      };
+      try {
+        // Validate frame has image data
+        if (!frame.imageBase64) {
+          errors.push({ frame: frame.name, error: 'Missing image data' });
+          continue;
+        }
 
-      console.log('[figma-ingest] Creating queue item for:', frame.name);
+        // Normalize base64 - add prefix if not present
+        const imageData = frame.imageBase64.startsWith('data:') 
+          ? frame.imageBase64 
+          : `data:image/png;base64,${frame.imageBase64}`;
 
-      const { data: insertedItem, error: insertError } = await supabase
-        .from('campaign_queue')
-        .insert(queueItem)
-        .select('id')
-        .single();
+        console.log('[figma-ingest] Uploading frame:', frame.name);
 
-      if (insertError) {
-        console.error('[figma-ingest] Failed to insert:', insertError);
-        errors.push({ frame: frame.name, error: insertError.message });
-        continue;
+        // Upload image to Cloudinary
+        const uploadUrl = `${supabaseUrl}/functions/v1/upload-to-cloudinary`;
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({
+            imageData,
+            folder: 'campaign-queue'
+          })
+        });
+
+        if (!uploadResponse.ok) {
+          const errText = await uploadResponse.text();
+          console.error('[figma-ingest] Cloudinary upload failed:', errText);
+          errors.push({ frame: frame.name, error: 'Failed to upload image' });
+          continue;
+        }
+
+        const uploadData = await uploadResponse.json();
+        const imageUrl = uploadData.url || uploadData.secure_url;
+
+        if (!imageUrl) {
+          errors.push({ frame: frame.name, error: 'No image URL returned from upload' });
+          continue;
+        }
+
+        console.log('[figma-ingest] Image uploaded:', imageUrl);
+
+        // Create campaign queue entry
+        const { data: campaign, error: campaignError } = await supabase
+          .from('campaign_queue')
+          .insert({
+            user_id: userId,
+            source: 'figma',
+            source_metadata: {
+              frameName: frame.name,
+              width: frame.width,
+              height: frame.height
+            },
+            name: frame.name,
+            image_url: imageUrl,
+            image_width: frame.width,
+            image_height: frame.height,
+            provided_subject_line: subjectLine || null,
+            provided_preview_text: previewText || null,
+            status: 'processing',
+            processing_step: 'queued',
+            processing_percent: 0
+          })
+          .select('id')
+          .single();
+
+        if (campaignError || !campaign) {
+          console.error('[figma-ingest] Failed to create campaign:', campaignError);
+          errors.push({ frame: frame.name, error: 'Failed to create campaign' });
+          continue;
+        }
+
+        campaignIds.push(campaign.id);
+        console.log('[figma-ingest] Created campaign:', campaign.id);
+
+        // Trigger async processing (fire and forget)
+        fetch(`${supabaseUrl}/functions/v1/process-campaign-queue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({ campaignQueueId: campaign.id })
+        }).catch(err => {
+          console.error(`[figma-ingest] Failed to trigger processing for ${campaign.id}:`, err);
+        });
+
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        console.error('[figma-ingest] Frame processing error:', message);
+        errors.push({ frame: frame.name, error: message });
       }
-
-      createdIds.push(insertedItem.id);
-
-      // Trigger async processing (fire and forget)
-      console.log('[figma-ingest] Triggering processing for:', insertedItem.id);
-      
-      // Fire and forget - don't await the processing
-      fetch(`${supabaseUrl}/functions/v1/process-campaign-queue`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({ campaignQueueId: insertedItem.id })
-      }).catch(err => {
-        console.error('[figma-ingest] Failed to trigger processing:', err);
-      });
     }
 
-    console.log('[figma-ingest] Created', createdIds.length, 'queue items');
+    console.log('[figma-ingest] Created', campaignIds.length, 'campaigns');
 
+    // 6. Return response
     return new Response(
       JSON.stringify({
-        success: true,
-        campaignIds: createdIds,
-        errors: errors.length > 0 ? errors : undefined
+        success: campaignIds.length > 0,
+        campaignIds,
+        errors: errors.length > 0 ? errors : null
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     );
 
   } catch (error) {
