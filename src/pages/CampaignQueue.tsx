@@ -93,13 +93,15 @@ export default function CampaignQueue() {
 
       {/* Main Content */}
       <main className="px-4 py-4">
-        <QueueTable
-          items={filteredItems}
-          loading={loading}
-          expandedId={expandedId}
-          onToggleExpand={handleToggleExpand}
-          onUpdate={refresh}
-        />
+        <div className="max-w-[75%] mx-auto">
+          <QueueTable
+            items={filteredItems}
+            loading={loading}
+            expandedId={expandedId}
+            onToggleExpand={handleToggleExpand}
+            onUpdate={refresh}
+          />
+        </div>
       </main>
     </div>
   );
