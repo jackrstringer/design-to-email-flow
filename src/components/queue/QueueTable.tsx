@@ -9,49 +9,56 @@ import { cn } from '@/lib/utils';
 interface QueueTableProps {
   items: CampaignQueueItem[];
   loading: boolean;
-  selectedIds: Set<string>;
   expandedId: string | null;
-  onSelectAll: (checked: boolean) => void;
-  onSelectItem: (id: string, checked: boolean) => void;
   onToggleExpand: (id: string) => void;
   onUpdate: () => void;
 }
 
 interface ColumnWidths {
   status: number;
-  preview: number;
+  thumbnail: number;
   name: number;
+  client: number;
   subject: number;
   previewText: number;
   links: number;
-  actions: number;
+  external: number;
+  spelling: number;
 }
 
 const DEFAULT_WIDTHS: ColumnWidths = {
-  status: 90,
-  preview: 50,
-  name: 180,
+  status: 100,
+  thumbnail: 40,
+  name: 200,
+  client: 120,
   subject: 200,
   previewText: 200,
   links: 60,
-  actions: 80,
+  external: 60,
+  spelling: 60,
+};
+
+const MIN_WIDTHS: ColumnWidths = {
+  status: 80,
+  thumbnail: 40,
+  name: 120,
+  client: 80,
+  subject: 150,
+  previewText: 150,
+  links: 50,
+  external: 50,
+  spelling: 50,
 };
 
 export function QueueTable({
   items,
   loading,
-  selectedIds,
   expandedId,
-  onSelectAll,
-  onSelectItem,
   onToggleExpand,
   onUpdate,
 }: QueueTableProps) {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const [resizing, setResizing] = useState<keyof ColumnWidths | null>(null);
-
-  const allSelected = items.length > 0 && items.every(item => selectedIds.has(item.id));
-  const someSelected = items.some(item => selectedIds.has(item.id));
 
   const handleResizeStart = (column: keyof ColumnWidths) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -62,7 +69,7 @@ export function QueueTable({
 
     const handleMouseMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
-      const newWidth = Math.max(40, startWidth + delta);
+      const newWidth = Math.max(MIN_WIDTHS[column], startWidth + delta);
       setColumnWidths(prev => ({ ...prev, [column]: newWidth }));
     };
 
@@ -78,27 +85,33 @@ export function QueueTable({
 
   if (loading) {
     return (
-      <div className="border rounded-md overflow-hidden">
-        <div className="grid grid-cols-[32px_90px_50px_1fr_1fr_1fr_60px_80px] text-xs font-medium text-muted-foreground bg-muted/30 border-b">
-          <div className="px-2 py-2"></div>
-          <div className="px-2 py-2">Status</div>
-          <div className="px-2 py-2">Preview</div>
-          <div className="px-2 py-2">Name</div>
-          <div className="px-2 py-2">Subject Line</div>
-          <div className="px-2 py-2">Preview Text</div>
-          <div className="px-2 py-2">Links</div>
-          <div className="px-2 py-2">Actions</div>
+      <div className="border-t border-gray-200">
+        {/* Header */}
+        <div className="flex h-8 items-center bg-white border-b border-gray-200 text-[13px] text-gray-500 font-normal">
+          <div className="w-8 flex-shrink-0 px-2" />
+          <div className="px-2" style={{ width: 100 }}>Status</div>
+          <div className="px-2" style={{ width: 40 }} />
+          <div className="px-2" style={{ width: 200 }}>Name</div>
+          <div className="px-2" style={{ width: 120 }}>Client</div>
+          <div className="px-2 flex-1" style={{ minWidth: 200 }}>Subject Line</div>
+          <div className="px-2 flex-1" style={{ minWidth: 200 }}>Preview Text</div>
+          <div className="px-2 text-center" style={{ width: 60 }}>Links</div>
+          <div className="px-2 text-center" style={{ width: 60 }}>External</div>
+          <div className="px-2 text-center" style={{ width: 60 }}>Spelling</div>
         </div>
+        {/* Skeleton rows */}
         {[1, 2, 3].map((i) => (
-          <div key={i} className="grid grid-cols-[32px_90px_50px_1fr_1fr_1fr_60px_80px] border-b last:border-b-0">
-            <div className="px-2 py-2"><Skeleton className="h-4 w-4" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-5 w-16" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-10 w-8" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-4 w-28" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-4 w-36" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-4 w-36" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-4 w-8" /></div>
-            <div className="px-2 py-2"><Skeleton className="h-6 w-14" /></div>
+          <div key={i} className="flex h-10 items-center border-b border-gray-100">
+            <div className="w-8 flex-shrink-0 px-2"><Skeleton className="h-4 w-4" /></div>
+            <div className="px-2" style={{ width: 100 }}><Skeleton className="h-5 w-14" /></div>
+            <div className="px-2" style={{ width: 40 }}><Skeleton className="h-8 w-6" /></div>
+            <div className="px-2" style={{ width: 200 }}><Skeleton className="h-4 w-28" /></div>
+            <div className="px-2" style={{ width: 120 }}><Skeleton className="h-4 w-20" /></div>
+            <div className="px-2 flex-1"><Skeleton className="h-4 w-36" /></div>
+            <div className="px-2 flex-1"><Skeleton className="h-4 w-36" /></div>
+            <div className="px-2" style={{ width: 60 }}><Skeleton className="h-4 w-6 mx-auto" /></div>
+            <div className="px-2" style={{ width: 60 }}><Skeleton className="h-4 w-4 mx-auto" /></div>
+            <div className="px-2" style={{ width: 60 }}><Skeleton className="h-4 w-4 mx-auto" /></div>
           </div>
         ))}
       </div>
@@ -107,9 +120,9 @@ export function QueueTable({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-md border p-12 text-center">
-        <p className="text-muted-foreground">No campaigns in queue</p>
-        <p className="text-sm text-muted-foreground mt-1">
+      <div className="border border-gray-200 rounded p-12 text-center">
+        <p className="text-gray-500 text-sm">No campaigns in queue</p>
+        <p className="text-gray-400 text-xs mt-1">
           Upload a campaign or send one from Figma to get started
         </p>
       </div>
@@ -117,83 +130,142 @@ export function QueueTable({
   }
 
   return (
-    <div className="border rounded-md">
-      {/* Header */}
+    <div className="border-t border-gray-200">
+      {/* Header - Airtable style */}
       <div 
-        className="flex text-xs font-medium text-muted-foreground bg-muted/30 border-b select-none"
+        className="flex h-8 items-center bg-white border-b border-gray-200 select-none"
         style={{ cursor: resizing ? 'col-resize' : 'default' }}
       >
-        <div className="w-8 flex-shrink-0 px-2 py-2 flex items-center">
-          <Checkbox
-            checked={allSelected}
-            onCheckedChange={onSelectAll}
-            aria-label="Select all"
-            {...(someSelected && !allSelected ? { 'data-state': 'indeterminate' } : {})}
-          />
+        {/* Checkbox column */}
+        <div className="w-8 flex-shrink-0 px-2 flex items-center">
+          {/* No select all for now to keep it minimal */}
         </div>
+
+        {/* Status */}
         <div 
-          className="relative flex items-center px-2 py-2 border-r border-transparent hover:border-border"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ width: columnWidths.status }}
         >
           Status
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20"
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
             onMouseDown={handleResizeStart('status')}
           />
         </div>
+
+        {/* Thumbnail */}
         <div 
-          className="relative flex items-center px-2 py-2 border-r border-transparent hover:border-border"
-          style={{ width: columnWidths.preview }}
+          className="relative flex items-center px-2"
+          style={{ width: columnWidths.thumbnail }}
         >
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20"
-            onMouseDown={handleResizeStart('preview')}
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
+            onMouseDown={handleResizeStart('thumbnail')}
           />
         </div>
+
+        {/* Name */}
         <div 
-          className="relative flex items-center px-2 py-2 border-r border-transparent hover:border-border"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ width: columnWidths.name }}
         >
           Name
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20"
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
             onMouseDown={handleResizeStart('name')}
           />
         </div>
+
+        {/* Client */}
         <div 
-          className="relative flex-1 min-w-0 flex items-center px-2 py-2 border-r border-transparent hover:border-border"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.client }}
+        >
+          Client
+          <div 
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
+            onMouseDown={handleResizeStart('client')}
+          />
+        </div>
+
+        {/* Subject Line */}
+        <div 
+          className="relative flex-1 min-w-0 flex items-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ minWidth: columnWidths.subject }}
         >
           Subject Line
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20"
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
             onMouseDown={handleResizeStart('subject')}
           />
         </div>
+
+        {/* Preview Text */}
         <div 
-          className="relative flex-1 min-w-0 flex items-center px-2 py-2 border-r border-transparent hover:border-border"
+          className="relative flex-1 min-w-0 flex items-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ minWidth: columnWidths.previewText }}
         >
           Preview Text
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20"
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
             onMouseDown={handleResizeStart('previewText')}
           />
         </div>
+
+        {/* Links */}
         <div 
-          className="relative flex items-center px-2 py-2 border-r border-transparent hover:border-border"
+          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ width: columnWidths.links }}
         >
           Links
           <div 
-            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/20"
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
             onMouseDown={handleResizeStart('links')}
           />
         </div>
+
+        {/* External */}
         <div 
-          className="flex items-center px-2 py-2"
-          style={{ width: columnWidths.actions }}
+          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.external }}
         >
+          External
+          <div 
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
+            onMouseDown={handleResizeStart('external')}
+          />
+        </div>
+
+        {/* Spelling */}
+        <div 
+          className="flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.spelling }}
+        >
+          Spelling
         </div>
       </div>
 
@@ -203,10 +275,9 @@ export function QueueTable({
           <React.Fragment key={item.id}>
             <QueueRow
               item={item}
-              selected={selectedIds.has(item.id)}
               isExpanded={expandedId === item.id}
-              onSelect={(checked) => onSelectItem(item.id, checked)}
               onToggleExpand={() => onToggleExpand(item.id)}
+              onUpdate={onUpdate}
               columnWidths={columnWidths}
             />
             {expandedId === item.id && (

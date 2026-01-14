@@ -1,49 +1,43 @@
-import { Checkbox } from '@/components/ui/checkbox';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { StatusBadge } from './StatusBadge';
-import { LinksTooltip } from './LinksTooltip';
+import { StatusSelector } from './StatusSelector';
 import { InlineEditableText } from './InlineEditableText';
 import { InlineDropdownSelector } from './InlineDropdownSelector';
+import { ExternalLinksIndicator } from './ExternalLinksIndicator';
+import { SpellingIndicator } from './SpellingIndicator';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
-import { ChevronDown, ChevronUp, ExternalLink, RotateCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface ColumnWidths {
   status: number;
-  preview: number;
+  thumbnail: number;
   name: number;
+  client: number;
   subject: number;
   previewText: number;
   links: number;
-  actions: number;
+  external: number;
+  spelling: number;
 }
 
 interface QueueRowProps {
   item: CampaignQueueItem;
-  selected: boolean;
   isExpanded: boolean;
-  onSelect: (checked: boolean) => void;
   onToggleExpand: () => void;
+  onUpdate: () => void;
   columnWidths: ColumnWidths;
 }
 
-export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand, columnWidths }: QueueRowProps) {
+export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWidths }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
-  const missingLinks = slices.filter(s => !s.link).length;
 
-  // Convert qa_flags object to array for display
-  const qaFlagsArray = item.qa_flags && typeof item.qa_flags === 'object' && !Array.isArray(item.qa_flags)
-    ? Object.entries(item.qa_flags as Record<string, unknown>)
-        .filter(([_, value]) => Boolean(value))
-        .map(([key]) => ({ type: key }))
-    : null;
-
-  // Get brand name from joined data
+  // Get brand info from joined data
   const brandName = (item as any).brands?.name;
+  const brandDomain = (item as any).brands?.domain;
+
+  // Parse spelling errors
+  const spellingErrors = item.spelling_errors as Array<{ text: string }> | null;
 
   const handleNameSave = async (newName: string) => {
     const { error } = await supabase
@@ -55,6 +49,7 @@ export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand,
       toast.error('Failed to update name');
       return false;
     }
+    onUpdate();
     return true;
   };
 
@@ -68,6 +63,7 @@ export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand,
       toast.error('Failed to update subject line');
       return false;
     }
+    onUpdate();
     return true;
   };
 
@@ -81,111 +77,80 @@ export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand,
       toast.error('Failed to update preview text');
       return false;
     }
+    onUpdate();
     return true;
-  };
-
-  const handleRetryClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    const { error: updateError } = await supabase
-      .from('campaign_queue')
-      .update({
-        status: 'processing',
-        processing_step: 'retrying',
-        processing_percent: 0,
-        error_message: null,
-        retry_count: (item.retry_count || 0) + 1
-      })
-      .eq('id', item.id);
-
-    if (updateError) {
-      toast.error('Failed to start retry');
-      return;
-    }
-
-    supabase.functions.invoke('process-campaign-queue', {
-      body: { campaignQueueId: item.id }
-    });
-
-    toast.success('Retrying...');
   };
 
   return (
     <div 
       className={cn(
-        "flex items-center transition-colors cursor-pointer border-b last:border-b-0",
-        "hover:bg-muted/40",
-        isExpanded && "bg-muted/30 border-b-0"
+        "flex h-10 items-center bg-white border-b border-gray-100 text-[13px] text-gray-900",
+        "hover:bg-gray-50 transition-colors cursor-pointer",
+        isExpanded && "bg-blue-50/50 border-b-blue-100"
       )}
       onClick={onToggleExpand}
     >
-      {/* Checkbox */}
-      <div className="w-8 flex-shrink-0 px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
-        <Checkbox
-          checked={selected}
-          onCheckedChange={onSelect}
-          aria-label={`Select ${item.name || 'campaign'}`}
-        />
+      {/* Checkbox column - placeholder for alignment */}
+      <div className="w-8 flex-shrink-0 px-2" onClick={(e) => e.stopPropagation()}>
+        {/* Checkbox removed for cleaner look - row click selects */}
       </div>
       
       {/* Status */}
       <div 
-        className="px-2 py-1.5 flex-shrink-0" 
+        className="px-2 flex-shrink-0" 
         style={{ width: columnWidths.status }}
         onClick={(e) => e.stopPropagation()}
       >
-        <StatusBadge 
-          status={item.status} 
-          processingStep={item.processing_step}
-          processingPercent={item.processing_percent}
-          qaFlags={qaFlagsArray}
-        />
+        <StatusSelector item={item} onUpdate={onUpdate} />
       </div>
       
-      {/* Preview Thumbnail */}
-      <div className="px-2 py-1 flex-shrink-0" style={{ width: columnWidths.preview }}>
+      {/* Thumbnail */}
+      <div className="px-2 flex-shrink-0" style={{ width: columnWidths.thumbnail }}>
         {item.image_url ? (
           <img
             src={item.image_url}
             alt={item.name || 'Campaign preview'}
-            className="h-10 w-7 object-cover object-top rounded border"
+            className="h-7 w-5 object-cover object-top rounded-sm border border-gray-200"
           />
         ) : (
-          <div className="h-10 w-7 bg-muted rounded border flex items-center justify-center">
-            <span className="text-[10px] text-muted-foreground">—</span>
-          </div>
+          <div className="h-7 w-5 bg-gray-100 rounded-sm border border-gray-200" />
         )}
       </div>
       
       {/* Name */}
       <div 
-        className="px-2 py-1.5 flex-shrink-0 min-w-0" 
+        className="group relative px-2 flex-shrink-0 min-w-0" 
         style={{ width: columnWidths.name }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="truncate">
-          <InlineEditableText
-            value={item.name || 'Untitled Campaign'}
-            onSave={handleNameSave}
-          />
-          <div className="flex items-center gap-1 mt-0.5">
-            {brandName && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 font-normal">
-                {brandName}
-              </Badge>
-            )}
-            <span className="text-[10px] text-muted-foreground">
-              {item.source === 'figma' && 'Figma'}
-              {item.source === 'upload' && 'Upload'}
-              {item.source === 'clickup' && 'ClickUp'}
-            </span>
-          </div>
-        </div>
+        <InlineEditableText
+          value={item.name || 'Untitled Campaign'}
+          onSave={handleNameSave}
+          className="text-[13px]"
+        />
+        {/* Open button on hover */}
+        <button
+          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-[11px] text-blue-600 hover:underline transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand();
+          }}
+        >
+          Open ›
+        </button>
+      </div>
+      
+      {/* Client (Brand Name) */}
+      <div 
+        className="px-2 flex-shrink-0 truncate text-gray-600" 
+        style={{ width: columnWidths.client }}
+      >
+        {brandName || '—'}
       </div>
       
       {/* Subject Line */}
       <div 
-        className="flex-1 min-w-0 px-2 py-1.5" 
+        className="flex-1 min-w-0 px-2" 
         style={{ minWidth: columnWidths.subject }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -202,7 +167,7 @@ export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand,
 
       {/* Preview Text */}
       <div 
-        className="flex-1 min-w-0 px-2 py-1.5" 
+        className="flex-1 min-w-0 px-2" 
         style={{ minWidth: columnWidths.previewText }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -217,62 +182,30 @@ export function QueueRow({ item, selected, isExpanded, onSelect, onToggleExpand,
         />
       </div>
       
-      {/* Links */}
+      {/* Links - just count */}
       <div 
-        className="px-2 py-1.5 flex-shrink-0" 
+        className="px-2 flex-shrink-0 text-center text-gray-600" 
         style={{ width: columnWidths.links }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <LinksTooltip
-          slices={slices}
-          linkCount={linkCount}
-          missingLinks={missingLinks}
-        />
+        {linkCount > 0 ? linkCount : '—'}
       </div>
       
-      {/* Actions */}
+      {/* External Links Indicator */}
       <div 
-        className="px-2 py-1.5 flex-shrink-0" 
-        style={{ width: columnWidths.actions }}
+        className="px-2 flex-shrink-0" 
+        style={{ width: columnWidths.external }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-0.5">
-          {item.status === 'failed' && (
-            <Button size="sm" variant="ghost" onClick={handleRetryClick} className="h-6 w-6 p-0">
-              <RotateCw className="h-3 w-3" />
-            </Button>
-          )}
-          
-          {item.klaviyo_campaign_url && (
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              className="h-6 w-6 p-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(item.klaviyo_campaign_url!, '_blank');
-              }}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
-          )}
-
-          <Button 
-            size="sm" 
-            variant="ghost" 
-            className="h-6 w-6 p-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand();
-            }}
-          >
-            {isExpanded ? (
-              <ChevronUp className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
+        <ExternalLinksIndicator slices={slices} brandDomain={brandDomain} />
+      </div>
+      
+      {/* Spelling Indicator */}
+      <div 
+        className="px-2 flex-shrink-0" 
+        style={{ width: columnWidths.spelling }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SpellingIndicator spellingErrors={spellingErrors} />
       </div>
     </div>
   );

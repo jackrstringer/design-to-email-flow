@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 interface InlineEditableTextProps {
@@ -57,14 +56,19 @@ export function InlineEditableText({
 
   if (isEditing) {
     return (
-      <Input
+      <input
         ref={inputRef}
         value={editValue}
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
         disabled={isSaving}
-        className={cn("h-7 py-1 text-sm", className)}
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          "w-full bg-white text-[13px] text-gray-900 outline-none px-1 py-0.5",
+          "ring-2 ring-blue-500 ring-inset rounded-sm",
+          className
+        )}
       />
     );
   }
@@ -76,8 +80,9 @@ export function InlineEditableText({
         setIsEditing(true);
       }}
       className={cn(
-        "cursor-text hover:bg-muted/50 px-1 py-0.5 rounded truncate block max-w-[200px]",
-        !value && "text-muted-foreground italic",
+        "cursor-text px-1 py-0.5 rounded-sm truncate block text-[13px] text-gray-900",
+        "hover:ring-1 hover:ring-gray-300 hover:ring-inset transition-shadow",
+        !value && "text-gray-400 italic",
         className
       )}
     >

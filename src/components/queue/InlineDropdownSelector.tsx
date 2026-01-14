@@ -132,7 +132,13 @@ export function InlineDropdownSelector({
   const displayValue = editValue || selected || '';
 
   return (
-    <div className="group flex items-center gap-0.5" style={{ maxWidth }}>
+    <div 
+      className={cn(
+        "group flex items-center gap-0.5 rounded-sm transition-shadow",
+        isEditing && "ring-2 ring-blue-500 ring-inset"
+      )} 
+      style={{ maxWidth }}
+    >
       {isEditing ? (
         <input
           ref={inputRef}
@@ -141,8 +147,7 @@ export function InlineDropdownSelector({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           className={cn(
-            "flex-1 min-w-0 bg-transparent border-b border-primary/60 outline-none text-sm py-0.5",
-            "focus:border-primary"
+            "flex-1 min-w-0 bg-white outline-none text-[13px] text-gray-900 px-1 py-0.5"
           )}
           placeholder={placeholder}
           disabled={isSaving}
@@ -152,9 +157,8 @@ export function InlineDropdownSelector({
         <span
           onClick={handleTextClick}
           className={cn(
-            "text-sm truncate cursor-text rounded px-1 py-0.5 -mx-1 transition-colors flex-1 min-w-0",
-            "hover:bg-muted/60",
-            !displayValue && "text-muted-foreground italic"
+            "text-[13px] truncate cursor-text px-1 py-0.5 flex-1 min-w-0 text-gray-900",
+            !displayValue && "text-gray-400 italic"
           )}
           title={displayValue || placeholder}
         >
@@ -163,7 +167,7 @@ export function InlineDropdownSelector({
       )}
 
       {isSaving && (
-        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
+        <Loader2 className="h-3 w-3 animate-spin text-gray-400 shrink-0" />
       )}
 
       {!isSaving && allOptions.length > 0 && (
@@ -175,24 +179,24 @@ export function InlineDropdownSelector({
               className={cn(
                 "p-0.5 rounded transition-all shrink-0",
                 "opacity-0 group-hover:opacity-100",
-                "hover:bg-muted",
-                open && "opacity-100 bg-muted",
+                "hover:bg-gray-100",
+                open && "opacity-100 bg-gray-100",
                 isEditing && "hidden"
               )}
               aria-label="Select from options"
             >
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
             </button>
           </PopoverTrigger>
           <PopoverContent 
-            className="w-[400px] p-0 z-50" 
+            className="w-[400px] p-0 z-50 bg-white" 
             align="start"
             sideOffset={4}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-3 py-2 border-b bg-muted/30">
-              <p className="text-xs text-muted-foreground">
-                {allOptions.length} option{allOptions.length !== 1 ? 's' : ''} available
+            <div className="px-3 py-2 border-b bg-gray-50">
+              <p className="text-[11px] text-gray-500 font-medium">
+                {allOptions.length} AI-generated option{allOptions.length !== 1 ? 's' : ''}
               </p>
             </div>
             <div className="max-h-72 overflow-y-auto p-1">
@@ -203,18 +207,18 @@ export function InlineDropdownSelector({
                     key={i}
                     onClick={() => handleSelect(opt.value)}
                     className={cn(
-                      "w-full flex items-start gap-2 px-2 py-2 text-sm text-left rounded transition-colors",
-                      "hover:bg-muted",
-                      isSelected && "bg-primary/10"
+                      "w-full flex items-start gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-900",
+                      "hover:bg-gray-100",
+                      isSelected && "bg-blue-50"
                     )}
                   >
                     <div className="w-4 shrink-0 pt-0.5">
-                      {isSelected && <Check className="h-4 w-4 text-primary" />}
+                      {isSelected && <Check className="h-4 w-4 text-blue-600" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="leading-snug break-words">{opt.value}</p>
                       {opt.source === 'provided' && (
-                        <span className="text-xs text-muted-foreground mt-0.5 block">From Figma</span>
+                        <span className="text-[11px] text-gray-500 mt-0.5 block">From Figma</span>
                       )}
                     </div>
                   </button>
