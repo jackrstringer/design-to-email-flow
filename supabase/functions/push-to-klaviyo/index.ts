@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,10 +23,13 @@ serve(async (req) => {
   }
 
   try {
+    const body = await req.json();
     const { 
       imageUrl, 
-      templateName, 
+      templateName,
+      campaignName, // Legacy field alias for templateName
       klaviyoApiKey, 
+      brandId, // Legacy field - used to fetch klaviyoApiKey server-side
       footerHtml, 
       mode = 'template', 
       listId, 
@@ -34,24 +38,100 @@ serve(async (req) => {
       excludedSegments,
       subjectLine,
       previewText,
-    } = await req.json();
+    } = body;
 
     // Support both single image and slices array
     const hasSlices = Array.isArray(slices) && slices.length > 0;
+    
+    // Resolve templateName (support legacy campaignName field)
+    const resolvedTemplateName = templateName || campaignName;
+    
+    // Initialize resolved values
+    let resolvedKlaviyoApiKey = klaviyoApiKey;
+    let resolvedFooterHtml = footerHtml;
+    
+    // If klaviyoApiKey not provided but brandId is, fetch from database
+    if (!resolvedKlaviyoApiKey && brandId) {
+      console.log(`Fetching klaviyo_api_key from brand: ${brandId}`);
+      
+      // Extract user ID from JWT for authorization
+      const authHeader = req.headers.get('Authorization');
+      let userId: string | null = null;
+      
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.replace('Bearer ', '');
+          const payloadBase64 = token.split('.')[1];
+          const payload = JSON.parse(atob(payloadBase64));
+          userId = payload.sub;
+        } catch (e) {
+          console.error('Failed to decode JWT:', e);
+        }
+      }
+      
+      // Fetch brand data using service role
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+      
+      const { data: brand, error: brandError } = await supabase
+        .from('brands')
+        .select('klaviyo_api_key, footer_html, user_id')
+        .eq('id', brandId)
+        .single();
+      
+      if (brandError || !brand) {
+        return new Response(
+          JSON.stringify({ error: 'Brand not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Authorization check: ensure caller owns this brand
+      if (userId && brand.user_id && brand.user_id !== userId) {
+        return new Response(
+          JSON.stringify({ error: 'Not authorized for this brand' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!brand.klaviyo_api_key) {
+        return new Response(
+          JSON.stringify({ error: 'Brand does not have a Klaviyo API key configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      resolvedKlaviyoApiKey = brand.klaviyo_api_key;
+      resolvedFooterHtml = resolvedFooterHtml || brand.footer_html;
+      console.log(`Resolved klaviyo_api_key from brand, footer included: ${!!resolvedFooterHtml}`);
+    }
 
-    if ((!imageUrl && !hasSlices) || !templateName || !klaviyoApiKey) {
+    // Validate required fields
+    const receivedKeys = Object.keys(body);
+    console.log(`Received keys: ${receivedKeys.join(', ')}, hasSlices: ${hasSlices}, hasImageUrl: ${!!imageUrl}`);
+    
+    if ((!imageUrl && !hasSlices) || !resolvedTemplateName || !resolvedKlaviyoApiKey) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: imageUrl or slices, templateName, klaviyoApiKey' }),
+        JSON.stringify({ 
+          error: 'Missing required fields: imageUrl or slices, templateName, klaviyoApiKey',
+          receivedKeys,
+          hasImageUrl: !!imageUrl,
+          hasSlices,
+          hasTemplateName: !!resolvedTemplateName,
+          hasKlaviyoApiKey: !!resolvedKlaviyoApiKey
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Creating Klaviyo template: ${templateName}`);
-    console.log(`Mode: ${mode}, Footer included: ${!!footerHtml}, Slices: ${hasSlices ? slices.length : 0}`);
+    console.log(`Creating Klaviyo template: ${resolvedTemplateName}`);
+    console.log(`Mode: ${mode}, Footer included: ${!!resolvedFooterHtml}, Slices: ${hasSlices ? slices.length : 0}`);
 
     // Dark mode CSS for footer - only override text colors, NOT background colors
     // Background colors are controlled by inline styles to allow AI modifications
-    const darkModeCss = footerHtml ? `
+    const darkModeCss = resolvedFooterHtml ? `
   <style type="text/css">
     :root {
       color-scheme: light dark;
@@ -63,7 +143,7 @@ serve(async (req) => {
   </style>` : '';
 
     // Footer section - inject directly since footerHtml contains proper <tr> elements
-    const footerSection = footerHtml ? footerHtml : '';
+    const footerSection = resolvedFooterHtml ? resolvedFooterHtml : '';
 
     // Build image content - either single image or multiple slices (with column support)
     let imageContent: string;
@@ -170,7 +250,7 @@ serve(async (req) => {
       imageContent = `<tr>
             <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
               <div class="klaviyo-block klaviyo-image-block">
-                <img src="${imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${templateName}" />
+                <img src="${imageUrl}" width="600" style="display: block; width: 100%; height: auto;" alt="${resolvedTemplateName}" />
               </div>
             </td>
           </tr>`;
@@ -182,7 +262,7 @@ serve(async (req) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${templateName}</title>${darkModeCss}
+  <title>${resolvedTemplateName}</title>${darkModeCss}
 </head>
 <body style="margin: 0; padding: 0; background-color: #ffffff;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff;">
@@ -201,7 +281,7 @@ serve(async (req) => {
     const response = await fetch('https://a.klaviyo.com/api/templates', {
       method: 'POST',
       headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+        'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
         'Content-Type': 'application/json',
         'revision': '2025-01-15'
       },
@@ -209,7 +289,7 @@ serve(async (req) => {
         data: {
           type: 'template',
           attributes: {
-            name: templateName,
+            name: resolvedTemplateName,
             editor_type: 'USER_DRAGGABLE',
             html: html
           }
@@ -273,7 +353,7 @@ serve(async (req) => {
     const campaignResponse = await fetch('https://a.klaviyo.com/api/campaigns', {
       method: 'POST',
       headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+        'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
         'Content-Type': 'application/vnd.api+json',
         'accept': 'application/vnd.api+json',
         'revision': '2025-10-15'
@@ -282,7 +362,7 @@ serve(async (req) => {
         data: {
           type: 'campaign',
           attributes: {
-            name: templateName,
+            name: resolvedTemplateName,
             audiences: {
               included: included,
               excluded: excluded
@@ -300,7 +380,7 @@ serve(async (req) => {
                   attributes: {
                     definition: {
                       channel: 'email',
-                      label: templateName,
+                      label: resolvedTemplateName,
                       content: {
                         subject: emailSubject,
                         preview_text: emailPreview,
@@ -367,7 +447,7 @@ serve(async (req) => {
     const assignResponse = await fetch('https://a.klaviyo.com/api/campaign-message-assign-template', {
       method: 'POST',
       headers: {
-        'Authorization': `Klaviyo-API-Key ${klaviyoApiKey}`,
+        'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
         'Content-Type': 'application/vnd.api+json',
         'accept': 'application/vnd.api+json',
         'revision': '2025-10-15'
