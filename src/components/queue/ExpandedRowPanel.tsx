@@ -284,7 +284,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
 
   return (
-    <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200">
+    <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200 overflow-x-hidden">
       {/* TOP ROW - Compact controls bar */}
       <div className="flex items-start gap-4 mb-4">
         {/* Inbox Preview - compact */}
@@ -446,7 +446,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             No slices. Try reprocessing.
           </div>
         ) : (
-          <div className="p-3">
+          <div className="p-3 overflow-x-hidden">
             {slices.map((slice, index) => {
               const hasLink = slice.link !== null && slice.link !== undefined;
               const isEditingAlt = editingAltIndex === index;
@@ -587,19 +587,21 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       )}
                     </div>
                     
-                    {/* Right: Image - flexible, constrained */}
+                    {/* Right: Image - constrained */}
                     <div className="flex-1 min-w-0">
-                      {slice.imageUrl ? (
-                        <img 
-                          src={slice.imageUrl} 
-                          alt={slice.altText || `Slice ${index + 1}`}
-                          className="max-w-full h-auto rounded border border-border/30"
-                        />
-                      ) : (
-                        <div className="h-20 max-w-full flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
-                          No image
-                        </div>
-                      )}
+                      <div className="w-full max-w-[400px]">
+                        {slice.imageUrl ? (
+                          <img 
+                            src={slice.imageUrl} 
+                            alt={slice.altText || `Slice ${index + 1}`}
+                            className="w-full h-auto max-w-full object-contain rounded border border-border/30"
+                          />
+                        ) : (
+                          <div className="h-20 w-full max-w-full flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
+                            No image
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
