@@ -235,6 +235,13 @@ async function cropAndUploadSlices(
     const imageBytes = base64ToBytes(imageBase64);
     const fullImage = await Image.decode(imageBytes);
 
+    // CRITICAL FIX: Use actual decoded image dimensions, NOT the passed parameters
+    // The passed imageWidth/imageHeight may be wrong (1x vs 2x retina mismatch)
+    const actualWidth = fullImage.width;
+    const actualHeight = fullImage.height;
+    
+    console.log(`[process] Actual image dimensions: ${actualWidth}x${actualHeight} (passed: ${imageWidth}x${imageHeight})`);
+
     const uploadedSlices: any[] = [];
 
     for (let i = 0; i < sliceBoundaries.length; i++) {
@@ -243,10 +250,10 @@ async function cropAndUploadSlices(
       const yBottom = slice.yBottom;
       const height = yBottom - yTop;
       
-      console.log(`[process] Cropping slice ${i + 1}/${sliceBoundaries.length}: y=${yTop}-${yBottom}, h=${height}`);
+      console.log(`[process] Cropping slice ${i + 1}/${sliceBoundaries.length}: y=${yTop}-${yBottom}, h=${height}, w=${actualWidth}`);
 
-      // Clone and crop the slice region
-      const sliceImage = fullImage.clone().crop(0, yTop, imageWidth, height);
+      // Clone and crop the slice region - use ACTUAL width from decoded image
+      const sliceImage = fullImage.clone().crop(0, yTop, actualWidth, height);
       
       // Encode as JPEG (matches client-side sliceImage which uses JPEG)
       const sliceBytes = await sliceImage.encodeJPEG(90);
@@ -276,10 +283,10 @@ async function cropAndUploadSlices(
         ...slice,
         imageUrl: uploadResult?.url || null,
         dataUrl: sliceDataUrl,
-        width: imageWidth,
+        width: actualWidth,
         height: height,
-        startPercent: (yTop / imageHeight) * 100,
-        endPercent: (yBottom / imageHeight) * 100,
+        startPercent: (yTop / actualHeight) * 100,
+        endPercent: (yBottom / actualHeight) * 100,
         type: slice.hasCta ? 'cta' : 'image',
       });
     }
