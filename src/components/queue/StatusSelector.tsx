@@ -32,6 +32,19 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
       setOpen(false);
 
       try {
+        // Fetch brand data including klaviyo_api_key
+        const { data: brand, error: brandError } = await supabase
+          .from('brands')
+          .select('klaviyo_api_key, footer_html')
+          .eq('id', item.brand_id)
+          .single();
+
+        if (brandError || !brand?.klaviyo_api_key) {
+          toast.error('Brand Klaviyo API key not configured');
+          setIsUpdating(false);
+          return;
+        }
+
         // First update to approved
         await supabase
           .from('campaign_queue')
@@ -41,12 +54,14 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
         // Then push to Klaviyo
         const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
           body: {
-            brandId: item.brand_id,
-            campaignName: item.name,
+            templateName: item.name,
+            klaviyoApiKey: brand.klaviyo_api_key,
             subjectLine: item.selected_subject_line,
             previewText: item.selected_preview_text,
             slices: item.slices,
-            imageUrl: item.image_url
+            imageUrl: item.image_url,
+            footerHtml: brand.footer_html,
+            mode: 'campaign'
           }
         });
 
