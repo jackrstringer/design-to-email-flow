@@ -436,7 +436,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       <Separator className="mb-4" />
 
       {/* MAIN CONTENT - CampaignStudio-style slice rows */}
-      <div className="border border-border rounded-lg overflow-hidden bg-background">
+      <div className="border border-border rounded-lg bg-background overflow-x-hidden">
         <div className="text-[10px] font-medium text-muted-foreground p-2 border-b bg-muted/30">
           Slice Details ({slices.length})
         </div>
@@ -470,7 +470,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                     </div>
                   )}
                   
-                  <div className="flex items-start gap-4 py-3 overflow-hidden">
+                  <div className="flex items-start gap-4 py-3">
                     {/* Left: Details Column - fixed width */}
                     <div className="w-44 flex-shrink-0 space-y-2">
                       {/* Type Toggle Pills */}
@@ -587,21 +587,19 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       )}
                     </div>
                     
-                    {/* Right: Image - constrained */}
-                    <div className="flex-1 min-w-0">
-                      <div className="w-full max-w-[400px]">
-                        {slice.imageUrl ? (
-                          <img 
-                            src={slice.imageUrl} 
-                            alt={slice.altText || `Slice ${index + 1}`}
-                            className="w-full h-auto max-w-full object-contain rounded border border-border/30"
-                          />
-                        ) : (
-                          <div className="h-20 w-full max-w-full flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
-                            No image
-                          </div>
-                        )}
-                      </div>
+                    {/* Right: Image - constrained with calc width */}
+                    <div style={{ width: 'calc(100% - 176px - 16px)', maxWidth: '400px' }}>
+                      {slice.imageUrl ? (
+                        <img 
+                          src={slice.imageUrl} 
+                          alt={slice.altText || `Slice ${index + 1}`}
+                          className="w-full h-auto rounded border border-border/30"
+                        />
+                      ) : (
+                        <div className="h-20 w-full flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
+                          No image
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

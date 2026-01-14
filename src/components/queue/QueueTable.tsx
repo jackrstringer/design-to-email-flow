@@ -117,7 +117,7 @@ export function QueueTable({
   }
 
   return (
-    <div className="border rounded-md overflow-hidden">
+    <div className="border rounded-md">
       {/* Header */}
       <div 
         className="flex text-xs font-medium text-muted-foreground bg-muted/30 border-b select-none"
