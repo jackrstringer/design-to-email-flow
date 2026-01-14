@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, CheckCircle } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
-import { EditableSliceRow } from './EditableSliceRow';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
-import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import type { ProcessedSlice } from '@/types/slice';
 
 interface ExpandedRowPanelProps {
   item: CampaignQueueItem;
@@ -263,16 +261,24 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   );
   const allHaveAltText = hasSlices && slicesWithPlaceholderAlt.length === 0;
 
-  // Convert slices to ProcessedSlice format for CampaignPreviewFrame
-  const previewSlices: ProcessedSlice[] = slices.map((s, i) => ({
-    imageUrl: s.imageUrl || '',
-    altText: s.altText || `Slice ${i + 1}`,
-    link: s.link || null,
-    isClickable: !!s.link,
-    type: 'image' as const,
-    yStartPercent: s.yStartPercent || 0,
-    yEndPercent: s.yEndPercent || 100,
-  }));
+  // Toggle link for a slice
+  const toggleSliceLink = (index: number) => {
+    const slice = slices[index];
+    if (slice.link !== null && slice.link !== undefined) {
+      updateSlice(index, { link: null });
+    } else {
+      updateSlice(index, { link: '' });
+    }
+  };
+
+  // Check if alt text is placeholder
+  const hasPlaceholderAlt = (altText?: string) => {
+    if (!altText) return true;
+    return placeholderPattern.test(altText.trim());
+  };
+
+  // Editing state for alt text
+  const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
 
   return (
     <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200">
@@ -426,52 +432,138 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
 
       <Separator className="mb-4" />
 
-      {/* MAIN CONTENT - Two column layout like legacy */}
-      <div className="flex gap-6">
-        {/* Left: Full email preview (40%) - NO vertical cutoff */}
-        <div className="w-[40%] flex-shrink-0">
-          <div className="text-[10px] font-medium text-muted-foreground mb-2">
-            Email Preview
-          </div>
-          <div className="border border-border rounded-lg overflow-hidden bg-white">
-            {hasSlices ? (
-              <CampaignPreviewFrame
-                slices={previewSlices}
-                footerHtml={footerHtml || undefined}
-                width={320}
-              />
-            ) : (
-              <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
-                No slices to preview
-              </div>
-            )}
-          </div>
+      {/* MAIN CONTENT - Slice rows with image + details side by side */}
+      <div className="border border-border rounded-lg overflow-hidden bg-background">
+        <div className="text-[10px] font-medium text-muted-foreground p-2 border-b bg-muted/30">
+          Slice Details ({slices.length})
         </div>
-
-        {/* Right: Compact slice details (60%) */}
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-medium text-muted-foreground mb-2">
-            Slice Details ({slices.length})
+        
+        {slices.length === 0 ? (
+          <div className="text-xs text-muted-foreground py-8 text-center">
+            No slices. Try reprocessing.
           </div>
-          <div className="border border-border rounded-lg bg-background divide-y divide-border/30">
-            {slices.length === 0 ? (
-              <div className="text-xs text-muted-foreground py-4 text-center">
-                No slices. Try reprocessing.
-              </div>
-            ) : (
-              <div className="p-2">
-                {slices.map((slice, index) => (
-                  <EditableSliceRow
-                    key={index}
-                    slice={slice}
-                    index={index}
-                    onUpdate={(updates) => updateSlice(index, updates)}
-                  />
-                ))}
-              </div>
-            )}
+        ) : (
+          <div className="divide-y divide-border/50">
+            {slices.map((slice, index) => {
+              const hasLink = slice.link !== null && slice.link !== undefined;
+              const isEditingAlt = editingAltIndex === index;
+              
+              return (
+                <div key={index} className="flex">
+                  {/* Left: Slice details */}
+                  <div className="w-[240px] flex-shrink-0 p-3 space-y-2 bg-muted/10 border-r border-border/30">
+                    {/* Slice label */}
+                    <div className="text-xs font-medium text-foreground">Slice {index + 1}</div>
+                    
+                    {/* Link row */}
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => toggleSliceLink(index)}
+                        className={cn(
+                          "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
+                          hasLink 
+                            ? "bg-primary/10 text-primary hover:bg-primary/20" 
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                        )}
+                        title={hasLink ? "Remove link" : "Add link"}
+                      >
+                        <Link className="w-3 h-3" />
+                      </button>
+                      
+                      {hasLink ? (
+                        <>
+                          <Input 
+                            value={slice.link || ''} 
+                            onChange={(e) => updateSlice(index, { link: e.target.value })}
+                            placeholder="https://..."
+                            className="h-6 text-xs flex-1 min-w-0"
+                          />
+                          {slice.link && (
+                            <>
+                              {slice.linkVerified ? (
+                                <span title="Verified">
+                                  <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                </span>
+                              ) : (
+                                <span title={slice.linkWarning || "Unverified"}>
+                                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                </span>
+                              )}
+                              <a
+                                href={slice.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                                title="Open link"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">No link</span>
+                      )}
+                    </div>
+                    
+                    {/* Alt text row */}
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-muted-foreground flex-shrink-0">Alt:</span>
+                      {isEditingAlt ? (
+                        <Input
+                          value={slice.altText || ''}
+                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                          placeholder="Describe this image..."
+                          className="h-5 text-xs flex-1 min-w-0"
+                          autoFocus
+                          onBlur={() => setEditingAltIndex(null)}
+                          onKeyDown={(e) => e.key === 'Enter' && setEditingAltIndex(null)}
+                        />
+                      ) : (
+                        <button
+                          onClick={() => setEditingAltIndex(index)}
+                          className={cn(
+                            "text-xs text-left flex-1 min-w-0 hover:underline cursor-pointer line-clamp-2",
+                            hasPlaceholderAlt(slice.altText) ? "text-amber-500 italic" : "text-muted-foreground"
+                          )}
+                        >
+                          {slice.altText || 'Click to add alt text'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Right: Full slice image */}
+                  <div className="flex-1 min-w-0 bg-white">
+                    {slice.imageUrl ? (
+                      <img 
+                        src={slice.imageUrl} 
+                        alt={slice.altText || `Slice ${index + 1}`}
+                        className="w-full block"
+                      />
+                    ) : (
+                      <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">
+                        No image
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        )}
+        
+        {/* Footer at bottom */}
+        {footerHtml && (
+          <div className="border-t-2 border-dashed border-primary/40">
+            <iframe 
+              srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;}</style></head><body>${footerHtml}</body></html>`}
+              className="w-full border-0"
+              style={{ minHeight: '150px' }}
+              title="Footer preview"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
