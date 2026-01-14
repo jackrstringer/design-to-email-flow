@@ -436,7 +436,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       <Separator className="mb-4" />
 
       {/* MAIN CONTENT - CampaignStudio-style slice rows */}
-      <div className="border border-border rounded-lg bg-background overflow-x-hidden">
+      <div className="border border-border rounded-lg bg-background">
         <div className="text-[10px] font-medium text-muted-foreground p-2 border-b bg-muted/30">
           Slice Details ({slices.length})
         </div>
@@ -587,13 +587,13 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       )}
                     </div>
                     
-                    {/* Right: Image - constrained with calc width */}
-                    <div style={{ width: 'calc(100% - 176px - 16px)', maxWidth: '400px' }}>
+                    {/* Right: Image - constrained with proper flexbox */}
+                    <div className="flex-1 min-w-0 max-w-[400px] overflow-hidden">
                       {slice.imageUrl ? (
                         <img 
                           src={slice.imageUrl} 
                           alt={slice.altText || `Slice ${index + 1}`}
-                          className="w-full h-auto rounded border border-border/30"
+                          className="w-full h-auto rounded border border-border/30 block"
                         />
                       ) : (
                         <div className="h-20 w-full flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
@@ -609,18 +609,22 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
         )}
         
         {/* Footer at bottom */}
-        {footerHtml && (
+        {footerHtml ? (
           <div className="border-t-2 border-dashed border-primary/40 pt-3 mt-1 mx-3 mb-3">
             <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
             <div className="mt-2">
               <iframe 
                 srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;}</style></head><body>${footerHtml}</body></html>`}
                 className="w-full border border-border/30 rounded"
-                style={{ height: 200, maxWidth: 400 }}
+                style={{ height: 200, maxWidth: '100%' }}
                 title="Footer preview"
                 sandbox="allow-same-origin"
               />
             </div>
+          </div>
+        ) : (
+          <div className="text-[10px] text-muted-foreground/50 text-center py-3 mx-3 border-t border-dashed">
+            No footer configured for this brand
           </div>
         )}
       </div>
