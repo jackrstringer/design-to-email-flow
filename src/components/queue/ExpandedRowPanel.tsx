@@ -279,8 +279,9 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     return placeholderPattern.test(altText.trim());
   };
 
-  // Editing state for alt text
+  // Editing state for alt text and link
   const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
+  const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
 
   return (
     <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200">
@@ -449,7 +450,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             {slices.map((slice, index) => {
               const hasLink = slice.link !== null && slice.link !== undefined;
               const isEditingAlt = editingAltIndex === index;
-              const [editingLink, setEditingLink] = useState(false);
+              const isEditingLink = editingLinkIndex === index;
               
               return (
                 <div key={index} className="relative">
@@ -500,9 +501,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                         </button>
                       </div>
                       
-                      {/* Link - Pill Style */}
                       {hasLink ? (
-                        editingLink ? (
+                        isEditingLink ? (
                           <div className="flex items-center gap-1">
                             <Link className="w-3 h-3 text-primary flex-shrink-0" />
                             <Input 
@@ -511,15 +511,15 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                               placeholder="https://..."
                               className="h-5 text-[10px] flex-1 min-w-0"
                               autoFocus
-                              onBlur={() => setEditingLink(false)}
-                              onKeyDown={(e) => e.key === 'Enter' && setEditingLink(false)}
+                              onBlur={() => setEditingLinkIndex(null)}
+                              onKeyDown={(e) => e.key === 'Enter' && setEditingLinkIndex(null)}
                             />
                           </div>
                         ) : (
                           <div className="flex items-center gap-1">
                             <Link className="w-3 h-3 text-primary flex-shrink-0" />
                             <button
-                              onClick={() => setEditingLink(true)}
+                              onClick={() => setEditingLinkIndex(index)}
                               className="text-[10px] text-primary truncate max-w-[130px] hover:underline text-left"
                               title={slice.link || ''}
                             >
