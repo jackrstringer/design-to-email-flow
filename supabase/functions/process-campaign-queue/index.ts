@@ -11,6 +11,20 @@ interface ProcessRequest {
   campaignQueueId: string;
 }
 
+// Transform Cloudinary URL to include resize parameters (server-side, zero memory)
+function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: number): string {
+  if (!url || !url.includes('cloudinary.com/')) return url;
+  
+  const uploadIndex = url.indexOf('/upload/');
+  if (uploadIndex === -1) return url;
+  
+  const before = url.substring(0, uploadIndex + 8); // includes '/upload/'
+  const after = url.substring(uploadIndex + 8);
+  
+  // c_limit preserves aspect ratio and only shrinks if larger than limits
+  return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+}
+
 // Helper to update campaign queue status
 async function updateQueueItem(
   supabase: any,
@@ -47,6 +61,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 // Step 1: Fetch image from URL or use existing uploaded image
+// Uses Cloudinary URL transformation to resize large images BEFORE fetching
 async function fetchAndUploadImage(
   supabase: any,
   item: any
@@ -57,7 +72,13 @@ async function fetchAndUploadImage(
   if (item.image_url) {
     console.log('[process] Image already uploaded, fetching as base64...');
     try {
-      const response = await fetch(item.image_url);
+      // CRITICAL: Resize via Cloudinary URL transformation BEFORE fetching
+      // This prevents memory issues with large images (e.g., 1200x8000)
+      // Max 600px wide (email standard), max 4000px tall (leaves room for processing)
+      const resizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 4000);
+      console.log('[process] Using resized URL:', resizedUrl.substring(0, 80) + '...');
+      
+      const response = await fetch(resizedUrl);
       if (!response.ok) throw new Error('Failed to fetch image');
       const buffer = await response.arrayBuffer();
       const uint8Array = new Uint8Array(buffer);
@@ -90,6 +111,10 @@ async function startEarlyGeneration(
   console.log('[process] Step 1.5: Starting early SL/PT generation, session:', sessionKey);
 
   try {
+    // CRITICAL: Resize image URL for Anthropic (max 600x7900 to stay under 8000px limit)
+    const resizedImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
+    console.log('[process] Early gen using resized URL:', resizedImageUrl.substring(0, 80) + '...');
+    
     // Fire and forget - matches manual flow exactly
     const earlyGenUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/generate-email-copy-early';
     fetch(earlyGenUrl, {
@@ -100,7 +125,7 @@ async function startEarlyGeneration(
       },
       body: JSON.stringify({
         sessionKey,
-        imageUrl,
+        imageUrl: resizedImageUrl, // Use resized URL
         brandContext: brandContext || { name: 'Unknown', domain: null },
         brandId: brandId || null,
         copyExamples: copyExamples || null
