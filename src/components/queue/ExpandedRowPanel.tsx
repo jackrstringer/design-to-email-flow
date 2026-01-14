@@ -453,20 +453,22 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           <div className="text-[10px] font-medium text-muted-foreground mb-2">
             Slice Details ({slices.length})
           </div>
-          <div className="space-y-0.5 border border-border rounded-lg p-2 bg-background">
+          <div className="border border-border rounded-lg bg-background divide-y divide-border/30">
             {slices.length === 0 ? (
               <div className="text-xs text-muted-foreground py-4 text-center">
                 No slices. Try reprocessing.
               </div>
             ) : (
-              slices.map((slice, index) => (
-                <EditableSliceRow
-                  key={index}
-                  slice={slice}
-                  index={index}
-                  onUpdate={(updates) => updateSlice(index, updates)}
-                />
-              ))
+              <div className="p-2">
+                {slices.map((slice, index) => (
+                  <EditableSliceRow
+                    key={index}
+                    slice={slice}
+                    index={index}
+                    onUpdate={(updates) => updateSlice(index, updates)}
+                  />
+                ))}
+              </div>
             )}
           </div>
         </div>
