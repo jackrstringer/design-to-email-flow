@@ -470,9 +470,9 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                     </div>
                   )}
                   
-                  <div className="flex items-start py-2">
-                    {/* Left: Details Column (~200px) */}
-                    <div className="w-48 flex-shrink-0 space-y-2 pr-3">
+                  <div className="flex items-start gap-4 py-3 overflow-hidden">
+                    {/* Left: Details Column - fixed width */}
+                    <div className="w-44 flex-shrink-0 space-y-2">
                       {/* Type Toggle Pills */}
                       <div className="flex items-center gap-1">
                         <button
@@ -587,16 +587,16 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       )}
                     </div>
                     
-                    {/* Right: Scaled Image */}
-                    <div className="flex-1">
+                    {/* Right: Image - flexible, constrained */}
+                    <div className="flex-1 min-w-0">
                       {slice.imageUrl ? (
                         <img 
                           src={slice.imageUrl} 
                           alt={slice.altText || `Slice ${index + 1}`}
-                          className="w-full max-w-[350px] rounded border border-border/30"
+                          className="max-w-full h-auto rounded border border-border/30"
                         />
                       ) : (
-                        <div className="h-20 max-w-[350px] flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
+                        <div className="h-20 max-w-full flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
                           No image
                         </div>
                       )}
