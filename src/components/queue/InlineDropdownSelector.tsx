@@ -13,7 +13,6 @@ interface InlineDropdownSelectorProps {
   provided?: string | null;
   onSelect: (value: string) => Promise<boolean> | void;
   placeholder?: string;
-  maxWidth?: string;
   isProcessing?: boolean;
 }
 
@@ -23,7 +22,6 @@ export function InlineDropdownSelector({
   provided,
   onSelect,
   placeholder = 'Select...',
-  maxWidth = '300px',
   isProcessing = false,
 }: InlineDropdownSelectorProps) {
   const [open, setOpen] = useState(false);
@@ -99,18 +97,19 @@ export function InlineDropdownSelector({
     }
   };
 
-  const handleTextClick = (e: React.MouseEvent) => {
+  // Single click opens dropdown, double-click enters edit mode
+  const handleCellClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isSaving && allOptions.length > 0 && !isEditing) {
+      setOpen(true);
+    }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isSaving) {
       setIsEditing(true);
       setOpen(false);
-    }
-  };
-
-  const handleChevronClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isEditing && !isSaving) {
-      setOpen(true);
     }
   };
 
@@ -132,102 +131,110 @@ export function InlineDropdownSelector({
   const displayValue = editValue || selected || '';
 
   return (
-    <div 
-      className={cn(
-        "group flex items-center gap-0.5 rounded-sm transition-shadow",
-        isEditing && "ring-2 ring-blue-500 ring-inset"
-      )} 
-      style={{ maxWidth }}
-    >
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div 
           className={cn(
-            "flex-1 min-w-0 bg-white outline-none text-[13px] text-gray-900 px-1 py-0.5"
+            "group flex items-center gap-0.5 rounded-sm transition-shadow cursor-pointer w-full",
+            isEditing && "ring-2 ring-blue-500 ring-inset",
+            open && "ring-2 ring-blue-500 ring-inset"
           )}
-          placeholder={placeholder}
-          disabled={isSaving}
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <span
-          onClick={handleTextClick}
-          className={cn(
-            "text-[13px] truncate cursor-text px-1 py-0.5 flex-1 min-w-0 text-gray-900",
-            !displayValue && "text-gray-400 italic"
-          )}
-          title={displayValue || placeholder}
+          onClick={handleCellClick}
+          onDoubleClick={handleDoubleClick}
         >
-          {displayValue || placeholder}
-        </span>
-      )}
-
-      {isSaving && (
-        <Loader2 className="h-3 w-3 animate-spin text-gray-400 shrink-0" />
-      )}
-
-      {!isSaving && allOptions.length > 0 && (
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <button
-              onClick={handleChevronClick}
-              disabled={isEditing}
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
               className={cn(
-                "p-0.5 rounded transition-all shrink-0",
-                "opacity-0 group-hover:opacity-100",
-                "hover:bg-gray-100",
-                open && "opacity-100 bg-gray-100",
-                isEditing && "hidden"
+                "flex-1 min-w-0 bg-white outline-none text-[13px] text-gray-900 px-1 py-0.5"
               )}
-              aria-label="Select from options"
+              placeholder={placeholder}
+              disabled={isSaving}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className={cn(
+                "text-[13px] truncate px-1 py-0.5 flex-1 min-w-0 text-gray-900",
+                !displayValue && "text-gray-400 italic"
+              )}
+              title={displayValue || placeholder}
             >
-              <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent 
-            className="w-[400px] p-0 z-50 bg-white" 
-            align="start"
-            sideOffset={4}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-3 py-2 border-b bg-gray-50">
-              <p className="text-[11px] text-gray-500 font-medium">
-                {allOptions.length} AI-generated option{allOptions.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-            <div className="max-h-72 overflow-y-auto p-1">
-              {allOptions.map((opt, i) => {
-                const isSelected = displayValue === opt.value;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => handleSelect(opt.value)}
-                    className={cn(
-                      "w-full flex items-start gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-900",
-                      "hover:bg-gray-100",
-                      isSelected && "bg-blue-50"
+              {displayValue || placeholder}
+            </span>
+          )}
+
+          {isSaving && (
+            <Loader2 className="h-3 w-3 animate-spin text-gray-400 shrink-0" />
+          )}
+
+          {!isSaving && !isEditing && allOptions.length > 0 && (
+            <ChevronDown className={cn(
+              "h-3.5 w-3.5 text-gray-400 shrink-0 transition-opacity",
+              "opacity-0 group-hover:opacity-100",
+              open && "opacity-100"
+            )} />
+          )}
+        </div>
+      </PopoverTrigger>
+      {allOptions.length > 0 && (
+        <PopoverContent 
+          className="p-0 z-50 bg-white shadow-lg border"
+          align="start"
+          side="bottom"
+          sideOffset={2}
+          style={{ width: '320px' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-2 border-b bg-gray-50">
+            <p className="text-[11px] text-gray-500 font-medium">
+              {allOptions.length} AI-generated option{allOptions.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <div className="p-1">
+            {allOptions.map((opt, i) => {
+              const isSelected = displayValue === opt.value;
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleSelect(opt.value)}
+                  className={cn(
+                    "w-full flex items-start gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-900",
+                    "hover:bg-gray-100",
+                    isSelected && "bg-blue-50"
+                  )}
+                >
+                  <div className="w-4 shrink-0 pt-0.5">
+                    {isSelected && <Check className="h-4 w-4 text-blue-600" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="leading-snug break-words">{opt.value}</p>
+                    {opt.source === 'provided' && (
+                      <span className="text-[11px] text-gray-500 mt-0.5 block">From Figma</span>
                     )}
-                  >
-                    <div className="w-4 shrink-0 pt-0.5">
-                      {isSelected && <Check className="h-4 w-4 text-blue-600" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="leading-snug break-words">{opt.value}</p>
-                      {opt.source === 'provided' && (
-                        <span className="text-[11px] text-gray-500 mt-0.5 block">From Figma</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </PopoverContent>
-        </Popover>
+                  </div>
+                </button>
+              );
+            })}
+            {/* Edit custom option */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                setIsEditing(true);
+              }}
+              className="w-full flex items-center gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-500 hover:bg-gray-100 border-t mt-1 pt-2"
+            >
+              <div className="w-4 shrink-0" />
+              <span className="italic">Edit custom...</span>
+            </button>
+          </div>
+        </PopoverContent>
       )}
-    </div>
+    </Popover>
   );
 }

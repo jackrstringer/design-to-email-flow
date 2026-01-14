@@ -35,6 +35,7 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
   // Get brand info from joined data
   const brandName = (item as any).brands?.name;
   const brandDomain = (item as any).brands?.domain;
+  const brandColor = (item as any).brands?.primary_color || '#6b7280';
 
   // Parse spelling errors
   const spellingErrors = item.spelling_errors as Array<{ text: string }> | null;
@@ -142,16 +143,27 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
       
       {/* Client (Brand Name) */}
       <div 
-        className="px-2 flex-shrink-0 truncate text-gray-600" 
+        className="px-2 flex-shrink-0" 
         style={{ width: columnWidths.client }}
       >
-        {brandName || '—'}
+        {brandName ? (
+          <span 
+            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium truncate max-w-full"
+            style={{ 
+              backgroundColor: `${brandColor}15`,
+              color: brandColor,
+              border: `1px solid ${brandColor}30`
+            }}
+          >
+            {brandName}
+          </span>
+        ) : '—'}
       </div>
       
       {/* Subject Line */}
       <div 
-        className="flex-1 min-w-0 px-2" 
-        style={{ minWidth: columnWidths.subject }}
+        className="px-2 flex-shrink-0" 
+        style={{ width: columnWidths.subject }}
         onClick={(e) => e.stopPropagation()}
       >
         <InlineDropdownSelector
@@ -160,15 +172,14 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
           provided={item.provided_subject_line}
           onSelect={handleSubjectLineSelect}
           placeholder="Select subject..."
-          maxWidth="100%"
           isProcessing={item.status === 'processing'}
         />
       </div>
 
       {/* Preview Text */}
       <div 
-        className="flex-1 min-w-0 px-2" 
-        style={{ minWidth: columnWidths.previewText }}
+        className="px-2 flex-shrink-0" 
+        style={{ width: columnWidths.previewText }}
         onClick={(e) => e.stopPropagation()}
       >
         <InlineDropdownSelector
@@ -177,7 +188,6 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
           provided={item.provided_preview_text}
           onSelect={handlePreviewTextSelect}
           placeholder="Select preview..."
-          maxWidth="100%"
           isProcessing={item.status === 'processing'}
         />
       </div>

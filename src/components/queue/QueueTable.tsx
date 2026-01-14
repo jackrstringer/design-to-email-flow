@@ -30,9 +30,9 @@ const DEFAULT_WIDTHS: ColumnWidths = {
   status: 100,
   thumbnail: 40,
   name: 200,
-  client: 120,
-  subject: 200,
-  previewText: 200,
+  client: 140,
+  subject: 280,
+  previewText: 280,
   links: 60,
   external: 60,
   spelling: 60,
@@ -202,8 +202,8 @@ export function QueueTable({
 
         {/* Subject Line */}
         <div 
-          className="relative flex-1 min-w-0 flex items-center px-2 text-[13px] text-gray-500 font-normal"
-          style={{ minWidth: columnWidths.subject }}
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.subject, flexShrink: 0 }}
         >
           Subject Line
           <div 
@@ -217,8 +217,8 @@ export function QueueTable({
 
         {/* Preview Text */}
         <div 
-          className="relative flex-1 min-w-0 flex items-center px-2 text-[13px] text-gray-500 font-normal"
-          style={{ minWidth: columnWidths.previewText }}
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.previewText, flexShrink: 0 }}
         >
           Preview Text
           <div 
