@@ -1,18 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, Unlink, CheckCircle, Image, Code } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, Unlink, CheckCircle, FileText } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
-import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import type { ProcessedSlice } from '@/types/slice';
 
 interface ExpandedRowPanelProps {
   item: CampaignQueueItem;
@@ -35,7 +36,13 @@ interface SliceData {
   yEndPercent?: number;
   type?: 'image' | 'html';
   htmlContent?: string;
+  column?: number;
+  totalColumns?: number;
+  rowIndex?: number;
 }
+
+// Base width for email content (standard email width)
+const BASE_WIDTH = 600;
 
 export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelProps) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -56,6 +63,13 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
 
   // Footer HTML
   const [footerHtml, setFooterHtml] = useState<string | null>(null);
+  const [footerError, setFooterError] = useState<string | null>(null);
+  const [footerPreviewHeight, setFooterPreviewHeight] = useState(200);
+
+  // Container sizing for responsive scaling (like CampaignStudio)
+  const containerRef = useRef<HTMLDivElement>(null);
+  const footerIframeRef = useRef<HTMLIFrameElement>(null);
+  const [containerWidth, setContainerWidth] = useState(900);
 
   // Get brand info
   const brandName = (item as any).brands?.name || 'Brand';
@@ -66,6 +80,27 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     location?: string;
     sliceIndex?: number;
   }>) || [];
+
+  // Measure container width for responsive scaling
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Calculate scale exactly like CampaignStudio
+  const detailsColumnWidth = 320; // min-w-[320px] from CampaignStudio
+  const gutter = 48; // padding/margins
+  const availableForPreview = containerWidth - detailsColumnWidth - gutter;
+  const scale = Math.max(0.4, Math.min(1, availableForPreview / BASE_WIDTH));
+  const scaledWidth = BASE_WIDTH * scale;
 
   // Initialize slices from item
   useEffect(() => {
@@ -86,6 +121,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       
       setIsLoadingLists(true);
       setListLoadError(null);
+      setFooterError(null);
       
       try {
         // Load Klaviyo API key from brands table
@@ -96,20 +132,38 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           .single();
 
         // Load footer from brand_footers table (primary footer first)
-        const { data: footerData } = await supabase
+        const { data: primaryFooter, error: primaryError } = await supabase
           .from('brand_footers')
           .select('html')
           .eq('brand_id', item.brand_id)
-          .order('is_primary', { ascending: false })
-          .order('updated_at', { ascending: false })
+          .eq('is_primary', true)
           .limit(1)
           .maybeSingle();
 
-        if (footerData?.html) {
-          setFooterHtml(footerData.html);
-        } else if (brand?.footer_html) {
-          // Fallback to legacy footer_html on brands table
-          setFooterHtml(brand.footer_html);
+        if (primaryError) {
+          console.error('Error fetching primary footer:', primaryError);
+          setFooterError(`Permission error: ${primaryError.message}`);
+        } else if (primaryFooter?.html) {
+          setFooterHtml(primaryFooter.html);
+        } else {
+          // No primary footer, try most recent
+          const { data: recentFooter, error: recentError } = await supabase
+            .from('brand_footers')
+            .select('html')
+            .eq('brand_id', item.brand_id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (recentError) {
+            console.error('Error fetching recent footer:', recentError);
+            setFooterError(`Permission error: ${recentError.message}`);
+          } else if (recentFooter?.html) {
+            setFooterHtml(recentFooter.html);
+          } else if (brand?.footer_html) {
+            // Legacy fallback
+            setFooterHtml(brand.footer_html);
+          }
         }
 
         if (brand?.klaviyo_api_key) {
@@ -134,6 +188,21 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     loadBrandData();
   }, [item.brand_id]);
 
+  // Handle footer iframe load to measure height
+  const handleFooterIframeLoad = useCallback(() => {
+    if (footerIframeRef.current) {
+      try {
+        const doc = footerIframeRef.current.contentDocument;
+        if (doc?.body) {
+          const height = doc.body.scrollHeight;
+          setFooterPreviewHeight(height);
+        }
+      } catch (e) {
+        // Cross-origin issues, use default height
+      }
+    }
+  }, []);
+
   // Update slice in local state and database
   const updateSlice = async (index: number, updates: Partial<SliceData>) => {
     const newSlices = [...slices];
@@ -145,6 +214,16 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       .from('campaign_queue')
       .update({ slices: JSON.parse(JSON.stringify(newSlices)) })
       .eq('id', item.id);
+  };
+
+  // Toggle link for a slice
+  const toggleLink = (index: number) => {
+    const slice = slices[index];
+    if (slice.link !== null && slice.link !== undefined) {
+      updateSlice(index, { link: null });
+    } else {
+      updateSlice(index, { link: '' });
+    }
   };
 
   const handleDelete = async () => {
@@ -279,50 +358,48 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   );
   const allHaveAltText = hasSlices && slicesWithPlaceholderAlt.length === 0;
 
-  // Toggle link for a slice
-  const toggleSliceLink = (index: number) => {
-    const slice = slices[index];
-    if (slice.link !== null && slice.link !== undefined) {
-      updateSlice(index, { link: null });
-    } else {
-      updateSlice(index, { link: '' });
+  // Group slices by rowIndex (same logic as CampaignStudio)
+  const groupedSlices = slices.reduce((groups, slice, index) => {
+    const rowIndex = slice.rowIndex ?? index;
+    if (!groups[rowIndex]) {
+      groups[rowIndex] = [];
     }
-  };
+    groups[rowIndex].push({ slice, originalIndex: index });
+    return groups;
+  }, {} as Record<number, Array<{ slice: SliceData; originalIndex: number }>>);
 
-  // Check if alt text is placeholder
-  const hasPlaceholderAlt = (altText?: string) => {
-    if (!altText) return true;
-    return placeholderPattern.test(altText.trim());
-  };
+  // Sort groups by rowIndex and sort slices within groups by column
+  const sortedGroups = Object.entries(groupedSlices)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, slicesInGroup]) => 
+      slicesInGroup.sort((a, b) => (a.slice.column ?? 0) - (b.slice.column ?? 0))
+    );
 
-  // Editing state for alt text and link
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-
-  // Toggle link for a slice
-  const toggleLink = (index: number) => {
-    const slice = slices[index];
-    if (slice.link) {
-      updateSlice(index, { link: null });
-    } else {
-      updateSlice(index, { link: '' });
-      setEditingIndex(index);
-    }
-  };
-
-  // Convert slices to ProcessedSlice for CampaignPreviewFrame
-  const processedSlices: ProcessedSlice[] = slices.map((slice, index) => ({
-    imageUrl: slice.imageUrl || '',
-    altText: slice.altText || `Slice ${index + 1}`,
-    link: slice.link || null,
-    isClickable: !!slice.link,
-    type: slice.type || 'image',
-    htmlContent: slice.htmlContent,
-  }));
+  // Footer iframe srcDoc (same as CampaignStudio)
+  const footerSrcDoc = footerHtml ? `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { margin: 0; padding: 0; }
+          table { border-collapse: collapse; }
+        </style>
+      </head>
+      <body>
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;margin:0 auto;">
+          <tr>
+            <td>${footerHtml}</td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  ` : '';
 
   return (
-    <div className="bg-muted/20 border-t p-4 animate-in slide-in-from-top-2 duration-200">
+    <div className="bg-muted/20 border-t animate-in slide-in-from-top-2 duration-200">
       {/* TOP ROW - Compact controls bar */}
-      <div className="flex items-start gap-4 mb-4">
+      <div className="flex items-start gap-4 p-4 border-b">
         {/* Inbox Preview - compact */}
         <div className="flex-1 min-w-0">
           <InboxPreview
@@ -469,170 +546,215 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
         </div>
       </div>
 
-      <Separator className="mb-4" />
+      {/* MAIN CONTENT - CampaignStudio Layout: Details left + Slices right, scrolling together */}
+      <div 
+        ref={containerRef}
+        className="overflow-auto max-h-[70vh] bg-muted/10"
+      >
+        <div className="p-6 flex justify-center">
+          <div className="relative">
+            {/* No slices message */}
+            {slices.length === 0 && (
+              <div className="flex items-center justify-center h-64 text-muted-foreground">
+                <div className="text-center">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No slices available. Try reprocessing.</p>
+                </div>
+              </div>
+            )}
 
-      {/* MAIN CONTENT - Two columns: Slice Editor + Campaign Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* LEFT: Slice Editor - using legacy SliceResults card layout */}
-        <div className="border border-border rounded-lg bg-background">
-          <div className="text-[10px] font-medium text-muted-foreground p-2 border-b bg-muted/30">
-            Slice Details ({slices.length})
-          </div>
-          
-          {slices.length === 0 ? (
-            <div className="text-xs text-muted-foreground py-8 text-center">
-              No slices. Try reprocessing.
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto p-3">
-              {slices.map((slice, index) => (
-                <div 
-                  key={index}
-                  className={cn(
-                    'p-3 rounded-lg border bg-muted/30',
-                    slice.type === 'html' ? 'border-blue-500/50' : 'border-border'
-                  )}
-                >
-                  <div className="flex gap-3">
-                    {/* Thumbnail */}
-                    <div className="w-20 h-20 flex-shrink-0 rounded overflow-hidden border border-border bg-background">
-                      {slice.imageUrl ? (
-                        <img 
-                          src={slice.imageUrl} 
-                          alt={slice.altText || `Slice ${index + 1}`}
-                          className="w-full h-full object-cover object-top"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground">
-                          No image
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Details */}
-                    <div className="flex-1 min-w-0 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Slice {index + 1}
-                        </span>
+            {/* Render each slice group (row) */}
+            {sortedGroups.map((slicesInRow, groupIndex) => (
+              <div key={groupIndex}>
+                {/* Slice separator line (except for first slice) */}
+                {groupIndex > 0 && (
+                  <div 
+                    className="border-t-2 border-dashed border-primary/40"
+                    style={{ width: detailsColumnWidth + scaledWidth }}
+                  />
+                )}
+                
+                <div className="relative flex items-stretch">
+                  {/* Left: Details Column (like CampaignStudio) */}
+                  <div 
+                    className="flex-shrink-0 p-4 space-y-2 bg-background/80 border-r border-border"
+                    style={{ minWidth: detailsColumnWidth, width: detailsColumnWidth }}
+                  >
+                    {slicesInRow.map(({ slice, originalIndex }, colIndex) => (
+                      <div key={originalIndex} className="space-y-3">
+                        {slicesInRow.length > 1 && (
+                          <div className="text-xs text-muted-foreground font-medium">
+                            Column {colIndex + 1} of {slicesInRow.length}
+                          </div>
+                        )}
                         
-                        {/* Type toggle */}
-                        <button
-                          onClick={() => updateSlice(index, { type: slice.type === 'html' ? 'image' : 'html' })}
-                          className={cn(
-                            'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
-                            slice.type === 'html'
-                              ? 'bg-blue-500/20 text-blue-600 hover:bg-blue-500/30'
-                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                          )}
-                        >
-                          {slice.type === 'html' ? (
-                            <><Code className="w-3 h-3" /> HTML</>
-                          ) : (
-                            <><Image className="w-3 h-3" /> Image</>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Alt text */}
-                      <Input
-                        value={slice.altText || ''}
-                        onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                        placeholder="Alt text"
-                        className={cn(
-                          "h-8 text-sm",
-                          hasPlaceholderAlt(slice.altText) && "border-amber-500/50"
-                        )}
-                      />
-
-                      {/* Link */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleLink(index)}
-                          className={cn(
-                            'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors flex-shrink-0',
-                            slice.link !== null && slice.link !== undefined
-                              ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                          )}
-                        >
-                          {slice.link !== null && slice.link !== undefined ? (
-                            <><Link className="w-3 h-3" /> Linked</>
-                          ) : (
-                            <><Unlink className="w-3 h-3" /> No link</>
-                          )}
-                        </button>
-
-                        {slice.link !== null && slice.link !== undefined && (
-                          <Input
-                            value={slice.link || ''}
-                            onChange={(e) => updateSlice(index, { link: e.target.value })}
-                            placeholder="https://..."
-                            className="h-7 text-xs flex-1"
-                            autoFocus={editingIndex === index}
-                            onFocus={() => setEditingIndex(index)}
-                            onBlur={() => setEditingIndex(null)}
-                          />
-                        )}
-
-                        {slice.link && (
-                          <>
-                            {slice.linkVerified ? (
-                              <div className="flex items-center gap-1 text-green-500" title="Verified">
-                                <CheckCircle className="w-3.5 h-3.5" />
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1 text-amber-500" title={slice.linkWarning || "Unverified link"}>
-                                <AlertTriangle className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-                            <a
-                              href={slice.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1 text-muted-foreground hover:text-foreground"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          </>
-                        )}
-                      </div>
-                      {/* Link warning message */}
-                      {slice.link && slice.linkWarning && (
-                        <div className="flex items-center gap-1 text-xs text-amber-500">
-                          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                          <span>{slice.linkWarning}</span>
+                        <div className="text-sm font-medium text-foreground">
+                          Slice {originalIndex + 1}
                         </div>
-                      )}
-                    </div>
+                        
+                        {/* Alt Text */}
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Alt Text</Label>
+                          <Textarea
+                            value={slice.altText || ''}
+                            onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
+                            className="text-sm min-h-[60px] resize-none"
+                            placeholder="Describe this image..."
+                          />
+                        </div>
+                        
+                        {/* Link Toggle and Input */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id={`link-toggle-${originalIndex}`}
+                              checked={slice.link !== null && slice.link !== undefined}
+                              onCheckedChange={() => toggleLink(originalIndex)}
+                            />
+                            <Label 
+                              htmlFor={`link-toggle-${originalIndex}`}
+                              className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1"
+                            >
+                              {slice.link !== null && slice.link !== undefined ? (
+                                <>
+                                  <Link className="h-3 w-3" />
+                                  Linked
+                                </>
+                              ) : (
+                                <>
+                                  <Unlink className="h-3 w-3" />
+                                  No Link
+                                </>
+                              )}
+                            </Label>
+                          </div>
+                          
+                          {slice.link !== null && slice.link !== undefined && (
+                            <Input
+                              value={slice.link || ''}
+                              onChange={(e) => updateSlice(originalIndex, { link: e.target.value })}
+                              placeholder="https://..."
+                              className="text-sm"
+                            />
+                          )}
+                        </div>
+                        
+                        {colIndex < slicesInRow.length - 1 && (
+                          <Separator className="my-3" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Right: Image Column (like CampaignStudio - no cropping!) */}
+                  <div 
+                    className="flex flex-shrink-0"
+                    style={{ width: scaledWidth }}
+                  >
+                    {slicesInRow.map(({ slice, originalIndex }) => {
+                      const colWidth = slice.totalColumns 
+                        ? scaledWidth / slice.totalColumns 
+                        : scaledWidth / slicesInRow.length;
+                      
+                      return (
+                        <div 
+                          key={originalIndex}
+                          style={{ width: colWidth }}
+                        >
+                          {slice.type === 'html' && slice.htmlContent ? (
+                            <div 
+                              className="bg-white"
+                              dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
+                              style={{ width: '100%' }}
+                            />
+                          ) : slice.imageUrl ? (
+                            <img
+                              src={slice.imageUrl}
+                              alt={slice.altText || `Slice ${originalIndex + 1}`}
+                              style={{ width: '100%' }}
+                              className="block"
+                            />
+                          ) : (
+                            <div 
+                              className="bg-muted flex items-center justify-center text-muted-foreground text-sm"
+                              style={{ width: '100%', height: 100 }}
+                            >
+                              No image
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
 
-        {/* RIGHT: Campaign Preview */}
-        <div className="border border-border rounded-lg bg-background">
-          <div className="text-[10px] font-medium text-muted-foreground p-2 border-b bg-muted/30">
-            Campaign Preview
-          </div>
-          <div className="max-h-[600px] overflow-auto p-3">
-            <CampaignPreviewFrame
-              slices={processedSlices}
-              footerHtml={footerHtml || undefined}
-              width={400}
-            />
+            {/* Footer Section (same structure as CampaignStudio) */}
+            {(footerHtml || footerError || slices.length > 0) && (
+              <>
+                <div 
+                  className="border-t-2 border-dashed border-primary/40"
+                  style={{ width: detailsColumnWidth + scaledWidth }}
+                />
+                
+                <div className="relative flex items-stretch">
+                  {/* Left: Footer Details */}
+                  <div 
+                    className="flex-shrink-0 p-4 bg-background/80 border-r border-border"
+                    style={{ minWidth: detailsColumnWidth, width: detailsColumnWidth }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Footer</span>
+                    </div>
+                    {footerError && (
+                      <div className="mt-2 text-xs text-destructive flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {footerError}
+                      </div>
+                    )}
+                    {!footerHtml && !footerError && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        No saved footer found for this brand
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Right: Footer Preview (scaled like CampaignStudio) */}
+                  <div 
+                    className="flex-shrink-0 overflow-hidden bg-white"
+                    style={{ 
+                      width: scaledWidth,
+                      height: footerHtml ? footerPreviewHeight * scale : 60,
+                    }}
+                  >
+                    {footerHtml ? (
+                      <iframe
+                        ref={footerIframeRef}
+                        srcDoc={footerSrcDoc}
+                        onLoad={handleFooterIframeLoad}
+                        style={{
+                          width: BASE_WIDTH,
+                          height: footerPreviewHeight,
+                          border: 'none',
+                          transform: `scale(${scale})`,
+                          transformOrigin: 'top left',
+                        }}
+                        title="Footer Preview"
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                        No footer
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Footer status indicator */}
-      {!footerHtml && (
-        <div className="text-[10px] text-amber-500/70 text-center py-2 mt-2">
-          ⚠️ No footer configured for this brand - check Brand Settings → Footers
-        </div>
-      )}
     </div>
   );
 }
