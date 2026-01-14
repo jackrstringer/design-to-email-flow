@@ -478,7 +478,7 @@ serve(async (req) => {
 
     let exportedImageUrl: string | null = null;
     if (nodeId) {
-      const exportUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=2`;
+      const exportUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=1`;
       const exportResponse = await fetch(exportUrl, {
         headers: { 'X-Figma-Token': FIGMA_TOKEN },
       });
