@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, CheckCircle } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, CheckCircle, Image, Code2 } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -31,6 +31,8 @@ interface SliceData {
   linkWarning?: string;
   yStartPercent?: number;
   yEndPercent?: number;
+  type?: 'image' | 'html';
+  htmlContent?: string;
 }
 
 export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelProps) {
@@ -432,7 +434,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
 
       <Separator className="mb-4" />
 
-      {/* MAIN CONTENT - Slice rows with image + details side by side */}
+      {/* MAIN CONTENT - CampaignStudio-style slice rows */}
       <div className="border border-border rounded-lg overflow-hidden bg-background">
         <div className="text-[10px] font-medium text-muted-foreground p-2 border-b bg-muted/30">
           Slice Details ({slices.length})
@@ -443,109 +445,162 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             No slices. Try reprocessing.
           </div>
         ) : (
-          <div className="divide-y divide-border/50">
+          <div className="p-3">
             {slices.map((slice, index) => {
               const hasLink = slice.link !== null && slice.link !== undefined;
               const isEditingAlt = editingAltIndex === index;
+              const [editingLink, setEditingLink] = useState(false);
               
               return (
-                <div key={index} className="flex">
-                  {/* Left: Slice details */}
-                  <div className="w-[240px] flex-shrink-0 p-3 space-y-2 bg-muted/10 border-r border-border/30">
-                    {/* Slice label */}
-                    <div className="text-xs font-medium text-foreground">Slice {index + 1}</div>
-                    
-                    {/* Link row */}
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => toggleSliceLink(index)}
-                        className={cn(
-                          "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
-                          hasLink 
-                            ? "bg-primary/10 text-primary hover:bg-primary/20" 
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                        )}
-                        title={hasLink ? "Remove link" : "Add link"}
-                      >
-                        <Link className="w-3 h-3" />
-                      </button>
+                <div key={index} className="relative">
+                  {/* Separator with slice label */}
+                  {index > 0 && (
+                    <div className="flex items-center py-2">
+                      <div className="h-px bg-border/50 flex-1" />
+                      <span className="px-2 text-[9px] text-muted-foreground/60 font-medium uppercase tracking-wider">
+                        Slice {index + 1}
+                      </span>
+                      <div className="h-px bg-border/50 flex-1" />
+                    </div>
+                  )}
+                  {index === 0 && (
+                    <div className="text-[9px] text-muted-foreground/60 font-medium uppercase tracking-wider mb-2">
+                      Slice 1
+                    </div>
+                  )}
+                  
+                  <div className="flex items-start py-2">
+                    {/* Left: Details Column (~200px) */}
+                    <div className="w-48 flex-shrink-0 space-y-2 pr-3">
+                      {/* Type Toggle Pills */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => updateSlice(index, { type: 'image' })}
+                          className={cn(
+                            "h-6 w-6 rounded flex items-center justify-center transition-colors",
+                            slice.type === 'image' || !slice.type
+                              ? "bg-primary/10 text-primary" 
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
+                          )}
+                          title="Image mode"
+                        >
+                          <Image className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => updateSlice(index, { type: 'html' })}
+                          className={cn(
+                            "h-6 w-6 rounded flex items-center justify-center transition-colors",
+                            slice.type === 'html'
+                              ? "bg-primary/10 text-primary" 
+                              : "text-muted-foreground/50 hover:text-muted-foreground"
+                          )}
+                          title="HTML mode"
+                        >
+                          <Code2 className="w-3 h-3" />
+                        </button>
+                      </div>
                       
+                      {/* Link - Pill Style */}
                       {hasLink ? (
-                        <>
-                          <Input 
-                            value={slice.link || ''} 
-                            onChange={(e) => updateSlice(index, { link: e.target.value })}
-                            placeholder="https://..."
-                            className="h-6 text-xs flex-1 min-w-0"
-                          />
-                          {slice.link && (
-                            <>
-                              {slice.linkVerified ? (
-                                <span title="Verified">
-                                  <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                </span>
-                              ) : (
-                                <span title={slice.linkWarning || "Unverified"}>
-                                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                                </span>
-                              )}
+                        editingLink ? (
+                          <div className="flex items-center gap-1">
+                            <Link className="w-3 h-3 text-primary flex-shrink-0" />
+                            <Input 
+                              value={slice.link || ''} 
+                              onChange={(e) => updateSlice(index, { link: e.target.value })}
+                              placeholder="https://..."
+                              className="h-5 text-[10px] flex-1 min-w-0"
+                              autoFocus
+                              onBlur={() => setEditingLink(false)}
+                              onKeyDown={(e) => e.key === 'Enter' && setEditingLink(false)}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <Link className="w-3 h-3 text-primary flex-shrink-0" />
+                            <button
+                              onClick={() => setEditingLink(true)}
+                              className="text-[10px] text-primary truncate max-w-[130px] hover:underline text-left"
+                              title={slice.link || ''}
+                            >
+                              {slice.link}
+                            </button>
+                            {slice.linkVerified ? (
+                              <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                            ) : slice.link && (
+                              <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                            )}
+                            <button 
+                              onClick={() => updateSlice(index, { link: null })}
+                              className="text-muted-foreground/40 hover:text-foreground/60"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                            {slice.link && (
                               <a
                                 href={slice.link}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-muted-foreground hover:text-foreground flex-shrink-0"
-                                title="Open link"
+                                className="text-muted-foreground/40 hover:text-foreground/60"
                               >
-                                <ExternalLink className="w-4 h-4" />
+                                <ExternalLink className="w-3 h-3" />
                               </a>
-                            </>
-                          )}
-                        </>
+                            )}
+                          </div>
+                        )
                       ) : (
-                        <span className="text-xs text-muted-foreground italic">No link</span>
+                        <button 
+                          onClick={() => updateSlice(index, { link: '' })}
+                          className="text-[10px] text-muted-foreground/50 flex items-center gap-1 hover:text-primary"
+                        >
+                          <Link className="w-3 h-3" />
+                          Add link
+                        </button>
                       )}
-                    </div>
-                    
-                    {/* Alt text row */}
-                    <div className="flex items-start gap-2">
-                      <span className="text-xs text-muted-foreground flex-shrink-0">Alt:</span>
+                      
+                      {/* Alt Text */}
                       {isEditingAlt ? (
-                        <Input
-                          value={slice.altText || ''}
-                          onChange={(e) => updateSlice(index, { altText: e.target.value })}
-                          placeholder="Describe this image..."
-                          className="h-5 text-xs flex-1 min-w-0"
-                          autoFocus
-                          onBlur={() => setEditingAltIndex(null)}
-                          onKeyDown={(e) => e.key === 'Enter' && setEditingAltIndex(null)}
-                        />
+                        <div className="flex items-start gap-1">
+                          <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">Alt:</span>
+                          <Input
+                            value={slice.altText || ''}
+                            onChange={(e) => updateSlice(index, { altText: e.target.value })}
+                            placeholder="Describe this image..."
+                            className="h-5 text-[10px] flex-1 min-w-0"
+                            autoFocus
+                            onBlur={() => setEditingAltIndex(null)}
+                            onKeyDown={(e) => e.key === 'Enter' && setEditingAltIndex(null)}
+                          />
+                        </div>
                       ) : (
                         <button
                           onClick={() => setEditingAltIndex(index)}
                           className={cn(
-                            "text-xs text-left flex-1 min-w-0 hover:underline cursor-pointer line-clamp-2",
-                            hasPlaceholderAlt(slice.altText) ? "text-amber-500 italic" : "text-muted-foreground"
+                            "text-[10px] text-left line-clamp-2 hover:underline cursor-pointer w-full",
+                            hasPlaceholderAlt(slice.altText) 
+                              ? "text-amber-500/70 italic" 
+                              : "text-muted-foreground/70"
                           )}
                         >
-                          {slice.altText || 'Click to add alt text'}
+                          {slice.altText || 'No alt text'}
                         </button>
                       )}
                     </div>
-                  </div>
-                  
-                  {/* Right: Full slice image */}
-                  <div className="flex-1 min-w-0 bg-white">
-                    {slice.imageUrl ? (
-                      <img 
-                        src={slice.imageUrl} 
-                        alt={slice.altText || `Slice ${index + 1}`}
-                        className="w-full block"
-                      />
-                    ) : (
-                      <div className="h-24 flex items-center justify-center text-xs text-muted-foreground">
-                        No image
-                      </div>
-                    )}
+                    
+                    {/* Right: Scaled Image */}
+                    <div className="flex-1">
+                      {slice.imageUrl ? (
+                        <img 
+                          src={slice.imageUrl} 
+                          alt={slice.altText || `Slice ${index + 1}`}
+                          className="w-full max-w-[350px] rounded border border-border/30"
+                        />
+                      ) : (
+                        <div className="h-20 max-w-[350px] flex items-center justify-center text-[10px] text-muted-foreground border border-dashed border-border/50 rounded">
+                          No image
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -555,13 +610,17 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
         
         {/* Footer at bottom */}
         {footerHtml && (
-          <div className="border-t-2 border-dashed border-primary/40">
-            <iframe 
-              srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;}</style></head><body>${footerHtml}</body></html>`}
-              className="w-full border-0"
-              style={{ minHeight: '150px' }}
-              title="Footer preview"
-            />
+          <div className="border-t-2 border-dashed border-primary/40 pt-3 mt-1 mx-3 mb-3">
+            <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
+            <div className="mt-2">
+              <iframe 
+                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;}</style></head><body>${footerHtml}</body></html>`}
+                className="w-full border border-border/30 rounded"
+                style={{ height: 200, maxWidth: 400 }}
+                title="Footer preview"
+                sandbox="allow-same-origin"
+              />
+            </div>
           </div>
         )}
       </div>
