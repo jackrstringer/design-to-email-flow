@@ -6,6 +6,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Transform Cloudinary URL to include resize parameters (server-side, zero memory)
+function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: number): string {
+  if (!url || !url.includes('cloudinary.com/')) return url;
+  
+  const uploadIndex = url.indexOf('/upload/');
+  if (uploadIndex === -1) return url;
+  
+  const before = url.substring(0, uploadIndex + 8); // includes '/upload/'
+  const after = url.substring(uploadIndex + 8);
+  
+  // c_limit preserves aspect ratio and only shrinks if larger than limits
+  return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+}
+
 // Retry with exponential backoff for rate limits
 async function fetchWithRetry(
   url: string, 
@@ -345,11 +359,16 @@ Respond in JSON:
     ];
 
     if (imageUrl) {
+      // CRITICAL: Resize image URL to stay under Anthropic's 8000px dimension limit
+      // Max 600px wide (email standard), max 7900px tall (under 8000px API limit)
+      const resizedImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
+      console.log('[EARLY] Using resized image URL:', resizedImageUrl.substring(0, 80) + '...');
+      
       messageContent.push({
         type: 'image',
         source: {
           type: 'url',
-          url: imageUrl
+          url: resizedImageUrl
         }
       });
     }
