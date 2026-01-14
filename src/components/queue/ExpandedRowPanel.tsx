@@ -5,7 +5,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
@@ -559,9 +558,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             )}
 
             {/* Render each slice group (row) - Compact 3-column layout: Link | Image | Alt */}
-            <TooltipProvider>
-              {sortedGroups.map((slicesInRow, groupIndex) => {
-                return (
+            {sortedGroups.map((slicesInRow, groupIndex) => (
                   <div key={groupIndex} className="relative flex items-stretch">
                     {/* Slice separator line */}
                     {groupIndex > 0 && (
@@ -571,8 +568,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       </div>
                     )}
                     
-                    {/* Left: Link Column (narrow) */}
-                    <div className="w-14 flex-shrink-0 flex flex-col justify-center items-center py-2 gap-2">
+                    {/* Left: Link Column */}
+                    <div className="w-48 flex-shrink-0 flex flex-col justify-center py-2 pr-3 gap-2">
                       {slicesInRow.map(({ slice, originalIndex }) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -582,25 +579,20 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                             setEditingLinkIndex(null);
                           }
                         }}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <PopoverTrigger asChild>
-                                {slice.link ? (
-                                  <button className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-                                    <Link className="w-4 h-4" />
-                                  </button>
-                                ) : (
-                                  <button className="flex items-center justify-center w-8 h-8 rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground/40 hover:border-primary/50 hover:text-primary/70 transition-colors">
-                                    <Link className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </PopoverTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-[200px]">
-                              <p className="text-xs break-all">{slice.link || 'Add link'}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <PopoverContent className="w-72 p-0" align="start" side="right">
+                          <PopoverTrigger asChild>
+                            {slice.link ? (
+                              <button className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-[10px] hover:bg-primary/20 transition-colors text-left w-full">
+                                <Link className="w-3 h-3 text-primary flex-shrink-0" />
+                                <span className="text-foreground/80 truncate">{slice.link}</span>
+                              </button>
+                            ) : (
+                              <button className="flex items-center gap-1.5 px-2 py-1 border border-dashed border-muted-foreground/30 rounded text-muted-foreground/40 hover:border-primary/50 hover:text-primary/70 transition-colors text-[10px] w-full">
+                                <Link className="w-3 h-3 flex-shrink-0" />
+                                <span>Add link</span>
+                              </button>
+                            )}
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72 p-0" align="end" side="left">
                             <Command>
                               <CommandInput 
                                 placeholder="Search or enter URL..." 
@@ -695,8 +687,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       })}
                     </div>
                     
-                    {/* Right: Alt Text Column (narrow) */}
-                    <div className="w-28 flex-shrink-0 flex flex-col justify-center py-2 px-2 gap-2">
+                    {/* Right: Alt Text Column */}
+                    <div className="w-48 flex-shrink-0 flex flex-col justify-center py-2 pl-3 gap-2">
                       {slicesInRow.map(({ slice, originalIndex }) => (
                         <div key={originalIndex}>
                           {editingAltIndex === originalIndex ? (
@@ -704,15 +696,15 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                               value={slice.altText || ''}
                               onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
                               placeholder="Add alt..."
-                              className="w-full text-[10px] text-muted-foreground leading-tight bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                              rows={3}
+                              className="w-full text-[10px] text-muted-foreground leading-snug bg-muted/40 rounded px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                              rows={2}
                               autoFocus
                               onBlur={() => setEditingAltIndex(null)}
                             />
                           ) : (
                             <p 
                               onClick={() => setEditingAltIndex(originalIndex)}
-                              className="text-[10px] text-muted-foreground/60 leading-tight cursor-pointer hover:text-muted-foreground transition-colors line-clamp-3"
+                              className="text-[10px] text-muted-foreground/60 leading-snug cursor-pointer hover:text-muted-foreground transition-colors"
                             >
                               {slice.altText || 'Add alt...'}
                             </p>
@@ -721,17 +713,15 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       ))}
                     </div>
                   </div>
-                );
-              })}
-            </TooltipProvider>
+            ))}
 
             {/* Footer Section - aligned with 3-column layout */}
             {(footerHtml || footerError || slices.length > 0) && (
               <div className="border-t-2 border-dashed border-primary/40 mt-2">
                 <div className="flex items-stretch">
-                  {/* Left: Empty column for alignment */}
-                  <div className="w-14 flex-shrink-0 flex items-center justify-center py-2">
-                    <span className="text-[9px] font-medium text-primary/50 uppercase tracking-wider rotate-[-90deg] whitespace-nowrap">Footer</span>
+                  {/* Left: Label column */}
+                  <div className="w-48 flex-shrink-0 flex items-center justify-end py-2 pr-3">
+                    <span className="text-[10px] font-medium text-primary/50 uppercase tracking-wider">Footer</span>
                   </div>
                   
                   {/* Center: Footer Preview */}
@@ -760,12 +750,12 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                     )}
                   </div>
                   
-                  {/* Right: Empty column for alignment */}
-                  <div className="w-28 flex-shrink-0 flex items-center justify-center py-2 px-2">
+                  {/* Right: Error column */}
+                  <div className="w-48 flex-shrink-0 flex items-center py-2 pl-3">
                     {footerError && (
                       <div className="text-[10px] text-destructive flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        <span className="line-clamp-2">{footerError}</span>
+                        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                        <span>{footerError}</span>
                       </div>
                     )}
                   </div>
