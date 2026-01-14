@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, CheckCircle, FileText, Image, Code2, Loader2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -68,7 +69,9 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
   const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
   const [linkSearchValue, setLinkSearchValue] = useState('');
-  const [convertingIndex] = useState<number | null>(null); // For future HTML conversion feature
+  
+  // Brand links for autocomplete
+  const [brandLinks, setBrandLinks] = useState<string[]>([]);
 
   // Container sizing - FIXED zoom level like CampaignStudio
   const footerIframeRef = useRef<HTMLIFrameElement>(null);
@@ -85,8 +88,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     sliceIndex?: number;
   }>) || [];
 
-  // Brand links for autocomplete (can be enhanced later to fetch from database)
-  const brandLinks: string[] = [];
+  // Filter brand links based on search
   const filteredLinks = brandLinks.filter(link => 
     link.toLowerCase().includes(linkSearchValue.toLowerCase())
   );
@@ -103,7 +105,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     setSelectedPreview(item.selected_preview_text || '');
   }, [item.selected_subject_line, item.selected_preview_text]);
 
-  // Load Klaviyo lists and footer on mount
+  // Load Klaviyo lists, footer, and brand links on mount
   useEffect(() => {
     const loadBrandData = async () => {
       if (!item.brand_id) return;
@@ -113,12 +115,17 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       setFooterError(null);
       
       try {
-        // Load Klaviyo API key from brands table
+        // Load brand data including all_links
         const { data: brand } = await supabase
           .from('brands')
-          .select('klaviyo_api_key, footer_html')
+          .select('klaviyo_api_key, footer_html, all_links')
           .eq('id', item.brand_id)
           .single();
+
+        // Set brand links for autocomplete
+        if (brand?.all_links && Array.isArray(brand.all_links)) {
+          setBrandLinks(brand.all_links as string[]);
+        }
 
         // Load footer from brand_footers table (primary footer first)
         const { data: primaryFooter, error: primaryError } = await supabase
@@ -551,263 +558,219 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
               </div>
             )}
 
-            {/* Render each slice group (row) - CampaignStudio style */}
-            {sortedGroups.map((slicesInRow, groupIndex) => {
-              const isMultiColumn = slicesInRow.length > 1;
-              
-              return (
-                <div key={groupIndex} className="relative flex items-stretch">
-                  {/* Slice separator line (CampaignStudio style) */}
-                  {groupIndex > 0 && (
-                    <div className="absolute top-0 left-0 right-0 flex items-center" style={{ transform: 'translateY(-50%)' }}>
-                      <div className="h-px bg-destructive/60 flex-1" />
-                      <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {groupIndex + 1}</span>
-                    </div>
-                  )}
-                  
-                  {/* Left: Details Column (CampaignStudio style) */}
-                  <div className="min-w-[320px] w-96 flex-shrink-0 p-4 space-y-3 pt-6">
-                    {slicesInRow.map(({ slice, originalIndex }, colIndex) => (
-                      <div key={originalIndex} className="space-y-2">
-                        {isMultiColumn && (
-                          <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-wider">
-                            Column {colIndex + 1}
-                          </span>
-                        )}
-                        
-                        {/* Type toggle + Link */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* Pill toggle */}
-                          <div className="flex items-center bg-muted/50 border border-border/40 rounded-full p-0.5">
-                            <button
-                              onClick={() => slice.type === 'html' && updateSlice(originalIndex, { type: 'image' })}
-                              disabled={convertingIndex !== null}
-                              className={cn(
-                                "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
-                                slice.type !== 'html'
-                                  ? "bg-primary/15 text-primary border border-primary/30" 
-                                  : "text-muted-foreground/50 hover:text-muted-foreground",
-                                convertingIndex !== null && "opacity-50 cursor-not-allowed"
-                              )}
-                              title="Image mode"
-                            >
-                              <Image className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => slice.type === 'image' && updateSlice(originalIndex, { type: 'html' })}
-                              disabled={convertingIndex !== null}
-                              className={cn(
-                                "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
-                                slice.type === 'html' 
-                                  ? "bg-primary/15 text-primary border border-primary/30" 
-                                  : "text-muted-foreground/50 hover:text-muted-foreground",
-                                convertingIndex !== null && "opacity-50 cursor-not-allowed"
-                              )}
-                              title="HTML mode"
-                            >
-                              {convertingIndex === originalIndex ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Code2 className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
-
-                          {/* Link (CampaignStudio style Popover + Command) */}
-                          <Popover open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
-                            if (open) {
-                              setEditingLinkIndex(originalIndex);
-                              setLinkSearchValue('');
-                            } else {
-                              setEditingLinkIndex(null);
-                            }
-                          }}>
-                            <PopoverTrigger asChild>
-                              {slice.link !== null && slice.link !== '' && slice.link !== undefined ? (
-                                <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 border border-primary/20 rounded-md text-xs hover:bg-primary/20 transition-colors max-w-full">
-                                  <Link className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                                  <span className="text-foreground break-all text-left font-medium text-[10px]">{slice.link}</span>
-                                </button>
-                              ) : (
-                                <button className="flex items-center gap-1.5 px-2.5 py-1.5 border border-dashed border-muted-foreground/30 rounded-md text-muted-foreground/50 hover:border-primary/50 hover:text-primary/70 transition-colors text-xs">
-                                  <Link className="w-3.5 h-3.5" />
-                                  <span>Add link</span>
-                                </button>
-                              )}
-                            </PopoverTrigger>
-                            <PopoverContent className="w-72 p-0" align="start">
-                              <Command>
-                                <CommandInput 
-                                  placeholder="Search or enter URL..." 
-                                  value={linkSearchValue}
-                                  onValueChange={setLinkSearchValue}
-                                />
-                                <CommandList>
-                                  <CommandEmpty>
-                                    {linkSearchValue && (
-                                      <button
-                                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                        onClick={() => setSliceLink(originalIndex, linkSearchValue)}
-                                      >
-                                        Use "{linkSearchValue}"
-                                      </button>
-                                    )}
-                                  </CommandEmpty>
-                                  {filteredLinks.length > 0 && (
-                                    <CommandGroup heading="Brand Links">
-                                      {filteredLinks.slice(0, 10).map((link) => (
-                                        <CommandItem
-                                          key={link}
-                                          value={link}
-                                          onSelect={() => setSliceLink(originalIndex, link)}
-                                          className="text-xs"
-                                        >
-                                          <span className="break-all">{link}</span>
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
+            {/* Render each slice group (row) - Compact 3-column layout: Link | Image | Alt */}
+            <TooltipProvider>
+              {sortedGroups.map((slicesInRow, groupIndex) => {
+                return (
+                  <div key={groupIndex} className="relative flex items-stretch">
+                    {/* Slice separator line */}
+                    {groupIndex > 0 && (
+                      <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
+                        <div className="h-px bg-destructive/60 flex-1" />
+                        <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {groupIndex + 1}</span>
+                      </div>
+                    )}
+                    
+                    {/* Left: Link Column (narrow) */}
+                    <div className="w-14 flex-shrink-0 flex flex-col justify-center items-center py-2 gap-2">
+                      {slicesInRow.map(({ slice, originalIndex }) => (
+                        <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
+                          if (open) {
+                            setEditingLinkIndex(originalIndex);
+                            setLinkSearchValue('');
+                          } else {
+                            setEditingLinkIndex(null);
+                          }
+                        }}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <PopoverTrigger asChild>
+                                {slice.link ? (
+                                  <button className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                                    <Link className="w-4 h-4" />
+                                  </button>
+                                ) : (
+                                  <button className="flex items-center justify-center w-8 h-8 rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground/40 hover:border-primary/50 hover:text-primary/70 transition-colors">
+                                    <Link className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </PopoverTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-[200px]">
+                              <p className="text-xs break-all">{slice.link || 'Add link'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <PopoverContent className="w-72 p-0" align="start" side="right">
+                            <Command>
+                              <CommandInput 
+                                placeholder="Search or enter URL..." 
+                                value={linkSearchValue}
+                                onValueChange={setLinkSearchValue}
+                              />
+                              <CommandList>
+                                <CommandEmpty>
+                                  {linkSearchValue && (
+                                    <button
+                                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                      onClick={() => setSliceLink(originalIndex, linkSearchValue)}
+                                    >
+                                      Use "{linkSearchValue}"
+                                    </button>
                                   )}
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                          
-                          {/* Remove link button */}
-                          {slice.link && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeLink(originalIndex);
-                              }}
-                              className="text-muted-foreground/40 hover:text-foreground/60"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Alt text (CampaignStudio style - click to edit) */}
-                        {editingAltIndex === originalIndex ? (
-                          <textarea
-                            value={slice.altText || ''}
-                            onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
-                            placeholder="Add description..."
-                            className="w-full text-[11px] text-muted-foreground/70 leading-relaxed bg-muted/40 rounded-md px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                            rows={2}
-                            autoFocus
-                            onBlur={() => setEditingAltIndex(null)}
-                          />
-                        ) : (
-                          <p 
-                            onClick={() => setEditingAltIndex(originalIndex)}
-                            className="text-[11px] text-muted-foreground/70 leading-relaxed cursor-pointer hover:text-muted-foreground transition-colors"
-                          >
-                            {slice.altText || 'Add description...'}
-                          </p>
-                        )}
-                        
-                        {colIndex < slicesInRow.length - 1 && (
-                          <Separator className="my-3" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Right: Image Column (CampaignStudio style - no cropping!) */}
-                  <div 
-                    className="flex flex-shrink-0"
-                    style={{ width: scaledWidth }}
-                  >
-                    {slicesInRow.map(({ slice, originalIndex }) => {
-                      const colWidth = slice.totalColumns 
-                        ? scaledWidth / slice.totalColumns 
-                        : scaledWidth / slicesInRow.length;
-                      
-                      return (
-                        <div 
-                          key={originalIndex}
-                          style={{ width: colWidth }}
-                        >
-                          {slice.type === 'html' && slice.htmlContent ? (
-                            <div 
-                              className="bg-white"
-                              dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
-                              style={{ width: '100%' }}
-                            />
-                          ) : slice.imageUrl ? (
-                            <img
-                              src={slice.imageUrl}
-                              alt={slice.altText || `Slice ${originalIndex + 1}`}
-                              style={{ width: '100%' }}
-                              className="block"
-                            />
-                          ) : (
-                            <div 
-                              className="bg-muted flex items-center justify-center text-muted-foreground text-sm"
-                              style={{ width: '100%', height: 100 }}
-                            >
-                              No image
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Footer Section (CampaignStudio style) */}
-            {(footerHtml || footerError || slices.length > 0) && (
-              <>
-                <div className="border-t-2 border-dashed border-primary/40 mt-2">
-                  <div className="flex items-stretch">
-                    {/* Left: Footer Details */}
-                    <div className="min-w-[320px] w-96 flex-shrink-0 p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
-                      </div>
-                      {footerError && (
-                        <div className="mt-2 text-xs text-destructive flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3" />
-                          {footerError}
-                        </div>
-                      )}
-                      {!footerHtml && !footerError && (
-                        <p className="text-[11px] text-muted-foreground/60 mt-1">
-                          No saved footer found for this brand
-                        </p>
-                      )}
+                                </CommandEmpty>
+                                {filteredLinks.length > 0 && (
+                                  <CommandGroup heading="Brand Links">
+                                    {filteredLinks.slice(0, 10).map((link) => (
+                                      <CommandItem
+                                        key={link}
+                                        value={link}
+                                        onSelect={() => setSliceLink(originalIndex, link)}
+                                        className="text-xs"
+                                      >
+                                        <span className="break-all">{link}</span>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                )}
+                                {/* Remove link option if exists */}
+                                {slice.link && (
+                                  <CommandGroup>
+                                    <CommandItem
+                                      onSelect={() => {
+                                        removeLink(originalIndex);
+                                        setEditingLinkIndex(null);
+                                      }}
+                                      className="text-xs text-destructive"
+                                    >
+                                      <X className="w-3 h-3 mr-2" />
+                                      Remove link
+                                    </CommandItem>
+                                  </CommandGroup>
+                                )}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      ))}
                     </div>
                     
-                    {/* Right: Footer Preview (CampaignStudio style - transform scaling) */}
+                    {/* Center: Image Column */}
                     <div 
-                      className="flex-shrink-0 origin-top-left" 
-                      style={{ width: scaledWidth, height: footerHtml ? footerPreviewHeight * (zoomLevel / 100) : 60 }}
+                      className="flex flex-shrink-0"
+                      style={{ width: scaledWidth }}
                     >
-                      {footerHtml ? (
-                        <iframe
-                          ref={footerIframeRef}
-                          srcDoc={footerSrcDoc}
-                          onLoad={handleFooterIframeLoad}
-                          style={{
-                            width: BASE_WIDTH,
-                            height: footerPreviewHeight,
-                            border: 'none',
-                            transform: `scale(${zoomLevel / 100})`,
-                            transformOrigin: 'top left',
-                          }}
-                          title="Footer Preview"
-                        />
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                          No footer
+                      {slicesInRow.map(({ slice, originalIndex }) => {
+                        const colWidth = slice.totalColumns 
+                          ? scaledWidth / slice.totalColumns 
+                          : scaledWidth / slicesInRow.length;
+                        
+                        return (
+                          <div 
+                            key={originalIndex}
+                            style={{ width: colWidth }}
+                          >
+                            {slice.type === 'html' && slice.htmlContent ? (
+                              <div 
+                                className="bg-white"
+                                dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
+                                style={{ width: '100%' }}
+                              />
+                            ) : slice.imageUrl ? (
+                              <img
+                                src={slice.imageUrl}
+                                alt={slice.altText || `Slice ${originalIndex + 1}`}
+                                style={{ width: '100%' }}
+                                className="block"
+                              />
+                            ) : (
+                              <div 
+                                className="bg-muted flex items-center justify-center text-muted-foreground text-sm"
+                                style={{ width: '100%', height: 100 }}
+                              >
+                                No image
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Right: Alt Text Column (narrow) */}
+                    <div className="w-28 flex-shrink-0 flex flex-col justify-center py-2 px-2 gap-2">
+                      {slicesInRow.map(({ slice, originalIndex }) => (
+                        <div key={originalIndex}>
+                          {editingAltIndex === originalIndex ? (
+                            <textarea
+                              value={slice.altText || ''}
+                              onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
+                              placeholder="Add alt..."
+                              className="w-full text-[10px] text-muted-foreground leading-tight bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                              rows={3}
+                              autoFocus
+                              onBlur={() => setEditingAltIndex(null)}
+                            />
+                          ) : (
+                            <p 
+                              onClick={() => setEditingAltIndex(originalIndex)}
+                              className="text-[10px] text-muted-foreground/60 leading-tight cursor-pointer hover:text-muted-foreground transition-colors line-clamp-3"
+                            >
+                              {slice.altText || 'Add alt...'}
+                            </p>
+                          )}
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
+                );
+              })}
+            </TooltipProvider>
+
+            {/* Footer Section - aligned with 3-column layout */}
+            {(footerHtml || footerError || slices.length > 0) && (
+              <div className="border-t-2 border-dashed border-primary/40 mt-2">
+                <div className="flex items-stretch">
+                  {/* Left: Empty column for alignment */}
+                  <div className="w-14 flex-shrink-0 flex items-center justify-center py-2">
+                    <span className="text-[9px] font-medium text-primary/50 uppercase tracking-wider rotate-[-90deg] whitespace-nowrap">Footer</span>
+                  </div>
+                  
+                  {/* Center: Footer Preview */}
+                  <div 
+                    className="flex-shrink-0 origin-top-left" 
+                    style={{ width: scaledWidth, height: footerHtml ? footerPreviewHeight * (zoomLevel / 100) : 60 }}
+                  >
+                    {footerHtml ? (
+                      <iframe
+                        ref={footerIframeRef}
+                        srcDoc={footerSrcDoc}
+                        onLoad={handleFooterIframeLoad}
+                        style={{
+                          width: BASE_WIDTH,
+                          height: footerPreviewHeight,
+                          border: 'none',
+                          transform: `scale(${zoomLevel / 100})`,
+                          transformOrigin: 'top left',
+                        }}
+                        title="Footer Preview"
+                      />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                        No footer
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Right: Empty column for alignment */}
+                  <div className="w-28 flex-shrink-0 flex items-center justify-center py-2 px-2">
+                    {footerError && (
+                      <div className="text-[10px] text-destructive flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span className="line-clamp-2">{footerError}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
