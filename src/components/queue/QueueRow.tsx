@@ -104,7 +104,7 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
   return (
     <div 
       className={cn(
-        "flex h-10 items-center bg-white border-b border-gray-100 text-[13px] text-gray-900",
+        "group flex h-10 items-center bg-white border-b border-gray-100 text-[13px] text-gray-900",
         "hover:bg-gray-50 transition-colors cursor-pointer",
         isExpanded && "bg-blue-50/50 border-b-blue-100"
       )}
@@ -139,7 +139,7 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
       
       {/* Name */}
       <div 
-        className="group relative px-2 flex-shrink-0 overflow-hidden" 
+        className="relative px-2 flex-shrink-0 overflow-hidden" 
         style={{ width: columnWidths.name }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -149,14 +149,13 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
           onSave={handleNameSave}
           className="text-[13px] whitespace-nowrap"
         />
-        {/* Open button - absolutely positioned, appears on hover with solid bg that covers text */}
+        {/* Open button - absolutely positioned, appears on row hover with solid bg */}
         <button
           className={cn(
             "absolute right-0 top-0 bottom-0 flex items-center",
-            "pl-6 pr-2 text-[11px] text-gray-500 hover:text-gray-700",
+            "pl-4 pr-2 text-[11px] text-gray-500 hover:text-gray-700",
             "opacity-0 group-hover:opacity-100 transition-opacity",
-            "bg-gradient-to-l from-white via-white via-60% to-transparent",
-            isExpanded && "from-blue-50 via-blue-50"
+            isExpanded ? "bg-blue-50/50" : "bg-white"
           )}
           onClick={(e) => {
             e.stopPropagation();
