@@ -5,6 +5,7 @@ interface InboxPreviewProps {
   subjectLine: string | null;
   previewText: string | null;
   className?: string;
+  avatarColor?: string;
 }
 
 export function InboxPreview({
@@ -12,11 +13,18 @@ export function InboxPreview({
   subjectLine,
   previewText,
   className,
+  avatarColor,
 }: InboxPreviewProps) {
+  // Use provided color or fallback to gray
+  const bgColor = avatarColor || '#6b7280';
+  
   return (
-    <div className={cn('border rounded-lg bg-background p-3', className)}>
+    <div className={cn('p-3', className)}>
       <div className="flex items-center gap-2 mb-1">
-        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+        <div 
+          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white flex-shrink-0"
+          style={{ backgroundColor: bgColor }}
+        >
           {senderName.charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
