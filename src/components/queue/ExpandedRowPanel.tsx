@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -89,10 +89,11 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const [brandLinks, setBrandLinks] = useState<string[]>([]);
   const [brandDomain, setBrandDomain] = useState<string | null>(null);
 
-  // Container sizing - smaller preview (60% of original)
+  // Container sizing - zoom level persisted per user
   const footerIframeRef = useRef<HTMLIFrameElement>(null);
-  const zoomLevel = 39; // 60% of original 65
-  const scaledWidth = BASE_WIDTH * (zoomLevel / 100); // = 234px
+  const [zoomLevel, setZoomLevel] = useState(39);
+  const hasAppliedDefaultPreset = useRef(false);
+  const scaledWidth = useMemo(() => BASE_WIDTH * (zoomLevel / 100), [zoomLevel]);
 
   // Get brand info
   const brandName = (item as any).brands?.name || 'Brand';
@@ -121,6 +122,38 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     setSelectedSubject(item.selected_subject_line || '');
     setSelectedPreview(item.selected_preview_text || '');
   }, [item.selected_subject_line, item.selected_preview_text]);
+
+  // Load zoom level from user profile on mount
+  useEffect(() => {
+    const loadZoomLevel = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('queue_zoom_level')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile?.queue_zoom_level) {
+        setZoomLevel(profile.queue_zoom_level);
+      }
+    };
+    loadZoomLevel();
+  }, []);
+
+  // Save zoom level when changed
+  const handleZoomChange = async (newZoom: number) => {
+    setZoomLevel(newZoom);
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase
+        .from('profiles')
+        .update({ queue_zoom_level: newZoom })
+        .eq('id', user.id);
+    }
+  };
 
   // Load Klaviyo lists, footer, presets, and brand links on mount
   useEffect(() => {
@@ -217,9 +250,10 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           mappedPresets.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
           setPresets(mappedPresets);
           
-          // Auto-apply default preset if segments are empty
+          // Auto-apply default preset (only once)
           const defaultPreset = mappedPresets.find(p => p.is_default);
-          if (defaultPreset && includedSegments.length === 0 && excludedSegments.length === 0) {
+          if (defaultPreset && !hasAppliedDefaultPreset.current) {
+            hasAppliedDefaultPreset.current = true;
             setIncludedSegments(defaultPreset.included_segments);
             setExcludedSegments(defaultPreset.excluded_segments);
             setSelectedPresetId(defaultPreset.id);
@@ -501,20 +535,20 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       slicesInGroup.sort((a, b) => (a.slice.column ?? 0) - (b.slice.column ?? 0))
     );
 
-  // Footer iframe srcDoc - use scaledWidth for proper alignment
+  // Footer iframe srcDoc - render at BASE_WIDTH, then scale with CSS transform
   const footerSrcDoc = footerHtml ? `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
         <style>
-          body { margin: 0; padding: 0; }
+          body { margin: 0; padding: 0; overflow: hidden; }
           table { border-collapse: collapse; }
           img { max-width: 100%; height: auto; }
         </style>
       </head>
       <body>
-        <table width="${scaledWidth}" cellpadding="0" cellspacing="0" border="0" style="width:${scaledWidth}px;margin:0;">
+        <table width="${BASE_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${BASE_WIDTH}px;margin:0;">
           <tr>
             <td>${footerHtml}</td>
           </tr>
@@ -538,6 +572,20 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                 avatarColor={brandColor}
               />
             </div>
+          </div>
+
+          {/* Zoom Control */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px] text-muted-foreground">Zoom</span>
+            <input
+              type="range"
+              min={25}
+              max={65}
+              value={zoomLevel}
+              onChange={(e) => handleZoomChange(Number(e.target.value))}
+              className="w-24 h-1 accent-primary"
+            />
+            <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
           </div>
 
           {/* Email Preview - slices stacked - no scroll, show full content */}
@@ -693,9 +741,9 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                           ) : (
                             <p 
                               onClick={() => setEditingAltIndex(originalIndex)}
-                              className="text-[9px] text-muted-foreground/60 leading-tight cursor-pointer hover:text-muted-foreground break-words opacity-0 group-hover/row:opacity-100 transition-opacity"
+                              className="text-[11px] text-foreground leading-tight cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5 break-words"
                             >
-                              {slice.altText || 'Alt...'}
+                              {slice.altText || <span className="text-muted-foreground italic">Add alt text...</span>}
                             </p>
                           )}
                         </div>
@@ -704,22 +752,32 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                   </div>
                 ))}
 
-                {/* Footer Section - aligned with slices */}
+                {/* Footer Section - aligned with slices, scaled with CSS transform */}
                 {footerHtml && (
                   <div className="flex items-stretch">
                     {/* Empty link column space - matches flex layout */}
                     <div className="flex-1 min-w-[120px]" />
-                    {/* Footer iframe */}
-                    <div className="flex-shrink-0" style={{ width: scaledWidth }}>
+                    {/* Footer iframe container - clips the scaled content */}
+                    <div 
+                      className="flex-shrink-0 overflow-hidden" 
+                      style={{ 
+                        width: scaledWidth, 
+                        height: footerPreviewHeight * (zoomLevel / 100) 
+                      }}
+                    >
                       <iframe
                         ref={footerIframeRef}
                         srcDoc={footerSrcDoc}
                         onLoad={handleFooterIframeLoad}
+                        scrolling="no"
                         style={{
-                          width: scaledWidth,
-                          height: footerPreviewHeight * (zoomLevel / 100),
+                          width: BASE_WIDTH,
+                          height: footerPreviewHeight,
                           border: 'none',
                           display: 'block',
+                          transform: `scale(${zoomLevel / 100})`,
+                          transformOrigin: 'top left',
+                          overflow: 'hidden',
                         }}
                         title="Footer Preview"
                       />
