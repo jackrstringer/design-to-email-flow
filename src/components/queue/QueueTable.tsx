@@ -34,8 +34,8 @@ const DEFAULT_WIDTHS: ColumnWidths = {
   subject: 280,
   previewText: 280,
   links: 60,
-  external: 60,
-  spelling: 60,
+  external: 80,
+  spelling: 70,
 };
 
 const MIN_WIDTHS: ColumnWidths = {
@@ -245,12 +245,12 @@ export function QueueTable({
           />
         </div>
 
-        {/* External */}
+        {/* External Links */}
         <div 
           className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ width: columnWidths.external }}
         >
-          External
+          Ext. Links
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
