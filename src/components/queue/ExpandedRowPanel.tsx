@@ -88,10 +88,10 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const [brandLinks, setBrandLinks] = useState<string[]>([]);
   const [brandDomain, setBrandDomain] = useState<string | null>(null);
 
-  // Container sizing - FIXED zoom level like CampaignStudio
+  // Container sizing - smaller preview (60% of original)
   const footerIframeRef = useRef<HTMLIFrameElement>(null);
-  const zoomLevel = 65; // Fixed, same as CampaignStudio default
-  const scaledWidth = BASE_WIDTH * (zoomLevel / 100); // = 390px
+  const zoomLevel = 39; // 60% of original 65
+  const scaledWidth = BASE_WIDTH * (zoomLevel / 100); // = 234px
 
   // Get brand info
   const brandName = (item as any).brands?.name || 'Brand';
@@ -498,7 +498,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       slicesInGroup.sort((a, b) => (a.slice.column ?? 0) - (b.slice.column ?? 0))
     );
 
-  // Footer iframe srcDoc (same as CampaignStudio)
+  // Footer iframe srcDoc - use scaledWidth for proper alignment
   const footerSrcDoc = footerHtml ? `
     <!DOCTYPE html>
     <html>
@@ -507,10 +507,11 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
         <style>
           body { margin: 0; padding: 0; }
           table { border-collapse: collapse; }
+          img { max-width: 100%; height: auto; }
         </style>
       </head>
       <body>
-        <table width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;margin:0 auto;">
+        <table width="${scaledWidth}" cellpadding="0" cellspacing="0" border="0" style="width:${scaledWidth}px;margin:0;">
           <tr>
             <td>${footerHtml}</td>
           </tr>
@@ -522,13 +523,13 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   return (
     <div className="bg-muted/20 border-t animate-in slide-in-from-top-2 duration-200">
       <div className="flex">
-        {/* LEFT SIDE - 60% - Campaign Preview */}
-        <div className="w-[60%] p-4 border-r">
+        {/* LEFT SIDE - Campaign Preview - fills available space */}
+        <div className="flex-1 p-4 border-r min-w-0">
           {/* Inbox Preview - centered above campaign */}
           <div className="flex justify-center mb-3">
             <div 
               className="bg-white rounded-lg border shadow-sm" 
-              style={{ width: Math.min(scaledWidth + 40, 500) }}
+              style={{ width: scaledWidth + 160 }}
             >
               <InboxPreview
                 senderName={brandName}
@@ -539,10 +540,10 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             </div>
           </div>
 
-          {/* Email Preview - slices stacked */}
+          {/* Email Preview - slices stacked - no scroll, show full content */}
           <div className="flex justify-center">
-            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-              <div className="px-5 py-3 overflow-auto max-h-[60vh]">
+            <div className="inline-block">
+              <div className="py-3">
                 {/* No slices message */}
                 {slices.length === 0 && (
                   <div className="flex items-center justify-center h-40 text-muted-foreground">
@@ -563,8 +564,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       </div>
                     )}
                     
-                    {/* Left: Link Column */}
-                    <div className="w-44 flex-shrink-0 flex flex-col justify-center py-1 pr-2 gap-1">
+                    {/* Left: Link Column - wider, wraps text */}
+                    <div className="w-40 flex-shrink-0 flex flex-col justify-center py-1 pr-2 gap-1">
                       {slicesInRow.map(({ slice, originalIndex }) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -576,17 +577,10 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                         }}>
                           <PopoverTrigger asChild>
                             {slice.link ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded text-[10px] hover:bg-primary/20 transition-colors text-left w-full truncate">
-                                    <Link className="w-3 h-3 text-primary flex-shrink-0" />
-                                    <span className="text-foreground/80 truncate">{slice.link}</span>
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="left" className="max-w-xs">
-                                  <p className="break-all text-xs">{slice.link}</p>
-                                </TooltipContent>
-                              </Tooltip>
+                              <button className="flex items-start gap-1 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-[9px] hover:bg-primary/20 transition-colors text-left w-full">
+                                <Link className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />
+                                <span className="text-foreground/80 break-all leading-tight">{slice.link}</span>
+                              </button>
                             ) : (
                               <button className="flex items-center gap-1 px-2 py-0.5 border border-dashed border-muted-foreground/20 rounded text-muted-foreground/40 hover:border-primary/40 transition-colors text-[10px] w-full opacity-0 group-hover/row:opacity-100">
                                 <Link className="w-3 h-3 flex-shrink-0" />
@@ -682,8 +676,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       })}
                     </div>
                     
-                    {/* Right: Alt Text Column */}
-                    <div className="w-36 flex-shrink-0 flex flex-col justify-center py-1 pl-2 gap-1">
+                    {/* Right: Alt Text Column - wider, wraps text */}
+                    <div className="w-32 flex-shrink-0 flex flex-col justify-center py-1 pl-2 gap-1">
                       {slicesInRow.map(({ slice, originalIndex }) => (
                         <div key={originalIndex}>
                           {editingAltIndex === originalIndex ? (
@@ -691,17 +685,17 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                               value={slice.altText || ''}
                               onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
                               placeholder="Alt..."
-                              className="w-full text-[10px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                              rows={2}
+                              className="w-full text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                              rows={3}
                               autoFocus
                               onBlur={() => setEditingAltIndex(null)}
                             />
                           ) : (
                             <p 
                               onClick={() => setEditingAltIndex(originalIndex)}
-                              className="text-[10px] text-muted-foreground/40 leading-tight cursor-pointer hover:text-muted-foreground truncate opacity-0 group-hover/row:opacity-100 transition-opacity"
+                              className="text-[9px] text-muted-foreground/60 leading-tight cursor-pointer hover:text-muted-foreground break-words opacity-0 group-hover/row:opacity-100 transition-opacity"
                             >
-                              {slice.altText ? slice.altText.slice(0, 20) + '...' : 'Alt...'}
+                              {slice.altText || 'Alt...'}
                             </p>
                           )}
                         </div>
@@ -710,22 +704,28 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                   </div>
                 ))}
 
-                {/* Footer Section */}
+                {/* Footer Section - aligned with slices */}
                 {footerHtml && (
-                  <div className="border-t border-dashed border-muted-foreground/20 mt-2 pt-2">
-                    <iframe
-                      ref={footerIframeRef}
-                      srcDoc={footerSrcDoc}
-                      onLoad={handleFooterIframeLoad}
-                      style={{
-                        width: BASE_WIDTH,
-                        height: footerPreviewHeight,
-                        border: 'none',
-                        transform: `scale(${zoomLevel / 100})`,
-                        transformOrigin: 'top left',
-                      }}
-                      title="Footer Preview"
-                    />
+                  <div className="flex items-stretch">
+                    {/* Empty link column space */}
+                    <div className="w-40 flex-shrink-0" />
+                    {/* Footer iframe */}
+                    <div className="flex-shrink-0" style={{ width: scaledWidth }}>
+                      <iframe
+                        ref={footerIframeRef}
+                        srcDoc={footerSrcDoc}
+                        onLoad={handleFooterIframeLoad}
+                        style={{
+                          width: scaledWidth,
+                          height: footerPreviewHeight * (zoomLevel / 100),
+                          border: 'none',
+                          display: 'block',
+                        }}
+                        title="Footer Preview"
+                      />
+                    </div>
+                    {/* Empty alt text column space */}
+                    <div className="w-32 flex-shrink-0" />
                   </div>
                 )}
               </div>
@@ -733,12 +733,12 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           </div>
         </div>
 
-        {/* RIGHT SIDE - 40% - Controls & QA */}
-        <div className="w-[40%] p-4 space-y-4">
+        {/* RIGHT SIDE - Fixed width - Controls & QA */}
+        <div className="w-80 flex-shrink-0 p-4 space-y-4">
           {/* Audience Section */}
           <div className="space-y-2">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Audience</h4>
-            {presets.length > 0 ? (
+            {presets.length > 0 && (
               <Select 
                 onValueChange={(id) => {
                   const preset = presets.find(p => p.id === id);
@@ -746,7 +746,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                 }}
               >
                 <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="Select audience..." />
+                  <SelectValue placeholder="Select preset..." />
                 </SelectTrigger>
                 <SelectContent>
                   {presets.map(p => (
@@ -756,33 +756,82 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                   ))}
                 </SelectContent>
               </Select>
-            ) : (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => setShowCreateDefaultModal(true)}
-              >
-                <Plus className="h-3 w-3 mr-2" />
-                Set up default audience
-              </Button>
             )}
             
-            {/* Show selected segments */}
-            {includedSegments.length > 0 && (
-              <div className="flex flex-wrap gap-1">
+            {/* Editable Include Segments */}
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground">Include</label>
+              <div className="flex flex-wrap gap-1 min-h-[28px] p-1.5 border rounded bg-muted/20">
                 {includedSegments.map(id => {
                   const list = klaviyoLists.find(l => l.id === id);
                   return (
-                    <Badge key={id} variant="secondary" className="text-[10px]">
+                    <Badge key={id} variant="secondary" className="text-[10px] gap-1">
                       {list?.name || id}
-                      <button onClick={() => removeSegment(id, 'include')} className="ml-1">
+                      <button onClick={() => removeSegment(id, 'include')}>
                         <X className="h-2 w-2" />
                       </button>
                     </Badge>
                   );
                 })}
+                <Select onValueChange={(v) => addSegment(v, 'include')}>
+                  <SelectTrigger className="h-5 w-auto text-[10px] border-dashed gap-0.5 px-1.5">
+                    <Plus className="h-2.5 w-2.5" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableLists.length === 0 ? (
+                      <SelectItem value="none" disabled>No segments available</SelectItem>
+                    ) : (
+                      availableLists.map(list => (
+                        <SelectItem key={list.id} value={list.id} className="text-xs">{list.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
+
+            {/* Editable Exclude Segments */}
+            <div className="space-y-1">
+              <label className="text-[10px] text-muted-foreground">Exclude</label>
+              <div className="flex flex-wrap gap-1 min-h-[28px] p-1.5 border rounded bg-muted/20">
+                {excludedSegments.map(id => {
+                  const list = klaviyoLists.find(l => l.id === id);
+                  return (
+                    <Badge key={id} variant="outline" className="text-[10px] gap-1 text-destructive border-destructive/30">
+                      {list?.name || id}
+                      <button onClick={() => removeSegment(id, 'exclude')}>
+                        <X className="h-2 w-2" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+                <Select onValueChange={(v) => addSegment(v, 'exclude')}>
+                  <SelectTrigger className="h-5 w-auto text-[10px] border-dashed gap-0.5 px-1.5">
+                    <Plus className="h-2.5 w-2.5" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableLists.length === 0 ? (
+                      <SelectItem value="none" disabled>No segments available</SelectItem>
+                    ) : (
+                      availableLists.map(list => (
+                        <SelectItem key={list.id} value={list.id} className="text-xs">{list.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {presets.length === 0 && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full text-xs"
+                onClick={() => setShowCreateDefaultModal(true)}
+              >
+                <Plus className="h-3 w-3 mr-2" />
+                Save as default
+              </Button>
             )}
           </div>
 
@@ -837,8 +886,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
               )}
             </div>
 
-            {/* Spelling Status */}
-            <div className="bg-white rounded-lg border p-3">
+            {/* Spelling Status with details */}
+            <div className="bg-white rounded-lg border p-3 space-y-2">
               <div className="flex items-center gap-2">
                 {spellingErrors.length > 0 ? (
                   <>
@@ -854,6 +903,24 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                   </>
                 )}
               </div>
+              
+              {/* Show actual spelling errors */}
+              {spellingErrors.length > 0 && (
+                <div className="space-y-1 pt-2 border-t">
+                  {spellingErrors.slice(0, 5).map((error, i) => (
+                    <div key={i} className="text-[11px] flex items-center gap-2">
+                      <span className="text-red-600 line-through">{error.text}</span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="text-green-600 font-medium">{error.correction}</span>
+                    </div>
+                  ))}
+                  {spellingErrors.length > 5 && (
+                    <span className="text-[11px] text-muted-foreground">
+                      +{spellingErrors.length - 5} more
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Alt Text Status */}
