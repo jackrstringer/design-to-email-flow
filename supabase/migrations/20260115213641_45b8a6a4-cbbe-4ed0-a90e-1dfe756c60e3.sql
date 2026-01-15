@@ -1,0 +1,1 @@
+ALTER TABLE profiles ADD COLUMN queue_zoom_level integer DEFAULT 39;
