@@ -1182,7 +1182,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                           onValueChange={setSegmentSearchValue}
                           className="h-9"
                         />
-                        <CommandList className="max-h-[200px]">
+                        <CommandList className="max-h-[400px] overflow-y-auto pointer-events-auto">
                           <CommandEmpty>No segments found.</CommandEmpty>
                           <CommandGroup>
                             {availableLists.map(list => (
@@ -1239,7 +1239,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                         onValueChange={setSegmentSearchValue}
                         className="h-9"
                       />
-                      <CommandList className="max-h-[200px]">
+                      <CommandList className="max-h-[400px] overflow-y-auto pointer-events-auto">
                         <CommandEmpty>No segments found.</CommandEmpty>
                         <CommandGroup>
                           {availableLists.map(list => (
