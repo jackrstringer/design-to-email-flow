@@ -419,6 +419,7 @@ export type Database = {
           excluded_segments: Json
           id: string
           included_segments: Json
+          is_default: boolean
           name: string
           updated_at: string
         }
@@ -428,6 +429,7 @@ export type Database = {
           excluded_segments?: Json
           id?: string
           included_segments?: Json
+          is_default?: boolean
           name: string
           updated_at?: string
         }
@@ -437,6 +439,7 @@ export type Database = {
           excluded_segments?: Json
           id?: string
           included_segments?: Json
+          is_default?: boolean
           name?: string
           updated_at?: string
         }
