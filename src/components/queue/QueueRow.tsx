@@ -139,25 +139,35 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
       
       {/* Name */}
       <div 
-        className="group relative px-2 flex-shrink-0 min-w-0" 
+        className="group relative px-2 flex-shrink-0 min-w-0 overflow-hidden" 
         style={{ width: columnWidths.name }}
         onClick={(e) => e.stopPropagation()}
       >
-        <InlineEditableText
-          value={item.name || 'Untitled Campaign'}
-          onSave={handleNameSave}
-          className="text-[13px]"
-        />
-        {/* Open button on hover */}
-        <button
-          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-[11px] text-blue-600 hover:underline transition-opacity"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpand();
-          }}
-        >
-          Open ›
-        </button>
+        <div className="flex items-center min-w-0">
+          <div className="truncate flex-1 min-w-0 pr-1">
+            <InlineEditableText
+              value={item.name || 'Untitled Campaign'}
+              onSave={handleNameSave}
+              className="text-[13px]"
+            />
+          </div>
+          {/* Open button on hover - boxes out name with solid background */}
+          <button
+            className={cn(
+              "flex-shrink-0 ml-auto pl-2 pr-1 py-0.5 text-[11px] text-gray-500 hover:text-gray-700 transition-all",
+              "opacity-0 group-hover:opacity-100",
+              "bg-gradient-to-l from-white via-white to-transparent",
+              isExpanded && "from-blue-50 via-blue-50"
+            )}
+            style={{ marginRight: -4 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand();
+            }}
+          >
+            Open ›
+          </button>
+        </div>
       </div>
       
       {/* Client (Brand Name) */}
