@@ -270,6 +270,56 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     loadBrandData();
   }, [item.brand_id]);
 
+  // Force default segment modal if no default preset exists
+  useEffect(() => {
+    // Only check after lists and presets have loaded
+    if (isLoadingLists) return;
+    
+    const hasDefaultPreset = presets.some(p => p.is_default);
+    
+    // If we have loaded data but no default preset exists, show the modal
+    if (!hasDefaultPreset && klaviyoLists.length > 0) {
+      setShowCreateDefaultModal(true);
+    }
+  }, [presets, isLoadingLists, klaviyoLists]);
+
+  // Set an existing preset as the default
+  const setExistingAsDefault = async (presetId: string) => {
+    try {
+      // Clear any existing default for this brand
+      await supabase
+        .from('segment_presets')
+        .update({ is_default: false })
+        .eq('brand_id', item.brand_id);
+      
+      // Set the selected preset as default
+      await supabase
+        .from('segment_presets')
+        .update({ is_default: true })
+        .eq('id', presetId);
+      
+      // Find and apply the preset
+      const preset = presets.find(p => p.id === presetId);
+      if (preset) {
+        setIncludedSegments(preset.included_segments);
+        setExcludedSegments(preset.excluded_segments);
+        setSelectedPresetId(preset.id);
+        hasAppliedDefaultPreset.current = true;
+        
+        // Update local state
+        setPresets(prev => prev.map(p => ({
+          ...p,
+          is_default: p.id === presetId
+        })));
+      }
+      
+      setShowCreateDefaultModal(false);
+      toast.success('Default segment set updated');
+    } catch (err) {
+      toast.error('Failed to set default preset');
+    }
+  };
+
   // Handle footer iframe load to measure height
   const handleFooterIframeLoad = useCallback(() => {
     if (footerIframeRef.current) {
@@ -1035,15 +1085,54 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       </div>
 
       {/* Create Default Segment Modal */}
-      <Dialog open={showCreateDefaultModal} onOpenChange={setShowCreateDefaultModal}>
+      <Dialog 
+        open={showCreateDefaultModal} 
+        onOpenChange={(open) => {
+          // Only allow closing if there's now a default preset
+          const hasDefault = presets.some(p => p.is_default);
+          if (!open && !hasDefault) {
+            toast.error('Please set a default segment before continuing');
+            return;
+          }
+          setShowCreateDefaultModal(open);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Default Segment Set</DialogTitle>
+            <DialogTitle>
+              {presets.length > 0 ? 'Set Default Segment' : 'Create Default Segment Set'}
+            </DialogTitle>
             <p className="text-sm text-muted-foreground">
-              This brand doesn't have any saved segment presets. Create a default set to use for all campaigns.
+              {presets.length > 0 
+                ? "This brand doesn't have a default segment set. Choose an existing preset or create a new one."
+                : "This brand doesn't have any saved segment presets. Create a default set to use for all campaigns."}
             </p>
           </DialogHeader>
           <div className="py-4 space-y-4">
+            {/* If presets exist, show option to select existing one as default */}
+            {presets.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium">Use Existing Preset</label>
+                  <Select onValueChange={(id) => setExistingAsDefault(id)}>
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Select a preset to set as default..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {presets.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-3 py-2">
+                  <div className="flex-1 border-t" />
+                  <span className="text-xs text-muted-foreground">OR create new</span>
+                  <div className="flex-1 border-t" />
+                </div>
+              </>
+            )}
+
             {/* Preset Name */}
             <div className="space-y-2">
               <label className="text-xs font-medium">Preset Name</label>
@@ -1126,9 +1215,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDefaultModal(false)}>Cancel</Button>
             <Button onClick={saveAsDefault} disabled={!presetName.trim() || includedSegments.length === 0}>
-              Save & Send
+              Save as Default
             </Button>
           </DialogFooter>
         </DialogContent>
