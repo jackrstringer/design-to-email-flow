@@ -695,12 +695,12 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
                         }}>
                           <PopoverTrigger asChild>
                             {slice.link ? (
-                              <button className="flex items-start gap-1 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-[9px] hover:bg-primary/20 transition-colors text-left w-full">
+                              <button className="flex items-start gap-1 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-[9px] hover:bg-primary/20 transition-colors text-left max-w-[200px]">
                                 <Link className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />
-                                <span className="text-foreground/80 break-all leading-tight">{slice.link}</span>
+                                <span className="text-foreground/80 break-all leading-tight truncate">{slice.link}</span>
                               </button>
                             ) : (
-                              <button className="flex items-center gap-1 px-2 py-0.5 border border-dashed border-muted-foreground/20 rounded text-muted-foreground/40 hover:border-primary/40 transition-colors text-[10px] w-full opacity-0 group-hover/row:opacity-100">
+                              <button className="flex items-center gap-1 px-2 py-0.5 border border-dashed border-muted-foreground/20 rounded text-muted-foreground/40 hover:border-primary/40 transition-colors text-[10px] opacity-0 group-hover/row:opacity-100">
                                 <Link className="w-3 h-3 flex-shrink-0" />
                                 <span>Add link</span>
                               </button>
