@@ -519,479 +519,329 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
 
   return (
     <div className="bg-muted/20 border-t animate-in slide-in-from-top-2 duration-200">
-      {/* TOP ROW - Inbox Preview and Actions */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div className="flex-1 max-w-md">
-          <InboxPreview
-            senderName={brandName}
-            subjectLine={selectedSubject}
-            previewText={selectedPreview}
-          />
+      {/* Compact Control Bar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b bg-white/50">
+        {/* Audience Selector - compact inline */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">Audience:</span>
+          {presets.length > 0 ? (
+            <Select 
+              onValueChange={(id) => {
+                const preset = presets.find(p => p.id === id);
+                if (preset) applyPreset(preset);
+              }}
+            >
+              <SelectTrigger className="h-6 text-[11px] w-[160px] bg-white">
+                <SelectValue placeholder="Select audience..." />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map(p => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name} {p.is_default && '★'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-6 text-[11px]"
+              onClick={() => setShowCreateDefaultModal(true)}
+            >
+              Set up audience
+            </Button>
+          )}
+          {/* Show selected segments as chips */}
+          {includedSegments.length > 0 && (
+            <div className="flex items-center gap-1">
+              {includedSegments.slice(0, 2).map(id => {
+                const list = klaviyoLists.find(l => l.id === id);
+                return (
+                  <Badge key={id} variant="secondary" className="text-[10px] py-0 h-5">
+                    {list?.name?.slice(0, 15) || id}
+                    <button onClick={() => removeSegment(id, 'include')} className="ml-0.5">
+                      <X className="h-2 w-2" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              {includedSegments.length > 2 && (
+                <span className="text-[10px] text-muted-foreground">+{includedSegments.length - 2}</span>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Actions */}
+        <div className="h-4 w-px bg-border" />
+
+        {/* QA Indicators - compact row */}
+        <div className="flex items-center gap-3 text-[11px]">
+          {hasExternalLinks ? (
+            <span className="flex items-center gap-1 text-amber-600">
+              <AlertTriangle className="h-3 w-3" />
+              {externalLinks.length} external
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-green-600">
+              <Check className="h-3 w-3" />
+              Links OK
+            </span>
+          )}
+          
+          {spellingErrors.length > 0 ? (
+            <span className="flex items-center gap-1 text-amber-600">
+              <AlertTriangle className="h-3 w-3" />
+              {spellingErrors.length} spelling
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-green-600">
+              <Check className="h-3 w-3" />
+              Spelling OK
+            </span>
+          )}
+          
+          {!allHaveAltText && (
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <AlertTriangle className="h-3 w-3" />
+              {slicesWithPlaceholderAlt.length} alt
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Actions - right side */}
         <div className="flex items-center gap-2">
           {item.status === 'sent_to_klaviyo' && item.klaviyo_campaign_url ? (
-            <Button size="sm" variant="outline" className="h-8 text-xs" asChild>
+            <Button size="sm" variant="outline" className="h-6 text-[11px]" asChild>
               <a href={item.klaviyo_campaign_url} target="_blank" rel="noopener noreferrer">
-                Klaviyo <ExternalLink className="h-3 w-3 ml-1" />
+                View in Klaviyo <ExternalLink className="h-3 w-3 ml-1" />
               </a>
             </Button>
           ) : (
             <>
               <Button
                 size="sm"
-                className="h-8 text-xs"
-                disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview}
+                className="h-6 text-[11px]"
+                disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview || includedSegments.length === 0}
                 onClick={handleSendToKlaviyo}
               >
                 <Send className="h-3 w-3 mr-1" />
                 {isSending ? 'Sending...' : 'Send'}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={handleReprocess}
-                disabled={isReprocessing || item.status === 'processing'}
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", isReprocessing && "animate-spin")} />
+              <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={handleReprocess} disabled={isReprocessing}>
+                <RefreshCw className={cn("h-3 w-3", isReprocessing && "animate-spin")} />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-6 text-[11px] text-destructive" onClick={handleDelete} disabled={isDeleting}>
+                <Trash2 className="h-3 w-3" />
               </Button>
             </>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
         </div>
       </div>
 
-      {/* SECOND ROW - Audience & QA Cards */}
-      <div className="grid grid-cols-2 gap-4 p-4 border-b">
-        {/* Audience Card */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium">Audience</h4>
-            {presets.length > 0 && (
-              <Select onValueChange={(id) => {
-                const preset = presets.find(p => p.id === id);
-                if (preset) applyPreset(preset);
-              }}>
-                <SelectTrigger className="h-7 text-xs w-[140px]">
-                  <SelectValue placeholder="Load preset..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {presets.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} {p.is_default && '(default)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+      {/* Main Content Area - Inbox Preview centered above email */}
+      <div className="flex justify-center py-4">
+        <div className="space-y-3">
+          {/* Inbox Preview - looks like an email in inbox */}
+          <div className="bg-white rounded-lg border shadow-sm p-3" style={{ width: scaledWidth + 40 }}>
+            <InboxPreview
+              senderName={brandName}
+              subjectLine={selectedSubject || 'Select a subject line...'}
+              previewText={selectedPreview || 'Select preview text...'}
+            />
           </div>
 
-          {listLoadError ? (
-            <div className="text-xs text-destructive">{listLoadError}</div>
-          ) : (
-            <div className="space-y-3">
-              {/* Include segments */}
-              <div>
-                <label className="text-xs text-muted-foreground mb-1.5 block">Include</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {includedSegments.map(id => {
-                    const list = klaviyoLists.find(l => l.id === id);
-                    return (
-                      <Badge key={id} variant="secondary" className="gap-1 text-xs py-0.5 h-6">
-                        {list?.name || id}
-                        <button onClick={() => removeSegment(id, 'include')} className="hover:text-destructive">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                  <Select onValueChange={(v) => addSegment(v, 'include')}>
-                    <SelectTrigger className="h-6 text-xs w-auto px-2 border-dashed gap-1">
-                      <Plus className="h-3 w-3" />
-                      <span>Add</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingLists ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
-                      ) : availableLists.length === 0 ? (
-                        <SelectItem value="none" disabled>No segments available</SelectItem>
-                      ) : (
-                        availableLists.map(list => (
-                          <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Exclude segments */}
-              <div>
-                <label className="text-xs text-muted-foreground mb-1.5 block">Exclude</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {excludedSegments.map(id => {
-                    const list = klaviyoLists.find(l => l.id === id);
-                    return (
-                      <Badge key={id} variant="outline" className="gap-1 text-xs py-0.5 h-6 text-destructive border-destructive/30">
-                        {list?.name || id}
-                        <button onClick={() => removeSegment(id, 'exclude')} className="hover:text-destructive">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                  <Select onValueChange={(v) => addSegment(v, 'exclude')}>
-                    <SelectTrigger className="h-6 text-xs w-auto px-2 border-dashed gap-1">
-                      <Plus className="h-3 w-3" />
-                      <span>Exclude</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingLists ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
-                      ) : availableLists.length === 0 ? (
-                        <SelectItem value="none" disabled>No segments available</SelectItem>
-                      ) : (
-                        availableLists.map(list => (
-                          <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* QA Card */}
-        <div className="bg-white rounded-lg border p-4">
-          <h4 className="text-sm font-medium mb-3">QA Checks</h4>
-          <div className="grid grid-cols-2 gap-3">
-            {/* External Links */}
-            <div className={cn(
-              "flex items-center gap-2 p-2 rounded",
-              hasExternalLinks ? "bg-amber-50" : "bg-green-50"
-            )}>
-              {hasExternalLinks ? (
-                <>
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <span className="text-xs text-amber-700">{externalLinks.length} external</span>
-                </>
-              ) : (
-                <>
-                  <Check className="h-4 w-4 text-green-600" />
-                  <span className="text-xs text-green-700">All internal</span>
-                </>
-              )}
-            </div>
-
-            {/* Spelling */}
-            <div className={cn(
-              "flex items-center gap-2 p-2 rounded",
-              spellingErrors.length > 0 ? "bg-amber-50" : "bg-green-50"
-            )}>
-              {spellingErrors.length > 0 ? (
-                <>
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <span className="text-xs text-amber-700">{spellingErrors.length} spelling</span>
-                </>
-              ) : (
-                <>
-                  <Check className="h-4 w-4 text-green-600" />
-                  <span className="text-xs text-green-700">No errors</span>
-                </>
-              )}
-            </div>
-
-            {/* Links Coverage */}
-            <div className={cn(
-              "flex items-center gap-2 p-2 rounded",
-              !allHaveLinks ? "bg-amber-50" : "bg-green-50"
-            )}>
-              {allHaveLinks ? (
-                <>
-                  <Check className="h-4 w-4 text-green-600" />
-                  <span className="text-xs text-green-700">All linked</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <span className="text-xs text-amber-700">{slicesMissingLinks.length} missing links</span>
-                </>
-              )}
-            </div>
-
-            {/* Alt Text */}
-            <div className={cn(
-              "flex items-center gap-2 p-2 rounded",
-              !allHaveAltText ? "bg-amber-50" : "bg-green-50"
-            )}>
-              {allHaveAltText ? (
-                <>
-                  <Check className="h-4 w-4 text-green-600" />
-                  <span className="text-xs text-green-700">Alt text ✓</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <span className="text-xs text-amber-700">{slicesWithPlaceholderAlt.length} need alt</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Spelling errors panel */}
-          {spellingErrors.length > 0 && (
-            <div className="mt-3 pt-3 border-t">
-              <SpellingErrorsPanel
-                campaignId={item.id}
-                spellingErrors={spellingErrors}
-                slices={slices}
-                source={item.source}
-                sourceMetadata={item.source_metadata as Record<string, unknown> | undefined}
-                onErrorFixed={onUpdate}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* MAIN CONTENT - CampaignStudio Layout: Details left + Slices right, scrolling together */}
-      <div className="overflow-auto max-h-[70vh] bg-muted/10">
-        <div className="p-6 flex justify-center">
-          <div className="relative">
-            {/* No slices message */}
-            {slices.length === 0 && (
-              <div className="flex items-center justify-center h-64 text-muted-foreground">
-                <div className="text-center">
-                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No slices available. Try reprocessing.</p>
-                </div>
-              </div>
-            )}
-
-            {/* Render each slice group (row) - Compact 3-column layout: Link | Image | Alt */}
-            {sortedGroups.map((slicesInRow, groupIndex) => (
-              <div key={groupIndex} className="relative flex items-stretch">
-                {/* Slice separator line */}
-                {groupIndex > 0 && (
-                  <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
-                    <div className="h-px bg-destructive/60 flex-1" />
-                    <span className="px-2 text-[9px] text-destructive/60 font-medium">SLICE {groupIndex + 1}</span>
+          {/* Email Preview - slices stacked */}
+          <div className="bg-white rounded-lg border shadow-sm overflow-hidden" style={{ width: scaledWidth + 40 }}>
+            <div className="px-5 py-3 overflow-auto max-h-[60vh]">
+              {/* No slices message */}
+              {slices.length === 0 && (
+                <div className="flex items-center justify-center h-40 text-muted-foreground">
+                  <div className="text-center">
+                    <FileText className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No slices available. Try reprocessing.</p>
                   </div>
-                )}
-                
-                {/* Left: Link Column */}
-                <div className="w-64 flex-shrink-0 flex flex-col justify-center py-2 pr-3 gap-2">
-                  {slicesInRow.map(({ slice, originalIndex }) => (
-                    <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
-                      if (open) {
-                        setEditingLinkIndex(originalIndex);
-                        setLinkSearchValue('');
-                      } else {
-                        setEditingLinkIndex(null);
-                      }
-                    }}>
-                      <PopoverTrigger asChild>
-                        {slice.link ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-[10px] hover:bg-primary/20 transition-colors text-left w-full">
-                                <Link className="w-3 h-3 text-primary flex-shrink-0" />
-                                <span className="text-foreground/80 truncate max-w-[200px]">{slice.link}</span>
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-sm">
-                              <p className="break-all text-xs">{slice.link}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <button className="flex items-center gap-1.5 px-2 py-1 border border-dashed border-muted-foreground/30 rounded text-muted-foreground/40 hover:border-primary/50 hover:text-primary/70 transition-colors text-[10px] w-full">
-                            <Link className="w-3 h-3 flex-shrink-0" />
-                            <span>Add link</span>
-                          </button>
-                        )}
-                      </PopoverTrigger>
-                      <PopoverContent className="w-72 p-0" align="end" side="left">
-                        <Command>
-                          <CommandInput 
-                            placeholder="Search or enter URL..." 
-                            value={linkSearchValue}
-                            onValueChange={setLinkSearchValue}
-                          />
-                          <CommandList>
-                            <CommandEmpty>
-                              {linkSearchValue && (
-                                <button
-                                  className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                  onClick={() => setSliceLink(originalIndex, linkSearchValue)}
-                                >
-                                  Use "{linkSearchValue}"
-                                </button>
-                              )}
-                            </CommandEmpty>
-                            {filteredLinks.length > 0 && (
-                              <CommandGroup heading="Brand Links">
-                                {filteredLinks.slice(0, 10).map((link) => (
-                                  <CommandItem
-                                    key={link}
-                                    value={link}
-                                    onSelect={() => setSliceLink(originalIndex, link)}
-                                    className="text-xs"
-                                  >
-                                    <span className="break-all">{link}</span>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            )}
-                            {/* Remove link option if exists */}
-                            {slice.link && (
-                              <CommandGroup>
-                                <CommandItem
-                                  onSelect={() => {
-                                    removeLink(originalIndex);
-                                    setEditingLinkIndex(null);
-                                  }}
-                                  className="text-xs text-destructive"
-                                >
-                                  <X className="w-3 h-3 mr-2" />
-                                  Remove link
-                                </CommandItem>
-                              </CommandGroup>
-                            )}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  ))}
                 </div>
-                
-                {/* Center: Image Column */}
-                <div 
-                  className="flex flex-shrink-0"
-                  style={{ width: scaledWidth }}
-                >
-                  {slicesInRow.map(({ slice, originalIndex }) => {
-                    const colWidth = slice.totalColumns 
-                      ? scaledWidth / slice.totalColumns 
-                      : scaledWidth / slicesInRow.length;
-                    
-                    return (
-                      <div 
-                        key={originalIndex}
-                        style={{ width: colWidth }}
-                      >
-                        {slice.type === 'html' && slice.htmlContent ? (
-                          <div 
-                            className="bg-white"
-                            dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
-                            style={{ width: '100%' }}
-                          />
-                        ) : slice.imageUrl ? (
-                          <img
-                            src={slice.imageUrl}
-                            alt={slice.altText || `Slice ${originalIndex + 1}`}
-                            style={{ width: '100%' }}
-                            className="block"
-                          />
-                        ) : (
-                          <div 
-                            className="bg-muted flex items-center justify-center text-muted-foreground text-sm"
-                            style={{ width: '100%', height: 100 }}
-                          >
-                            No image
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {/* Right: Alt Text Column */}
-                <div className="w-48 flex-shrink-0 flex flex-col justify-center py-2 pl-3 gap-2">
-                  {slicesInRow.map(({ slice, originalIndex }) => (
-                    <div key={originalIndex}>
-                      {editingAltIndex === originalIndex ? (
-                        <textarea
-                          value={slice.altText || ''}
-                          onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
-                          placeholder="Add alt..."
-                          className="w-full text-[10px] text-muted-foreground leading-snug bg-muted/40 rounded px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                          rows={2}
-                          autoFocus
-                          onBlur={() => setEditingAltIndex(null)}
-                        />
-                      ) : (
-                        <p 
-                          onClick={() => setEditingAltIndex(originalIndex)}
-                          className="text-[10px] text-muted-foreground/60 leading-snug cursor-pointer hover:text-muted-foreground transition-colors"
-                        >
-                          {slice.altText || 'Add alt...'}
-                        </p>
-                      )}
+              )}
+
+              {/* Render each slice group (row) - Compact layout */}
+              {sortedGroups.map((slicesInRow, groupIndex) => (
+                <div key={groupIndex} className="relative flex items-stretch group/row hover:bg-muted/10 -mx-5 px-5">
+                  {/* Slice separator line */}
+                  {groupIndex > 0 && (
+                    <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
+                      <div className="h-px bg-border flex-1" />
                     </div>
-                  ))}
+                  )}
+                  
+                  {/* Left: Link Column */}
+                  <div className="w-48 flex-shrink-0 flex flex-col justify-center py-1 pr-2 gap-1">
+                    {slicesInRow.map(({ slice, originalIndex }) => (
+                      <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
+                        if (open) {
+                          setEditingLinkIndex(originalIndex);
+                          setLinkSearchValue('');
+                        } else {
+                          setEditingLinkIndex(null);
+                        }
+                      }}>
+                        <PopoverTrigger asChild>
+                          {slice.link ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 rounded text-[10px] hover:bg-primary/20 transition-colors text-left w-full truncate">
+                                  <Link className="w-3 h-3 text-primary flex-shrink-0" />
+                                  <span className="text-foreground/80 truncate">{slice.link}</span>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-xs">
+                                <p className="break-all text-xs">{slice.link}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <button className="flex items-center gap-1 px-2 py-0.5 border border-dashed border-muted-foreground/20 rounded text-muted-foreground/40 hover:border-primary/40 transition-colors text-[10px] w-full opacity-0 group-hover/row:opacity-100">
+                              <Link className="w-3 h-3 flex-shrink-0" />
+                              <span>Add link</span>
+                            </button>
+                          )}
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0" align="end" side="left">
+                          <Command>
+                            <CommandInput 
+                              placeholder="Search or enter URL..." 
+                              value={linkSearchValue}
+                              onValueChange={setLinkSearchValue}
+                            />
+                            <CommandList>
+                              <CommandEmpty>
+                                {linkSearchValue && (
+                                  <button
+                                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                    onClick={() => setSliceLink(originalIndex, linkSearchValue)}
+                                  >
+                                    Use "{linkSearchValue}"
+                                  </button>
+                                )}
+                              </CommandEmpty>
+                              {filteredLinks.length > 0 && (
+                                <CommandGroup heading="Brand Links">
+                                  {filteredLinks.slice(0, 10).map((link) => (
+                                    <CommandItem
+                                      key={link}
+                                      value={link}
+                                      onSelect={() => setSliceLink(originalIndex, link)}
+                                      className="text-xs"
+                                    >
+                                      <span className="break-all">{link}</span>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                              {slice.link && (
+                                <CommandGroup>
+                                  <CommandItem
+                                    onSelect={() => {
+                                      removeLink(originalIndex);
+                                      setEditingLinkIndex(null);
+                                    }}
+                                    className="text-xs text-destructive"
+                                  >
+                                    <X className="w-3 h-3 mr-2" />
+                                    Remove link
+                                  </CommandItem>
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    ))}
+                  </div>
+                  
+                  {/* Center: Image Column */}
+                  <div className="flex flex-shrink-0" style={{ width: scaledWidth }}>
+                    {slicesInRow.map(({ slice, originalIndex }) => {
+                      const colWidth = slice.totalColumns 
+                        ? scaledWidth / slice.totalColumns 
+                        : scaledWidth / slicesInRow.length;
+                      
+                      return (
+                        <div key={originalIndex} style={{ width: colWidth }}>
+                          {slice.type === 'html' && slice.htmlContent ? (
+                            <div 
+                              className="bg-white"
+                              dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
+                              style={{ width: '100%' }}
+                            />
+                          ) : slice.imageUrl ? (
+                            <img
+                              src={slice.imageUrl}
+                              alt={slice.altText || `Slice ${originalIndex + 1}`}
+                              style={{ width: '100%' }}
+                              className="block"
+                            />
+                          ) : (
+                            <div 
+                              className="bg-muted flex items-center justify-center text-muted-foreground text-xs"
+                              style={{ width: '100%', height: 60 }}
+                            >
+                              No image
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Right: Alt Text Column */}
+                  <div className="w-32 flex-shrink-0 flex flex-col justify-center py-1 pl-2 gap-1">
+                    {slicesInRow.map(({ slice, originalIndex }) => (
+                      <div key={originalIndex}>
+                        {editingAltIndex === originalIndex ? (
+                          <textarea
+                            value={slice.altText || ''}
+                            onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
+                            placeholder="Alt..."
+                            className="w-full text-[10px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                            rows={2}
+                            autoFocus
+                            onBlur={() => setEditingAltIndex(null)}
+                          />
+                        ) : (
+                          <p 
+                            onClick={() => setEditingAltIndex(originalIndex)}
+                            className="text-[10px] text-muted-foreground/40 leading-tight cursor-pointer hover:text-muted-foreground truncate opacity-0 group-hover/row:opacity-100 transition-opacity"
+                          >
+                            {slice.altText ? slice.altText.slice(0, 20) + '...' : 'Alt...'}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {/* Footer Section - aligned with 3-column layout */}
-            {(footerHtml || footerError || slices.length > 0) && (
-              <div className="border-t-2 border-dashed border-primary/40 mt-2">
-                <div className="flex items-stretch">
-                  {/* Left: Label column */}
-                  <div className="w-64 flex-shrink-0 flex items-center justify-end py-2 pr-3">
-                    <span className="text-[10px] font-medium text-primary/50 uppercase tracking-wider">Footer</span>
-                  </div>
-                  
-                  {/* Center: Footer Preview */}
-                  <div 
-                    className="flex-shrink-0 origin-top-left" 
-                    style={{ width: scaledWidth, height: footerHtml ? footerPreviewHeight * (zoomLevel / 100) : 60 }}
-                  >
-                    {footerHtml ? (
-                      <iframe
-                        ref={footerIframeRef}
-                        srcDoc={footerSrcDoc}
-                        onLoad={handleFooterIframeLoad}
-                        style={{
-                          width: BASE_WIDTH,
-                          height: footerPreviewHeight,
-                          border: 'none',
-                          transform: `scale(${zoomLevel / 100})`,
-                          transformOrigin: 'top left',
-                        }}
-                        title="Footer Preview"
-                      />
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                        No footer
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Right: Error column */}
-                  <div className="w-48 flex-shrink-0 flex items-center py-2 pl-3">
-                    {footerError && (
-                      <div className="text-[10px] text-destructive flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                        <span>{footerError}</span>
-                      </div>
-                    )}
-                  </div>
+              {/* Footer Section */}
+              {footerHtml && (
+                <div className="border-t border-dashed border-muted-foreground/20 mt-2 pt-2">
+                  <iframe
+                    ref={footerIframeRef}
+                    srcDoc={footerSrcDoc}
+                    onLoad={handleFooterIframeLoad}
+                    style={{
+                      width: BASE_WIDTH,
+                      height: footerPreviewHeight,
+                      border: 'none',
+                      transform: `scale(${zoomLevel / 100})`,
+                      transformOrigin: 'top left',
+                    }}
+                    title="Footer Preview"
+                  />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
