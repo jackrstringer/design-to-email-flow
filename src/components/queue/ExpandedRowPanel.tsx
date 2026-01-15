@@ -71,6 +71,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
 
   // Segment presets
   const [presets, setPresets] = useState<SegmentPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [showCreateDefaultModal, setShowCreateDefaultModal] = useState(false);
   const [presetName, setPresetName] = useState('');
 
@@ -221,6 +222,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           if (defaultPreset && includedSegments.length === 0 && excludedSegments.length === 0) {
             setIncludedSegments(defaultPreset.included_segments);
             setExcludedSegments(defaultPreset.excluded_segments);
+            setSelectedPresetId(defaultPreset.id);
           }
         }
       } catch (err) {
@@ -278,6 +280,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const applyPreset = (preset: SegmentPreset) => {
     setIncludedSegments(preset.included_segments);
     setExcludedSegments(preset.excluded_segments);
+    setSelectedPresetId(preset.id);
     toast.success(`Applied "${preset.name}"`);
   };
 
@@ -525,12 +528,9 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
       <div className="flex">
         {/* LEFT SIDE - Campaign Preview - fills available space */}
         <div className="flex-1 p-4 border-r min-w-0">
-          {/* Inbox Preview - centered above campaign */}
-          <div className="flex justify-center mb-3">
-            <div 
-              className="bg-white rounded-lg border shadow-sm" 
-              style={{ width: scaledWidth + 160 }}
-            >
+          {/* Inbox Preview - full width */}
+          <div className="mb-3">
+            <div className="bg-white rounded-lg border shadow-sm">
               <InboxPreview
                 senderName={brandName}
                 subjectLine={selectedSubject || 'Select a subject line...'}
@@ -541,8 +541,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           </div>
 
           {/* Email Preview - slices stacked - no scroll, show full content */}
-          <div className="flex justify-center">
-            <div className="inline-block">
+          <div>
+            <div className="flex flex-col">
               <div className="py-3">
                 {/* No slices message */}
                 {slices.length === 0 && (
@@ -564,8 +564,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       </div>
                     )}
                     
-                    {/* Left: Link Column - wider, wraps text */}
-                    <div className="w-40 flex-shrink-0 flex flex-col justify-center py-1 pr-2 gap-1">
+                    {/* Left: Link Column - expands to fill available space */}
+                    <div className="flex-1 min-w-[120px] flex flex-col justify-center py-1 pr-3 gap-1 items-end">
                       {slicesInRow.map(({ slice, originalIndex }) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -676,8 +676,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                       })}
                     </div>
                     
-                    {/* Right: Alt Text Column - wider, wraps text */}
-                    <div className="w-32 flex-shrink-0 flex flex-col justify-center py-1 pl-2 gap-1">
+                    {/* Right: Alt Text Column - expands to fill available space */}
+                    <div className="flex-1 min-w-[120px] flex flex-col justify-center py-1 pl-3 gap-1">
                       {slicesInRow.map(({ slice, originalIndex }) => (
                         <div key={originalIndex}>
                           {editingAltIndex === originalIndex ? (
@@ -707,8 +707,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                 {/* Footer Section - aligned with slices */}
                 {footerHtml && (
                   <div className="flex items-stretch">
-                    {/* Empty link column space */}
-                    <div className="w-40 flex-shrink-0" />
+                    {/* Empty link column space - matches flex layout */}
+                    <div className="flex-1 min-w-[120px]" />
                     {/* Footer iframe */}
                     <div className="flex-shrink-0" style={{ width: scaledWidth }}>
                       <iframe
@@ -724,8 +724,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                         title="Footer Preview"
                       />
                     </div>
-                    {/* Empty alt text column space */}
-                    <div className="w-32 flex-shrink-0" />
+                    {/* Empty alt text column space - matches flex layout */}
+                    <div className="flex-1 min-w-[120px]" />
                   </div>
                 )}
               </div>
@@ -740,6 +740,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Audience</h4>
             {presets.length > 0 && (
               <Select 
+                value={selectedPresetId || undefined}
                 onValueChange={(id) => {
                   const preset = presets.find(p => p.id === id);
                   if (preset) applyPreset(preset);
