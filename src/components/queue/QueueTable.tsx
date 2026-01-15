@@ -3,7 +3,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueueRow } from './QueueRow';
 import { ExpandedRowPanel } from './ExpandedRowPanel';
-import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
+import { CampaignQueueItem, SegmentPreset } from '@/hooks/useCampaignQueue';
 import { cn } from '@/lib/utils';
 
 interface QueueTableProps {
@@ -12,6 +12,7 @@ interface QueueTableProps {
   expandedId: string | null;
   onToggleExpand: (id: string) => void;
   onUpdate: () => void;
+  presetsByBrand: Record<string, SegmentPreset[]>;
 }
 
 interface ColumnWidths {
@@ -19,6 +20,7 @@ interface ColumnWidths {
   thumbnail: number;
   name: number;
   client: number;
+  segmentSet: number;
   subject: number;
   previewText: number;
   links: number;
@@ -29,10 +31,11 @@ interface ColumnWidths {
 const DEFAULT_WIDTHS: ColumnWidths = {
   status: 100,
   thumbnail: 40,
-  name: 200,
-  client: 140,
-  subject: 280,
-  previewText: 280,
+  name: 180,
+  client: 120,
+  segmentSet: 130,
+  subject: 250,
+  previewText: 250,
   links: 60,
   external: 80,
   spelling: 70,
@@ -43,6 +46,7 @@ const MIN_WIDTHS: ColumnWidths = {
   thumbnail: 40,
   name: 120,
   client: 80,
+  segmentSet: 100,
   subject: 150,
   previewText: 150,
   links: 50,
@@ -56,6 +60,7 @@ export function QueueTable({
   expandedId,
   onToggleExpand,
   onUpdate,
+  presetsByBrand,
 }: QueueTableProps) {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const [resizing, setResizing] = useState<keyof ColumnWidths | null>(null);
@@ -91,8 +96,9 @@ export function QueueTable({
           <div className="w-8 flex-shrink-0 px-2" />
           <div className="px-2" style={{ width: 100 }}>Status</div>
           <div className="px-2" style={{ width: 40 }} />
-          <div className="px-2" style={{ width: 200 }}>Name</div>
+          <div className="px-2" style={{ width: 180 }}>Name</div>
           <div className="px-2" style={{ width: 120 }}>Client</div>
+          <div className="px-2" style={{ width: 130 }}>Segment Set</div>
           <div className="px-2 flex-1" style={{ minWidth: 200 }}>Subject Line</div>
           <div className="px-2 flex-1" style={{ minWidth: 200 }}>Preview Text</div>
           <div className="px-2 text-center" style={{ width: 60 }}>Links</div>
@@ -105,8 +111,9 @@ export function QueueTable({
             <div className="w-8 flex-shrink-0 px-2"><Skeleton className="h-4 w-4" /></div>
             <div className="px-2" style={{ width: 100 }}><Skeleton className="h-5 w-14" /></div>
             <div className="px-2" style={{ width: 40 }}><Skeleton className="h-8 w-6" /></div>
-            <div className="px-2" style={{ width: 200 }}><Skeleton className="h-4 w-28" /></div>
+            <div className="px-2" style={{ width: 180 }}><Skeleton className="h-4 w-28" /></div>
             <div className="px-2" style={{ width: 120 }}><Skeleton className="h-4 w-20" /></div>
+            <div className="px-2" style={{ width: 130 }}><Skeleton className="h-4 w-20" /></div>
             <div className="px-2 flex-1"><Skeleton className="h-4 w-36" /></div>
             <div className="px-2 flex-1"><Skeleton className="h-4 w-36" /></div>
             <div className="px-2" style={{ width: 60 }}><Skeleton className="h-4 w-6 mx-auto" /></div>
@@ -200,6 +207,21 @@ export function QueueTable({
           />
         </div>
 
+        {/* Segment Set */}
+        <div 
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.segmentSet }}
+        >
+          Segment Set
+          <div 
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
+            onMouseDown={handleResizeStart('segmentSet')}
+          />
+        </div>
+
         {/* Subject Line */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
@@ -271,24 +293,29 @@ export function QueueTable({
 
       {/* Rows */}
       <div>
-        {items.map((item) => (
-          <React.Fragment key={item.id}>
-            <QueueRow
-              item={item}
-              isExpanded={expandedId === item.id}
-              onToggleExpand={() => onToggleExpand(item.id)}
-              onUpdate={onUpdate}
-              columnWidths={columnWidths}
-            />
-            {expandedId === item.id && (
-              <ExpandedRowPanel
+        {items.map((item) => {
+          const presets = item.brand_id ? (presetsByBrand[item.brand_id] || []) : [];
+          return (
+            <React.Fragment key={item.id}>
+              <QueueRow
                 item={item}
+                isExpanded={expandedId === item.id}
+                onToggleExpand={() => onToggleExpand(item.id)}
                 onUpdate={onUpdate}
-                onClose={() => onToggleExpand(item.id)}
+                columnWidths={columnWidths}
+                presets={presets}
               />
-            )}
-          </React.Fragment>
-        ))}
+              {expandedId === item.id && (
+                <ExpandedRowPanel
+                  item={item}
+                  onUpdate={onUpdate}
+                  onClose={() => onToggleExpand(item.id)}
+                  preloadedPresets={presets}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );

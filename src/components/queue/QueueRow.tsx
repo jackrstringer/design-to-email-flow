@@ -3,6 +3,7 @@ import { InlineEditableText } from './InlineEditableText';
 import { InlineDropdownSelector } from './InlineDropdownSelector';
 import { ExternalLinksIndicator } from './ExternalLinksIndicator';
 import { SpellingIndicator } from './SpellingIndicator';
+import { SegmentSetSelector, SegmentPreset } from './SegmentSetSelector';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -13,6 +14,7 @@ interface ColumnWidths {
   thumbnail: number;
   name: number;
   client: number;
+  segmentSet: number;
   subject: number;
   previewText: number;
   links: number;
@@ -26,9 +28,10 @@ interface QueueRowProps {
   onToggleExpand: () => void;
   onUpdate: () => void;
   columnWidths: ColumnWidths;
+  presets: SegmentPreset[];
 }
 
-export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWidths }: QueueRowProps) {
+export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWidths, presets }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
 
@@ -39,6 +42,9 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
 
   // Parse spelling errors
   const spellingErrors = item.spelling_errors as Array<{ text: string }> | null;
+
+  // Get the selected preset - use saved one, or auto-select default
+  const selectedPresetId = item.selected_segment_preset_id || presets.find(p => p.is_default)?.id || null;
 
   const handleNameSave = async (newName: string) => {
     const { error } = await supabase
@@ -80,6 +86,19 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
     }
     onUpdate();
     return true;
+  };
+
+  const handleSegmentPresetSelect = async (presetId: string) => {
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ selected_segment_preset_id: presetId })
+      .eq('id', item.id);
+
+    if (error) {
+      toast.error('Failed to update segment preset');
+      return;
+    }
+    onUpdate();
   };
 
   return (
@@ -158,6 +177,21 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
             {brandName}
           </span>
         ) : '—'}
+      </div>
+
+      {/* Segment Set */}
+      <div 
+        className="px-2 flex-shrink-0" 
+        style={{ width: columnWidths.segmentSet }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <SegmentSetSelector
+          presets={presets}
+          selectedPresetId={selectedPresetId}
+          brandId={item.brand_id}
+          onSelect={handleSegmentPresetSelect}
+          disabled={item.status === 'processing'}
+        />
       </div>
       
       {/* Subject Line */}

@@ -175,6 +175,7 @@ export type Database = {
           retry_count: number | null
           retry_from_step: string | null
           selected_preview_text: string | null
+          selected_segment_preset_id: string | null
           selected_subject_line: string | null
           sent_to_klaviyo_at: string | null
           slices: Json | null
@@ -209,6 +210,7 @@ export type Database = {
           retry_count?: number | null
           retry_from_step?: string | null
           selected_preview_text?: string | null
+          selected_segment_preset_id?: string | null
           selected_subject_line?: string | null
           sent_to_klaviyo_at?: string | null
           slices?: Json | null
@@ -243,6 +245,7 @@ export type Database = {
           retry_count?: number | null
           retry_from_step?: string | null
           selected_preview_text?: string | null
+          selected_segment_preset_id?: string | null
           selected_subject_line?: string | null
           sent_to_klaviyo_at?: string | null
           slices?: Json | null
@@ -260,6 +263,13 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_queue_selected_segment_preset_id_fkey"
+            columns: ["selected_segment_preset_id"]
+            isOneToOne: false
+            referencedRelation: "segment_presets"
             referencedColumns: ["id"]
           },
         ]
