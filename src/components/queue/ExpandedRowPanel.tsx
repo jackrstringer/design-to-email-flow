@@ -74,6 +74,11 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [showCreateDefaultModal, setShowCreateDefaultModal] = useState(false);
   const [presetName, setPresetName] = useState('');
+  
+  // Searchable segment picker state
+  const [includePickerOpen, setIncludePickerOpen] = useState(false);
+  const [excludePickerOpen, setExcludePickerOpen] = useState(false);
+  const [segmentSearchValue, setSegmentSearchValue] = useState('');
 
   // Footer HTML
   const [footerHtml, setFooterHtml] = useState<string | null>(null);
@@ -1144,7 +1149,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
               />
             </div>
             
-            {/* Include Segments - with actual picker */}
+            {/* Include Segments - with searchable picker */}
             <div className="space-y-2">
               <label className="text-xs font-medium">Include Segments</label>
               <div className="flex flex-wrap gap-1.5 min-h-[40px] p-2 border rounded-md bg-muted/20">
@@ -1162,26 +1167,49 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                 {isLoadingLists ? (
                   <span className="text-xs text-muted-foreground">Loading...</span>
                 ) : (
-                  <Select onValueChange={(v) => addSegment(v, 'include')}>
-                    <SelectTrigger className="h-6 w-auto text-xs border-dashed gap-1">
-                      <Plus className="h-3 w-3" />
-                      <span>Add</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableLists.length === 0 ? (
-                        <SelectItem value="none" disabled>No segments available</SelectItem>
-                      ) : (
-                        availableLists.map(list => (
-                          <SelectItem key={list.id} value={list.id} className="text-xs">{list.name}</SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={includePickerOpen} onOpenChange={setIncludePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <button className="inline-flex items-center gap-1 h-6 px-2 text-xs border border-dashed rounded-md hover:bg-muted/50 transition-colors">
+                        <Plus className="h-3 w-3" />
+                        <span>Add</span>
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[280px] p-0 z-50 bg-background border shadow-lg" align="start">
+                      <Command>
+                        <CommandInput 
+                          placeholder="Search segments..." 
+                          value={segmentSearchValue}
+                          onValueChange={setSegmentSearchValue}
+                          className="h-9"
+                        />
+                        <CommandList className="max-h-[200px]">
+                          <CommandEmpty>No segments found.</CommandEmpty>
+                          <CommandGroup>
+                            {availableLists.map(list => (
+                              <CommandItem
+                                key={list.id}
+                                value={list.name}
+                                onSelect={() => {
+                                  addSegment(list.id, 'include');
+                                  setSegmentSearchValue('');
+                                  setIncludePickerOpen(false);
+                                }}
+                                className="text-xs cursor-pointer"
+                              >
+                                <Check className={cn("h-3 w-3 mr-2", includedSegments.includes(list.id) ? "opacity-100" : "opacity-0")} />
+                                {list.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 )}
               </div>
             </div>
             
-            {/* Exclude Segments - with actual picker */}
+            {/* Exclude Segments - with searchable picker */}
             <div className="space-y-2">
               <label className="text-xs font-medium">Exclude Segments (optional)</label>
               <div className="flex flex-wrap gap-1.5 min-h-[40px] p-2 border rounded-md bg-muted/20">
@@ -1196,21 +1224,44 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
                     </Badge>
                   );
                 })}
-                <Select onValueChange={(v) => addSegment(v, 'exclude')}>
-                  <SelectTrigger className="h-6 w-auto text-xs border-dashed gap-1">
-                    <Plus className="h-3 w-3" />
-                    <span>Add</span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableLists.length === 0 ? (
-                      <SelectItem value="none" disabled>No segments available</SelectItem>
-                    ) : (
-                      availableLists.map(list => (
-                        <SelectItem key={list.id} value={list.id} className="text-xs">{list.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <Popover open={excludePickerOpen} onOpenChange={setExcludePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <button className="inline-flex items-center gap-1 h-6 px-2 text-xs border border-dashed rounded-md hover:bg-muted/50 transition-colors">
+                      <Plus className="h-3 w-3" />
+                      <span>Add</span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[280px] p-0 z-50 bg-background border shadow-lg" align="start">
+                    <Command>
+                      <CommandInput 
+                        placeholder="Search segments..." 
+                        value={segmentSearchValue}
+                        onValueChange={setSegmentSearchValue}
+                        className="h-9"
+                      />
+                      <CommandList className="max-h-[200px]">
+                        <CommandEmpty>No segments found.</CommandEmpty>
+                        <CommandGroup>
+                          {availableLists.map(list => (
+                            <CommandItem
+                              key={list.id}
+                              value={list.name}
+                              onSelect={() => {
+                                addSegment(list.id, 'exclude');
+                                setSegmentSearchValue('');
+                                setExcludePickerOpen(false);
+                              }}
+                              className="text-xs cursor-pointer"
+                            >
+                              <Check className={cn("h-3 w-3 mr-2", excludedSegments.includes(list.id) ? "opacity-100" : "opacity-0")} />
+                              {list.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </div>
