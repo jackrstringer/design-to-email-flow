@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
+export interface SegmentPreset {
+  id: string;
+  name: string;
+  included_segments: string[];
+  excluded_segments: string[];
+  is_default: boolean;
+}
+
 export interface CampaignQueueItem {
   id: string;
   user_id: string;
@@ -33,16 +41,18 @@ export interface CampaignQueueItem {
   klaviyo_campaign_id: string | null;
   klaviyo_campaign_url: string | null;
   sent_to_klaviyo_at: string | null;
+  selected_segment_preset_id: string | null;
   created_at: string;
   updated_at: string;
   // Joined brand data
-  brands?: { id: string; name: string } | null;
+  brands?: { id: string; name: string; domain?: string; primary_color?: string } | null;
 }
 
 export function useCampaignQueue() {
   const { user } = useAuth();
   const [items, setItems] = useState<CampaignQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [presetsByBrand, setPresetsByBrand] = useState<Record<string, SegmentPreset[]>>({});
 
   const fetchItems = useCallback(async () => {
     if (!user) {
@@ -59,8 +69,42 @@ export function useCampaignQueue() {
 
     if (error) {
       console.error('Error fetching campaign queue:', error);
+      setItems([]);
     } else {
       setItems((data as CampaignQueueItem[]) || []);
+      
+      // Extract unique brand IDs and fetch all segment presets
+      const brandIds = [...new Set(data?.filter(d => d.brand_id).map(d => d.brand_id) || [])];
+      
+      if (brandIds.length > 0) {
+        const { data: presetsData } = await supabase
+          .from('segment_presets')
+          .select('*')
+          .in('brand_id', brandIds);
+        
+        if (presetsData) {
+          // Group presets by brand_id
+          const grouped = presetsData.reduce((acc, p) => {
+            const brandId = p.brand_id;
+            if (!acc[brandId]) acc[brandId] = [];
+            acc[brandId].push({
+              id: p.id,
+              name: p.name,
+              included_segments: (p.included_segments as string[]) || [],
+              excluded_segments: (p.excluded_segments as string[]) || [],
+              is_default: p.is_default || false,
+            });
+            return acc;
+          }, {} as Record<string, SegmentPreset[]>);
+          
+          // Sort each brand's presets: defaults first
+          Object.keys(grouped).forEach(brandId => {
+            grouped[brandId].sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+          });
+          
+          setPresetsByBrand(grouped);
+        }
+      }
     }
     setLoading(false);
   }, [user]);
@@ -70,7 +114,7 @@ export function useCampaignQueue() {
     fetchItems();
   }, [fetchItems]);
 
-  // Realtime subscription
+  // Realtime subscription for campaign_queue
   useEffect(() => {
     if (!user) return;
 
@@ -93,6 +137,26 @@ export function useCampaignQueue() {
               .single();
             if (fullItem) {
               setItems(prev => [fullItem as CampaignQueueItem, ...prev]);
+              
+              // Fetch presets for the new brand if not already loaded
+              if (fullItem.brand_id && !presetsByBrand[fullItem.brand_id]) {
+                const { data: presetsData } = await supabase
+                  .from('segment_presets')
+                  .select('*')
+                  .eq('brand_id', fullItem.brand_id);
+                
+                if (presetsData && presetsData.length > 0) {
+                  const mapped = presetsData.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    included_segments: (p.included_segments as string[]) || [],
+                    excluded_segments: (p.excluded_segments as string[]) || [],
+                    is_default: p.is_default || false,
+                  }));
+                  mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+                  setPresetsByBrand(prev => ({ ...prev, [fullItem.brand_id]: mapped }));
+                }
+              }
             }
           } else if (payload.eventType === 'UPDATE') {
             // Fetch full item with brands join to get complete data
@@ -110,6 +174,56 @@ export function useCampaignQueue() {
             }
           } else if (payload.eventType === 'DELETE') {
             setItems(prev => prev.filter(item => item.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, presetsByBrand]);
+
+  // Realtime subscription for segment_presets
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('segment_presets_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'segment_presets',
+        },
+        async (payload) => {
+          // Re-fetch presets for the affected brand
+          const brandId = (payload.new as any)?.brand_id || (payload.old as any)?.brand_id;
+          if (brandId) {
+            const { data: presetsData } = await supabase
+              .from('segment_presets')
+              .select('*')
+              .eq('brand_id', brandId);
+            
+            if (presetsData) {
+              const mapped = presetsData.map(p => ({
+                id: p.id,
+                name: p.name,
+                included_segments: (p.included_segments as string[]) || [],
+                excluded_segments: (p.excluded_segments as string[]) || [],
+                is_default: p.is_default || false,
+              }));
+              mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+              setPresetsByBrand(prev => ({ ...prev, [brandId]: mapped }));
+            } else {
+              // All presets deleted for this brand
+              setPresetsByBrand(prev => {
+                const next = { ...prev };
+                delete next[brandId];
+                return next;
+              });
+            }
           }
         }
       )
@@ -149,6 +263,7 @@ export function useCampaignQueue() {
   return {
     items,
     loading,
+    presetsByBrand,
     refresh: fetchItems,
     updateItem,
     deleteItem,

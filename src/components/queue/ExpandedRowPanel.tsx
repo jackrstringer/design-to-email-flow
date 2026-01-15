@@ -19,6 +19,7 @@ interface ExpandedRowPanelProps {
   item: CampaignQueueItem;
   onUpdate: () => void;
   onClose: () => void;
+  preloadedPresets?: SegmentPreset[];
 }
 
 interface KlaviyoList {
@@ -52,7 +53,7 @@ interface SegmentPreset {
 // Base width for email content (standard email width)
 const BASE_WIDTH = 600;
 
-export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelProps) {
+export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: ExpandedRowPanelProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -235,33 +236,47 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
           }
         }
 
-        // Load segment presets for this brand
-        const { data: presetsData } = await supabase
-          .from('segment_presets')
-          .select('*')
-          .eq('brand_id', item.brand_id)
-          .order('created_at', { ascending: false });
-
-        if (presetsData && presetsData.length > 0) {
-          const mappedPresets = presetsData.map(p => ({
-            id: p.id,
-            name: p.name,
-            included_segments: (p.included_segments as string[]) || [],
-            excluded_segments: (p.excluded_segments as string[]) || [],
-            is_default: p.is_default || false,
-          }));
-          
-          // Sort: defaults first
-          mappedPresets.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
-          setPresets(mappedPresets);
+        // Use preloaded presets if available, otherwise fetch
+        if (preloadedPresets && preloadedPresets.length > 0) {
+          setPresets(preloadedPresets);
           
           // Auto-apply default preset (only once)
-          const defaultPreset = mappedPresets.find(p => p.is_default);
+          const defaultPreset = preloadedPresets.find(p => p.is_default);
           if (defaultPreset && !hasAppliedDefaultPreset.current) {
             hasAppliedDefaultPreset.current = true;
             setIncludedSegments(defaultPreset.included_segments);
             setExcludedSegments(defaultPreset.excluded_segments);
             setSelectedPresetId(defaultPreset.id);
+          }
+        } else {
+          // Load segment presets for this brand
+          const { data: presetsData } = await supabase
+            .from('segment_presets')
+            .select('*')
+            .eq('brand_id', item.brand_id)
+            .order('created_at', { ascending: false });
+
+          if (presetsData && presetsData.length > 0) {
+            const mappedPresets = presetsData.map(p => ({
+              id: p.id,
+              name: p.name,
+              included_segments: (p.included_segments as string[]) || [],
+              excluded_segments: (p.excluded_segments as string[]) || [],
+              is_default: p.is_default || false,
+            }));
+            
+            // Sort: defaults first
+            mappedPresets.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+            setPresets(mappedPresets);
+            
+            // Auto-apply default preset (only once)
+            const defaultPreset = mappedPresets.find(p => p.is_default);
+            if (defaultPreset && !hasAppliedDefaultPreset.current) {
+              hasAppliedDefaultPreset.current = true;
+              setIncludedSegments(defaultPreset.included_segments);
+              setExcludedSegments(defaultPreset.excluded_segments);
+              setSelectedPresetId(defaultPreset.id);
+            }
           }
         }
       } catch (err) {
@@ -273,7 +288,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose }: ExpandedRowPanelPr
     };
 
     loadBrandData();
-  }, [item.brand_id]);
+  }, [item.brand_id, preloadedPresets]);
 
   // Force default segment modal if no default preset exists
   useEffect(() => {

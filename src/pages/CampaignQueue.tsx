@@ -16,7 +16,7 @@ interface Brand {
 export default function CampaignQueue() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { items, loading, refresh } = useCampaignQueue();
+  const { items, loading, refresh, presetsByBrand } = useCampaignQueue();
   
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -93,13 +93,14 @@ export default function CampaignQueue() {
 
       {/* Main Content */}
       <main className="px-4 py-4">
-        <div className="max-w-[75%] mx-auto">
+        <div className="max-w-[85%] mx-auto">
           <QueueTable
             items={filteredItems}
             loading={loading}
             expandedId={expandedId}
             onToggleExpand={handleToggleExpand}
             onUpdate={refresh}
+            presetsByBrand={presetsByBrand}
           />
         </div>
       </main>

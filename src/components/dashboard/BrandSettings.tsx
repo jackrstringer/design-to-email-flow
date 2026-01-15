@@ -107,6 +107,19 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         lastScraped: examples.lastScraped || null,
       });
     }
+    
+    // Handle hash navigation - auto-expand and scroll to section
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['footers', 'api', 'copyExamples', 'audience'].includes(hash)) {
+      setOpenSections(prev => ({ ...prev, [hash]: true }));
+      // Scroll to section after a short delay to allow render
+      setTimeout(() => {
+        const element = document.getElementById(`section-${hash}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
   }, [brand.id]);
 
   const fetchDefaultAudience = async () => {
@@ -1135,7 +1148,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       </Collapsible>
 
       {/* Default Audience Section */}
-      <Collapsible open={openSections.audience} onOpenChange={() => toggleSection('audience')}>
+      <Collapsible id="section-audience" open={openSections.audience} onOpenChange={() => toggleSection('audience')}>
         <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
           <div className="flex items-center gap-2">
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.audience ? 'rotate-90' : ''}`} />
