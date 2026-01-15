@@ -862,7 +862,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
         </div>
 
         {/* RIGHT SIDE - Fixed width - Controls & QA */}
-        <div className="w-80 flex-shrink-0 p-4 space-y-4">
+        <div className="w-[560px] flex-shrink-0 p-4 space-y-4">
           {/* Audience Section */}
           <div className="space-y-2">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Audience</h4>
