@@ -11,9 +11,8 @@ interface ExternalLinksIndicatorProps {
 }
 
 export function ExternalLinksIndicator({ slices, brandDomain }: ExternalLinksIndicatorProps) {
-  // If no brand domain set, we can't check for external links
   if (!brandDomain) {
-    return <span className="text-gray-400 text-[11px]">—</span>;
+    return <span className="text-[11px] text-gray-400">—</span>;
   }
 
   const externalLinks = slices.filter(s => 
@@ -24,26 +23,22 @@ export function ExternalLinksIndicator({ slices, brandDomain }: ExternalLinksInd
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex items-center justify-center">
+        <div className="flex items-center gap-1">
           {hasExternalLinks ? (
-            <div className="flex items-center gap-1 text-amber-600 text-[11px]">
-              <AlertTriangle className="h-3 w-3" />
-              <span>{externalLinks.length}</span>
-            </div>
+            <>
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-[11px] text-amber-600">{externalLinks.length}</span>
+            </>
           ) : (
-            <div className="flex items-center gap-1 text-green-600 text-[11px]">
-              <Check className="h-3 w-3" />
-              <span>None</span>
-            </div>
+            <Check className="h-3.5 w-3.5 text-green-500" />
           )}
         </div>
       </TooltipTrigger>
       <TooltipContent>
         <p className="text-xs">
           {hasExternalLinks 
-            ? `${externalLinks.length} external link${externalLinks.length > 1 ? 's' : ''} found`
-            : 'All links are internal'
-          }
+            ? `${externalLinks.length} link(s) outside ${brandDomain}` 
+            : 'All links within brand domain'}
         </p>
       </TooltipContent>
     </Tooltip>
