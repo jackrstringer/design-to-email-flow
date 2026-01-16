@@ -48,16 +48,25 @@ serve(async (req) => {
             },
             {
               type: 'text',
-              text: `You are a proofreader. Find ALL spelling errors and typos in this email image.
+              text: `You are a proofreader. Find ONLY clear spelling errors and typos in this email image.
 
-Read EVERY piece of text: headlines, body copy, buttons, fine print, everything.
+Read ALL text: headlines, body copy, buttons, fine print.
 
-Flag:
-- Misspelled words ("recieve" → "receive")
-- Wrong words ("oned" → "one")
-- Missing/extra/transposed letters
+FLAG these (actual typos):
+- Misspelled words ("recieve" → "receive", "teh" → "the")
+- Wrong letters or transposed letters ("hte" → "the")
+- Missing letters that create nonsense words
+- Gibberish or nonsensical words
 
-IGNORE: Brand names, intentional stylization, non-English words.
+DO NOT FLAG (acceptable variations):
+- Brand names or intentional stylization
+- Hyphenation preferences ("kickstart" vs "kick-start", "ecommerce" vs "e-commerce")
+- Compound word variations ("email" vs "e-mail")
+- Minor grammar style choices
+- Non-English words or creative spelling
+- Numbers or abbreviations
+
+Only report CLEAR ERRORS that would look unprofessional.
 
 Return ONLY this JSON format, nothing else:
 

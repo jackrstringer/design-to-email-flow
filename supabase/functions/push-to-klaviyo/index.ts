@@ -485,11 +485,15 @@ serve(async (req) => {
 
     console.log(`Template assigned to campaign successfully`);
 
+    // Build the campaign URL for Klaviyo
+    const campaignUrl = `https://www.klaviyo.com/campaign/${campaignId}/edit`;
+
     return new Response(
       JSON.stringify({
         success: true,
         templateId,
         campaignId,
+        campaignUrl,
         message: 'Campaign created successfully with template',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
