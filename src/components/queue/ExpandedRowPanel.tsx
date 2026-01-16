@@ -575,11 +575,6 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
   const slicesMissingLinks = slices.filter(s => !s.link);
   const allHaveLinks = hasSlices && slicesMissingLinks.length === 0;
   
-  const placeholderPattern = /^(Slice|Section|Email section|Email Section)\s*\d+$/i;
-  const slicesWithPlaceholderAlt = slices.filter(s => 
-    !s.altText || placeholderPattern.test(s.altText.trim())
-  );
-  const allHaveAltText = hasSlices && slicesWithPlaceholderAlt.length === 0;
 
   // External links check
   const externalLinks = brandDomain 
@@ -1052,24 +1047,6 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
               )}
             </div>
 
-            {/* Alt Text Status */}
-            <div className="bg-white rounded-lg border p-3">
-              <div className="flex items-center gap-2">
-                {allHaveAltText ? (
-                  <>
-                    <Check className="h-4 w-4 text-green-500" />
-                    <span className="text-sm font-medium text-green-700">All Alt Text Set</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {slicesWithPlaceholderAlt.length} slice{slicesWithPlaceholderAlt.length > 1 ? 's' : ''} missing alt text
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
 
             {/* Klaviyo Campaign URL */}
             <div className="bg-white rounded-lg border p-3 space-y-2">

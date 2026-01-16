@@ -8,6 +8,7 @@ import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ExternalLink } from 'lucide-react';
 
 interface ColumnWidths {
   status: number;
@@ -20,6 +21,7 @@ interface ColumnWidths {
   links: number;
   external: number;
   spelling: number;
+  klaviyo: number;
 }
 
 interface QueueRowProps {
@@ -256,6 +258,28 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
         onClick={(e) => e.stopPropagation()}
       >
         <SpellingIndicator spellingErrors={spellingErrors} />
+      </div>
+
+      {/* Klaviyo Link */}
+      <div 
+        className="px-2 flex-shrink-0 flex items-center justify-center" 
+        style={{ width: columnWidths.klaviyo }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {item.status === 'sent_to_klaviyo' && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
+          <a
+            href={item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            title="Open in Klaviyo"
+          >
+            <ExternalLink className="h-3 w-3" />
+            <span className="truncate max-w-[60px]">Open</span>
+          </a>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )}
       </div>
     </div>
   );

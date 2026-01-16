@@ -48,25 +48,32 @@ serve(async (req) => {
             },
             {
               type: 'text',
-              text: `You are a proofreader. Find ONLY clear spelling errors and typos in this email image.
+              text: `You are a proofreader. Find ONLY obvious spelling errors and typos in this email image.
 
 Read ALL text: headlines, body copy, buttons, fine print.
 
-FLAG these (actual typos):
-- Misspelled words ("recieve" → "receive", "teh" → "the")
-- Wrong letters or transposed letters ("hte" → "the")
-- Missing letters that create nonsense words
-- Gibberish or nonsensical words
+FLAG ONLY these (actual typos that would embarrass the sender):
+- Clearly misspelled common words ("recieve" → "receive", "teh" → "the", "definately" → "definitely")
+- Wrong letters or transposed letters that create nonsense ("hte" → "the")
+- Missing letters that create obvious nonsense words
+- Gibberish or completely nonsensical words that are clearly mistakes
 
-DO NOT FLAG (acceptable variations):
-- Brand names or intentional stylization
+DO NOT FLAG any of these (they are acceptable):
+- Brand names, product names, or company names (even if they look unusual)
+- Special characters in names (ü, ö, é, ñ, ß, ä, etc.) - these are INTENTIONAL
 - Hyphenation preferences ("kickstart" vs "kick-start", "ecommerce" vs "e-commerce")
-- Compound word variations ("email" vs "e-mail")
-- Minor grammar style choices
-- Non-English words or creative spelling
-- Numbers or abbreviations
+- Compound word variations ("email" vs "e-mail", "website" vs "web site")
+- British vs American spelling ("colour" vs "color", "realise" vs "realize")
+- Minor grammar or style choices
+- Non-English words or intentional creative/stylized spelling
+- Numbers, abbreviations, or acronyms
+- Words with accented characters (café, résumé, naïve, etc.)
+- Trademarked or stylized product names
+- ALL-CAPS words or intentional stylization
 
-Only report CLEAR ERRORS that would look unprofessional.
+IMPORTANT: Do NOT flag words containing special characters (ü, ö, é, ñ, ß, ä, î, ô, etc.) as errors. These are almost always intentional brand names, product names, or non-English words.
+
+Be VERY conservative. Only flag errors you are 100% certain are actual mistakes. When in doubt, do NOT flag it.
 
 Return ONLY this JSON format, nothing else:
 

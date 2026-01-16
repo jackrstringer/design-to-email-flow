@@ -26,6 +26,7 @@ interface ColumnWidths {
   links: number;
   external: number;
   spelling: number;
+  klaviyo: number;
 }
 
 const DEFAULT_WIDTHS: ColumnWidths = {
@@ -39,6 +40,7 @@ const DEFAULT_WIDTHS: ColumnWidths = {
   links: 60,
   external: 80,
   spelling: 70,
+  klaviyo: 100,
 };
 
 const MIN_WIDTHS: ColumnWidths = {
@@ -52,6 +54,7 @@ const MIN_WIDTHS: ColumnWidths = {
   links: 50,
   external: 50,
   spelling: 50,
+  klaviyo: 80,
 };
 
 export function QueueTable({
@@ -284,10 +287,25 @@ export function QueueTable({
 
         {/* Spelling */}
         <div 
-          className="flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
           style={{ width: columnWidths.spelling }}
         >
           Spelling
+          <div 
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
+              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+            )}
+            onMouseDown={handleResizeStart('spelling')}
+          />
+        </div>
+
+        {/* Klaviyo */}
+        <div 
+          className="flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          style={{ width: columnWidths.klaviyo }}
+        >
+          Klaviyo
         </div>
       </div>
 
