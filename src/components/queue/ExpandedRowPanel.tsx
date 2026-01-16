@@ -7,7 +7,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -1069,6 +1069,42 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
                   </>
                 )}
               </div>
+            </div>
+
+            {/* Klaviyo Campaign URL */}
+            <div className="bg-white rounded-lg border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Klaviyo Campaign</span>
+              </div>
+              {item.status === 'sent_to_klaviyo' && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
+                <div className="group flex items-center gap-2">
+                  <a
+                    href={item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-blue-600 hover:text-blue-800 underline truncate max-w-[280px]"
+                    title={item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+                  >
+                    {item.klaviyo_campaign_url || `klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+                  </a>
+                  <button
+                    onClick={() => {
+                      const url = item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`;
+                      navigator.clipboard.writeText(url);
+                      toast.success('URL copied to clipboard');
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-muted rounded"
+                    title="Copy URL"
+                  >
+                    <Copy className="h-3 w-3 text-muted-foreground" />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-muted-foreground italic">
+                  {item.status === 'processing' ? 'Processing...' : 'Not yet sent to Klaviyo'}
+                </span>
+              )}
             </div>
           </div>
 

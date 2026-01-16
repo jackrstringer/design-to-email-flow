@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, RotateCw, Check, ChevronDown } from 'lucide-react';
+import { Loader2, RotateCw, Check, ChevronDown, ExternalLink } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -45,13 +45,51 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           return;
         }
 
+        // Fetch segment preset for this campaign
+        let includedSegments: string[] = [];
+        let excludedSegments: string[] = [];
+
+        if (item.selected_segment_preset_id) {
+          // Use the selected preset
+          const { data: preset } = await supabase
+            .from('segment_presets')
+            .select('included_segments, excluded_segments')
+            .eq('id', item.selected_segment_preset_id)
+            .single();
+
+          if (preset) {
+            includedSegments = (preset.included_segments as string[]) || [];
+            excludedSegments = (preset.excluded_segments as string[]) || [];
+          }
+        } else if (item.brand_id) {
+          // Fall back to default preset for the brand
+          const { data: defaultPreset } = await supabase
+            .from('segment_presets')
+            .select('included_segments, excluded_segments')
+            .eq('brand_id', item.brand_id)
+            .eq('is_default', true)
+            .single();
+
+          if (defaultPreset) {
+            includedSegments = (defaultPreset.included_segments as string[]) || [];
+            excludedSegments = (defaultPreset.excluded_segments as string[]) || [];
+          }
+        }
+
+        // Validate we have segments
+        if (includedSegments.length === 0) {
+          toast.error('No audience segments configured. Please expand the row and configure segments first.');
+          setIsUpdating(false);
+          return;
+        }
+
         // First update to approved
         await supabase
           .from('campaign_queue')
           .update({ status: 'approved' })
           .eq('id', item.id);
 
-        // Then push to Klaviyo
+        // Then push to Klaviyo with segments
         const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
           body: {
             templateName: item.name,
@@ -61,7 +99,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             slices: item.slices,
             imageUrl: item.image_url,
             footerHtml: brand.footer_html,
-            mode: 'campaign'
+            mode: 'campaign',
+            includedSegments,
+            excludedSegments,
+            listId: includedSegments[0] // Fallback for legacy support
           }
         });
 
@@ -153,8 +194,26 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
     );
   }
 
-  // Sent state - end state, not clickable
+  // Sent state - clickable link to Klaviyo
   if (item.status === 'sent_to_klaviyo') {
+    const campaignUrl = item.klaviyo_campaign_url || 
+      (item.klaviyo_campaign_id ? `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit` : null);
+    
+    if (campaignUrl) {
+      return (
+        <a
+          href={campaignUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Open in Klaviyo
+        </a>
+      );
+    }
+    
     return (
       <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
         <Check className="h-3 w-3" />
