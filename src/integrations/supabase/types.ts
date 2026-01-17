@@ -404,6 +404,7 @@ export type Database = {
           email: string | null
           figma_access_token: string | null
           id: string
+          queue_column_widths: Json | null
           queue_zoom_level: number | null
           updated_at: string | null
         }
@@ -412,6 +413,7 @@ export type Database = {
           email?: string | null
           figma_access_token?: string | null
           id: string
+          queue_column_widths?: Json | null
           queue_zoom_level?: number | null
           updated_at?: string | null
         }
@@ -420,6 +422,7 @@ export type Database = {
           email?: string | null
           figma_access_token?: string | null
           id?: string
+          queue_column_widths?: Json | null
           queue_zoom_level?: number | null
           updated_at?: string | null
         }
