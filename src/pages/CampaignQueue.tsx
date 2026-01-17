@@ -118,10 +118,31 @@ export default function CampaignQueue() {
     let successCount = 0;
     let errorCount = 0;
 
+    // Step 1: Mark ALL selected items as processing first (shows blue "Building..." state)
+    await supabase
+      .from('campaign_queue')
+      .update({ 
+        status: 'processing', 
+        processing_step: 'Building in Klaviyo',
+        processing_percent: 0 
+      })
+      .in('id', Array.from(selectedIds));
+    
+    // Refresh so UI shows processing state for all items immediately
+    refresh();
+
     for (const item of selectedItems) {
       try {
         // Validate subject line and preview text
         if (!item.selected_subject_line || !item.selected_preview_text) {
+          await supabase
+            .from('campaign_queue')
+            .update({ 
+              status: 'ready_for_review',
+              processing_step: null,
+              processing_percent: null
+            })
+            .eq('id', item.id);
           errorCount++;
           continue;
         }
@@ -134,6 +155,14 @@ export default function CampaignQueue() {
           .single();
 
         if (brandError || !brand?.klaviyo_api_key) {
+          await supabase
+            .from('campaign_queue')
+            .update({ 
+              status: 'ready_for_review',
+              processing_step: null,
+              processing_percent: null
+            })
+            .eq('id', item.id);
           errorCount++;
           continue;
         }
@@ -191,15 +220,17 @@ export default function CampaignQueue() {
         }
 
         if (includedSegments.length === 0) {
+          await supabase
+            .from('campaign_queue')
+            .update({ 
+              status: 'ready_for_review',
+              processing_step: null,
+              processing_percent: null
+            })
+            .eq('id', item.id);
           errorCount++;
           continue;
         }
-
-        // Update to approved
-        await supabase
-          .from('campaign_queue')
-          .update({ status: 'approved' })
-          .eq('id', item.id);
 
         // Push to Klaviyo
         const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
@@ -225,6 +256,8 @@ export default function CampaignQueue() {
             .from('campaign_queue')
             .update({
               status: 'sent_to_klaviyo',
+              processing_step: null,
+              processing_percent: null,
               klaviyo_template_id: data.templateId,
               klaviyo_campaign_id: data.campaignId,
               klaviyo_campaign_url: data.campaignUrl,
@@ -232,12 +265,17 @@ export default function CampaignQueue() {
             })
             .eq('id', item.id);
           successCount++;
+          refresh(); // Show immediate update as each completes
         }
       } catch (err) {
         console.error('Failed to process campaign:', item.id, err);
         await supabase
           .from('campaign_queue')
-          .update({ status: 'ready_for_review' })
+          .update({ 
+            status: 'ready_for_review',
+            processing_step: null,
+            processing_percent: null
+          })
           .eq('id', item.id);
         errorCount++;
       }
