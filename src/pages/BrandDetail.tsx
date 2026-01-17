@@ -89,6 +89,9 @@ export default function BrandDetail() {
       klaviyoApiKey: brandData.klaviyo_api_key || undefined,
       typography: parseTypography(brandData.typography),
       htmlFormattingRules: parseFormattingRules(brandData.html_formatting_rules),
+      clickupApiKey: brandData.clickup_api_key || undefined,
+      clickupWorkspaceId: brandData.clickup_workspace_id || undefined,
+      clickupListId: brandData.clickup_list_id || undefined,
       createdAt: brandData.created_at,
       updatedAt: brandData.updated_at,
     };
