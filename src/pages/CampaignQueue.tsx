@@ -1,14 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Building } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Building, X, Trash2, Archive, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { QueueTable } from '@/components/queue/QueueTable';
-import { useCampaignQueue } from '@/hooks/useCampaignQueue';
+import { useCampaignQueue, CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Brand {
   id: string;
@@ -24,6 +35,11 @@ export default function CampaignQueue() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
+  
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Fetch brands for filter dropdown
   useEffect(() => {
@@ -44,8 +60,240 @@ export default function CampaignQueue() {
     return matchesBrand && matchesClosed;
   });
 
+  // Clear selection when filter changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [brandFilter, showClosed]);
+
   const handleToggleExpand = (id: string) => {
     setExpandedId(prev => prev === id ? null : id);
+  };
+
+  // Selection handlers
+  const handleSelectItem = (id: string, isSelected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (isSelected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredItems.length) {
+      // All selected, deselect all
+      setSelectedIds(new Set());
+    } else {
+      // Select all visible items
+      setSelectedIds(new Set(filteredItems.map(i => i.id)));
+    }
+  };
+
+  const handleClearSelection = () => setSelectedIds(new Set());
+
+  // Get selected items data
+  const selectedItems = useMemo(() => 
+    filteredItems.filter(item => selectedIds.has(item.id)),
+    [filteredItems, selectedIds]
+  );
+
+  // Check if all selected are ready for review (can bulk approve)
+  const canBulkApprove = useMemo(() => 
+    selectedItems.length > 0 && 
+    selectedItems.every(item => item.status === 'ready_for_review'),
+    [selectedItems]
+  );
+
+  // Get unique brand count for selected items
+  const uniqueBrandIds = useMemo(() => 
+    new Set(selectedItems.map(item => item.brand_id).filter(Boolean)),
+    [selectedItems]
+  );
+
+  // Bulk approve and build
+  const handleBulkApprove = async () => {
+    if (!canBulkApprove) return;
+    
+    setIsBulkProcessing(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const item of selectedItems) {
+      try {
+        // Validate subject line and preview text
+        if (!item.selected_subject_line || !item.selected_preview_text) {
+          errorCount++;
+          continue;
+        }
+
+        // Fetch brand data
+        const { data: brand, error: brandError } = await supabase
+          .from('brands')
+          .select('klaviyo_api_key, footer_html')
+          .eq('id', item.brand_id)
+          .single();
+
+        if (brandError || !brand?.klaviyo_api_key) {
+          errorCount++;
+          continue;
+        }
+
+        // Load footer
+        let footerHtml: string | null = null;
+        const { data: primaryFooter } = await supabase
+          .from('brand_footers')
+          .select('html')
+          .eq('brand_id', item.brand_id)
+          .eq('is_primary', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (primaryFooter?.html) {
+          footerHtml = primaryFooter.html;
+        } else {
+          const { data: recentFooter } = await supabase
+            .from('brand_footers')
+            .select('html')
+            .eq('brand_id', item.brand_id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          footerHtml = recentFooter?.html || brand.footer_html || null;
+        }
+
+        // Fetch segment preset
+        let includedSegments: string[] = [];
+        let excludedSegments: string[] = [];
+
+        if (item.selected_segment_preset_id) {
+          const { data: preset } = await supabase
+            .from('segment_presets')
+            .select('included_segments, excluded_segments')
+            .eq('id', item.selected_segment_preset_id)
+            .single();
+
+          if (preset) {
+            includedSegments = (preset.included_segments as string[]) || [];
+            excludedSegments = (preset.excluded_segments as string[]) || [];
+          }
+        } else if (item.brand_id) {
+          const { data: defaultPreset } = await supabase
+            .from('segment_presets')
+            .select('included_segments, excluded_segments')
+            .eq('brand_id', item.brand_id)
+            .eq('is_default', true)
+            .single();
+
+          if (defaultPreset) {
+            includedSegments = (defaultPreset.included_segments as string[]) || [];
+            excludedSegments = (defaultPreset.excluded_segments as string[]) || [];
+          }
+        }
+
+        if (includedSegments.length === 0) {
+          errorCount++;
+          continue;
+        }
+
+        // Update to approved
+        await supabase
+          .from('campaign_queue')
+          .update({ status: 'approved' })
+          .eq('id', item.id);
+
+        // Push to Klaviyo
+        const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
+          body: {
+            templateName: item.name,
+            klaviyoApiKey: brand.klaviyo_api_key,
+            subjectLine: item.selected_subject_line,
+            previewText: item.selected_preview_text,
+            slices: item.slices,
+            imageUrl: item.image_url,
+            footerHtml: footerHtml,
+            mode: 'campaign',
+            includedSegments,
+            excludedSegments,
+            listId: includedSegments[0]
+          }
+        });
+
+        if (error) throw error;
+
+        if (data) {
+          await supabase
+            .from('campaign_queue')
+            .update({
+              status: 'sent_to_klaviyo',
+              klaviyo_template_id: data.templateId,
+              klaviyo_campaign_id: data.campaignId,
+              klaviyo_campaign_url: data.campaignUrl,
+              sent_to_klaviyo_at: new Date().toISOString()
+            })
+            .eq('id', item.id);
+          successCount++;
+        }
+      } catch (err) {
+        console.error('Failed to process campaign:', item.id, err);
+        await supabase
+          .from('campaign_queue')
+          .update({ status: 'ready_for_review' })
+          .eq('id', item.id);
+        errorCount++;
+      }
+    }
+
+    setIsBulkProcessing(false);
+    handleClearSelection();
+    refresh();
+
+    if (successCount > 0) {
+      toast.success(`Built ${successCount} campaign${successCount > 1 ? 's' : ''} in Klaviyo`);
+    }
+    if (errorCount > 0) {
+      toast.error(`Failed to build ${errorCount} campaign${errorCount > 1 ? 's' : ''}`);
+    }
+  };
+
+  // Bulk close
+  const handleBulkClose = async () => {
+    setIsBulkProcessing(true);
+    
+    const { error } = await supabase
+      .from('campaign_queue')
+      .update({ status: 'closed' })
+      .in('id', Array.from(selectedIds));
+
+    setIsBulkProcessing(false);
+    
+    if (error) {
+      toast.error('Failed to close campaigns');
+    } else {
+      toast.success(`Closed ${selectedIds.size} campaign${selectedIds.size > 1 ? 's' : ''}`);
+      handleClearSelection();
+      refresh();
+    }
+  };
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    setIsBulkProcessing(true);
+    
+    const { error } = await supabase
+      .from('campaign_queue')
+      .delete()
+      .in('id', Array.from(selectedIds));
+
+    setIsBulkProcessing(false);
+    setShowDeleteConfirm(false);
+    
+    if (error) {
+      toast.error('Failed to delete campaigns');
+    } else {
+      toast.success(`Deleted ${selectedIds.size} campaign${selectedIds.size > 1 ? 's' : ''}`);
+      handleClearSelection();
+      refresh();
+    }
   };
 
   return (
@@ -107,6 +355,65 @@ export default function CampaignQueue() {
         </div>
       </header>
 
+      {/* Bulk Action Bar - appears when items are selected */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-12 z-40 bg-white border-b border-gray-200 shadow-sm">
+          <div className="px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-gray-900">
+                {selectedIds.size} selected
+              </span>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleClearSelection}
+                className="text-gray-500 hover:text-gray-700 h-7 px-2"
+              >
+                <X className="h-3.5 w-3.5 mr-1" />
+                Clear
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Bulk Approve - only if all selected are ready_for_review */}
+              {canBulkApprove && (
+                <Button 
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-700 h-8"
+                  onClick={handleBulkApprove}
+                  disabled={isBulkProcessing}
+                >
+                  {isBulkProcessing ? (
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  ) : null}
+                  Approve & Build {selectedIds.size} Campaign{selectedIds.size > 1 ? 's' : ''} 
+                  {uniqueBrandIds.size > 1 && ` for ${uniqueBrandIds.size} Brands`}
+                </Button>
+              )}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleBulkClose}
+                disabled={isBulkProcessing}
+                className="h-8"
+              >
+                <Archive className="h-3.5 w-3.5 mr-1.5" />
+                Close
+              </Button>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isBulkProcessing}
+                className="h-8"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content - horizontal scroll for table */}
       <main className="px-4 py-4 overflow-x-auto">
         <div className="min-w-max">
@@ -117,9 +424,37 @@ export default function CampaignQueue() {
             onToggleExpand={handleToggleExpand}
             onUpdate={refresh}
             presetsByBrand={presetsByBrand}
+            selectedIds={selectedIds}
+            onSelectItem={handleSelectItem}
+            onSelectAll={handleSelectAll}
           />
         </div>
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} campaign{selectedIds.size > 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected campaigns will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBulkDelete}
+              disabled={isBulkProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isBulkProcessing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, RotateCw, Check, ChevronDown, Archive } from 'lucide-react';
+import { Loader2, RotateCw, ChevronDown, Archive } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -169,11 +169,11 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             })
             .eq('id', item.id);
 
-          toast.success('Sent to Klaviyo');
+          toast.success('Built in Klaviyo');
         }
       } catch (err) {
         console.error('Failed to send to Klaviyo:', err);
-        toast.error('Failed to send to Klaviyo');
+        toast.error('Failed to build in Klaviyo');
         
         // Revert to ready_for_review on failure
         await supabase
@@ -231,28 +231,31 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
     onUpdate();
   };
 
+  // Check if there are QA issues (typos)
+  const qaFlags = item.qa_flags as Array<{ type: string }> | null;
+  const hasIssues = qaFlags && qaFlags.length > 0;
+
   // Processing state - not clickable
   if (item.status === 'processing' || isUpdating) {
     return (
       <div className="flex items-center gap-1.5">
         <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
         <span className="text-[11px] font-medium text-blue-600">
-          {isUpdating ? 'Sending...' : `${item.processing_percent || 0}%`}
+          {isUpdating ? 'Building...' : `${item.processing_percent || 0}%`}
         </span>
       </div>
     );
   }
 
-  // Sent state - static "Built in Klaviyo" badge (not clickable)
+  // Sent state - "Built in Klaviyo" badge (light green, no checkmark)
   if (item.status === 'sent_to_klaviyo') {
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors whitespace-nowrap"
           >
-            <Check className="h-3 w-3 flex-shrink-0" />
             <span className="whitespace-nowrap">Built in Klaviyo</span>
             <ChevronDown className="h-3 w-3 flex-shrink-0" />
           </button>
@@ -266,8 +269,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             onClick={() => handleStatusChange('closed')}
             className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
           >
-            <Archive className="h-3 w-3 text-gray-500" />
-            <span className="text-gray-700">Close</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+              <Archive className="h-3 w-3" />
+              Close
+            </span>
           </button>
         </PopoverContent>
       </Popover>
@@ -310,16 +315,18 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           onClick={(e) => e.stopPropagation()}
           className={cn(
             "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
-            isReady && "bg-green-100 text-green-700 hover:bg-green-200",
+            // Ready for Review: blue (no issues) or yellow (with issues)
+            isReady && !hasIssues && "bg-blue-100 text-blue-700 hover:bg-blue-200",
+            isReady && hasIssues && "bg-yellow-100 text-yellow-700 hover:bg-yellow-200",
             isApproved && "bg-blue-100 text-blue-700 hover:bg-blue-200"
           )}
         >
-          {isReady ? 'Ready' : 'Approved'}
+          {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approved'}
           <ChevronDown className="h-3 w-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-40 p-1 z-50 bg-white" 
+        className="w-44 p-1 z-50 bg-white" 
         align="start"
         onClick={(e) => e.stopPropagation()}
       >
@@ -330,10 +337,9 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             isReady && "bg-gray-50"
           )}
         >
-          <div className="w-3">
-            {isReady && <Check className="h-3 w-3 text-green-600" />}
-          </div>
-          <span className="text-green-700">Ready</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-700">
+            Ready for Review
+          </span>
         </button>
         <button
           onClick={() => handleStatusChange('approved')}
@@ -342,10 +348,19 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             isApproved && "bg-gray-50"
           )}
         >
-          <div className="w-3">
-            {isApproved && <Check className="h-3 w-3 text-blue-600" />}
-          </div>
-          <span className="text-blue-700">Approve & Send</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-700">
+            Approve & Build
+          </span>
+        </button>
+        <div className="h-px bg-gray-100 my-1" />
+        <button
+          onClick={() => handleStatusChange('closed')}
+          className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
+        >
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+            <Archive className="h-3 w-3" />
+            Close
+          </span>
         </button>
       </PopoverContent>
     </Popover>

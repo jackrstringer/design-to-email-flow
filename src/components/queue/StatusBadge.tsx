@@ -1,9 +1,9 @@
 import { cn } from '@/lib/utils';
-import { Loader2, Check, AlertTriangle, Send, XCircle } from 'lucide-react';
+import { Loader2, AlertTriangle, XCircle, Archive } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface StatusBadgeProps {
-  status: 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed';
+  status: 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed' | 'closed';
   processingStep?: string | null;
   processingPercent?: number;
   qaFlags?: Array<{ type: string }> | null;
@@ -52,13 +52,13 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
       );
     }
 
+    // No issues - Blue badge
     return (
       <div className={cn(
         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
-        "bg-green-100 text-green-700"
+        "bg-blue-100 text-blue-700"
       )}>
-        <Check className="h-3 w-3" />
-        Ready
+        Ready for Review
       </div>
     );
   }
@@ -69,20 +69,31 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
         "bg-blue-100 text-blue-700"
       )}>
-        <Check className="h-3 w-3" />
         Approved
       </div>
     );
   }
 
   if (status === 'sent_to_klaviyo') {
+    // Light green, no checkmark
+    return (
+      <div className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
+        "bg-emerald-100 text-emerald-700"
+      )}>
+        Built in Klaviyo
+      </div>
+    );
+  }
+
+  if (status === 'closed') {
     return (
       <div className={cn(
         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
         "bg-gray-100 text-gray-600"
       )}>
-        <Send className="h-3 w-3" />
-        Sent
+        <Archive className="h-3 w-3" />
+        Closed
       </div>
     );
   }

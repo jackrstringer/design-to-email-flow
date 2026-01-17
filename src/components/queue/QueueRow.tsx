@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ExternalLink, Copy } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface ColumnWidths {
   status: number;
@@ -31,9 +32,20 @@ interface QueueRowProps {
   onUpdate: () => void;
   columnWidths: ColumnWidths;
   presets: SegmentPreset[];
+  isSelected: boolean;
+  onSelect: (id: string, selected: boolean) => void;
 }
 
-export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWidths, presets }: QueueRowProps) {
+export function QueueRow({ 
+  item, 
+  isExpanded, 
+  onToggleExpand, 
+  onUpdate, 
+  columnWidths, 
+  presets,
+  isSelected,
+  onSelect
+}: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
 
@@ -108,13 +120,24 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
       className={cn(
         "group flex h-10 items-center bg-white border-b border-gray-100 text-[13px] text-gray-900",
         "hover:bg-gray-50 transition-colors cursor-pointer",
-        isExpanded && "bg-blue-50/50 border-b-blue-100"
+        isExpanded && "bg-blue-50/50 border-b-blue-100",
+        isSelected && "bg-blue-50"
       )}
       onClick={onToggleExpand}
     >
-      {/* Checkbox column - placeholder for alignment */}
-      <div className="w-8 flex-shrink-0 px-2" onClick={(e) => e.stopPropagation()}>
-        {/* Checkbox removed for cleaner look - row click selects */}
+      {/* Checkbox column - visible on hover or when selected */}
+      <div 
+        className="w-8 flex-shrink-0 px-2 flex items-center justify-center" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelect(item.id, checked as boolean)}
+          className={cn(
+            "transition-opacity",
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+        />
       </div>
       
       {/* Status */}
@@ -157,7 +180,7 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
             "absolute right-0 top-0 bottom-0 flex items-center",
             "pl-4 pr-2 text-[11px] text-gray-500 hover:text-gray-700",
             "opacity-0 group-hover:opacity-100 transition-opacity",
-            isExpanded ? "bg-blue-50/50" : "bg-white"
+            isExpanded ? "bg-blue-50/50" : isSelected ? "bg-blue-50" : "bg-white"
           )}
           onClick={(e) => {
             e.stopPropagation();
