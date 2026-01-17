@@ -20,12 +20,20 @@ interface KlaviyoList {
   name: string;
 }
 
+interface BrandData {
+  footerHtml: string | null;
+  allLinks: string[];
+  domain: string | null;
+}
+
 interface ExpandedRowPanelProps {
   item: CampaignQueueItem;
   onUpdate: () => void;
   onClose: () => void;
   preloadedPresets?: SegmentPreset[];
   preloadedKlaviyoLists?: KlaviyoList[];
+  preloadedBrandData?: BrandData;
+  initialZoomLevel?: number;
 }
 
 interface SliceData {
@@ -66,7 +74,15 @@ function normalizeSegmentIds(segments: unknown): string[] {
   });
 }
 
-export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, preloadedKlaviyoLists }: ExpandedRowPanelProps) {
+export function ExpandedRowPanel({ 
+  item, 
+  onUpdate, 
+  onClose, 
+  preloadedPresets, 
+  preloadedKlaviyoLists,
+  preloadedBrandData,
+  initialZoomLevel = 39
+}: ExpandedRowPanelProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -76,15 +92,15 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
   // Local slices state for editing
   const [slices, setSlices] = useState<SliceData[]>([]);
 
-  // Segment state
-  const [klaviyoLists, setKlaviyoLists] = useState<KlaviyoList[]>([]);
+  // Segment state - initialize from preloaded data immediately
+  const [klaviyoLists, setKlaviyoLists] = useState<KlaviyoList[]>(preloadedKlaviyoLists || []);
   const [includedSegments, setIncludedSegments] = useState<string[]>([]);
   const [excludedSegments, setExcludedSegments] = useState<string[]>([]);
   const [isLoadingLists, setIsLoadingLists] = useState(false);
   const [listLoadError, setListLoadError] = useState<string | null>(null);
 
-  // Segment presets
-  const [presets, setPresets] = useState<SegmentPreset[]>([]);
+  // Segment presets - initialize from preloaded data
+  const [presets, setPresets] = useState<SegmentPreset[]>(preloadedPresets || []);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [showCreateDefaultModal, setShowCreateDefaultModal] = useState(false);
   const [presetName, setPresetName] = useState('');
@@ -94,8 +110,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
   const [excludePickerOpen, setExcludePickerOpen] = useState(false);
   const [segmentSearchValue, setSegmentSearchValue] = useState('');
 
-  // Footer HTML
-  const [footerHtml, setFooterHtml] = useState<string | null>(null);
+  // Footer HTML - initialize from preloaded data
+  const [footerHtml, setFooterHtml] = useState<string | null>(preloadedBrandData?.footerHtml || null);
   const [footerError, setFooterError] = useState<string | null>(null);
   const [footerPreviewHeight, setFooterPreviewHeight] = useState(200);
 
@@ -104,13 +120,13 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
   const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
   const [linkSearchValue, setLinkSearchValue] = useState('');
   
-  // Brand links for autocomplete
-  const [brandLinks, setBrandLinks] = useState<string[]>([]);
-  const [brandDomain, setBrandDomain] = useState<string | null>(null);
+  // Brand links for autocomplete - initialize from preloaded data
+  const [brandLinks, setBrandLinks] = useState<string[]>(preloadedBrandData?.allLinks || []);
+  const [brandDomain, setBrandDomain] = useState<string | null>(preloadedBrandData?.domain || null);
 
-  // Container sizing - zoom level persisted per user
+  // Container sizing - zoom level passed in, no async fetch needed
   const footerIframeRef = useRef<HTMLIFrameElement>(null);
-  const [zoomLevel, setZoomLevel] = useState(39);
+  const [zoomLevel, setZoomLevel] = useState(initialZoomLevel);
   const hasAppliedDefaultPreset = useRef(false);
   const scaledWidth = useMemo(() => BASE_WIDTH * (zoomLevel / 100), [zoomLevel]);
 
@@ -142,24 +158,19 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
     setSelectedPreview(item.selected_preview_text || '');
   }, [item.selected_subject_line, item.selected_preview_text]);
 
-  // Load zoom level from user profile on mount
+  // Apply default preset immediately on mount (synchronous, no useEffect needed for this)
   useEffect(() => {
-    const loadZoomLevel = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('queue_zoom_level')
-        .eq('id', user.id)
-        .single();
-      
-      if (profile?.queue_zoom_level) {
-        setZoomLevel(profile.queue_zoom_level);
-      }
-    };
-    loadZoomLevel();
-  }, []);
+    if (hasAppliedDefaultPreset.current) return;
+    
+    // Use preloaded presets (already set as initial state)
+    const defaultPreset = presets.find(p => p.is_default);
+    if (defaultPreset) {
+      hasAppliedDefaultPreset.current = true;
+      setIncludedSegments(defaultPreset.included_segments);
+      setExcludedSegments(defaultPreset.excluded_segments);
+      setSelectedPresetId(defaultPreset.id);
+    }
+  }, [presets]);
 
   // Save zoom level when changed
   const handleZoomChange = async (newZoom: number) => {
@@ -174,97 +185,77 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
     }
   };
 
-  // Load Klaviyo lists, footer, presets, and brand links on mount
+  // Only fetch data if not preloaded (fallback for edge cases)
   useEffect(() => {
-    const loadBrandData = async () => {
+    const loadMissingData = async () => {
       if (!item.brand_id) return;
+      
+      // Skip if we have all preloaded data
+      const hasPreloadedData = preloadedBrandData && preloadedKlaviyoLists && preloadedPresets;
+      if (hasPreloadedData) return;
       
       setIsLoadingLists(true);
       setListLoadError(null);
-      setFooterError(null);
       
       try {
-        // Load brand data including all_links and domain
-        const { data: brand } = await supabase
-          .from('brands')
-          .select('klaviyo_api_key, footer_html, all_links, domain')
-          .eq('id', item.brand_id)
-          .single();
+        // Only fetch what's missing
+        if (!preloadedBrandData) {
+          const { data: brand } = await supabase
+            .from('brands')
+            .select('klaviyo_api_key, footer_html, all_links, domain')
+            .eq('id', item.brand_id)
+            .single();
 
-        // Set brand links for autocomplete
-        if (brand?.all_links && Array.isArray(brand.all_links)) {
-          setBrandLinks(brand.all_links as string[]);
-        }
-        
-        // Set brand domain for external link checking
-        if (brand?.domain) {
-          setBrandDomain(brand.domain);
-        }
+          if (brand?.all_links && Array.isArray(brand.all_links)) {
+            setBrandLinks(brand.all_links as string[]);
+          }
+          if (brand?.domain) {
+            setBrandDomain(brand.domain);
+          }
 
-        // Load footer from brand_footers table (primary footer first)
-        const { data: primaryFooter, error: primaryError } = await supabase
-          .from('brand_footers')
-          .select('html')
-          .eq('brand_id', item.brand_id)
-          .eq('is_primary', true)
-          .limit(1)
-          .maybeSingle();
-
-        if (primaryError) {
-          console.error('Error fetching primary footer:', primaryError);
-          setFooterError(`Permission error: ${primaryError.message}`);
-        } else if (primaryFooter?.html) {
-          setFooterHtml(primaryFooter.html);
-        } else {
-          // No primary footer, try most recent
-          const { data: recentFooter, error: recentError } = await supabase
+          // Load footer
+          const { data: primaryFooter } = await supabase
             .from('brand_footers')
             .select('html')
             .eq('brand_id', item.brand_id)
-            .order('updated_at', { ascending: false })
+            .eq('is_primary', true)
             .limit(1)
             .maybeSingle();
 
-          if (recentError) {
-            console.error('Error fetching recent footer:', recentError);
-            setFooterError(`Permission error: ${recentError.message}`);
-          } else if (recentFooter?.html) {
-            setFooterHtml(recentFooter.html);
-          } else if (brand?.footer_html) {
-            // Legacy fallback
-            setFooterHtml(brand.footer_html);
+          if (primaryFooter?.html) {
+            setFooterHtml(primaryFooter.html);
+          } else {
+            const { data: recentFooter } = await supabase
+              .from('brand_footers')
+              .select('html')
+              .eq('brand_id', item.brand_id)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            if (recentFooter?.html) {
+              setFooterHtml(recentFooter.html);
+            } else if (brand?.footer_html) {
+              setFooterHtml(brand.footer_html);
+            }
+          }
+
+          // Load Klaviyo lists if not preloaded
+          if (!preloadedKlaviyoLists && brand?.klaviyo_api_key) {
+            const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
+              body: { klaviyoApiKey: brand.klaviyo_api_key }
+            });
+            
+            if (error) {
+              setListLoadError('Failed to load segments');
+            } else if (data?.lists) {
+              setKlaviyoLists(data.lists);
+            }
           }
         }
 
-        // Load Klaviyo lists - use preloaded if available
-        if (preloadedKlaviyoLists && preloadedKlaviyoLists.length > 0) {
-          setKlaviyoLists(preloadedKlaviyoLists);
-        } else if (brand?.klaviyo_api_key) {
-          const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
-            body: { klaviyoApiKey: brand.klaviyo_api_key }
-          });
-          
-          if (error) {
-            setListLoadError('Failed to load segments');
-          } else if (data?.lists) {
-            setKlaviyoLists(data.lists);
-          }
-        }
-
-        // Use preloaded presets if available, otherwise fetch
-        if (preloadedPresets && preloadedPresets.length > 0) {
-          setPresets(preloadedPresets);
-          
-          // Auto-apply default preset (only once)
-          const defaultPreset = preloadedPresets.find(p => p.is_default);
-          if (defaultPreset && !hasAppliedDefaultPreset.current) {
-            hasAppliedDefaultPreset.current = true;
-            setIncludedSegments(defaultPreset.included_segments);
-            setExcludedSegments(defaultPreset.excluded_segments);
-            setSelectedPresetId(defaultPreset.id);
-          }
-        } else {
-          // Load segment presets for this brand
+        // Load presets if not preloaded
+        if (!preloadedPresets) {
           const { data: presetsData } = await supabase
             .from('segment_presets')
             .select('*')
@@ -279,19 +270,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
               excluded_segments: normalizeSegmentIds(p.excluded_segments),
               is_default: p.is_default || false,
             }));
-            
-            // Sort: defaults first
             mappedPresets.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
             setPresets(mappedPresets);
-            
-            // Auto-apply default preset (only once)
-            const defaultPreset = mappedPresets.find(p => p.is_default);
-            if (defaultPreset && !hasAppliedDefaultPreset.current) {
-              hasAppliedDefaultPreset.current = true;
-              setIncludedSegments(defaultPreset.included_segments);
-              setExcludedSegments(defaultPreset.excluded_segments);
-              setSelectedPresetId(defaultPreset.id);
-            }
           }
         }
       } catch (err) {
@@ -302,8 +282,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, pr
       }
     };
 
-    loadBrandData();
-  }, [item.brand_id, preloadedPresets, preloadedKlaviyoLists]);
+    loadMissingData();
+  }, [item.brand_id, preloadedPresets, preloadedKlaviyoLists, preloadedBrandData]);
 
   // Force default segment modal if no default preset exists
   useEffect(() => {

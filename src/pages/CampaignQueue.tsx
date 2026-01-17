@@ -29,7 +29,7 @@ interface Brand {
 export default function CampaignQueue() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { items, loading, refresh, presetsByBrand, klaviyoListsByBrand } = useCampaignQueue();
+  const { items, loading, refresh, presetsByBrand, klaviyoListsByBrand, brandDataByBrand, userZoomLevel } = useCampaignQueue();
   
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -457,6 +457,8 @@ export default function CampaignQueue() {
             onUpdate={refresh}
             presetsByBrand={presetsByBrand}
             klaviyoListsByBrand={klaviyoListsByBrand}
+            brandDataByBrand={brandDataByBrand}
+            userZoomLevel={userZoomLevel}
             selectedIds={selectedIds}
             onSelectItem={handleSelectItem}
             onSelectAll={handleSelectAll}
