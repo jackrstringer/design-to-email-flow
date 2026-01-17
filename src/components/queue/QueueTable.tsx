@@ -13,6 +13,9 @@ interface QueueTableProps {
   onToggleExpand: (id: string) => void;
   onUpdate: () => void;
   presetsByBrand: Record<string, SegmentPreset[]>;
+  selectedIds: Set<string>;
+  onSelectItem: (id: string, selected: boolean) => void;
+  onSelectAll: () => void;
 }
 
 interface ColumnWidths {
@@ -64,6 +67,9 @@ export function QueueTable({
   onToggleExpand,
   onUpdate,
   presetsByBrand,
+  selectedIds,
+  onSelectItem,
+  onSelectAll,
 }: QueueTableProps) {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const [resizing, setResizing] = useState<keyof ColumnWidths | null>(null);
@@ -90,6 +96,9 @@ export function QueueTable({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   };
+
+  const allSelected = items.length > 0 && items.every(item => selectedIds.has(item.id));
+  const someSelected = items.some(item => selectedIds.has(item.id));
 
   if (loading) {
     return (
@@ -150,8 +159,15 @@ export function QueueTable({
         style={{ cursor: resizing ? 'col-resize' : 'default' }}
       >
         {/* Checkbox column */}
-        <div className="w-8 flex-shrink-0 px-2 flex items-center">
-          {/* No select all for now to keep it minimal */}
+        <div className="w-8 flex-shrink-0 px-2 flex items-center justify-center">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={onSelectAll}
+            className={cn(
+              "transition-opacity",
+              someSelected || allSelected ? "opacity-100" : "opacity-0 hover:opacity-100"
+            )}
+          />
         </div>
 
         {/* Status */}
@@ -362,6 +378,8 @@ export function QueueTable({
                 onUpdate={onUpdate}
                 columnWidths={columnWidths}
                 presets={presets}
+                isSelected={selectedIds.has(item.id)}
+                onSelect={onSelectItem}
               />
               {expandedId === item.id && (
                 <ExpandedRowPanel
