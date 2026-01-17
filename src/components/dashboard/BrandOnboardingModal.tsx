@@ -115,10 +115,18 @@ export function BrandOnboardingModal({
     }
   };
 
-  // Process logo after analysis - now accepts both header and footer logo URLs
-  const processLogo = async (headerLogoUrl: string | null, footerLogo: string | null, domain: string, scheme: string | null) => {
-    // Need at least one logo URL
-    if ((!headerLogoUrl || !headerLogoUrl.startsWith('http')) && (!footerLogo || !footerLogo.startsWith('http'))) {
+  // Process logos with all available candidates from analysis
+  const processLogo = async (analysisData: any, domain: string) => {
+    // Check if we have any logo candidates
+    const hasLogos = analysisData?.logo || 
+                     analysisData?.footerLogo || 
+                     analysisData?.headerLogo ||
+                     analysisData?.whiteLogo ||
+                     analysisData?.darkLogo ||
+                     (analysisData?.allLogos && analysisData.allLogos.length > 0);
+    
+    if (!hasLogos) {
+      console.log('No logo candidates found in analysis data');
       return;
     }
 
@@ -126,10 +134,14 @@ export function BrandOnboardingModal({
     try {
       const { data, error } = await supabase.functions.invoke('process-brand-logo', {
         body: { 
-          logoUrl: headerLogoUrl, 
-          footerLogoUrl: footerLogo,
+          logoUrl: analysisData.logo,
+          footerLogoUrl: analysisData.footerLogo,
+          headerLogoUrl: analysisData.headerLogo,
+          whiteLogoUrl: analysisData.whiteLogo,
+          darkLogoUrl: analysisData.darkLogo,
+          allLogos: analysisData.allLogos || [],
           brandDomain: domain, 
-          colorScheme: scheme 
+          colorScheme: analysisData.colorScheme 
         }
       });
 
@@ -148,6 +160,8 @@ export function BrandOnboardingModal({
         
         if (data.lightLogoUrl && data.darkLogoUrl) {
           console.log('Both logo variants detected from website!');
+        } else {
+          console.log('Only one variant found, missing:', data.missingVariant);
         }
       }
     } catch (error) {
@@ -268,10 +282,8 @@ export function BrandOnboardingModal({
     const suggestedName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
     setBrandName(suggestedName);
 
-    // Process both logos if available
-    if ((data?.logo && data.logo.startsWith('http')) || (data?.footerLogo && data.footerLogo.startsWith('http'))) {
-      processLogo(data.logo || null, data.footerLogo || null, domain, data.colorScheme || null);
-    }
+    // Process all logo candidates
+    processLogo(data, domain);
   };
 
   const handleAnalyze = async () => {

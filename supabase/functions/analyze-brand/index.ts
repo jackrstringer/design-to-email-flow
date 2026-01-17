@@ -45,7 +45,8 @@ serve(async (req) => {
 
     console.log('Analyzing brand from:', formattedUrl);
 
-    // Call Firecrawl with branding, links, and extract formats to get footer logo
+    // Call Firecrawl with branding, links, images, and extract formats
+    // Request ALL data to maximize logo discovery chances
     const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -54,15 +55,32 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: formattedUrl,
-        formats: ['branding', 'links', 'extract'],
+        formats: ['branding', 'links', 'screenshot', 'extract'],
         onlyMainContent: false,
         extract: {
           schema: {
             type: "object",
             properties: {
+              headerLogo: {
+                type: "string",
+                description: "URL of the logo image in the website header/navigation area (top of page). Usually a dark/colored logo on light background."
+              },
               footerLogo: {
                 type: "string",
-                description: "URL of the logo image found in the website footer section (usually at the bottom of the page). This is often a white or light-colored version of the brand logo."
+                description: "URL of the logo image in the website footer section (bottom of page). Often a white/light-colored version for dark footer backgrounds."
+              },
+              whiteLogo: {
+                type: "string",
+                description: "URL of a white or light-colored version of the brand logo, often found on dark backgrounds or in the footer."
+              },
+              darkLogo: {
+                type: "string",
+                description: "URL of a dark/black/colored version of the brand logo, often found on light backgrounds or in the header."
+              },
+              allLogos: {
+                type: "array",
+                items: { type: "string" },
+                description: "Array of ALL logo image URLs found anywhere on the page - header, footer, mobile menu, etc. Include any image that appears to be the brand logo."
               },
               footerBackgroundColor: {
                 type: "string",
@@ -91,6 +109,9 @@ serve(async (req) => {
     const links = firecrawlData.data?.links || firecrawlData.links || [];
     const extract = firecrawlData.data?.extract || firecrawlData.extract || {};
 
+    // Log all extracted logo data
+    console.log('Extract data:', JSON.stringify(extract, null, 2));
+
     // Extract ALL colors from Firecrawl
     const colors = {
       primary: branding.colors?.primary || '#3b82f6',
@@ -117,11 +138,16 @@ serve(async (req) => {
     // Extract component styles (buttons)
     const components = branding.components || null;
 
-    // Extract logo (header logo - usually dark variant)
-    const logo = branding.logo || branding.images?.logo || null;
+    // Extract logos from multiple sources
+    const brandingLogo = branding.logo || branding.images?.logo || null;
+    const brandingImages = branding.images || {};
 
-    // Extract footer logo (usually light/white variant for dark footers)
+    // Extract logos from LLM extraction
+    const headerLogo = extract?.headerLogo || null;
     const footerLogo = extract?.footerLogo || null;
+    const whiteLogo = extract?.whiteLogo || null;
+    const darkLogo = extract?.darkLogo || null;
+    const allLogosFromExtract = extract?.allLogos || [];
     const footerBackgroundColor = extract?.footerBackgroundColor || null;
 
     // Extract color scheme (light/dark)
@@ -134,12 +160,27 @@ serve(async (req) => {
     // Store all links for future linking purposes
     const allLinks: string[] = [];
 
+    // Also collect potential logo URLs from links (images in links array)
+    const potentialLogoUrls: string[] = [];
+    const logoKeywords = ['logo', 'brand', 'mark', 'wordmark', 'logotype'];
+    const logoExclusions = ['icon', 'favicon', 'social', 'facebook', 'twitter', 'instagram', 'linkedin', 'youtube', 'tiktok', 'pinterest', 'snapchat'];
+
     for (const link of links) {
       const url = typeof link === 'string' ? link : link.url || link.href;
       if (!url) continue;
 
       // Add to allLinks
       allLinks.push(url);
+
+      // Check if this could be a logo image
+      const lowerUrl = url.toLowerCase();
+      const isImage = /\.(png|jpg|jpeg|svg|webp|gif)(\?|$)/i.test(lowerUrl);
+      const hasLogoKeyword = logoKeywords.some(kw => lowerUrl.includes(kw));
+      const hasExclusion = logoExclusions.some(ex => lowerUrl.includes(ex));
+      
+      if (isImage && hasLogoKeyword && !hasExclusion) {
+        potentialLogoUrls.push(url);
+      }
 
       // Check for social links
       for (const { pattern, platform } of SOCIAL_DOMAINS) {
@@ -151,13 +192,37 @@ serve(async (req) => {
       }
     }
 
-    console.log('Extracted colors:', colors);
-    console.log('Extracted typography:', typography);
-    console.log('Extracted fonts:', fonts);
-    console.log('Extracted spacing:', spacing);
-    console.log('Extracted components:', components);
-    console.log('Found social links:', socialLinks);
-    console.log('Total links found:', allLinks.length);
+    // Combine all logo candidates from various sources
+    const allLogoCandidates = [
+      brandingLogo,
+      headerLogo,
+      footerLogo,
+      whiteLogo,
+      darkLogo,
+      brandingImages.logo,
+      brandingImages.favicon,
+      ...allLogosFromExtract,
+      ...potentialLogoUrls,
+    ].filter((url): url is string => {
+      if (!url || typeof url !== 'string') return false;
+      return url.startsWith('http');
+    });
+
+    // Deduplicate logo candidates
+    const uniqueLogoCandidates = [...new Set(allLogoCandidates)];
+
+    console.log('=== LOGO DISCOVERY SUMMARY ===');
+    console.log('Branding logo:', brandingLogo);
+    console.log('Header logo (extracted):', headerLogo);
+    console.log('Footer logo (extracted):', footerLogo);
+    console.log('White logo (extracted):', whiteLogo);
+    console.log('Dark logo (extracted):', darkLogo);
+    console.log('All logos from extract:', allLogosFromExtract);
+    console.log('Potential logos from links:', potentialLogoUrls);
+    console.log('Total unique logo candidates:', uniqueLogoCandidates.length);
+    console.log('Candidates:', uniqueLogoCandidates);
+    console.log('Footer background color:', footerBackgroundColor);
+    console.log('Color scheme:', colorScheme);
 
     const result = {
       success: true,
@@ -166,18 +231,29 @@ serve(async (req) => {
       fonts,
       spacing,
       components,
-      logo,
-      footerLogo,
-      footerBackgroundColor,
       colorScheme,
       socialLinks,
       allLinks,
+      
+      // Primary logo from branding
+      logo: brandingLogo,
+      
+      // Extracted logos with specific roles
+      headerLogo,
+      footerLogo,
+      whiteLogo,
+      darkLogo,
+      
+      // All logo candidates for processing
+      allLogos: uniqueLogoCandidates,
+      
+      // Additional branding images
+      brandingImages,
+      
+      footerBackgroundColor,
     };
 
-    console.log('Extracted header logo URL:', logo);
-    console.log('Extracted footer logo URL:', footerLogo);
-    console.log('Footer background color:', footerBackgroundColor);
-    console.log('Brand analysis complete');
+    console.log('Brand analysis complete - returning', uniqueLogoCandidates.length, 'logo candidates');
 
     return new Response(
       JSON.stringify(result),

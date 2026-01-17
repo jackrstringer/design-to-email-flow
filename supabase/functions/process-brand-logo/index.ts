@@ -14,18 +14,49 @@ async function sha1(message: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Analyze image to determine if it's a "dark" logo (for light backgrounds) or "light" logo (for dark backgrounds)
-async function analyzeLogoBrightness(imageData: Uint8Array): Promise<'dark' | 'light'> {
+// Get base URL without query parameters for comparison
+function getBaseUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.split('?')[0];
+  }
+}
+
+// Analyze image brightness and return numeric value (0-255)
+async function analyzeLogoBrightness(imageData: Uint8Array): Promise<number> {
   let totalBrightness = 0;
   let sampleCount = 0;
   
+  // Sample every 100th byte
   for (let i = 0; i < imageData.length; i += 100) {
     totalBrightness += imageData[i];
     sampleCount++;
   }
   
-  const avgBrightness = sampleCount > 0 ? totalBrightness / sampleCount : 128;
-  return avgBrightness > 140 ? 'light' : 'dark';
+  return sampleCount > 0 ? totalBrightness / sampleCount : 128;
+}
+
+// Download an image and return its data
+async function downloadImage(url: string): Promise<{ data: Uint8Array; contentType: string } | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      },
+    });
+    if (!response.ok) return null;
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const contentType = response.headers.get('content-type') || 'image/png';
+    
+    return { data, contentType };
+  } catch (error) {
+    console.error('Failed to download image:', url, error);
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -34,11 +65,24 @@ serve(async (req) => {
   }
 
   try {
-    const { logoUrl, footerLogoUrl, brandDomain, colorScheme } = await req.json();
+    const { 
+      logoUrl,           // Primary branding logo
+      footerLogoUrl,     // Footer extraction
+      headerLogoUrl,     // Header extraction (if different from logoUrl)
+      whiteLogoUrl,      // Explicitly detected white logo
+      darkLogoUrl,       // Explicitly detected dark logo
+      allLogos,          // Array of all found logos
+      brandDomain, 
+      colorScheme 
+    } = await req.json();
 
-    console.log('Processing logos...');
-    console.log('Header logo URL:', logoUrl);
+    console.log('=== PROCESSING LOGOS ===');
+    console.log('Logo URL:', logoUrl);
     console.log('Footer logo URL:', footerLogoUrl);
+    console.log('Header logo URL:', headerLogoUrl);
+    console.log('White logo URL:', whiteLogoUrl);
+    console.log('Dark logo URL:', darkLogoUrl);
+    console.log('All logos count:', allLogos?.length || 0);
     console.log('Brand domain:', brandDomain);
     console.log('Website color scheme:', colorScheme);
 
@@ -57,23 +101,12 @@ serve(async (req) => {
     const folder = brandDomain ? `brands/${brandDomain}/logos` : 'brands/logos';
 
     // Helper function to upload a logo to Cloudinary
-    const uploadLogo = async (url: string, suffix: string): Promise<{ url: string; publicId: string } | null> => {
+    const uploadLogo = async (imageData: Uint8Array, contentType: string, suffix: string): Promise<{ url: string; publicId: string } | null> => {
       try {
-        console.log(`Downloading ${suffix} logo from: ${url}`);
-        const response = await fetch(url);
-        if (!response.ok) {
-          console.error(`Failed to download ${suffix} logo: ${response.status}`);
-          return null;
-        }
-        
-        const arrayBuffer = await response.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        const contentType = response.headers.get('content-type') || 'image/png';
-        
-        console.log(`${suffix} logo downloaded, size: ${data.length}, type: ${contentType}`);
+        console.log(`Uploading ${suffix} logo, size: ${imageData.length}`);
         
         const timestamp = Math.round(Date.now() / 1000);
-        const base64Logo = btoa(String.fromCharCode(...data));
+        const base64Logo = btoa(String.fromCharCode(...imageData));
         const dataUrl = `data:${contentType};base64,${base64Logo}`;
         
         const signatureString = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
@@ -86,7 +119,6 @@ serve(async (req) => {
         formData.append('signature', signature);
         formData.append('folder', folder);
 
-        console.log(`Uploading ${suffix} logo to Cloudinary...`);
         const uploadResponse = await fetch(
           `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
           { method: 'POST', body: formData }
@@ -111,155 +143,165 @@ serve(async (req) => {
       }
     };
 
-    let darkLogoUrl: string | null = null;
-    let darkLogoPublicId: string | null = null;
-    let lightLogoUrl: string | null = null;
-    let lightLogoPublicId: string | null = null;
-    let originalUrl: string | null = null;
-    let originalPublicId: string | null = null;
-
-    // Case 1: We have both header and footer logos - assume header is dark, footer is light
-    if (logoUrl && footerLogoUrl && logoUrl !== footerLogoUrl) {
-      console.log('Processing both header and footer logos...');
-      
-      // Header logo is typically dark (shown on light header backgrounds)
-      const headerResult = await uploadLogo(logoUrl, 'header');
-      if (headerResult) {
-        darkLogoUrl = headerResult.url;
-        darkLogoPublicId = headerResult.publicId;
-        originalUrl = headerResult.url;
-        originalPublicId = headerResult.publicId;
+    // Collect all unique logo candidates
+    const candidateUrls = new Set<string>();
+    
+    // Add explicitly identified logos first (higher priority)
+    if (darkLogoUrl && darkLogoUrl.startsWith('http')) candidateUrls.add(darkLogoUrl);
+    if (whiteLogoUrl && whiteLogoUrl.startsWith('http')) candidateUrls.add(whiteLogoUrl);
+    if (headerLogoUrl && headerLogoUrl.startsWith('http')) candidateUrls.add(headerLogoUrl);
+    if (footerLogoUrl && footerLogoUrl.startsWith('http')) candidateUrls.add(footerLogoUrl);
+    if (logoUrl && logoUrl.startsWith('http')) candidateUrls.add(logoUrl);
+    
+    // Add all other logo candidates
+    if (allLogos && Array.isArray(allLogos)) {
+      for (const url of allLogos) {
+        if (url && typeof url === 'string' && url.startsWith('http')) {
+          candidateUrls.add(url);
+        }
       }
-      
-      // Footer logo is typically light (shown on dark footer backgrounds)
-      const footerResult = await uploadLogo(footerLogoUrl, 'footer');
-      if (footerResult) {
-        lightLogoUrl = footerResult.url;
-        lightLogoPublicId = footerResult.publicId;
-      }
-      
-      console.log('Both logos processed');
-      console.log('Dark logo (from header):', darkLogoUrl);
-      console.log('Light logo (from footer):', lightLogoUrl);
-      
-      const hasBothVariants = darkLogoUrl && lightLogoUrl;
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          originalUrl,
-          detectedType: 'dark',
-          darkLogoUrl,
-          darkLogoPublicId,
-          lightLogoUrl,
-          lightLogoPublicId,
-          originalPublicId,
-          hasOnlyOneVariant: !hasBothVariants,
-          missingVariant: !darkLogoUrl ? 'dark' : (!lightLogoUrl ? 'light' : null),
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
-    // Case 2: Only have one logo - use brightness detection
-    const singleLogoUrl = logoUrl || footerLogoUrl;
-    if (!singleLogoUrl) {
+    console.log('Total unique candidates:', candidateUrls.size);
+
+    // Filter to get truly unique logos (by base URL)
+    const baseUrlMap = new Map<string, string>();
+    for (const url of candidateUrls) {
+      const base = getBaseUrl(url);
+      if (!baseUrlMap.has(base)) {
+        baseUrlMap.set(base, url);
+      }
+    }
+
+    const uniqueUrls = Array.from(baseUrlMap.values());
+    console.log('Unique logos after base URL dedup:', uniqueUrls.length);
+
+    if (uniqueUrls.length === 0) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Logo URL is required' }),
+        JSON.stringify({ success: false, error: 'No valid logo URLs provided' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Processing single logo...');
+    // Download all candidates and analyze brightness
+    const analyzed: Array<{ url: string; data: Uint8Array; contentType: string; brightness: number }> = [];
     
-    // Download and analyze the logo
-    const logoResponse = await fetch(singleLogoUrl);
-    if (!logoResponse.ok) {
-      throw new Error(`Failed to download logo: ${logoResponse.status}`);
+    for (const url of uniqueUrls) {
+      const downloaded = await downloadImage(url);
+      if (downloaded && downloaded.data.length > 100) { // Ensure it's a real image
+        const brightness = await analyzeLogoBrightness(downloaded.data);
+        analyzed.push({
+          url,
+          data: downloaded.data,
+          contentType: downloaded.contentType,
+          brightness,
+        });
+        console.log(`Analyzed: ${url.substring(0, 80)}... brightness: ${brightness.toFixed(1)}`);
+      }
+    }
+
+    console.log('Successfully analyzed', analyzed.length, 'logos');
+
+    if (analyzed.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to download any logos' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    let finalDarkLogo: { url: string; publicId: string } | null = null;
+    let finalLightLogo: { url: string; publicId: string } | null = null;
+    let detectedType: 'dark' | 'light' = 'dark';
+
+    // Case 1: Multiple logo candidates - find the darkest and lightest
+    if (analyzed.length >= 2) {
+      // Sort by brightness
+      analyzed.sort((a, b) => a.brightness - b.brightness);
+      
+      const darkest = analyzed[0];
+      const lightest = analyzed[analyzed.length - 1];
+      const brightnessDiff = lightest.brightness - darkest.brightness;
+
+      console.log('Darkest logo brightness:', darkest.brightness.toFixed(1), darkest.url.substring(0, 60));
+      console.log('Lightest logo brightness:', lightest.brightness.toFixed(1), lightest.url.substring(0, 60));
+      console.log('Brightness difference:', brightnessDiff.toFixed(1));
+
+      // If there's a significant brightness difference (>30), we found a pair
+      if (brightnessDiff > 30) {
+        console.log('Found distinct dark/light logo pair!');
+        
+        // Upload both
+        const darkResult = await uploadLogo(darkest.data, darkest.contentType, 'dark');
+        const lightResult = await uploadLogo(lightest.data, lightest.contentType, 'light');
+        
+        if (darkResult) finalDarkLogo = darkResult;
+        if (lightResult) finalLightLogo = lightResult;
+        
+        const hasBothVariants = finalDarkLogo && finalLightLogo;
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            originalUrl: finalDarkLogo?.url || finalLightLogo?.url,
+            detectedType: 'dark',
+            darkLogoUrl: finalDarkLogo?.url || null,
+            darkLogoPublicId: finalDarkLogo?.publicId || null,
+            lightLogoUrl: finalLightLogo?.url || null,
+            lightLogoPublicId: finalLightLogo?.publicId || null,
+            originalPublicId: finalDarkLogo?.publicId || finalLightLogo?.publicId,
+            hasOnlyOneVariant: !hasBothVariants,
+            missingVariant: !finalDarkLogo ? 'dark' : (!finalLightLogo ? 'light' : null),
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        console.log('All logos have similar brightness - treating as single logo');
+      }
+    }
+
+    // Case 2: Single logo or all logos are similar brightness
+    const singleLogo = analyzed[0];
+    
+    // Determine if it's dark or light based on brightness and website color scheme
+    if (singleLogo.brightness > 140) {
+      detectedType = 'light';
+    } else {
+      detectedType = 'dark';
     }
     
-    const logoArrayBuffer = await logoResponse.arrayBuffer();
-    const logoData = new Uint8Array(logoArrayBuffer);
-    const contentType = logoResponse.headers.get('content-type') || 'image/png';
-    
-    console.log('Logo downloaded, size:', logoData.length, 'type:', contentType);
-
-    // Analyze if the logo is dark or light
-    let detectedType = await analyzeLogoBrightness(logoData);
-    
-    // If website has a dark color scheme, the logo shown is likely the light version
+    // Override based on website color scheme
     if (colorScheme === 'dark') {
       detectedType = 'light';
-      console.log('Website is dark, assuming logo is light variant');
+      console.log('Website is dark themed, assuming logo is light variant');
     } else if (colorScheme === 'light') {
       detectedType = 'dark';
-      console.log('Website is light, assuming logo is dark variant');
+      console.log('Website is light themed, assuming logo is dark variant');
     }
+
+    console.log('Single logo processing - detected type:', detectedType);
+
+    // Upload the single logo
+    const uploadedLogo = await uploadLogo(singleLogo.data, singleLogo.contentType, detectedType);
     
-    console.log('Detected logo type:', detectedType);
-
-    // Upload to Cloudinary
-    const timestamp = Math.round(Date.now() / 1000);
-    const base64Logo = btoa(String.fromCharCode(...logoData));
-    const dataUrl = `data:${contentType};base64,${base64Logo}`;
-    
-    const signatureString = `folder=${folder}&timestamp=${timestamp}${apiSecret}`;
-    const signature = await sha1(signatureString);
-
-    const formData = new FormData();
-    formData.append('file', dataUrl);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp.toString());
-    formData.append('signature', signature);
-    formData.append('folder', folder);
-
-    console.log('Uploading original logo to Cloudinary...');
-    const uploadResponse = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-      { method: 'POST', body: formData }
-    );
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error('Cloudinary upload failed:', errorText);
-      throw new Error('Failed to upload to Cloudinary');
+    if (!uploadedLogo) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to upload logo' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const uploadResult = await uploadResponse.json();
-    console.log('Original logo uploaded:', uploadResult.public_id);
-
-    originalUrl = uploadResult.secure_url;
-    originalPublicId = uploadResult.public_id;
-
-    let missingVariant: 'dark' | 'light';
-
-    if (detectedType === 'dark') {
-      darkLogoUrl = originalUrl;
-      darkLogoPublicId = uploadResult.public_id;
-      missingVariant = 'light';
-      console.log('Stored as dark logo - MISSING light variant (for dark backgrounds)');
-    } else {
-      lightLogoUrl = originalUrl;
-      lightLogoPublicId = uploadResult.public_id;
-      missingVariant = 'dark';
-      console.log('Stored as light logo - MISSING dark variant (for light backgrounds)');
-    }
-
-    console.log('Logo processing complete');
-    console.log('Dark logo URL:', darkLogoUrl);
-    console.log('Light logo URL:', lightLogoUrl);
-    console.log('Missing variant:', missingVariant);
+    const missingVariant: 'dark' | 'light' = detectedType === 'dark' ? 'light' : 'dark';
 
     return new Response(
       JSON.stringify({
         success: true,
-        originalUrl,
+        originalUrl: uploadedLogo.url,
         detectedType,
-        darkLogoUrl,
-        darkLogoPublicId,
-        lightLogoUrl,
-        lightLogoPublicId,
-        originalPublicId,
+        darkLogoUrl: detectedType === 'dark' ? uploadedLogo.url : null,
+        darkLogoPublicId: detectedType === 'dark' ? uploadedLogo.publicId : null,
+        lightLogoUrl: detectedType === 'light' ? uploadedLogo.url : null,
+        lightLogoPublicId: detectedType === 'light' ? uploadedLogo.publicId : null,
+        originalPublicId: uploadedLogo.publicId,
         hasOnlyOneVariant: true,
         missingVariant,
       }),
