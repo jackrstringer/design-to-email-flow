@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, RotateCw, Check, ChevronDown, ExternalLink } from 'lucide-react';
+import { Loader2, RotateCw, Check, ChevronDown, Archive } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -19,7 +19,28 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const handleStatusChange = async (newStatus: 'ready_for_review' | 'approved') => {
+  const handleStatusChange = async (newStatus: 'ready_for_review' | 'approved' | 'closed') => {
+    if (newStatus === 'closed') {
+      // Just update status to closed
+      setIsUpdating(true);
+      setOpen(false);
+
+      const { error } = await supabase
+        .from('campaign_queue')
+        .update({ status: 'closed' })
+        .eq('id', item.id);
+
+      setIsUpdating(false);
+
+      if (error) {
+        toast.error('Failed to close campaign');
+      } else {
+        toast.success('Campaign closed');
+        onUpdate();
+      }
+      return;
+    }
+
     if (newStatus === 'approved') {
       // Validate subject line and preview text
       if (!item.selected_subject_line || !item.selected_preview_text) {
@@ -194,30 +215,43 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
     );
   }
 
-  // Sent state - clickable link to Klaviyo
+  // Sent state - static "Built in Klaviyo" badge (not clickable)
   if (item.status === 'sent_to_klaviyo') {
-    const campaignUrl = item.klaviyo_campaign_url || 
-      (item.klaviyo_campaign_id ? `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit` : null);
-    
-    if (campaignUrl) {
-      return (
-        <a
-          href={campaignUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+          >
+            <Check className="h-3 w-3" />
+            Built in Klaviyo
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent 
+          className="w-32 p-1 z-50 bg-white" 
+          align="start"
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
         >
-          <ExternalLink className="h-3 w-3" />
-          Open in Klaviyo
-        </a>
-      );
-    }
-    
+          <button
+            onClick={() => handleStatusChange('closed')}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
+          >
+            <Archive className="h-3 w-3 text-gray-500" />
+            <span className="text-gray-700">Close</span>
+          </button>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  // Closed state - static badge
+  if (item.status === 'closed') {
     return (
       <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
-        <Check className="h-3 w-3" />
-        Sent
+        <Archive className="h-3 w-3" />
+        Closed
       </div>
     );
   }

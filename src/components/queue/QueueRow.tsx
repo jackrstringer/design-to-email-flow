@@ -8,7 +8,7 @@ import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Copy } from 'lucide-react';
 
 interface ColumnWidths {
   status: number;
@@ -262,21 +262,34 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
 
       {/* Klaviyo Link */}
       <div 
-        className="px-2 flex-shrink-0 flex items-center justify-center" 
+        className="px-2 flex-shrink-0 flex items-center group/klaviyo" 
         style={{ width: columnWidths.klaviyo }}
         onClick={(e) => e.stopPropagation()}
       >
-        {item.status === 'sent_to_klaviyo' && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
-          <a
-            href={item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-blue-600 hover:text-blue-800 flex items-center gap-1"
-            title="Open in Klaviyo"
-          >
-            <ExternalLink className="h-3 w-3" />
-            <span className="truncate max-w-[60px]">Open</span>
-          </a>
+        {(item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
+          <div className="flex items-center gap-1 min-w-0">
+            <a
+              href={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-blue-600 hover:text-blue-800 truncate"
+              title={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
+            >
+              {item.klaviyo_campaign_url?.replace('https://www.klaviyo.com/', '') || `email-template-editor/campaign/${item.klaviyo_campaign_id?.slice(0, 8)}...`}
+            </a>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const url = item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
+                navigator.clipboard.writeText(url);
+                toast.success('URL copied');
+              }}
+              className="opacity-0 group-hover/klaviyo:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+              title="Copy URL"
+            >
+              <ExternalLink className="h-3 w-3 text-gray-500" />
+            </button>
+          </div>
         ) : (
           <span className="text-gray-400">—</span>
         )}

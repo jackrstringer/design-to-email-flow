@@ -1054,20 +1054,20 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
                 <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Klaviyo Campaign</span>
               </div>
-              {item.status === 'sent_to_klaviyo' && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
+              {(item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
                 <div className="group flex items-center gap-2">
                   <a
-                    href={item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+                    href={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[11px] text-blue-600 hover:text-blue-800 underline truncate max-w-[280px]"
-                    title={item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+                    title={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
                   >
-                    {item.klaviyo_campaign_url || `klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`}
+                    {item.klaviyo_campaign_url || `klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
                   </a>
                   <button
                     onClick={() => {
-                      const url = item.klaviyo_campaign_url || `https://www.klaviyo.com/campaign/${item.klaviyo_campaign_id}/edit`;
+                      const url = item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
                       navigator.clipboard.writeText(url);
                       toast.success('URL copied to clipboard');
                     }}
