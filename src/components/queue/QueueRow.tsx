@@ -175,13 +175,17 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
       >
         {brandName ? (
           <span 
-            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium truncate max-w-full"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium truncate max-w-full shadow-sm"
             style={{ 
-              backgroundColor: `${brandColor}15`,
+              background: `linear-gradient(135deg, ${brandColor}18 0%, ${brandColor}08 100%)`,
               color: brandColor,
-              border: `1px solid ${brandColor}30`
+              boxShadow: `0 1px 2px ${brandColor}12`
             }}
           >
+            <span 
+              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: brandColor }}
+            />
             {brandName}
           </span>
         ) : '—'}
