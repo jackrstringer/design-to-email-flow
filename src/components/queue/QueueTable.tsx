@@ -40,7 +40,7 @@ const DEFAULT_WIDTHS: ColumnWidths = {
   links: 60,
   external: 80,
   spelling: 70,
-  klaviyo: 100,
+  klaviyo: 160,
 };
 
 const MIN_WIDTHS: ColumnWidths = {
