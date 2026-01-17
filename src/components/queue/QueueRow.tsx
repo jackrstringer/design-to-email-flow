@@ -268,9 +268,9 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
       >
         {(item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (() => {
           const klaviyoUrl = item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
-          const displayText = `campaign/${item.klaviyo_campaign_id?.slice(0, 12) || '...'}`;
+          const displayText = `campaign/${item.klaviyo_campaign_id || '...'}`;
           return (
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0 w-full">
               <a
                 href={klaviyoUrl}
                 target="_blank"
@@ -284,7 +284,7 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
                 href={klaviyoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline truncate"
+                className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline truncate flex-1 min-w-0"
                 title={klaviyoUrl}
               >
                 {displayText}
