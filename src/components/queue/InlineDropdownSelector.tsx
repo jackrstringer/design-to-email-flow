@@ -7,6 +7,24 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
+// ClickUp brand icon as inline SVG
+const ClickUpIcon = ({ className }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    className={className}
+    fill="none"
+  >
+    <path 
+      d="M3.5 18.5L6.5 15.5C8.5 18 10.5 19 12 19C13.5 19 15.5 18 17.5 15.5L20.5 18.5C17.5 22 14.5 23.5 12 23.5C9.5 23.5 6.5 22 3.5 18.5Z" 
+      fill="#7B68EE"
+    />
+    <path 
+      d="M12 4L4 12L7 15L12 10L17 15L20 12L12 4Z" 
+      fill="#49CCF9"
+    />
+  </svg>
+);
+
 interface InlineDropdownSelectorProps {
   selected: string | null;
   options: string[] | null;
@@ -16,6 +34,7 @@ interface InlineDropdownSelectorProps {
   isProcessing?: boolean;
   processingStep?: string | null;
   isAiGenerated?: boolean;
+  isClickUpSource?: boolean;
 }
 
 export function InlineDropdownSelector({
@@ -27,6 +46,7 @@ export function InlineDropdownSelector({
   isProcessing = false,
   processingStep = null,
   isAiGenerated = false,
+  isClickUpSource = false,
 }: InlineDropdownSelectorProps) {
   const [open, setOpen] = useState(false);
   const [editValue, setEditValue] = useState(selected || '');
@@ -172,7 +192,12 @@ export function InlineDropdownSelector({
               title={displayValue || placeholder}
             >
               <span className="truncate">{displayValue || placeholder}</span>
-              {isAiGenerated && displayValue && (
+              {isClickUpSource && displayValue && (
+                <span title="Retrieved from ClickUp Task">
+                  <ClickUpIcon className="h-3.5 w-3.5 shrink-0" />
+                </span>
+              )}
+              {isAiGenerated && displayValue && !isClickUpSource && (
                 <span title="AI generated">
                   <Bot className="h-3 w-3 text-gray-400 shrink-0" />
                 </span>
