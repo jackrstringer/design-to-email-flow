@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueueRow } from './QueueRow';
 import { ExpandedRowPanel } from './ExpandedRowPanel';
 import { CampaignQueueItem, SegmentPreset } from '@/hooks/useCampaignQueue';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface QueueTableProps {
   items: CampaignQueueItem[];
@@ -18,7 +19,7 @@ interface QueueTableProps {
   onSelectAll: () => void;
 }
 
-interface ColumnWidths {
+export interface ColumnWidths {
   status: number;
   thumbnail: number;
   name: number;
@@ -32,14 +33,15 @@ interface ColumnWidths {
   klaviyo: number;
 }
 
+// Improved defaults to fill page width better, prioritizing longer content fields
 const DEFAULT_WIDTHS: ColumnWidths = {
-  status: 130,
+  status: 150,
   thumbnail: 40,
-  name: 180,
-  client: 120,
-  segmentSet: 130,
-  subject: 250,
-  previewText: 250,
+  name: 220,
+  client: 140,
+  segmentSet: 180,
+  subject: 280,
+  previewText: 280,
   links: 60,
   external: 80,
   spelling: 70,
@@ -47,7 +49,7 @@ const DEFAULT_WIDTHS: ColumnWidths = {
 };
 
 const MIN_WIDTHS: ColumnWidths = {
-  status: 80,
+  status: 100,
   thumbnail: 40,
   name: 120,
   client: 80,
@@ -55,9 +57,9 @@ const MIN_WIDTHS: ColumnWidths = {
   subject: 150,
   previewText: 150,
   links: 50,
-  external: 50,
+  external: 60,
   spelling: 50,
-  klaviyo: 80,
+  klaviyo: 120,
 };
 
 export function QueueTable({
@@ -72,7 +74,53 @@ export function QueueTable({
   onSelectAll,
 }: QueueTableProps) {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
+  const [widthsLoaded, setWidthsLoaded] = useState(false);
   const [resizing, setResizing] = useState<keyof ColumnWidths | null>(null);
+
+  // Load saved column widths on mount
+  useEffect(() => {
+    const loadColumnWidths = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setWidthsLoaded(true);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('queue_column_widths')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.queue_column_widths && typeof profile.queue_column_widths === 'object') {
+          // Merge with defaults to handle any new columns gracefully
+          setColumnWidths({ ...DEFAULT_WIDTHS, ...(profile.queue_column_widths as Partial<ColumnWidths>) });
+        }
+      } catch (error) {
+        console.error('Error loading column widths:', error);
+      } finally {
+        setWidthsLoaded(true);
+      }
+    };
+
+    loadColumnWidths();
+  }, []);
+
+  // Save column widths to database
+  const saveColumnWidths = useCallback(async (widths: ColumnWidths) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase
+        .from('profiles')
+        .update({ queue_column_widths: widths as unknown as Record<string, number> })
+        .eq('id', user.id);
+    } catch (error) {
+      console.error('Error saving column widths:', error);
+    }
+  }, []);
 
   const handleResizeStart = (column: keyof ColumnWidths) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -80,17 +128,23 @@ export function QueueTable({
 
     const startX = e.clientX;
     const startWidth = columnWidths[column];
+    let latestWidths: ColumnWidths = columnWidths;
 
     const handleMouseMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
       const newWidth = Math.max(MIN_WIDTHS[column], startWidth + delta);
-      setColumnWidths(prev => ({ ...prev, [column]: newWidth }));
+      setColumnWidths(prev => {
+        latestWidths = { ...prev, [column]: newWidth };
+        return latestWidths;
+      });
     };
 
     const handleMouseUp = () => {
       setResizing(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      // Save the column widths when resize is complete
+      saveColumnWidths(latestWidths);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
