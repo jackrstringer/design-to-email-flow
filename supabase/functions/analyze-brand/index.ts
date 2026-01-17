@@ -45,7 +45,7 @@ serve(async (req) => {
 
     console.log('Analyzing brand from:', formattedUrl);
 
-    // Call Firecrawl with branding and links formats
+    // Call Firecrawl with branding, links, and extract formats to get footer logo
     const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -54,8 +54,23 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: formattedUrl,
-        formats: ['branding', 'links'],
+        formats: ['branding', 'links', 'extract'],
         onlyMainContent: false,
+        extract: {
+          schema: {
+            type: "object",
+            properties: {
+              footerLogo: {
+                type: "string",
+                description: "URL of the logo image found in the website footer section (usually at the bottom of the page). This is often a white or light-colored version of the brand logo."
+              },
+              footerBackgroundColor: {
+                type: "string",
+                description: "Background color of the footer section (hex format like #000000 or rgb format)"
+              }
+            }
+          }
+        }
       }),
     });
 
@@ -74,6 +89,7 @@ serve(async (req) => {
 
     const branding = firecrawlData.data?.branding || firecrawlData.branding || {};
     const links = firecrawlData.data?.links || firecrawlData.links || [];
+    const extract = firecrawlData.data?.extract || firecrawlData.extract || {};
 
     // Extract ALL colors from Firecrawl
     const colors = {
@@ -101,8 +117,12 @@ serve(async (req) => {
     // Extract component styles (buttons)
     const components = branding.components || null;
 
-    // Extract logo
+    // Extract logo (header logo - usually dark variant)
     const logo = branding.logo || branding.images?.logo || null;
+
+    // Extract footer logo (usually light/white variant for dark footers)
+    const footerLogo = extract?.footerLogo || null;
+    const footerBackgroundColor = extract?.footerBackgroundColor || null;
 
     // Extract color scheme (light/dark)
     const colorScheme = branding.colorScheme || null;
@@ -147,12 +167,16 @@ serve(async (req) => {
       spacing,
       components,
       logo,
+      footerLogo,
+      footerBackgroundColor,
       colorScheme,
       socialLinks,
       allLinks,
     };
 
-    console.log('Extracted logo URL:', logo);
+    console.log('Extracted header logo URL:', logo);
+    console.log('Extracted footer logo URL:', footerLogo);
+    console.log('Footer background color:', footerBackgroundColor);
     console.log('Brand analysis complete');
 
     return new Response(
