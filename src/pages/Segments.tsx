@@ -116,6 +116,7 @@ export default function Segments() {
             klaviyoSegments={klaviyoSegments}
             loadingSegments={loadingSegments}
             brandId={selectedBrandId}
+            klaviyoApiKey={selectedBrand.klaviyo_api_key}
             onCreatePreset={createPreset}
             onUpdatePreset={updatePreset}
             onDeletePreset={deletePreset}
