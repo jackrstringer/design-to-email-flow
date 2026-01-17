@@ -4,6 +4,7 @@ import { BrandsView } from '@/components/dashboard/BrandsView';
 import { BrandSettings } from '@/components/dashboard/BrandSettings';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { NewBrandModal } from '@/components/dashboard/NewBrandModal';
+import { BrandOnboardingModal } from '@/components/dashboard/BrandOnboardingModal';
 import { BrandConfirmModal } from '@/components/BrandConfirmModal';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -90,6 +91,7 @@ export default function Dashboard() {
   const [includeFooter, setIncludeFooter] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [showNewBrandModal, setShowNewBrandModal] = useState(false);
+  const [showBrandOnboardingModal, setShowBrandOnboardingModal] = useState(false);
   const [showBrandConfirmModal, setShowBrandConfirmModal] = useState(false);
   const [detectedBrand, setDetectedBrand] = useState<DetectedBrand | null>(null);
   const [pendingBrandDomain, setPendingBrandDomain] = useState<string | null>(null);
@@ -169,13 +171,14 @@ export default function Dashboard() {
     setPendingCampaign(null);
     setDetectedBrand(null);
     backgroundAnalysisRef.current = null;
-    setShowNewBrandModal(true);
+    setShowBrandOnboardingModal(true); // Use new onboarding modal for manual add
   }, []);
 
   const handleNewBrandCreated = useCallback((brand: Brand) => {
     setBrands(prev => [...prev, brand]);
     setSelectedBrandId(brand.id);
     setShowNewBrandModal(false);
+    setShowBrandOnboardingModal(false);
     setPendingBrandDomain(null);
     backgroundAnalysisRef.current = null;
     // Keep pendingCampaign - CampaignCreator will continue processing
@@ -259,6 +262,7 @@ export default function Dashboard() {
         isLoading={isAnalyzingBrand}
       />
 
+      {/* Legacy NewBrandModal for auto-detected brands from campaign image */}
       <NewBrandModal
         open={showNewBrandModal}
         onOpenChange={setShowNewBrandModal}
@@ -266,6 +270,13 @@ export default function Dashboard() {
         onBrandCreated={handleNewBrandCreated}
         backgroundAnalysis={backgroundAnalysisRef.current}
         pendingCampaignImageUrl={pendingCampaign?.dataUrl}
+      />
+
+      {/* New onboarding modal for manual "Add Brand" */}
+      <BrandOnboardingModal
+        open={showBrandOnboardingModal}
+        onOpenChange={setShowBrandOnboardingModal}
+        onBrandCreated={handleNewBrandCreated}
       />
     </div>
   );
