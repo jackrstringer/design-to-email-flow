@@ -390,9 +390,7 @@ serve(async (req) => {
                       label: resolvedTemplateName,
                       content: {
                         subject: emailSubject,
-                        preview_text: emailPreview,
-                        from_email: 'jack@redwood.so',
-                        from_label: 'Jack Stringer'
+                        preview_text: emailPreview
                       }
                     }
                   }
