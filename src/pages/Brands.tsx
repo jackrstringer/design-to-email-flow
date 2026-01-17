@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { BrandCard } from '@/components/BrandCard';
 import { Button } from '@/components/ui/button';
 import { Plus, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Brand, SocialLink } from '@/types/brand-assets';
 import { Json } from '@/integrations/supabase/types';
+import { BrandOnboardingModal } from '@/components/dashboard/BrandOnboardingModal';
 
 const parseSocialLinks = (json: Json | null): SocialLink[] => {
   if (!json || !Array.isArray(json)) return [];
@@ -21,6 +21,12 @@ export default function Brands() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [campaignCounts, setCampaignCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+
+  const handleBrandCreated = (brand: Brand) => {
+    setBrands(prev => [brand, ...prev]);
+    setCampaignCounts(prev => ({ ...prev, [brand.id]: 0 }));
+  };
 
   useEffect(() => {
     const fetchBrands = async () => {
@@ -82,12 +88,10 @@ export default function Brands() {
         <div className="px-6">
           <div className="flex h-12 items-center justify-between">
             <span className="text-sm font-medium">Brands</span>
-            <Link to="/upload">
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Brand
-              </Button>
-            </Link>
+            <Button size="sm" onClick={() => setShowOnboardingModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Brand
+            </Button>
           </div>
         </div>
       </header>
@@ -101,12 +105,10 @@ export default function Brands() {
         ) : brands.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">No brands yet</p>
-            <Link to="/">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Create your first brand
-              </Button>
-            </Link>
+            <Button onClick={() => setShowOnboardingModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create your first brand
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -120,6 +122,12 @@ export default function Brands() {
           </div>
         )}
       </div>
+
+      <BrandOnboardingModal
+        open={showOnboardingModal}
+        onOpenChange={setShowOnboardingModal}
+        onBrandCreated={handleBrandCreated}
+      />
     </div>
   );
 }
