@@ -799,11 +799,30 @@ serve(async (req) => {
     const processingTime = Date.now() - startTime;
     console.log('[process] Completed in', processingTime, 'ms');
 
+    // Fetch the current state to ensure SL/PT are never blank
+    const { data: finalItem } = await supabase
+      .from('campaign_queue')
+      .select('selected_subject_line, selected_preview_text, generated_subject_lines, generated_preview_texts, provided_subject_line, provided_preview_text')
+      .eq('id', campaignQueueId)
+      .single();
+
+    // Determine final SL/PT - prioritize: already selected > first generated > provided
+    const finalSelectedSL = finalItem?.selected_subject_line 
+      || (finalItem?.generated_subject_lines as string[])?.[0] 
+      || finalItem?.provided_subject_line 
+      || null;
+    const finalSelectedPT = finalItem?.selected_preview_text 
+      || (finalItem?.generated_preview_texts as string[])?.[0] 
+      || finalItem?.provided_preview_text 
+      || null;
+
     await updateQueueItem(supabase, campaignQueueId, {
       status: 'ready_for_review',
       processing_step: 'complete',
       processing_percent: 100,
-      error_message: null
+      error_message: null,
+      selected_subject_line: finalSelectedSL,
+      selected_preview_text: finalSelectedPT
     });
 
     return new Response(
