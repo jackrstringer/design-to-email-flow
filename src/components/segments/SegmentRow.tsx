@@ -22,6 +22,7 @@ function AutoResizeTextarea({
   className, 
   value, 
   onChange,
+  autoFocus,
   ...props 
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -33,6 +34,16 @@ function AutoResizeTextarea({
       textarea.style.height = `${textarea.scrollHeight}px`;
     }
   }, [value]);
+
+  // Move cursor to end when autoFocus is true
+  useEffect(() => {
+    if (autoFocus && textareaRef.current) {
+      const textarea = textareaRef.current;
+      textarea.focus();
+      const length = textarea.value.length;
+      textarea.setSelectionRange(length, length);
+    }
+  }, [autoFocus]);
 
   return (
     <textarea
