@@ -93,7 +93,7 @@ export function QueueTable({
 
   if (loading) {
     return (
-      <div className="border-t border-gray-200">
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
         {/* Header */}
         <div className="flex h-8 items-center bg-white border-b border-gray-200 text-[13px] text-gray-500 font-normal">
           <div className="w-8 flex-shrink-0 px-2" />
@@ -143,7 +143,7 @@ export function QueueTable({
   const minTableWidth = Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + 32; // +32 for checkbox column
 
   return (
-    <div className="border-t border-gray-200" style={{ minWidth: `${minTableWidth}px` }}>
+    <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ minWidth: `${minTableWidth}px` }}>
       {/* Header - Airtable style */}
       <div 
         className="flex h-8 items-center bg-white border-b border-gray-200 select-none"
