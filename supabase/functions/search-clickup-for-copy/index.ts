@@ -5,47 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Patterns to find SL/PT in text content
-const SUBJECT_LINE_PATTERNS = [
-  /subject\s*line[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-  /\bsl[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-  /email\s*subject[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-];
-
-const PREVIEW_TEXT_PATTERNS = [
-  /preview\s*text[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-  /pre-?text[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-  /pre-?header[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-  /\bpt[:\s]+["']?(.+?)["']?(?:\n|$)/i,
-];
-
-// Custom field names that might contain SL/PT
-const SL_FIELD_NAMES = ['subject line', 'subject', 'sl', 'email subject'];
-const PT_FIELD_NAMES = ['preview text', 'pretext', 'pre-header', 'preheader', 'pt'];
-
-function extractFromText(text: string): { subjectLine?: string; previewText?: string } {
-  let subjectLine: string | undefined;
-  let previewText: string | undefined;
-
-  for (const pattern of SUBJECT_LINE_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      subjectLine = match[1].trim();
-      break;
-    }
-  }
-
-  for (const pattern of PREVIEW_TEXT_PATTERNS) {
-    const match = text.match(pattern);
-    if (match?.[1]) {
-      previewText = match[1].trim();
-      break;
-    }
-  }
-
-  return { subjectLine, previewText };
-}
-
 // Convert custom field value to searchable text
 function getCustomFieldText(field: any): string {
   if (!field.value) return '';
@@ -57,31 +16,8 @@ function getCustomFieldText(field: any): string {
   return String(field.value);
 }
 
-function extractFromCustomFields(customFields: any[]): { subjectLine?: string; previewText?: string } {
-  let subjectLine: string | undefined;
-  let previewText: string | undefined;
-
-  for (const field of customFields) {
-    const fieldName = (field.name || '').toLowerCase();
-    const value = getCustomFieldText(field);
-    
-    if (!value) continue;
-
-    if (SL_FIELD_NAMES.some(n => fieldName.includes(n))) {
-      subjectLine = value.trim();
-    }
-    if (PT_FIELD_NAMES.some(n => fieldName.includes(n))) {
-      previewText = value.trim();
-    }
-  }
-
-  return { subjectLine, previewText };
-}
-
 // Extract ClickUp doc links from text
 function extractDocLinks(text: string): string[] {
-  // ClickUp doc URLs look like: https://app.clickup.com/{workspace_id}/v/dc/{doc_id}
-  // or: https://app.clickup.com/docs/{doc_id}
   const docIdPattern = /clickup\.com\/(?:\d+\/v\/dc\/|docs\/)([a-zA-Z0-9_-]+)/g;
   const matches: string[] = [];
   let match;
@@ -92,19 +28,15 @@ function extractDocLinks(text: string): string[] {
 }
 
 // Extract file key and node ID from any Figma URL format
-// Handles: /file/ and /design/ URLs, node-id with :, -, or %3A encoding
 function parseFigmaUrl(url: string): { fileKey: string; nodeId: string } | null {
-  // Match file key from /file/ or /design/ URLs
   const fileKeyMatch = url.match(/figma\.com\/(?:file|design)\/([a-zA-Z0-9]+)/);
   if (!fileKeyMatch) return null;
   
-  // Match node-id parameter (handles 489-885, 489%3A885, 489:885)
   const nodeIdMatch = url.match(/node-id=([^&\s"'<>\)\]]+)/);
   if (!nodeIdMatch) return null;
   
-  // Normalize node ID: decode URL encoding, replace hyphens with colons
   let nodeId = decodeURIComponent(nodeIdMatch[1]);
-  nodeId = nodeId.replace(/-/g, ':');  // 489-885 -> 489:885
+  nodeId = nodeId.replace(/-/g, ':');
   
   return {
     fileKey: fileKeyMatch[1],
@@ -123,12 +55,9 @@ function figmaUrlsMatch(url1: string, url2: string): boolean {
 }
 
 // Find all Figma URLs in a text and check if any match the target
-// Improved regex to handle markdown wrapping, http(s), www, and trailing punctuation
 function textContainsFigmaUrl(text: string, targetFigmaUrl: string): boolean {
-  // More robust regex: handles http(s), www., markdown links, and trailing punctuation
   const figmaUrlsInText = text.match(/https?:\/\/(?:www\.)?figma\.com\/[^\s"'<>\)\]]+/g) || [];
   for (const urlInText of figmaUrlsInText) {
-    // Clean trailing punctuation that might have been captured
     const cleanUrl = urlInText.replace(/[.,;:!?\)]+$/, '');
     if (figmaUrlsMatch(cleanUrl, targetFigmaUrl)) {
       return true;
@@ -151,6 +80,186 @@ async function fetchTaskDetail(taskId: string, clickupApiKey: string): Promise<a
     console.error(`[clickup] Error fetching task ${taskId}:`, err);
   }
   return null;
+}
+
+// Use AI to extract SL/PT from all task text content
+async function extractWithAI(allTextContent: string): Promise<{ subjectLine?: string; previewText?: string }> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.log('[clickup] No LOVABLE_API_KEY, skipping AI extraction');
+    return {};
+  }
+
+  // Truncate content if too long (keep first 8000 chars to stay within limits)
+  const truncatedContent = allTextContent.length > 8000 
+    ? allTextContent.substring(0, 8000) + '\n...[truncated]'
+    : allTextContent;
+
+  const prompt = `You are analyzing content from a marketing/email task in a project management system.
+Your job is to find the EMAIL SUBJECT LINE and EMAIL PREVIEW TEXT if they exist.
+
+Common labels for Subject Line include (but are not limited to):
+- Subject Line, SL, Subject, Headline, Email Subject, Email Header, Header, Title
+- Copy (when it's short and appears to be a subject)
+- Any field with "subject" in the name
+
+Common labels for Preview Text include (but are not limited to):
+- Preview Text, Pretext, PT, Pre-header, Preheader, Subheadline, Teaser
+- Secondary copy, Subhead
+- Any field with "preview" or "pretext" in the name
+
+The content below contains ALL text from a task's name, description, custom fields, and comments.
+Look for patterns like:
+- "Subject Line: ..." or "SL: ..."
+- "Preview Text: ..." or "PT: ..."
+- Fields labeled with these names followed by their values
+- Bold/markdown formatted labels like **Subject Line**
+
+IMPORTANT: Extract the actual subject line and preview text VALUES, not the labels.
+If you find multiple candidates, prefer ones that are explicitly labeled.
+
+TASK CONTENT:
+---
+${truncatedContent}
+---
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+{"subjectLine": "the extracted subject line or null if not found", "previewText": "the extracted preview text or null if not found"}`;
+
+  try {
+    console.log('[clickup] Calling AI for SL/PT extraction...');
+    console.log('[clickup] Content length:', allTextContent.length, 'chars (truncated to:', truncatedContent.length, ')');
+    
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash-lite',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 500,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[clickup] AI API error:', response.status, errorText);
+      return {};
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    console.log('[clickup] AI raw response:', content);
+
+    // Parse JSON from response (handle potential markdown wrapping)
+    let jsonStr = content.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    }
+
+    const parsed = JSON.parse(jsonStr);
+    
+    return {
+      subjectLine: parsed.subjectLine === 'null' || !parsed.subjectLine ? undefined : parsed.subjectLine,
+      previewText: parsed.previewText === 'null' || !parsed.previewText ? undefined : parsed.previewText,
+    };
+  } catch (err) {
+    console.error('[clickup] AI extraction error:', err);
+    return {};
+  }
+}
+
+// Collect all text content from a task for AI analysis
+async function collectAllTaskText(task: any, clickupApiKey: string, workspaceId?: string): Promise<string> {
+  let allText = '';
+
+  // Task name
+  allText += `Task Name: ${task.name}\n\n`;
+
+  // Description
+  const description = task.markdown_description || task.description || '';
+  if (description) {
+    allText += `Description:\n${description}\n\n`;
+  }
+
+  // All custom fields (with names and values)
+  const customFields = task.custom_fields || [];
+  console.log(`[clickup] Task has ${customFields.length} custom fields:`);
+  
+  for (const field of customFields) {
+    const value = getCustomFieldText(field);
+    const valuePreview = value?.substring(0, 100) || 'empty';
+    console.log(`[clickup]   - "${field.name}" (type: ${field.type}): "${valuePreview}${value?.length > 100 ? '...' : ''}"`);
+    
+    if (value && !value.startsWith('http://') && !value.startsWith('https://')) {
+      allText += `${field.name}: ${value}\n`;
+    }
+  }
+  allText += '\n';
+
+  // Comments
+  try {
+    const commentsRes = await fetch(
+      `https://api.clickup.com/api/v2/task/${task.id}/comment`,
+      { headers: { 'Authorization': clickupApiKey } }
+    );
+    
+    if (commentsRes.ok) {
+      const commentsData = await commentsRes.json();
+      const comments = commentsData.comments || [];
+      console.log(`[clickup] Found ${comments.length} comments`);
+      
+      for (const comment of comments) {
+        const commentText = comment.comment_text || '';
+        if (commentText) {
+          allText += `Comment: ${commentText}\n`;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[clickup] Error fetching comments:', err);
+  }
+
+  // Linked ClickUp docs
+  if (workspaceId) {
+    const docIds = extractDocLinks(description);
+    console.log(`[clickup] Found ${docIds.length} linked docs`);
+    
+    for (const docId of docIds.slice(0, 3)) { // Limit to 3 docs
+      try {
+        const docRes = await fetch(
+          `https://api.clickup.com/api/v3/workspaces/${workspaceId}/docs/${docId}/pages`,
+          { headers: { 'Authorization': clickupApiKey } }
+        );
+        
+        if (docRes.ok) {
+          const docData = await docRes.json();
+          const pages = docData.pages || [];
+          
+          for (const page of pages.slice(0, 3)) { // Limit to 3 pages per doc
+            const pageRes = await fetch(
+              `https://api.clickup.com/api/v3/workspaces/${workspaceId}/docs/${docId}/pages/${page.id}?content_format=markdown`,
+              { headers: { 'Authorization': clickupApiKey } }
+            );
+            
+            if (pageRes.ok) {
+              const pageData = await pageRes.json();
+              const content = pageData.content || '';
+              if (content) {
+                allText += `\nDoc Page "${page.name}":\n${content}\n`;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[clickup] Error fetching doc:', err);
+      }
+    }
+  }
+
+  return allText;
 }
 
 serve(async (req) => {
@@ -200,13 +309,8 @@ serve(async (req) => {
     
     // First pass: check list response data
     for (const task of tasks) {
-      // Use markdown_description if available, fall back to description
       const description = task.markdown_description || task.description || '';
       const customFields = task.custom_fields || [];
-      
-      // Debug: log presence of description
-      const hasDesc = description.length > 0;
-      console.log(`[clickup] Task "${task.name}" - has description: ${hasDesc}, length: ${description.length}`);
       
       // Check description using normalized Figma URL matching
       if (description && textContainsFigmaUrl(description, figmaUrl)) {
@@ -239,8 +343,6 @@ serve(async (req) => {
         const description = taskDetail.markdown_description || taskDetail.description || '';
         const customFields = taskDetail.custom_fields || [];
         
-        console.log(`[clickup] Fallback check: "${task.name}" - description length: ${description.length}`);
-        
         if (description && textContainsFigmaUrl(description, figmaUrl)) {
           console.log(`[clickup] MATCH found in fallback fetch for task: ${task.name}`);
           matchedTask = taskDetail;
@@ -269,98 +371,25 @@ serve(async (req) => {
 
     console.log(`[clickup] Found task: ${matchedTask.name} (${matchedTask.id})`);
 
-    let subjectLine: string | undefined;
-    let previewText: string | undefined;
+    // Collect ALL text content from the task
+    const allTextContent = await collectAllTaskText(matchedTask, clickupApiKey, workspaceId);
+    console.log(`[clickup] Total collected text: ${allTextContent.length} chars`);
+    console.log(`[clickup] Text preview:\n${allTextContent.substring(0, 500)}...`);
 
-    // Priority 1: Check custom fields
-    const fromFields = extractFromCustomFields(matchedTask.custom_fields || []);
-    subjectLine = fromFields.subjectLine;
-    previewText = fromFields.previewText;
-    console.log(`[clickup] From fields - SL: ${subjectLine ? 'found' : 'none'}, PT: ${previewText ? 'found' : 'none'}`);
+    // Use AI to extract SL/PT from all collected text
+    const aiResult = await extractWithAI(allTextContent);
+    const subjectLine = aiResult.subjectLine || null;
+    const previewText = aiResult.previewText || null;
 
-    // Priority 2: Check task description (use markdown_description if available)
-    if (!subjectLine || !previewText) {
-      const descriptionText = matchedTask.markdown_description || matchedTask.description || '';
-      const fromDesc = extractFromText(descriptionText);
-      subjectLine = subjectLine || fromDesc.subjectLine;
-      previewText = previewText || fromDesc.previewText;
-      console.log(`[clickup] From description - SL: ${subjectLine ? 'found' : 'none'}, PT: ${previewText ? 'found' : 'none'}`);
-    }
-
-    // Priority 3: Check task comments
-    if (!subjectLine || !previewText) {
-      try {
-        const commentsRes = await fetch(
-          `https://api.clickup.com/api/v2/task/${matchedTask.id}/comment`,
-          { headers: { 'Authorization': clickupApiKey } }
-        );
-        
-        if (commentsRes.ok) {
-          const commentsData = await commentsRes.json();
-          for (const comment of (commentsData.comments || [])) {
-            const fromComment = extractFromText(comment.comment_text || '');
-            subjectLine = subjectLine || fromComment.subjectLine;
-            previewText = previewText || fromComment.previewText;
-            if (subjectLine && previewText) break;
-          }
-          console.log(`[clickup] From comments - SL: ${subjectLine ? 'found' : 'none'}, PT: ${previewText ? 'found' : 'none'}`);
-        }
-      } catch (err) {
-        console.error('[clickup] Error fetching comments:', err);
-      }
-    }
-
-    // Priority 4: Check linked ClickUp docs
-    if ((!subjectLine || !previewText) && workspaceId) {
-      const descriptionText = matchedTask.markdown_description || matchedTask.description || '';
-      const docIds = extractDocLinks(descriptionText);
-      console.log(`[clickup] Found ${docIds.length} linked docs`);
-      
-      for (const docId of docIds) {
-        try {
-          // Get doc pages
-          const docRes = await fetch(
-            `https://api.clickup.com/api/v3/workspaces/${workspaceId}/docs/${docId}/pages`,
-            { headers: { 'Authorization': clickupApiKey } }
-          );
-          
-          if (docRes.ok) {
-            const docData = await docRes.json();
-            const pages = docData.pages || [];
-            
-            for (const page of pages) {
-              // Get page content (markdown)
-              const pageRes = await fetch(
-                `https://api.clickup.com/api/v3/workspaces/${workspaceId}/docs/${docId}/pages/${page.id}?content_format=markdown`,
-                { headers: { 'Authorization': clickupApiKey } }
-              );
-              
-              if (pageRes.ok) {
-                const pageData = await pageRes.json();
-                const content = pageData.content || '';
-                const fromDoc = extractFromText(content);
-                subjectLine = subjectLine || fromDoc.subjectLine;
-                previewText = previewText || fromDoc.previewText;
-                if (subjectLine && previewText) break;
-              }
-            }
-          }
-        } catch (err) {
-          console.error('[clickup] Error fetching doc:', err);
-        }
-        if (subjectLine && previewText) break;
-      }
-    }
-
-    console.log(`[clickup] Final result - SL: ${subjectLine ? 'found' : 'none'}, PT: ${previewText ? 'found' : 'none'}`);
+    console.log(`[clickup] Final result - SL: ${subjectLine ? `"${subjectLine}"` : 'none'}, PT: ${previewText ? `"${previewText}"` : 'none'}`);
 
     return new Response(
       JSON.stringify({
         found: true,
         taskId: matchedTask.id,
         taskUrl: matchedTask.url,
-        subjectLine: subjectLine || null,
-        previewText: previewText || null,
+        subjectLine,
+        previewText,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
