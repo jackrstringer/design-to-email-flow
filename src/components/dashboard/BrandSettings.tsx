@@ -128,6 +128,19 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     }
   }, [brand.id]);
 
+  // Sync ClickUp state when brand prop changes (e.g., after save + refetch)
+  useEffect(() => {
+    setClickupApiKey(brand.clickupApiKey || '');
+    setClickupWorkspaceId(brand.clickupWorkspaceId || '');
+    setClickupListId(brand.clickupListId || '');
+    
+    if (brand.clickupApiKey && brand.clickupListId) {
+      fetchClickupConnectedInfo();
+    } else {
+      setClickupConnectedInfo(null);
+    }
+  }, [brand.clickupApiKey, brand.clickupWorkspaceId, brand.clickupListId]);
+
   const fetchClickupConnectedInfo = async () => {
     const apiKey = brand.clickupApiKey;
     const workspaceId = brand.clickupWorkspaceId;
