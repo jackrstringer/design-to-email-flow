@@ -593,6 +593,9 @@ serve(async (req) => {
     let brandId = item.brand_id;
     let brandContext: { name: string; domain: string } | null = null;
     let copyExamples = null;
+    let clickupApiKey = null;
+    let clickupListId = null;
+    let clickupWorkspaceId = null;
     
     // Get brand info first for early generation
     if (brandId) {
@@ -608,6 +611,9 @@ serve(async (req) => {
           domain: brand.domain,
         };
         copyExamples = brand.copy_examples;
+        clickupApiKey = brand.clickup_api_key;
+        clickupListId = brand.clickup_list_id;
+        clickupWorkspaceId = brand.clickup_workspace_id;
       }
     }
 
@@ -619,6 +625,53 @@ serve(async (req) => {
       brandId,
       copyExamples
     );
+
+    // === STEP 1.5b: Search ClickUp for copy ===
+    let clickupCopy: { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null } = {
+      subjectLine: null,
+      previewText: null,
+      taskId: null,
+      taskUrl: null
+    };
+
+    if (clickupApiKey && clickupListId && item.source_url) {
+      console.log('[process] Step 1.5b: Searching ClickUp for copy...');
+      try {
+        const clickupUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/search-clickup-for-copy';
+        const clickupResponse = await fetch(clickupUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({
+            figmaUrl: item.source_url,
+            clickupApiKey: clickupApiKey,
+            listId: clickupListId,
+            workspaceId: clickupWorkspaceId
+          })
+        });
+
+        if (clickupResponse.ok) {
+          const result = await clickupResponse.json();
+          if (result.found) {
+            clickupCopy = {
+              subjectLine: result.subjectLine || null,
+              previewText: result.previewText || null,
+              taskId: result.taskId || null,
+              taskUrl: result.taskUrl || null
+            };
+            console.log('[process] ClickUp found - SL:', !!clickupCopy.subjectLine, 'PT:', !!clickupCopy.previewText);
+          } else {
+            console.log('[process] ClickUp search found no matching task');
+          }
+        } else {
+          console.error('[process] ClickUp search failed:', await clickupResponse.text());
+        }
+      } catch (err) {
+        console.error('[process] ClickUp search error (non-fatal):', err);
+      }
+    }
 
     // === STEP 2: Detect brand (25%) ===
     // Skip brand detection if already set from plugin
@@ -787,31 +840,52 @@ serve(async (req) => {
     // Check if early generation completed with results
     const earlyCopy = await retrieveEarlyCopy(supabase, earlySessionKey);
     
+    // Build final subject lines and preview texts
+    let finalSubjectLines = copyResult?.subjectLines || [];
+    let finalPreviewTexts = copyResult?.previewTexts || [];
+    
     if (earlyCopy && earlyCopy.subjectLines.length > 0) {
       console.log('[process] Merging early copy results');
       // Use early copy if it has more results or late copy failed
-      const finalSubjectLines = earlyCopy.subjectLines.length > (copyResult?.subjectLines?.length || 0) 
+      finalSubjectLines = earlyCopy.subjectLines.length > finalSubjectLines.length 
         ? earlyCopy.subjectLines 
-        : (copyResult?.subjectLines || earlyCopy.subjectLines);
-      const finalPreviewTexts = earlyCopy.previewTexts.length > (copyResult?.previewTexts?.length || 0)
+        : (finalSubjectLines.length > 0 ? finalSubjectLines : earlyCopy.subjectLines);
+      finalPreviewTexts = earlyCopy.previewTexts.length > finalPreviewTexts.length
         ? earlyCopy.previewTexts
-        : (copyResult?.previewTexts || earlyCopy.previewTexts);
-      
-      // Merge spelling errors from early copy
-      const allSpellingErrors = [...(qaResult.errors || []), ...(earlyCopy.spellingErrors || [])];
-      const uniqueSpellingErrors = allSpellingErrors.filter((e, i, arr) => 
-        arr.findIndex(x => x.word === e.word && x.location === e.location) === i
-      );
-
-      await updateQueueItem(supabase, campaignQueueId, {
-        generated_subject_lines: finalSubjectLines,
-        generated_preview_texts: finalPreviewTexts,
-        selected_subject_line: finalSubjectLines[0] || null,
-        selected_preview_text: finalPreviewTexts[0] || null,
-        spelling_errors: uniqueSpellingErrors,
-        qa_flags: uniqueSpellingErrors.length > 0 ? { spelling: true } : null,
-      });
+        : (finalPreviewTexts.length > 0 ? finalPreviewTexts : earlyCopy.previewTexts);
     }
+    
+    // Merge spelling errors from early copy
+    const allSpellingErrors = [...(qaResult.errors || []), ...(earlyCopy?.spellingErrors || [])];
+    const uniqueSpellingErrors = allSpellingErrors.filter((e, i, arr) => 
+      arr.findIndex(x => x.word === e.word && x.location === e.location) === i
+    );
+
+    // Determine copy source and final selected values
+    // Priority: ClickUp > Figma provided > AI generated
+    const providedSubjectLine = clickupCopy.subjectLine || item.provided_subject_line;
+    const providedPreviewText = clickupCopy.previewText || item.provided_preview_text;
+    
+    let copySource: string = 'ai';
+    if (clickupCopy.subjectLine || clickupCopy.previewText) {
+      copySource = 'clickup';
+    } else if (item.provided_subject_line || item.provided_preview_text) {
+      copySource = 'figma';
+    }
+
+    await updateQueueItem(supabase, campaignQueueId, {
+      provided_subject_line: providedSubjectLine || null,
+      provided_preview_text: providedPreviewText || null,
+      generated_subject_lines: finalSubjectLines,
+      generated_preview_texts: finalPreviewTexts,
+      selected_subject_line: providedSubjectLine || finalSubjectLines[0] || null,
+      selected_preview_text: providedPreviewText || finalPreviewTexts[0] || null,
+      copy_source: copySource,
+      clickup_task_id: clickupCopy.taskId || null,
+      clickup_task_url: clickupCopy.taskUrl || null,
+      spelling_errors: uniqueSpellingErrors,
+      qa_flags: uniqueSpellingErrors.length > 0 ? { spelling: true } : null,
+    });
 
     // === STEP 8: Complete (100%) ===
     const processingTime = Date.now() - startTime;

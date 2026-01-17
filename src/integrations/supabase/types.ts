@@ -63,6 +63,9 @@ export type Database = {
           accent_color: string | null
           all_links: Json
           background_color: string | null
+          clickup_api_key: string | null
+          clickup_list_id: string | null
+          clickup_workspace_id: string | null
           copy_examples: Json | null
           created_at: string
           dark_logo_public_id: string | null
@@ -93,6 +96,9 @@ export type Database = {
           accent_color?: string | null
           all_links?: Json
           background_color?: string | null
+          clickup_api_key?: string | null
+          clickup_list_id?: string | null
+          clickup_workspace_id?: string | null
           copy_examples?: Json | null
           created_at?: string
           dark_logo_public_id?: string | null
@@ -123,6 +129,9 @@ export type Database = {
           accent_color?: string | null
           all_links?: Json
           background_color?: string | null
+          clickup_api_key?: string | null
+          clickup_list_id?: string | null
+          clickup_workspace_id?: string | null
           copy_examples?: Json | null
           created_at?: string
           dark_logo_public_id?: string | null
@@ -154,6 +163,9 @@ export type Database = {
       campaign_queue: {
         Row: {
           brand_id: string | null
+          clickup_task_id: string | null
+          clickup_task_url: string | null
+          copy_source: string | null
           created_at: string | null
           error_message: string | null
           footer_start_percent: number | null
@@ -189,6 +201,9 @@ export type Database = {
         }
         Insert: {
           brand_id?: string | null
+          clickup_task_id?: string | null
+          clickup_task_url?: string | null
+          copy_source?: string | null
           created_at?: string | null
           error_message?: string | null
           footer_start_percent?: number | null
@@ -224,6 +239,9 @@ export type Database = {
         }
         Update: {
           brand_id?: string | null
+          clickup_task_id?: string | null
+          clickup_task_url?: string | null
+          copy_source?: string | null
           created_at?: string | null
           error_message?: string | null
           footer_start_percent?: number | null
