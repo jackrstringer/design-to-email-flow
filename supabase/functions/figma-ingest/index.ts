@@ -11,6 +11,7 @@ interface FrameData {
   width: number;
   height: number;
   imageBase64: string; // Raw base64 or data URL
+  figmaUrl?: string; // Figma URL for ClickUp integration
 }
 
 interface IngestPayload {
@@ -112,7 +113,7 @@ serve(async (req) => {
           ? frame.imageBase64 
           : `data:image/png;base64,${frame.imageBase64}`;
 
-        console.log('[figma-ingest] Uploading frame:', frame.name);
+        console.log('[figma-ingest] Uploading frame:', frame.name, 'Figma URL:', frame.figmaUrl || 'none');
 
         // Upload image to Cloudinary
         const uploadUrl = `${supabaseUrl}/functions/v1/upload-to-cloudinary`;
@@ -152,6 +153,7 @@ serve(async (req) => {
             user_id: userId,
             brand_id: validBrandId, // Use plugin-provided brand, skip auto-detect if set
             source: 'figma',
+            source_url: frame.figmaUrl || null, // Store Figma URL for ClickUp integration
             source_metadata: {
               frameName: frame.name,
               width: frame.width,
