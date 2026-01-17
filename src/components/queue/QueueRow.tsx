@@ -242,6 +242,7 @@ export function QueueRow({
           onSelect={handleSubjectLineSelect}
           placeholder="Select subject..."
           isProcessing={item.status === 'processing'}
+          processingStep={item.processing_step}
         />
       </div>
 
@@ -258,6 +259,7 @@ export function QueueRow({
           onSelect={handlePreviewTextSelect}
           placeholder="Select preview..."
           isProcessing={item.status === 'processing'}
+          processingStep={item.processing_step}
         />
       </div>
       

@@ -14,6 +14,7 @@ interface InlineDropdownSelectorProps {
   onSelect: (value: string) => Promise<boolean> | void;
   placeholder?: string;
   isProcessing?: boolean;
+  processingStep?: string | null;
 }
 
 export function InlineDropdownSelector({
@@ -23,6 +24,7 @@ export function InlineDropdownSelector({
   onSelect,
   placeholder = 'Select...',
   isProcessing = false,
+  processingStep = null,
 }: InlineDropdownSelectorProps) {
   const [open, setOpen] = useState(false);
   const [editValue, setEditValue] = useState(selected || '');
@@ -113,7 +115,10 @@ export function InlineDropdownSelector({
     }
   };
 
-  if (isProcessing) {
+  // Only show "Generating..." during actual copy generation, not during Klaviyo build
+  const isGeneratingCopy = isProcessing && processingStep !== 'Building in Klaviyo';
+
+  if (isGeneratingCopy) {
     return (
       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
