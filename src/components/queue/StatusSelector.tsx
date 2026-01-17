@@ -238,24 +238,25 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
   // Processing state - not clickable
   if (item.status === 'processing' || isUpdating) {
     return (
-      <div className="flex items-center gap-1.5">
-        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-        <span className="text-[11px] font-medium text-blue-600">
-          {isUpdating ? 'Building...' : `${item.processing_percent || 0}%`}
-        </span>
+      <div 
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#E8F4FD', color: '#2563EB' }}
+      >
+        <Loader2 className="h-3 w-3 animate-spin" style={{ color: '#2563EB' }} />
+        {isUpdating ? 'Building...' : `${item.processing_percent || 0}%`}
       </div>
     );
   }
 
-  // Sent state - "Built in Klaviyo" badge (dark green, no checkmark)
+  // Sent state - "Built in Klaviyo" badge
   if (item.status === 'sent_to_klaviyo') {
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-white hover:opacity-90 transition-colors whitespace-nowrap"
-            style={{ backgroundColor: '#4D9568' }}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium hover:opacity-90 transition-colors whitespace-nowrap"
+            style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
           >
             <span className="whitespace-nowrap">Built in Klaviyo</span>
             <ChevronDown className="h-3 w-3 flex-shrink-0" />
@@ -270,7 +271,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             onClick={() => handleStatusChange('closed')}
             className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
           >
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+            <span 
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+              style={{ backgroundColor: '#F3E8FF', color: '#9333EA' }}
+            >
               <Archive className="h-3 w-3" />
               Close
             </span>
@@ -283,7 +287,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
   // Closed state - static badge
   if (item.status === 'closed') {
     return (
-      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#F3E8FF', color: '#9333EA' }}
+      >
         <Archive className="h-3 w-3" />
         Closed
       </div>
@@ -293,11 +300,14 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
   // Failed state - with retry
   if (item.status === 'failed') {
     return (
-      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-100 text-red-700">
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
+      >
         Failed
         <button
           onClick={handleRetry}
-          className="ml-0.5 hover:bg-red-200 rounded p-0.5 transition-colors"
+          className="ml-0.5 hover:opacity-80 rounded p-0.5 transition-colors"
         >
           <RotateCw className="h-3 w-3" />
         </button>
@@ -314,14 +324,11 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
       <PopoverTrigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
-          className={cn(
-            "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap",
-            // Ready for Review: always yellow with black text
-            isReady && "text-black hover:opacity-90",
-            // Approved: light green
-            isApproved && "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-          )}
-          style={isReady ? { backgroundColor: '#f1c21b' } : undefined}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap hover:opacity-90"
+          style={isReady 
+            ? { backgroundColor: '#FEF3C7', color: '#D97706' } 
+            : { backgroundColor: '#D1FAE5', color: '#059669' }
+          }
         >
           {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approve & Build'}
           <ChevronDown className="h-3 w-3" />
@@ -340,8 +347,8 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           )}
         >
           <span 
-            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-black whitespace-nowrap"
-            style={{ backgroundColor: '#f1c21b' }}
+            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+            style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
           >
             Ready for Review
           </span>
@@ -353,7 +360,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             isApproved && "bg-gray-50"
           )}
         >
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 whitespace-nowrap">
+          <span 
+            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+            style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
+          >
             Approve & Build
           </span>
         </button>
@@ -362,7 +372,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           onClick={() => handleStatusChange('closed')}
           className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
         >
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+          <span 
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
+            style={{ backgroundColor: '#F3E8FF', color: '#9333EA' }}
+          >
             <Archive className="h-3 w-3" />
             Close
           </span>

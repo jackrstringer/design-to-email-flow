@@ -16,11 +16,12 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
     return (
       <Tooltip>
         <TooltipTrigger>
-          <div className="flex items-center gap-1.5">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
-            <span className="text-xs font-medium text-blue-600">
-              {processingPercent}%
-            </span>
+          <div 
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+            style={{ backgroundColor: '#E8F4FD', color: '#2563EB' }}
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#2563EB' }} />
+            {processingPercent}%
           </div>
         </TooltipTrigger>
         <TooltipContent>
@@ -38,8 +39,8 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
         <Tooltip>
           <TooltipTrigger>
             <div 
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap text-black"
-              style={{ backgroundColor: '#f1c21b' }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+              style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
             >
               <AlertTriangle className="h-3 w-3 flex-shrink-0" />
               {issueCount} {issueCount === 1 ? 'issue' : 'issues'}
@@ -52,11 +53,11 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
       );
     }
 
-    // No issues - Yellow badge (same as with issues)
+    // No issues
     return (
       <div 
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap text-black"
-        style={{ backgroundColor: '#f1c21b' }}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
       >
         Ready for Review
       </div>
@@ -64,23 +65,21 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
   }
 
   if (status === 'approved') {
-    // Light green for approved/approve & build
     return (
-      <div className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-        "bg-emerald-100 text-emerald-700"
-      )}>
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
+      >
         Approve & Build
       </div>
     );
   }
 
   if (status === 'sent_to_klaviyo') {
-    // Dark green for built in Klaviyo
     return (
       <div 
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap text-white"
-        style={{ backgroundColor: '#4D9568' }}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
       >
         Built in Klaviyo
       </div>
@@ -89,10 +88,10 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
 
   if (status === 'closed') {
     return (
-      <div className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-        "bg-gray-100 text-gray-600"
-      )}>
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#F3E8FF', color: '#9333EA' }}
+      >
         <Archive className="h-3 w-3 flex-shrink-0" />
         Closed
       </div>
@@ -101,10 +100,10 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
 
   if (status === 'failed') {
     return (
-      <div className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-        "bg-red-100 text-red-700"
-      )}>
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+        style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
+      >
         <XCircle className="h-3 w-3 flex-shrink-0" />
         Failed
       </div>
