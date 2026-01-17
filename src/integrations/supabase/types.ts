@@ -429,6 +429,7 @@ export type Database = {
         Row: {
           brand_id: string
           created_at: string
+          description: string | null
           excluded_segments: Json
           id: string
           included_segments: Json
@@ -439,6 +440,7 @@ export type Database = {
         Insert: {
           brand_id: string
           created_at?: string
+          description?: string | null
           excluded_segments?: Json
           id?: string
           included_segments?: Json
@@ -449,6 +451,7 @@ export type Database = {
         Update: {
           brand_id?: string
           created_at?: string
+          description?: string | null
           excluded_segments?: Json
           id?: string
           included_segments?: Json

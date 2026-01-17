@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Building, X, Trash2, Archive, Loader2 } from 'lucide-react';
+import { RefreshCw, Building, X, Trash2, Archive, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -335,22 +335,14 @@ export default function CampaignQueue() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="h-full flex flex-col bg-background">
       {/* Header - Simplified Airtable style */}
-      <header className="border-b border-gray-200 bg-white sticky top-0 z-50">
+      <header className="border-b bg-background shrink-0">
         <div className="px-4">
           <div className="flex h-12 items-center justify-between">
-            {/* Left: Back + Title */}
+            {/* Left: Title */}
             <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 text-gray-500 hover:text-gray-900"
-                onClick={() => navigate('/')}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium text-gray-900">Campaign Queue</span>
+              <span className="text-sm font-medium">Campaign Queue</span>
             </div>
             
             {/* Right: Show Closed + Brand Filter + Refresh */}
@@ -362,17 +354,17 @@ export default function CampaignQueue() {
                   onCheckedChange={setShowClosed}
                   className="scale-75"
                 />
-                <Label htmlFor="show-closed" className="text-[12px] text-gray-500 cursor-pointer">
+                <Label htmlFor="show-closed" className="text-[12px] text-muted-foreground cursor-pointer">
                   Show Closed
                 </Label>
               </div>
               
               <Select value={brandFilter} onValueChange={setBrandFilter}>
-                <SelectTrigger className="h-8 w-36 text-[13px] border-gray-200 bg-white">
-                  <Building className="h-3.5 w-3.5 mr-1.5 text-gray-400" />
+                <SelectTrigger className="h-8 w-36 text-[13px]">
+                  <Building className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
                   <SelectValue placeholder="All Brands" />
                 </SelectTrigger>
-                <SelectContent className="bg-white">
+                <SelectContent>
                   <SelectItem value="all">All Brands</SelectItem>
                   {brands.map(brand => (
                     <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
@@ -383,7 +375,7 @@ export default function CampaignQueue() {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={refresh}
               >
                 <RefreshCw className="h-4 w-4" />

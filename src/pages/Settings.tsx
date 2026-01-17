@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Key, Copy, Trash2, ExternalLink, Check, Plus, Loader2 } from 'lucide-react';
+import { Key, Copy, Trash2, Check, Plus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,7 +18,6 @@ interface PluginToken {
 }
 
 export default function Settings() {
-  const navigate = useNavigate();
   const { user } = useAuth();
   
   const [tokens, setTokens] = useState<PluginToken[]>([]);
@@ -106,22 +104,19 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full flex flex-col bg-background">
       {/* Header */}
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4">
-          <div className="flex h-14 items-center">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <span className="ml-4 text-lg font-semibold tracking-tight">Settings</span>
+      <header className="border-b bg-background shrink-0">
+        <div className="px-6">
+          <div className="flex h-12 items-center">
+            <span className="text-sm font-medium">Settings</span>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 max-w-3xl">
-        <div className="space-y-8">
+      <main className="flex-1 overflow-auto p-6">
+        <div className="max-w-3xl space-y-8">
           {/* Integrations Section */}
           <section>
             <h2 className="text-xl font-semibold mb-4">Integrations</h2>

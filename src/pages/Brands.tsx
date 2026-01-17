@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Header } from '@/components/Header';
-import { HeroSection } from '@/components/HeroSection';
 import { BrandCard } from '@/components/BrandCard';
 import { Button } from '@/components/ui/button';
 import { Plus, Loader2 } from 'lucide-react';
@@ -78,23 +76,23 @@ export default function Brands() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <HeroSection 
-        title="My Brands" 
-        subtitle="Manage your brands and view campaign history"
-      />
-      
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-foreground">All Brands</h2>
-          <Link to="/">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Brand
-            </Button>
-          </Link>
+    <div className="h-full flex flex-col bg-background">
+      {/* Header */}
+      <header className="border-b bg-background shrink-0">
+        <div className="px-6">
+          <div className="flex h-12 items-center justify-between">
+            <span className="text-sm font-medium">Brands</span>
+            <Link to="/upload">
+              <Button size="sm">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Brand
+              </Button>
+            </Link>
+          </div>
         </div>
+      </header>
+      
+      <div className="flex-1 overflow-auto p-6">
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
