@@ -15,6 +15,7 @@ interface Brand {
   id: string;
   name: string;
   klaviyo_api_key: string | null;
+  primary_color: string;
 }
 
 export default function Segments() {
@@ -41,7 +42,7 @@ export default function Segments() {
       try {
         const { data, error } = await supabase
           .from('brands')
-          .select('id, name, klaviyo_api_key')
+          .select('id, name, klaviyo_api_key, primary_color')
           .order('name');
 
         if (error) throw error;
@@ -82,13 +83,41 @@ export default function Segments() {
               value={selectedBrandId || ''}
               onValueChange={setSelectedBrandId}
             >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select a brand" />
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Select a brand">
+                  {selectedBrand && (
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ 
+                        background: `linear-gradient(135deg, ${selectedBrand.primary_color}18 0%, ${selectedBrand.primary_color}08 100%)`,
+                        color: selectedBrand.primary_color,
+                      }}
+                    >
+                      <span 
+                        className="w-1.5 h-1.5 rounded-full" 
+                        style={{ backgroundColor: selectedBrand.primary_color }} 
+                      />
+                      {selectedBrand.name}
+                    </span>
+                  )}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {brands.map((brand) => (
                   <SelectItem key={brand.id} value={brand.id}>
-                    {brand.name}
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ 
+                        background: `linear-gradient(135deg, ${brand.primary_color}18 0%, ${brand.primary_color}08 100%)`,
+                        color: brand.primary_color,
+                      }}
+                    >
+                      <span 
+                        className="w-1.5 h-1.5 rounded-full" 
+                        style={{ backgroundColor: brand.primary_color }} 
+                      />
+                      {brand.name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -116,7 +145,7 @@ export default function Segments() {
             klaviyoSegments={klaviyoSegments}
             loadingSegments={loadingSegments}
             brandId={selectedBrandId}
-            klaviyoApiKey={selectedBrand.klaviyo_api_key}
+            klaviyoApiKey={selectedBrand?.klaviyo_api_key || null}
             onCreatePreset={createPreset}
             onUpdatePreset={updatePreset}
             onDeletePreset={deletePreset}

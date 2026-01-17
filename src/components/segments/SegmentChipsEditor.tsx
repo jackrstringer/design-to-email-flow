@@ -48,17 +48,17 @@ export function SegmentChipsEditor({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1.5">
       {selectedSegments.map((segment) => (
         <Badge
           key={segment.id}
           variant="secondary"
-          className="text-xs gap-1 pr-1"
+          className="flex items-center gap-1 pr-1 whitespace-nowrap bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
         >
-          <span className="truncate max-w-[120px]">{segment.name}</span>
+          <span>{segment.name}</span>
           <button
             onClick={() => handleRemove(segment.id)}
-            className="ml-0.5 hover:bg-muted rounded-full p-0.5"
+            className="ml-0.5 hover:bg-primary/20 rounded-full p-0.5"
           >
             <X className="h-3 w-3" />
           </button>
@@ -76,7 +76,7 @@ export function SegmentChipsEditor({
             {selectedSegments.length === 0 ? placeholder : 'Add'}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-0" align="start">
+        <PopoverContent className="w-80 p-0" align="start">
           <Command>
             <CommandInput placeholder="Search segments..." />
             <CommandList>

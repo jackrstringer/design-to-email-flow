@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Star, Trash2, Loader2 } from 'lucide-react';
+import { Trash2, Loader2 } from 'lucide-react';
 import { SegmentPreset, KlaviyoSegment } from '@/hooks/useSegmentPresets';
 import { SegmentChipsEditor } from './SegmentChipsEditor';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { TableCell, TableRow } from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,14 +16,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
+
+interface ColumnWidths {
+  name: number;
+  description: number;
+  included: number;
+  excluded: number;
+  default: number;
+  actions: number;
+}
 
 interface SegmentRowProps {
   preset: SegmentPreset;
   klaviyoSegments: KlaviyoSegment[];
   loadingSegments: boolean;
-  segmentSize?: { loading: boolean; size: number | null };
-  formatSize: (size: number | null) => string;
+  columnWidths: ColumnWidths;
   onUpdate: (id: string, updates: Partial<SegmentPreset>) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
 }
@@ -32,38 +39,15 @@ export function SegmentRow({
   preset,
   klaviyoSegments,
   loadingSegments,
-  segmentSize,
-  formatSize,
+  columnWidths,
   onUpdate,
   onDelete,
 }: SegmentRowProps) {
   const [isDeleting, setIsDeleting] = useState(false);
-  const [editingField, setEditingField] = useState<'name' | 'description' | null>(null);
-  const [editValue, setEditValue] = useState('');
-
-  const handleStartEdit = (field: 'name' | 'description') => {
-    setEditingField(field);
-    setEditValue(field === 'name' ? preset.name : preset.description || '');
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingField) return;
-
-    const value = editValue.trim();
-    if (editingField === 'name' && !value) return;
-
-    await onUpdate(preset.id, { [editingField]: value || null });
-    setEditingField(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingField(null);
-    setEditValue('');
-  };
-
-  const handleToggleDefault = async () => {
-    await onUpdate(preset.id, { is_default: !preset.is_default });
-  };
+  const [editingName, setEditingName] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [tempName, setTempName] = useState(preset.name);
+  const [tempDescription, setTempDescription] = useState(preset.description || '');
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -71,69 +55,83 @@ export function SegmentRow({
     setIsDeleting(false);
   };
 
+  const handleNameSave = async () => {
+    if (tempName.trim() && tempName !== preset.name) {
+      await onUpdate(preset.id, { name: tempName.trim() });
+    }
+    setEditingName(false);
+  };
+
+  const handleDescriptionSave = async () => {
+    if (tempDescription !== (preset.description || '')) {
+      await onUpdate(preset.id, { description: tempDescription || null });
+    }
+    setEditingDescription(false);
+  };
+
+  const handleDefaultChange = async (checked: boolean) => {
+    await onUpdate(preset.id, { is_default: checked });
+  };
+
   return (
-    <TableRow>
+    <div className="flex items-center hover:bg-muted/30 group">
       {/* Name */}
-      <TableCell>
-        {editingField === 'name' ? (
+      <div className="px-3 py-2" style={{ width: columnWidths.name, minWidth: 120 }}>
+        {editingName ? (
           <Input
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            className="h-8"
-            autoFocus
-            onBlur={handleSaveEdit}
+            value={tempName}
+            onChange={(e) => setTempName(e.target.value)}
+            onBlur={handleNameSave}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveEdit();
-              if (e.key === 'Escape') handleCancelEdit();
+              if (e.key === 'Enter') handleNameSave();
+              if (e.key === 'Escape') {
+                setTempName(preset.name);
+                setEditingName(false);
+              }
             }}
+            className="h-7 text-sm"
+            autoFocus
           />
         ) : (
-          <div
-            className="cursor-pointer hover:bg-muted/50 px-2 py-1 -mx-2 rounded text-sm font-medium"
-            onClick={() => handleStartEdit('name')}
+          <span
+            className="text-sm font-medium cursor-pointer hover:text-primary"
+            onClick={() => setEditingName(true)}
           >
             {preset.name}
-          </div>
-        )}
-      </TableCell>
-
-      {/* Size */}
-      <TableCell className="text-right">
-        {segmentSize?.loading ? (
-          <Loader2 className="h-4 w-4 animate-spin ml-auto" />
-        ) : (
-          <span className="text-sm font-medium tabular-nums">
-            {formatSize(segmentSize?.size ?? null)}
           </span>
         )}
-      </TableCell>
+      </div>
 
       {/* Description */}
-      <TableCell>
-        {editingField === 'description' ? (
+      <div className="px-3 py-2" style={{ width: columnWidths.description, minWidth: 150 }}>
+        {editingDescription ? (
           <Input
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            className="h-8"
-            autoFocus
-            onBlur={handleSaveEdit}
+            value={tempDescription}
+            onChange={(e) => setTempDescription(e.target.value)}
+            onBlur={handleDescriptionSave}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveEdit();
-              if (e.key === 'Escape') handleCancelEdit();
+              if (e.key === 'Enter') handleDescriptionSave();
+              if (e.key === 'Escape') {
+                setTempDescription(preset.description || '');
+                setEditingDescription(false);
+              }
             }}
+            className="h-7 text-sm"
+            autoFocus
+            placeholder="Add description..."
           />
         ) : (
-          <div
-            className="cursor-pointer hover:bg-muted/50 px-2 py-1 -mx-2 rounded text-sm text-muted-foreground min-h-[28px]"
-            onClick={() => handleStartEdit('description')}
+          <span
+            className="text-sm text-muted-foreground cursor-pointer hover:text-foreground truncate block"
+            onClick={() => setEditingDescription(true)}
           >
             {preset.description || <span className="italic">Add description...</span>}
-          </div>
+          </span>
         )}
-      </TableCell>
+      </div>
 
       {/* Included Segments */}
-      <TableCell>
+      <div className="px-3 py-2 overflow-hidden" style={{ width: columnWidths.included, minWidth: 150 }}>
         <SegmentChipsEditor
           selectedSegments={preset.included_segments}
           availableSegments={klaviyoSegments}
@@ -141,46 +139,41 @@ export function SegmentRow({
           onChange={(segments) => onUpdate(preset.id, { included_segments: segments })}
           placeholder="Add included..."
         />
-      </TableCell>
+      </div>
 
       {/* Excluded Segments */}
-      <TableCell>
+      <div className="px-3 py-2 overflow-hidden" style={{ width: columnWidths.excluded, minWidth: 150 }}>
         <SegmentChipsEditor
           selectedSegments={preset.excluded_segments}
           availableSegments={klaviyoSegments}
           loading={loadingSegments}
           onChange={(segments) => onUpdate(preset.id, { excluded_segments: segments })}
-          placeholder="Add excluded..."
+          placeholder="Exclude..."
         />
-      </TableCell>
+      </div>
 
-      {/* Default Toggle */}
-      <TableCell className="text-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0"
-          onClick={handleToggleDefault}
-        >
-          <Star
-            className={cn(
-              'h-4 w-4',
-              preset.is_default
-                ? 'fill-yellow-400 text-yellow-400'
-                : 'text-muted-foreground'
-            )}
-          />
-        </Button>
-      </TableCell>
+      {/* Default */}
+      <div 
+        className="px-3 py-2 flex justify-center" 
+        style={{ width: columnWidths.default, minWidth: 60 }}
+      >
+        <Checkbox
+          checked={preset.is_default}
+          onCheckedChange={handleDefaultChange}
+        />
+      </div>
 
-      {/* Delete */}
-      <TableCell>
+      {/* Actions */}
+      <div 
+        className="px-3 py-2 flex justify-center" 
+        style={{ width: columnWidths.actions, minWidth: 60 }}
+      >
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button
               variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+              size="icon"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
               disabled={isDeleting}
             >
               {isDeleting ? (
@@ -203,7 +196,7 @@ export function SegmentRow({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </TableCell>
-    </TableRow>
+      </div>
+    </div>
   );
 }
