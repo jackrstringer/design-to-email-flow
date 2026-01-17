@@ -355,56 +355,58 @@ export default function CampaignQueue() {
         </div>
       </header>
 
-      {/* Bulk Action Bar - appears when items are selected */}
+      {/* Floating Bottom Bulk Action Bar - ClickUp style */}
       {selectedIds.size > 0 && (
-        <div className="sticky top-12 z-40 bg-white border-b border-gray-200 shadow-sm">
-          <div className="px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-900">
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg shadow-lg" style={{ backgroundColor: '#1F2937' }}>
+            {/* Selection count with clear button */}
+            <div className="flex items-center gap-2 text-white border-r border-gray-600 pr-4">
+              <span className="text-sm font-medium">
                 {selectedIds.size} selected
               </span>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <button 
                 onClick={handleClearSelection}
-                className="text-gray-500 hover:text-gray-700 h-7 px-2"
+                className="text-gray-400 hover:text-white transition-colors"
               >
-                <X className="h-3.5 w-3.5 mr-1" />
-                Clear
-              </Button>
+                <X className="h-4 w-4" />
+              </button>
             </div>
+
+            {/* Action buttons */}
             <div className="flex items-center gap-2">
               {/* Bulk Approve - only if all selected are ready_for_review */}
               {canBulkApprove && (
                 <Button 
                   size="sm" 
-                  className="bg-blue-600 hover:bg-blue-700 h-8"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
                   onClick={handleBulkApprove}
                   disabled={isBulkProcessing}
                 >
                   {isBulkProcessing ? (
                     <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   ) : null}
-                  Approve & Build {selectedIds.size} Campaign{selectedIds.size > 1 ? 's' : ''} 
+                  Approve & Build {selectedIds.size}
                   {uniqueBrandIds.size > 1 && ` for ${uniqueBrandIds.size} Brands`}
                 </Button>
               )}
+              
               <Button 
-                variant="outline" 
+                variant="ghost" 
                 size="sm" 
                 onClick={handleBulkClose}
                 disabled={isBulkProcessing}
-                className="h-8"
+                className="text-gray-300 hover:text-white hover:bg-gray-700 h-8"
               >
                 <Archive className="h-3.5 w-3.5 mr-1.5" />
                 Close
               </Button>
+              
               <Button 
-                variant="destructive" 
+                variant="ghost" 
                 size="sm" 
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isBulkProcessing}
-                className="h-8"
+                className="text-red-400 hover:text-red-300 hover:bg-gray-700 h-8"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                 Delete
