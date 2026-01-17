@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { QueueTable } from '@/components/queue/QueueTable';
 import { useCampaignQueue } from '@/hooks/useCampaignQueue';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,6 +23,7 @@ export default function CampaignQueue() {
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [brands, setBrands] = useState<Brand[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
 
   // Fetch brands for filter dropdown
   useEffect(() => {
@@ -37,7 +40,8 @@ export default function CampaignQueue() {
 
   const filteredItems = items.filter(item => {
     const matchesBrand = brandFilter === 'all' || item.brand_id === brandFilter;
-    return matchesBrand;
+    const matchesClosed = showClosed || item.status !== 'closed';
+    return matchesBrand && matchesClosed;
   });
 
   const handleToggleExpand = (id: string) => {
@@ -63,8 +67,20 @@ export default function CampaignQueue() {
               <span className="text-sm font-medium text-gray-900">Campaign Queue</span>
             </div>
             
-            {/* Right: Brand Filter + Refresh */}
-            <div className="flex items-center gap-2">
+            {/* Right: Show Closed + Brand Filter + Refresh */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show-closed"
+                  checked={showClosed}
+                  onCheckedChange={setShowClosed}
+                  className="scale-75"
+                />
+                <Label htmlFor="show-closed" className="text-[12px] text-gray-500 cursor-pointer">
+                  Show Closed
+                </Label>
+              </div>
+              
               <Select value={brandFilter} onValueChange={setBrandFilter}>
                 <SelectTrigger className="h-8 w-36 text-[13px] border-gray-200 bg-white">
                   <Building className="h-3.5 w-3.5 mr-1.5 text-gray-400" />
@@ -91,9 +107,9 @@ export default function CampaignQueue() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="px-4 py-4">
-        <div className="max-w-[85%] mx-auto">
+      {/* Main Content - horizontal scroll for table */}
+      <main className="px-4 py-4 overflow-x-auto">
+        <div className="min-w-max">
           <QueueTable
             items={filteredItems}
             loading={loading}

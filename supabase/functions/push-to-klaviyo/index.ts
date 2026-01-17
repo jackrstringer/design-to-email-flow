@@ -151,6 +151,13 @@ serve(async (req) => {
     if (hasSlices) {
       const slicesArray = slices as SliceData[];
       
+      // Assign rowIndex to slices that don't have one - each slice without rowIndex gets its own row
+      slicesArray.forEach((slice, index) => {
+        if (slice.rowIndex === undefined || slice.rowIndex === null) {
+          slice.rowIndex = index;
+        }
+      });
+      
       // Group slices by rowIndex for multi-column support
       const rowGroups = new Map<number, SliceData[]>();
       slicesArray.forEach((slice) => {
@@ -485,8 +492,8 @@ serve(async (req) => {
 
     console.log(`Template assigned to campaign successfully`);
 
-    // Build the campaign URL for Klaviyo
-    const campaignUrl = `https://www.klaviyo.com/campaign/${campaignId}/edit`;
+    // Build the campaign URL for Klaviyo - correct template editor URL format
+    const campaignUrl = `https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`;
 
     return new Response(
       JSON.stringify({

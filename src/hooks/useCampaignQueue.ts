@@ -31,7 +31,7 @@ export interface CampaignQueueItem {
   selected_preview_text: string | null;
   qa_flags: Record<string, unknown>[] | null;
   spelling_errors: Record<string, unknown>[] | null;
-  status: 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed';
+  status: 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed' | 'closed';
   processing_step: string | null;
   processing_percent: number;
   error_message: string | null;
