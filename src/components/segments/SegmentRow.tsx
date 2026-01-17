@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, TextareaHTMLAttributes } from 'react';
 import { Trash2, Loader2, Star } from 'lucide-react';
 import { SegmentPreset, KlaviyoSegment } from '@/hooks/useSegmentPresets';
 import { SegmentChipsEditor } from './SegmentChipsEditor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +16,37 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+
+// Auto-resizing textarea component
+function AutoResizeTextarea({ 
+  className, 
+  value, 
+  onChange,
+  ...props 
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+  }, [value]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={onChange}
+      className={cn(
+        "flex w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  );
+}
 
 interface ColumnWidths {
   name: number;
@@ -113,20 +145,23 @@ export function SegmentRow({
       </div>
 
       {/* Description */}
-      <div className="px-3 py-2 flex-1" style={{ minWidth: 150 }}>
+      <div className="px-3 py-2 flex-1 border-l border-border/50" style={{ minWidth: 150 }}>
         {editingDescription ? (
-          <Input
+          <AutoResizeTextarea
             value={tempDescription}
             onChange={(e) => setTempDescription(e.target.value)}
             onBlur={handleDescriptionSave}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleDescriptionSave();
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleDescriptionSave();
+              }
               if (e.key === 'Escape') {
                 setTempDescription(preset.description || '');
                 setEditingDescription(false);
               }
             }}
-            className="h-7 text-sm"
+            className="text-sm min-h-[28px] resize-none"
             autoFocus
             placeholder="Add description..."
           />
@@ -141,7 +176,7 @@ export function SegmentRow({
       </div>
 
       {/* Included Segments */}
-      <div className="px-3 py-2 overflow-hidden flex-1" style={{ minWidth: 150 }}>
+      <div className="px-3 py-2 overflow-hidden flex-1 border-l border-border/50" style={{ minWidth: 150 }}>
         <SegmentChipsEditor
           selectedSegments={preset.included_segments}
           availableSegments={klaviyoSegments}
@@ -152,7 +187,7 @@ export function SegmentRow({
       </div>
 
       {/* Excluded Segments */}
-      <div className="px-3 py-2 overflow-hidden flex-1" style={{ minWidth: 150 }}>
+      <div className="px-3 py-2 overflow-hidden flex-1 border-l border-border/50" style={{ minWidth: 150 }}>
         <SegmentChipsEditor
           selectedSegments={preset.excluded_segments}
           availableSegments={klaviyoSegments}
@@ -164,7 +199,7 @@ export function SegmentRow({
 
       {/* Actions */}
       <div 
-        className="px-3 py-2 flex justify-center" 
+        className="px-3 py-2 flex justify-center border-l border-border/50" 
         style={{ width: columnWidths.actions, minWidth: 60 }}
       >
         <AlertDialog>

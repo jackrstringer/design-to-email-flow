@@ -122,7 +122,7 @@ export function SegmentsTable({
         {columns.map((col, idx) => (
           <div
             key={col.key}
-            className="relative flex items-center px-3 py-2 text-sm font-medium text-muted-foreground"
+            className={`relative flex items-center px-3 py-2 text-sm font-medium text-muted-foreground ${idx > 0 ? 'border-l border-border/50' : ''}`}
             style={{ 
               width: col.grow ? undefined : columnWidths[col.key], 
               minWidth: MIN_WIDTHS[col.key],
@@ -132,7 +132,7 @@ export function SegmentsTable({
             {col.label}
             {idx < columns.length - 1 && (
               <div
-                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 transition-colors z-10"
+                className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-primary/30 transition-colors z-10 -mr-1"
                 onMouseDown={handleResizeStart(col.key)}
               />
             )}
