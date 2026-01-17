@@ -132,7 +132,7 @@ export function SegmentRow({
           />
         ) : (
           <span
-            className="text-sm text-muted-foreground cursor-pointer hover:text-foreground truncate block"
+            className="text-sm text-muted-foreground cursor-pointer hover:text-foreground block"
             onClick={() => setEditingDescription(true)}
           >
             {preset.description || <span className="italic">Add description...</span>}
