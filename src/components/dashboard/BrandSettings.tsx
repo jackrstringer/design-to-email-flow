@@ -74,9 +74,9 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   }>({ subjectLines: [], previewTexts: [], lastScraped: null });
 
   // ClickUp integration state
-  const [clickupApiKey, setClickupApiKey] = useState((brand as any).clickup_api_key || '');
-  const [clickupWorkspaceId, setClickupWorkspaceId] = useState((brand as any).clickup_workspace_id || '');
-  const [clickupListId, setClickupListId] = useState((brand as any).clickup_list_id || '');
+  const [clickupApiKey, setClickupApiKey] = useState(brand.clickupApiKey || '');
+  const [clickupWorkspaceId, setClickupWorkspaceId] = useState(brand.clickupWorkspaceId || '');
+  const [clickupListId, setClickupListId] = useState(brand.clickupListId || '');
   const [showClickupApiKey, setShowClickupApiKey] = useState(false);
   const [isLoadingClickupData, setIsLoadingClickupData] = useState(false);
   const [isSavingClickup, setIsSavingClickup] = useState(false);
@@ -123,15 +123,15 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     }
     
     // Fetch ClickUp connected info if already connected
-    if ((brand as any).clickup_api_key && (brand as any).clickup_list_id) {
+    if (brand.clickupApiKey && brand.clickupListId) {
       fetchClickupConnectedInfo();
     }
   }, [brand.id]);
 
   const fetchClickupConnectedInfo = async () => {
-    const apiKey = (brand as any).clickup_api_key;
-    const workspaceId = (brand as any).clickup_workspace_id;
-    const listId = (brand as any).clickup_list_id;
+    const apiKey = brand.clickupApiKey;
+    const workspaceId = brand.clickupWorkspaceId;
+    const listId = brand.clickupListId;
     
     if (!apiKey || !listId) return;
     

@@ -141,6 +141,10 @@ export interface Brand {
   // Typography and formatting
   typography?: BrandTypography;
   htmlFormattingRules?: HtmlFormattingRule[];
+  // ClickUp integration
+  clickupApiKey?: string;
+  clickupWorkspaceId?: string;
+  clickupListId?: string;
   createdAt: string;
   updatedAt: string;
 }
