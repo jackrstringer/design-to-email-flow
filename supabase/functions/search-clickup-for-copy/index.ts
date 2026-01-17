@@ -69,12 +69,17 @@ function textContainsFigmaUrl(text: string, targetFigmaUrl: string): boolean {
 // Fetch individual task details with full description
 async function fetchTaskDetail(taskId: string, clickupApiKey: string): Promise<any | null> {
   try {
+    // Note: Don't pass custom_fields=true in query - Get Task endpoint returns custom_fields by default
+    // and some ClickUp workspaces reject the parameter with ITEM_156 error
     const response = await fetch(
-      `https://api.clickup.com/api/v2/task/${taskId}?include_markdown_description=true&custom_fields=true`,
+      `https://api.clickup.com/api/v2/task/${taskId}?include_markdown_description=true`,
       { headers: { 'Authorization': clickupApiKey } }
     );
     if (response.ok) {
       return await response.json();
+    } else {
+      const errorText = await response.text();
+      console.error(`[clickup] Get task ${taskId} failed (${response.status}):`, errorText);
     }
   } catch (err) {
     console.error(`[clickup] Error fetching task ${taskId}:`, err);
@@ -90,10 +95,14 @@ async function extractWithAI(allTextContent: string): Promise<{ subjectLine?: st
     return {};
   }
 
-  // Truncate content if too long (keep first 8000 chars to stay within limits)
-  const truncatedContent = allTextContent.length > 8000 
-    ? allTextContent.substring(0, 8000) + '\n...[truncated]'
-    : allTextContent;
+  // Smart truncation: keep first 4000 + last 4000 chars to preserve SL/PT that might be at the end
+  let truncatedContent = allTextContent;
+  if (allTextContent.length > 8000) {
+    const first = allTextContent.substring(0, 4000);
+    const last = allTextContent.substring(allTextContent.length - 4000);
+    truncatedContent = first + '\n\n...[middle content truncated]...\n\n' + last;
+    console.log(`[clickup] Content truncated: ${allTextContent.length} -> ${truncatedContent.length} chars (first 4000 + last 4000)`);
+  }
 
   const prompt = `You are analyzing content from a marketing/email task in a project management system.
 Your job is to find the EMAIL SUBJECT LINE and EMAIL PREVIEW TEXT if they exist.
@@ -284,19 +293,22 @@ serve(async (req) => {
     console.log(`[clickup] Target URL: ${figmaUrl}`);
     console.log(`[clickup] Parsed target - fileKey: ${parsedTarget?.fileKey || 'NONE'}, nodeId: ${parsedTarget?.nodeId || 'NONE'}`);
 
-    // Get tasks from the specific list WITH descriptions and custom fields
+    // Get tasks from the specific list WITH descriptions
+    // Note: Do NOT pass custom_fields=true - some ClickUp workspaces reject it with ITEM_156 error
+    // Custom fields are included by default in the response anyway
     const tasksResponse = await fetch(
-      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=false&subtasks=true&include_markdown_description=true&custom_fields=true`,
+      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=false&subtasks=true&include_markdown_description=true`,
       {
         headers: { 'Authorization': clickupApiKey }
       }
     );
 
     if (!tasksResponse.ok) {
-      console.error('[clickup] Task list fetch failed:', await tasksResponse.text());
+      const errorBody = await tasksResponse.text();
+      console.error('[clickup] Task list fetch failed:', tasksResponse.status, errorBody);
       return new Response(
-        JSON.stringify({ found: false, error: 'ClickUp API error' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ found: false, error: 'ClickUp API error', clickupStatus: tasksResponse.status, clickupError: errorBody }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
