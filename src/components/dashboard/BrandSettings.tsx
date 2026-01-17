@@ -86,6 +86,8 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [clickupLists, setClickupLists] = useState<{id: string; name: string; folderless?: boolean}[]>([]);
   const [selectedSpaceId, setSelectedSpaceId] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('');
+  const [clickupConnectedInfo, setClickupConnectedInfo] = useState<{ workspaceName: string; listName: string } | null>(null);
+  const [isReconfiguring, setIsReconfiguring] = useState(false);
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -119,7 +121,45 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         }
       }, 100);
     }
+    
+    // Fetch ClickUp connected info if already connected
+    if ((brand as any).clickup_api_key && (brand as any).clickup_list_id) {
+      fetchClickupConnectedInfo();
+    }
   }, [brand.id]);
+
+  const fetchClickupConnectedInfo = async () => {
+    const apiKey = (brand as any).clickup_api_key;
+    const workspaceId = (brand as any).clickup_workspace_id;
+    const listId = (brand as any).clickup_list_id;
+    
+    if (!apiKey || !listId) return;
+    
+    try {
+      // Fetch workspaces to get workspace name
+      const { data: wsData } = await supabase.functions.invoke('get-clickup-hierarchy', {
+        body: { type: 'workspaces', clickupApiKey: apiKey }
+      });
+      
+      const workspaceName = wsData?.workspaces?.find(
+        (w: { id: string; name: string }) => w.id === workspaceId
+      )?.name || `Workspace ${workspaceId}`;
+      
+      // For list name, we'd need to traverse - for now show list ID
+      // A future enhancement could store the list name in the DB
+      setClickupConnectedInfo({
+        workspaceName,
+        listName: `List ID: ${listId}`,
+      });
+    } catch (err) {
+      console.error('Failed to fetch ClickUp connected info:', err);
+      // Even if fetch fails, show basic info
+      setClickupConnectedInfo({
+        workspaceName: workspaceId ? `Workspace ${workspaceId}` : 'Unknown',
+        listName: `List ID: ${listId}`,
+      });
+    }
+  };
 
   const fetchFooters = async () => {
     const { data, error } = await supabase
@@ -632,10 +672,55 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         .eq('id', brand.id);
 
       if (error) throw error;
+      
+      // Update connected info display
+      const workspaceName = clickupWorkspaces.find(w => w.id === clickupWorkspaceId)?.name || `Workspace ${clickupWorkspaceId}`;
+      const listName = clickupLists.find(l => l.id === clickupListId)?.name || `List ID: ${clickupListId}`;
+      setClickupConnectedInfo({ workspaceName, listName });
+      setIsReconfiguring(false);
+      
       toast.success('ClickUp settings saved');
       onBrandChange();
     } catch (error) {
       toast.error('Failed to save ClickUp settings');
+    } finally {
+      setIsSavingClickup(false);
+    }
+  };
+
+  const handleDisconnectClickup = async () => {
+    if (!confirm('Disconnect ClickUp? Campaign tasks will no longer pull copy from ClickUp.')) return;
+    
+    setIsSavingClickup(true);
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .update({
+          clickup_api_key: null,
+          clickup_workspace_id: null,
+          clickup_list_id: null,
+        })
+        .eq('id', brand.id);
+
+      if (error) throw error;
+      
+      // Reset local state
+      setClickupApiKey('');
+      setClickupWorkspaceId('');
+      setClickupListId('');
+      setClickupConnectedInfo(null);
+      setClickupWorkspaces([]);
+      setClickupSpaces([]);
+      setClickupFolders([]);
+      setClickupLists([]);
+      setSelectedSpaceId('');
+      setSelectedFolderId('');
+      setIsReconfiguring(false);
+      
+      toast.success('ClickUp disconnected');
+      onBrandChange();
+    } catch (error) {
+      toast.error('Failed to disconnect ClickUp');
     } finally {
       setIsSavingClickup(false);
     }
@@ -1148,125 +1233,185 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         </CollapsibleTrigger>
         <CollapsibleContent className="py-4">
           <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Connect ClickUp to automatically pull subject lines and preview text from campaign tasks.
-            </p>
-            
-            {/* API Token */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">API Token</Label>
-              <div className="flex gap-2">
-                <Input
-                  type={showClickupApiKey ? 'text' : 'password'}
-                  value={clickupApiKey}
-                  onChange={(e) => setClickupApiKey(e.target.value)}
-                  placeholder="pk_..."
-                  className="flex-1 h-8 text-xs font-mono"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => setShowClickupApiKey(!showClickupApiKey)}
-                >
-                  {showClickupApiKey ? 'Hide' : 'Show'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => fetchClickupWorkspaces(clickupApiKey)}
-                  disabled={!clickupApiKey || isLoadingClickupData}
-                >
-                  {isLoadingClickupData ? 'Loading...' : 'Connect'}
-                </Button>
+            {/* Connected state view */}
+            {clickupListId && clickupConnectedInfo && !isReconfiguring ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md dark:bg-green-950 dark:border-green-800">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">Connected to ClickUp</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                        {clickupConnectedInfo.workspaceName}<br/>
+                        {clickupConnectedInfo.listName}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setIsReconfiguring(true);
+                          // Pre-fetch workspaces for reconfigure
+                          if (clickupApiKey) {
+                            fetchClickupWorkspaces(clickupApiKey);
+                          }
+                        }}
+                      >
+                        Change
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                        onClick={handleDisconnectClickup}
+                        disabled={isSavingClickup}
+                      >
+                        {isSavingClickup ? 'Disconnecting...' : 'Disconnect'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Campaign tasks with Figma links will automatically pull subject lines and preview text from ClickUp.
+                </p>
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                Get your token at <a href="https://app.clickup.com/settings/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">app.clickup.com → Settings → Apps</a>
-              </p>
-            </div>
+            ) : (
+              /* Configuration view */
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Connect ClickUp to automatically pull subject lines and preview text from campaign tasks.
+                </p>
+                
+                {/* API Token */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">API Token</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type={showClickupApiKey ? 'text' : 'password'}
+                      value={clickupApiKey}
+                      onChange={(e) => setClickupApiKey(e.target.value)}
+                      placeholder="pk_..."
+                      className="flex-1 h-8 text-xs font-mono"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => setShowClickupApiKey(!showClickupApiKey)}
+                    >
+                      {showClickupApiKey ? 'Hide' : 'Show'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => fetchClickupWorkspaces(clickupApiKey)}
+                      disabled={!clickupApiKey || isLoadingClickupData}
+                    >
+                      {isLoadingClickupData ? 'Loading...' : 'Connect'}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Get your token at <a href="https://app.clickup.com/settings/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">app.clickup.com → Settings → Apps</a>
+                  </p>
+                </div>
 
-            {/* Workspace selector */}
-            {clickupWorkspaces.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Workspace</Label>
-                <select
-                  value={clickupWorkspaceId}
-                  onChange={(e) => {
-                    setClickupWorkspaceId(e.target.value);
-                    fetchClickupSpaces(e.target.value);
-                  }}
-                  className="w-full h-8 text-xs border rounded px-2"
-                >
-                  <option value="">Select workspace...</option>
-                  {clickupWorkspaces.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+                {/* Workspace selector */}
+                {clickupWorkspaces.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Workspace</Label>
+                    <select
+                      value={clickupWorkspaceId}
+                      onChange={(e) => {
+                        setClickupWorkspaceId(e.target.value);
+                        fetchClickupSpaces(e.target.value);
+                      }}
+                      className="w-full h-8 text-xs border rounded px-2"
+                    >
+                      <option value="">Select workspace...</option>
+                      {clickupWorkspaces.map(w => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-            {/* Space selector */}
-            {clickupSpaces.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Space</Label>
-                <select
-                  value={selectedSpaceId}
-                  onChange={(e) => fetchClickupFoldersAndLists(e.target.value)}
-                  className="w-full h-8 text-xs border rounded px-2"
-                >
-                  <option value="">Select space...</option>
-                  {clickupSpaces.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+                {/* Space selector */}
+                {clickupSpaces.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Space</Label>
+                    <select
+                      value={selectedSpaceId}
+                      onChange={(e) => fetchClickupFoldersAndLists(e.target.value)}
+                      className="w-full h-8 text-xs border rounded px-2"
+                    >
+                      <option value="">Select space...</option>
+                      {clickupSpaces.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-            {/* Folder selector (optional) */}
-            {clickupFolders.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Folder (optional)</Label>
-                <select
-                  value={selectedFolderId}
-                  onChange={(e) => fetchClickupListsFromFolder(e.target.value)}
-                  className="w-full h-8 text-xs border rounded px-2"
-                >
-                  <option value="">No folder (folderless lists)</option>
-                  {clickupFolders.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+                {/* Folder selector (optional) */}
+                {clickupFolders.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Folder (optional)</Label>
+                    <select
+                      value={selectedFolderId}
+                      onChange={(e) => fetchClickupListsFromFolder(e.target.value)}
+                      className="w-full h-8 text-xs border rounded px-2"
+                    >
+                      <option value="">No folder (folderless lists)</option>
+                      {clickupFolders.map(f => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-            {/* List selector */}
-            {clickupLists.length > 0 && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">List (where campaign tasks live)</Label>
-                <select
-                  value={clickupListId}
-                  onChange={(e) => setClickupListId(e.target.value)}
-                  className="w-full h-8 text-xs border rounded px-2"
-                >
-                  <option value="">Select list...</option>
-                  {clickupLists.map(l => (
-                    <option key={l.id} value={l.id}>{l.name}{l.folderless ? ' (folderless)' : ''}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+                {/* List selector */}
+                {clickupLists.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">List (where campaign tasks live)</Label>
+                    <select
+                      value={clickupListId}
+                      onChange={(e) => setClickupListId(e.target.value)}
+                      className="w-full h-8 text-xs border rounded px-2"
+                    >
+                      <option value="">Select list...</option>
+                      {clickupLists.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}{l.folderless ? ' (folderless)' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-            {/* Save button */}
-            {(clickupApiKey || clickupListId) && (
-              <Button
-                size="sm"
-                onClick={handleSaveClickupSettings}
-                disabled={isSavingClickup}
-                className="text-xs"
-              >
-                {isSavingClickup ? 'Saving...' : 'Save ClickUp Settings'}
-              </Button>
+                {/* Save button */}
+                <div className="flex gap-2">
+                  {(clickupApiKey || clickupListId) && (
+                    <Button
+                      size="sm"
+                      onClick={handleSaveClickupSettings}
+                      disabled={isSavingClickup || !clickupListId}
+                      className="text-xs"
+                    >
+                      {isSavingClickup ? 'Saving...' : 'Save ClickUp Settings'}
+                    </Button>
+                  )}
+                  {isReconfiguring && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => setIsReconfiguring(false)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </CollapsibleContent>
