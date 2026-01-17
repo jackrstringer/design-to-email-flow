@@ -46,15 +46,26 @@ function extractFromText(text: string): { subjectLine?: string; previewText?: st
   return { subjectLine, previewText };
 }
 
+// Convert custom field value to searchable text
+function getCustomFieldText(field: any): string {
+  if (!field.value) return '';
+  if (typeof field.value === 'string') return field.value;
+  if (Array.isArray(field.value)) {
+    return field.value.map((v: any) => typeof v === 'string' ? v : JSON.stringify(v)).join(' ');
+  }
+  if (typeof field.value === 'object') return JSON.stringify(field.value);
+  return String(field.value);
+}
+
 function extractFromCustomFields(customFields: any[]): { subjectLine?: string; previewText?: string } {
   let subjectLine: string | undefined;
   let previewText: string | undefined;
 
   for (const field of customFields) {
     const fieldName = (field.name || '').toLowerCase();
-    const value = field.value;
+    const value = getCustomFieldText(field);
     
-    if (!value || typeof value !== 'string') continue;
+    if (!value) continue;
 
     if (SL_FIELD_NAMES.some(n => fieldName.includes(n))) {
       subjectLine = value.trim();
@@ -88,7 +99,7 @@ function parseFigmaUrl(url: string): { fileKey: string; nodeId: string } | null 
   if (!fileKeyMatch) return null;
   
   // Match node-id parameter (handles 489-885, 489%3A885, 489:885)
-  const nodeIdMatch = url.match(/node-id=([^&\s]+)/);
+  const nodeIdMatch = url.match(/node-id=([^&\s"'<>\)\]]+)/);
   if (!nodeIdMatch) return null;
   
   // Normalize node ID: decode URL encoding, replace hyphens with colons
@@ -112,14 +123,34 @@ function figmaUrlsMatch(url1: string, url2: string): boolean {
 }
 
 // Find all Figma URLs in a text and check if any match the target
+// Improved regex to handle markdown wrapping, http(s), www, and trailing punctuation
 function textContainsFigmaUrl(text: string, targetFigmaUrl: string): boolean {
-  const figmaUrlsInText = text.match(/https:\/\/[^\s"'<>]*figma\.com\/[^\s"'<>]+/g) || [];
+  // More robust regex: handles http(s), www., markdown links, and trailing punctuation
+  const figmaUrlsInText = text.match(/https?:\/\/(?:www\.)?figma\.com\/[^\s"'<>\)\]]+/g) || [];
   for (const urlInText of figmaUrlsInText) {
-    if (figmaUrlsMatch(urlInText, targetFigmaUrl)) {
+    // Clean trailing punctuation that might have been captured
+    const cleanUrl = urlInText.replace(/[.,;:!?\)]+$/, '');
+    if (figmaUrlsMatch(cleanUrl, targetFigmaUrl)) {
       return true;
     }
   }
   return false;
+}
+
+// Fetch individual task details with full description
+async function fetchTaskDetail(taskId: string, clickupApiKey: string): Promise<any | null> {
+  try {
+    const response = await fetch(
+      `https://api.clickup.com/api/v2/task/${taskId}?include_markdown_description=true&custom_fields=true`,
+      { headers: { 'Authorization': clickupApiKey } }
+    );
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (err) {
+    console.error(`[clickup] Error fetching task ${taskId}:`, err);
+  }
+  return null;
 }
 
 serve(async (req) => {
@@ -144,9 +175,9 @@ serve(async (req) => {
     console.log(`[clickup] Target URL: ${figmaUrl}`);
     console.log(`[clickup] Parsed target - fileKey: ${parsedTarget?.fileKey || 'NONE'}, nodeId: ${parsedTarget?.nodeId || 'NONE'}`);
 
-    // Get tasks from the specific list
+    // Get tasks from the specific list WITH descriptions and custom fields
     const tasksResponse = await fetch(
-      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=false&subtasks=true`,
+      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=false&subtasks=true&include_markdown_description=true&custom_fields=true`,
       {
         headers: { 'Authorization': clickupApiKey }
       }
@@ -166,12 +197,19 @@ serve(async (req) => {
 
     // Find task containing the Figma URL (using normalized matching)
     let matchedTask = null;
+    
+    // First pass: check list response data
     for (const task of tasks) {
-      const description = task.description || '';
+      // Use markdown_description if available, fall back to description
+      const description = task.markdown_description || task.description || '';
       const customFields = task.custom_fields || [];
       
+      // Debug: log presence of description
+      const hasDesc = description.length > 0;
+      console.log(`[clickup] Task "${task.name}" - has description: ${hasDesc}, length: ${description.length}`);
+      
       // Check description using normalized Figma URL matching
-      if (textContainsFigmaUrl(description, figmaUrl)) {
+      if (description && textContainsFigmaUrl(description, figmaUrl)) {
         console.log(`[clickup] MATCH found in description of task: ${task.name}`);
         matchedTask = task;
         break;
@@ -179,13 +217,46 @@ serve(async (req) => {
       
       // Check custom fields using normalized matching
       for (const field of customFields) {
-        if (field.value && typeof field.value === 'string' && textContainsFigmaUrl(field.value, figmaUrl)) {
+        const fieldText = getCustomFieldText(field);
+        if (fieldText && textContainsFigmaUrl(fieldText, figmaUrl)) {
           console.log(`[clickup] MATCH found in custom field "${field.name}" of task: ${task.name}`);
           matchedTask = task;
           break;
         }
       }
       if (matchedTask) break;
+    }
+
+    // Fallback: if no match found, fetch individual task details (capped at 50)
+    if (!matchedTask) {
+      console.log('[clickup] No match in list response, trying individual task fetch fallback...');
+      const tasksToCheck = tasks.slice(0, 50);
+      
+      for (const task of tasksToCheck) {
+        const taskDetail = await fetchTaskDetail(task.id, clickupApiKey);
+        if (!taskDetail) continue;
+        
+        const description = taskDetail.markdown_description || taskDetail.description || '';
+        const customFields = taskDetail.custom_fields || [];
+        
+        console.log(`[clickup] Fallback check: "${task.name}" - description length: ${description.length}`);
+        
+        if (description && textContainsFigmaUrl(description, figmaUrl)) {
+          console.log(`[clickup] MATCH found in fallback fetch for task: ${task.name}`);
+          matchedTask = taskDetail;
+          break;
+        }
+        
+        for (const field of customFields) {
+          const fieldText = getCustomFieldText(field);
+          if (fieldText && textContainsFigmaUrl(fieldText, figmaUrl)) {
+            console.log(`[clickup] MATCH found in custom field (fallback) "${field.name}" of task: ${task.name}`);
+            matchedTask = taskDetail;
+            break;
+          }
+        }
+        if (matchedTask) break;
+      }
     }
 
     if (!matchedTask) {
@@ -207,9 +278,10 @@ serve(async (req) => {
     previewText = fromFields.previewText;
     console.log(`[clickup] From fields - SL: ${subjectLine ? 'found' : 'none'}, PT: ${previewText ? 'found' : 'none'}`);
 
-    // Priority 2: Check task description
+    // Priority 2: Check task description (use markdown_description if available)
     if (!subjectLine || !previewText) {
-      const fromDesc = extractFromText(matchedTask.description || '');
+      const descriptionText = matchedTask.markdown_description || matchedTask.description || '';
+      const fromDesc = extractFromText(descriptionText);
       subjectLine = subjectLine || fromDesc.subjectLine;
       previewText = previewText || fromDesc.previewText;
       console.log(`[clickup] From description - SL: ${subjectLine ? 'found' : 'none'}, PT: ${previewText ? 'found' : 'none'}`);
@@ -240,7 +312,8 @@ serve(async (req) => {
 
     // Priority 4: Check linked ClickUp docs
     if ((!subjectLine || !previewText) && workspaceId) {
-      const docIds = extractDocLinks(matchedTask.description || '');
+      const descriptionText = matchedTask.markdown_description || matchedTask.description || '';
+      const docIds = extractDocLinks(descriptionText);
       console.log(`[clickup] Found ${docIds.length} linked docs`);
       
       for (const docId of docIds) {
