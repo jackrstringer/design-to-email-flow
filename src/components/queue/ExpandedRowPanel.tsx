@@ -505,6 +505,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
         imageUrl: item.image_url,
         includedSegments,
         excludedSegments,
+        footerHtml: footerHtml,
       }
     });
     
