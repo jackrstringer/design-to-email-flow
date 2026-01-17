@@ -54,14 +54,18 @@ export function useCampaignQueue() {
   const [loading, setLoading] = useState(true);
   const [presetsByBrand, setPresetsByBrand] = useState<Record<string, SegmentPreset[]>>({});
 
-  const fetchItems = useCallback(async () => {
+  const fetchItems = useCallback(async (isInitial = false) => {
     if (!user) {
       setItems([]);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    // Only show loading skeleton on initial load, not refreshes
+    if (isInitial) {
+      setLoading(true);
+    }
+    
     const { data, error } = await supabase
       .from('campaign_queue')
       .select('*, brands(id, name, domain, primary_color)')
@@ -111,8 +115,11 @@ export function useCampaignQueue() {
 
   // Initial fetch
   useEffect(() => {
-    fetchItems();
+    fetchItems(true);
   }, [fetchItems]);
+
+  // Wrapper for manual refresh (no loading skeleton)
+  const refresh = useCallback(() => fetchItems(false), [fetchItems]);
 
   // Realtime subscription for campaign_queue
   useEffect(() => {
@@ -264,7 +271,7 @@ export function useCampaignQueue() {
     items,
     loading,
     presetsByBrand,
-    refresh: fetchItems,
+    refresh,
     updateItem,
     deleteItem,
   };
