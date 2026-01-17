@@ -70,7 +70,6 @@ export function BrandOnboardingModal({
   const [logoData, setLogoData] = useState<LogoData | null>(null);
   const [isProcessingLogo, setIsProcessingLogo] = useState(false);
   const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null);
-  const [footerLogoUrl, setFooterLogoUrl] = useState<string | null>(null);
   const [colorScheme, setColorScheme] = useState<string | null>(null);
   
   // Footer step state
@@ -97,7 +96,6 @@ export function BrandOnboardingModal({
       setAllLinks([]);
       setLogoData(null);
       setOriginalLogoUrl(null);
-      setFooterLogoUrl(null);
       setColorScheme(null);
       setIsProcessingLogo(false);
       setCreatedBrand(null);
@@ -115,34 +113,14 @@ export function BrandOnboardingModal({
     }
   };
 
-  // Process logos with all available candidates from analysis
-  const processLogo = async (analysisData: any, domain: string) => {
-    // Check if we have any logo candidates
-    const hasLogos = analysisData?.logo || 
-                     analysisData?.footerLogo || 
-                     analysisData?.headerLogo ||
-                     analysisData?.whiteLogo ||
-                     analysisData?.darkLogo ||
-                     (analysisData?.allLogos && analysisData.allLogos.length > 0);
-    
-    if (!hasLogos) {
-      console.log('No logo candidates found in analysis data');
-      return;
-    }
+  // Process logo after analysis
+  const processLogo = async (logoUrl: string, domain: string, scheme: string | null) => {
+    if (!logoUrl || !logoUrl.startsWith('http')) return;
 
     setIsProcessingLogo(true);
     try {
       const { data, error } = await supabase.functions.invoke('process-brand-logo', {
-        body: { 
-          logoUrl: analysisData.logo,
-          footerLogoUrl: analysisData.footerLogo,
-          headerLogoUrl: analysisData.headerLogo,
-          whiteLogoUrl: analysisData.whiteLogo,
-          darkLogoUrl: analysisData.darkLogo,
-          allLogos: analysisData.allLogos || [],
-          brandDomain: domain, 
-          colorScheme: analysisData.colorScheme 
-        }
+        body: { logoUrl, brandDomain: domain, colorScheme: scheme }
       });
 
       if (error) throw error;
@@ -157,12 +135,6 @@ export function BrandOnboardingModal({
           hasOnlyOneVariant: data.hasOnlyOneVariant || false,
           missingVariant: data.missingVariant,
         });
-        
-        if (data.lightLogoUrl && data.darkLogoUrl) {
-          console.log('Both logo variants detected from website!');
-        } else {
-          console.log('Only one variant found, missing:', data.missingVariant);
-        }
       }
     } catch (error) {
       console.error('Error processing logo:', error);
@@ -269,10 +241,6 @@ export function BrandOnboardingModal({
     if (data?.logo) {
       setOriginalLogoUrl(data.logo);
     }
-    if (data?.footerLogo) {
-      setFooterLogoUrl(data.footerLogo);
-      console.log('Footer logo detected:', data.footerLogo);
-    }
     if (data?.colorScheme) {
       setColorScheme(data.colorScheme);
     }
@@ -282,8 +250,10 @@ export function BrandOnboardingModal({
     const suggestedName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
     setBrandName(suggestedName);
 
-    // Process all logo candidates
-    processLogo(data, domain);
+    // Process logo if available
+    if (data?.logo && data.logo.startsWith('http')) {
+      processLogo(data.logo, domain, data.colorScheme || null);
+    }
   };
 
   const handleAnalyze = async () => {
