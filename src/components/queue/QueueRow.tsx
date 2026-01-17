@@ -266,31 +266,43 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
         style={{ width: columnWidths.klaviyo }}
         onClick={(e) => e.stopPropagation()}
       >
-        {(item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (
-          <div className="flex items-center gap-1 min-w-0">
-            <a
-              href={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-blue-600 hover:text-blue-800 truncate"
-              title={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
-            >
-              {item.klaviyo_campaign_url?.replace('https://www.klaviyo.com/', '') || `email-template-editor/campaign/${item.klaviyo_campaign_id?.slice(0, 8)}...`}
-            </a>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const url = item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
-                navigator.clipboard.writeText(url);
-                toast.success('URL copied');
-              }}
-              className="opacity-0 group-hover/klaviyo:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
-              title="Copy URL"
-            >
-              <ExternalLink className="h-3 w-3 text-gray-500" />
-            </button>
-          </div>
-        ) : (
+        {(item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (() => {
+          const klaviyoUrl = item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
+          const displayText = `campaign/${item.klaviyo_campaign_id?.slice(0, 12) || '...'}`;
+          return (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <a
+                href={klaviyoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-500 hover:text-blue-600 flex-shrink-0"
+                title="Open in Klaviyo"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+              <a
+                href={klaviyoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline truncate"
+                title={klaviyoUrl}
+              >
+                {displayText}
+              </a>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(klaviyoUrl);
+                  toast.success('URL copied');
+                }}
+                className="opacity-0 group-hover/klaviyo:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+                title="Copy URL"
+              >
+                <Copy className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+              </button>
+            </div>
+          );
+        })() : (
           <span className="text-gray-400">—</span>
         )}
       </div>
