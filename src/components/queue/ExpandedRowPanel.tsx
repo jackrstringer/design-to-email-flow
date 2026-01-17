@@ -490,6 +490,18 @@ export function ExpandedRowPanel({
   const doSendToKlaviyo = async () => {
     setIsSending(true);
     
+    // Set status to processing with "Building in Klaviyo" step (shows spinner in row)
+    await supabase
+      .from('campaign_queue')
+      .update({ 
+        status: 'processing', 
+        processing_step: 'Building in Klaviyo',
+        processing_percent: 0 
+      })
+      .eq('id', item.id);
+    
+    onUpdate(); // Refresh to show processing state in the row
+    
     const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
       body: {
         brandId: item.brand_id,
@@ -505,8 +517,18 @@ export function ExpandedRowPanel({
     });
     
     if (error) {
-      toast.error('Failed to send to Klaviyo');
+      // Revert status on error
+      await supabase
+        .from('campaign_queue')
+        .update({ 
+          status: 'ready_for_review',
+          processing_step: null,
+          processing_percent: null
+        })
+        .eq('id', item.id);
+      toast.error('Failed to build in Klaviyo');
       setIsSending(false);
+      onUpdate();
       return;
     }
     
@@ -514,6 +536,8 @@ export function ExpandedRowPanel({
       .from('campaign_queue')
       .update({
         status: 'sent_to_klaviyo',
+        processing_step: null,
+        processing_percent: null,
         klaviyo_template_id: data?.templateId,
         klaviyo_campaign_id: data?.campaignId,
         klaviyo_campaign_url: data?.campaignUrl,
@@ -522,7 +546,7 @@ export function ExpandedRowPanel({
       .eq('id', item.id);
     
     setIsSending(false);
-    toast.success('Sent to Klaviyo!');
+    toast.success('Built in Klaviyo!');
     onUpdate();
   };
 
@@ -1095,8 +1119,17 @@ export function ExpandedRowPanel({
                 disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview || includedSegments.length === 0}
                 onClick={handleSendToKlaviyo}
               >
-                <Send className="h-4 w-4 mr-2" />
-                {isSending ? 'Sending...' : 'Send to Klaviyo'}
+                {isSending ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Building...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Build in Klaviyo
+                  </>
+                )}
               </Button>
             )}
             
