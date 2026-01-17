@@ -128,7 +128,7 @@ export function InlineDropdownSelector({
     );
   }
 
-  const displayValue = editValue || selected || (allOptions[0]?.value) || '';
+  const displayValue = editValue || selected || '';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
