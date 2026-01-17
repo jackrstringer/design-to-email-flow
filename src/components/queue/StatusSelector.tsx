@@ -247,14 +247,14 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
     );
   }
 
-  // Sent state - "Built in Klaviyo" badge (light green, no checkmark)
+  // Sent state - "Built in Klaviyo" badge (dark green, no checkmark)
   if (item.status === 'sent_to_klaviyo') {
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-600 text-white hover:bg-green-700 transition-colors whitespace-nowrap"
           >
             <span className="whitespace-nowrap">Built in Klaviyo</span>
             <ChevronDown className="h-3 w-3 flex-shrink-0" />
@@ -314,14 +314,14 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
         <button
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
-            // Ready for Review: blue (no issues) or yellow (with issues)
-            isReady && !hasIssues && "bg-blue-100 text-blue-700 hover:bg-blue-200",
-            isReady && hasIssues && "bg-yellow-100 text-yellow-700 hover:bg-yellow-200",
-            isApproved && "bg-blue-100 text-blue-700 hover:bg-blue-200"
+            "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap",
+            // Ready for Review: always yellow
+            isReady && "bg-yellow-100 text-yellow-700 hover:bg-yellow-200",
+            // Approved: light green
+            isApproved && "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
           )}
         >
-          {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approved'}
+          {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approve & Build'}
           <ChevronDown className="h-3 w-3" />
         </button>
       </PopoverTrigger>
@@ -337,7 +337,7 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             isReady && "bg-gray-50"
           )}
         >
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-yellow-100 text-yellow-700 whitespace-nowrap">
             Ready for Review
           </span>
         </button>
@@ -348,7 +348,7 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             isApproved && "bg-gray-50"
           )}
         >
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 whitespace-nowrap">
             Approve & Build
           </span>
         </button>
