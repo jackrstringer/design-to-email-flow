@@ -222,11 +222,11 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors whitespace-nowrap"
           >
-            <Check className="h-3 w-3" />
-            Built in Klaviyo
-            <ChevronDown className="h-3 w-3" />
+            <Check className="h-3 w-3 flex-shrink-0" />
+            <span className="whitespace-nowrap">Built in Klaviyo</span>
+            <ChevronDown className="h-3 w-3 flex-shrink-0" />
           </button>
         </PopoverTrigger>
         <PopoverContent 

@@ -30,7 +30,7 @@ interface ColumnWidths {
 }
 
 const DEFAULT_WIDTHS: ColumnWidths = {
-  status: 100,
+  status: 130,
   thumbnail: 40,
   name: 180,
   client: 120,
@@ -40,7 +40,7 @@ const DEFAULT_WIDTHS: ColumnWidths = {
   links: 60,
   external: 80,
   spelling: 70,
-  klaviyo: 160,
+  klaviyo: 180,
 };
 
 const MIN_WIDTHS: ColumnWidths = {
