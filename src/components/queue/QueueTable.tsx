@@ -3,7 +3,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueueRow } from './QueueRow';
 import { ExpandedRowPanel } from './ExpandedRowPanel';
-import { CampaignQueueItem, SegmentPreset } from '@/hooks/useCampaignQueue';
+import { CampaignQueueItem, SegmentPreset, KlaviyoList } from '@/hooks/useCampaignQueue';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -14,6 +14,7 @@ interface QueueTableProps {
   onToggleExpand: (id: string) => void;
   onUpdate: () => void;
   presetsByBrand: Record<string, SegmentPreset[]>;
+  klaviyoListsByBrand: Record<string, KlaviyoList[]>;
   selectedIds: Set<string>;
   onSelectItem: (id: string, selected: boolean) => void;
   onSelectAll: () => void;
@@ -69,6 +70,7 @@ export function QueueTable({
   onToggleExpand,
   onUpdate,
   presetsByBrand,
+  klaviyoListsByBrand,
   selectedIds,
   onSelectItem,
   onSelectAll,
@@ -419,10 +421,10 @@ export function QueueTable({
         </div>
       </div>
 
-      {/* Rows */}
       <div>
         {items.map((item) => {
           const presets = item.brand_id ? (presetsByBrand[item.brand_id] || []) : [];
+          const klaviyoLists = item.brand_id ? (klaviyoListsByBrand[item.brand_id] || []) : [];
           return (
             <React.Fragment key={item.id}>
               <QueueRow
@@ -441,6 +443,7 @@ export function QueueTable({
                   onUpdate={onUpdate}
                   onClose={() => onToggleExpand(item.id)}
                   preloadedPresets={presets}
+                  preloadedKlaviyoLists={klaviyoLists}
                 />
               )}
             </React.Fragment>
