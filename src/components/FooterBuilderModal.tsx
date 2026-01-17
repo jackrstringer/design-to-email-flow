@@ -31,6 +31,8 @@ interface FooterBuilderModalProps {
   onFooterSaved: () => void;
   onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any, conversationHistory?: ConversationMessage[]) => void;
   initialCampaignImageUrl?: string;
+  onGenerationStateChange?: (isGenerating: boolean) => void;
+  renderDuringGeneration?: React.ReactNode;
 }
 
 type Step = 'reference' | 'links' | 'social' | 'generate';
@@ -128,7 +130,7 @@ interface LogoConversionNeeded {
   canAutoConvert: boolean;
 }
 
-export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl }: FooterBuilderModalProps) {
+export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl, onGenerationStateChange, renderDuringGeneration }: FooterBuilderModalProps) {
   const [step, setStep] = useState<Step>('reference');
   const [sourceType, setSourceType] = useState<SourceType>(null);
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
@@ -184,6 +186,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
+  
+  // Notify parent when generation state changes
+  useEffect(() => {
+    onGenerationStateChange?.(isGenerating);
+  }, [isGenerating, onGenerationStateChange]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1344,6 +1351,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     AI is creating HTML using your collected assets
                   </p>
                 </div>
+                {/* Render optional content during generation (e.g., ClickUp setup) */}
+                {renderDuringGeneration && (
+                  <div className="text-left max-w-md mx-auto">
+                    {renderDuringGeneration}
+                  </div>
+                )}
               </>
             ) : (
               <>
