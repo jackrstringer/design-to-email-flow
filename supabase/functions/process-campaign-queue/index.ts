@@ -328,13 +328,27 @@ async function cropAndUploadSlices(
 // Step 4: Analyze slices for alt text and links (uses cropped slice dataUrls)
 async function analyzeSlices(
   slices: any[],
-  fullImageDataUrl: string,
+  fullImageUrl: string, // Cloudinary URL (will be resized for AI)
   brandDomain: string | null
 ): Promise<any[] | null> {
   console.log('[process] Step 4: Analyzing slices for alt text and links...');
 
   try {
     const analyzeUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/analyze-slices';
+    
+    // Resize the full image URL for AI processing (keep under 8000px height limit)
+    const resizedFullImageUrl = getResizedCloudinaryUrl(fullImageUrl, 600, 7900);
+    console.log('[process] Using resized URL for analysis:', resizedFullImageUrl.substring(0, 80) + '...');
+    
+    // Fetch the resized image and convert to base64 for the analyze-slices function
+    const imageResponse = await fetch(resizedFullImageUrl);
+    if (!imageResponse.ok) {
+      console.error('[process] Failed to fetch resized image for analysis');
+      return null;
+    }
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const imageBase64 = bytesToBase64(new Uint8Array(imageBuffer));
+    const fullImageDataUrl = `data:image/png;base64,${imageBase64}`;
     
     // CRITICAL: Pass the actual cropped slice dataUrls (matches CampaignCreator line 208)
     const sliceInputs = slices.map((slice, index) => ({
@@ -708,7 +722,7 @@ serve(async (req) => {
 
     const enrichedSlices = await analyzeSlices(
       uploadedSlices,
-      `data:image/png;base64,${imageResult.imageBase64}`,
+      imageResult.imageUrl, // Pass Cloudinary URL, analyzeSlices will resize for AI
       brandContext?.domain || null
     );
 
@@ -725,10 +739,14 @@ serve(async (req) => {
       processing_percent: 65
     });
 
+    // Resize image URL for AI processing (keep under 8000px height limit)
+    const resizedCampaignImageUrl = getResizedCloudinaryUrl(imageResult.imageUrl, 600, 7900);
+    console.log('[process] Copy gen using resized URL:', resizedCampaignImageUrl.substring(0, 80) + '...');
+    
     const copyResult = await generateCopy(
       currentSlices,
       brandContext,
-      imageResult.imageUrl,
+      resizedCampaignImageUrl,
       copyExamples
     );
 
