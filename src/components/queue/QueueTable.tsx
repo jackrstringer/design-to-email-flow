@@ -156,14 +156,17 @@ export function QueueTable({
 
         {/* Status */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.status }}
         >
           Status
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('status')}
           />
@@ -171,13 +174,16 @@ export function QueueTable({
 
         {/* Thumbnail */}
         <div 
-          className="relative flex items-center px-2"
+          className="relative flex items-center px-2 flex-shrink-0"
           style={{ width: columnWidths.thumbnail }}
         >
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('thumbnail')}
           />
@@ -185,14 +191,17 @@ export function QueueTable({
 
         {/* Name */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.name }}
         >
           Name
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('name')}
           />
@@ -200,14 +209,17 @@ export function QueueTable({
 
         {/* Client */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.client }}
         >
           Client
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('client')}
           />
@@ -215,14 +227,17 @@ export function QueueTable({
 
         {/* Segment Set */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.segmentSet }}
         >
           Segment Set
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('segmentSet')}
           />
@@ -230,14 +245,17 @@ export function QueueTable({
 
         {/* Subject Line */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
-          style={{ width: columnWidths.subject, flexShrink: 0 }}
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          style={{ width: columnWidths.subject }}
         >
           Subject Line
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('subject')}
           />
@@ -245,14 +263,17 @@ export function QueueTable({
 
         {/* Preview Text */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal"
-          style={{ width: columnWidths.previewText, flexShrink: 0 }}
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          style={{ width: columnWidths.previewText }}
         >
           Preview Text
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('previewText')}
           />
@@ -260,14 +281,17 @@ export function QueueTable({
 
         {/* Links */}
         <div 
-          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.links }}
         >
           Links
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('links')}
           />
@@ -275,14 +299,17 @@ export function QueueTable({
 
         {/* External Links */}
         <div 
-          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.external }}
         >
           Ext. Links
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('external')}
           />
@@ -290,14 +317,17 @@ export function QueueTable({
 
         {/* Spelling */}
         <div 
-          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.spelling }}
         >
           Spelling
           <div 
+            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+          />
+          <div 
             className={cn(
-              "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize",
-              "opacity-0 hover:opacity-100 hover:bg-blue-500"
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
             )}
             onMouseDown={handleResizeStart('spelling')}
           />
@@ -305,10 +335,17 @@ export function QueueTable({
 
         {/* Klaviyo */}
         <div 
-          className="flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal"
+          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
           style={{ width: columnWidths.klaviyo }}
         >
           Klaviyo
+          <div 
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
+              "hover:bg-blue-500/20"
+            )}
+            onMouseDown={handleResizeStart('klaviyo')}
+          />
         </div>
       </div>
 
