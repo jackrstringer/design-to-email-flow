@@ -64,6 +64,9 @@ function mapRowToBrand(row: any): Brand {
     klaviyoApiKey: row.klaviyo_api_key || undefined,
     typography: parseTypography(row.typography),
     htmlFormattingRules: parseFormattingRules(row.html_formatting_rules),
+    clickupApiKey: row.clickup_api_key || undefined,
+    clickupWorkspaceId: row.clickup_workspace_id || undefined,
+    clickupListId: row.clickup_list_id || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
