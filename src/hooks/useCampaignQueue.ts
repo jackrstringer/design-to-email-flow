@@ -15,6 +15,13 @@ export interface SegmentPreset {
   is_default: boolean;
 }
 
+// Brand data needed for expanded row panel
+export interface BrandData {
+  footerHtml: string | null;
+  allLinks: string[];
+  domain: string | null;
+}
+
 // Normalize segment data - handles both string IDs and {id, name} objects
 function normalizeSegmentIds(segments: unknown): string[] {
   if (!Array.isArray(segments)) return [];
@@ -75,6 +82,24 @@ export function useCampaignQueue() {
   const [loading, setLoading] = useState(true);
   const [presetsByBrand, setPresetsByBrand] = useState<Record<string, SegmentPreset[]>>({});
   const [klaviyoListsByBrand, setKlaviyoListsByBrand] = useState<Record<string, KlaviyoList[]>>({});
+  const [brandDataByBrand, setBrandDataByBrand] = useState<Record<string, BrandData>>({});
+  const [userZoomLevel, setUserZoomLevel] = useState<number>(39);
+
+  // Fetch user zoom level once on mount
+  useEffect(() => {
+    const loadUserPrefs = async () => {
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('queue_zoom_level')
+        .eq('id', user.id)
+        .single();
+      if (profile?.queue_zoom_level) {
+        setUserZoomLevel(profile.queue_zoom_level);
+      }
+    };
+    loadUserPrefs();
+  }, [user]);
 
   const fetchItems = useCallback(async (isInitial = false) => {
     if (!user) {
@@ -103,14 +128,16 @@ export function useCampaignQueue() {
       const brandIds = [...new Set(data?.filter(d => d.brand_id).map(d => d.brand_id) || [])];
       
       if (brandIds.length > 0) {
-        const { data: presetsData } = await supabase
-          .from('segment_presets')
-          .select('*')
-          .in('brand_id', brandIds);
+        // Fetch presets, brand data, and Klaviyo lists in parallel
+        const [presetsResult, brandsResult, footersResult] = await Promise.all([
+          supabase.from('segment_presets').select('*').in('brand_id', brandIds),
+          supabase.from('brands').select('id, klaviyo_api_key, footer_html, all_links, domain').in('id', brandIds),
+          supabase.from('brand_footers').select('brand_id, html, is_primary').in('brand_id', brandIds)
+        ]);
         
-        if (presetsData) {
-          // Group presets by brand_id
-          const grouped = presetsData.reduce((acc, p) => {
+        // Process presets
+        if (presetsResult.data) {
+          const grouped = presetsResult.data.reduce((acc, p) => {
             const brandId = p.brand_id;
             if (!acc[brandId]) acc[brandId] = [];
             acc[brandId].push({
@@ -123,7 +150,6 @@ export function useCampaignQueue() {
             return acc;
           }, {} as Record<string, SegmentPreset[]>);
           
-          // Sort each brand's presets: defaults first
           Object.keys(grouped).forEach(brandId => {
             grouped[brandId].sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
           });
@@ -131,32 +157,54 @@ export function useCampaignQueue() {
           setPresetsByBrand(grouped);
         }
 
-        // Prefetch Klaviyo lists for all brands
-        const { data: brandsWithKeys } = await supabase
-          .from('brands')
-          .select('id, klaviyo_api_key')
-          .in('id', brandIds)
-          .not('klaviyo_api_key', 'is', null);
-
-        if (brandsWithKeys && brandsWithKeys.length > 0) {
-          // Fetch Klaviyo lists in parallel for all brands
-          const listFetchPromises = brandsWithKeys.map(async (brand) => {
-            try {
-              const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
-                body: { klaviyoApiKey: brand.klaviyo_api_key }
-              });
-              return { brandId: brand.id, lists: (data?.lists || []) as KlaviyoList[] };
-            } catch {
-              return { brandId: brand.id, lists: [] as KlaviyoList[] };
+        // Process brand data (footer, links, domain)
+        if (brandsResult.data) {
+          const brandDataMap: Record<string, BrandData> = {};
+          
+          for (const brand of brandsResult.data) {
+            // Find footer - primary first, then most recent from brand_footers, then legacy footer_html
+            let footerHtml: string | null = null;
+            const brandFooters = footersResult.data?.filter(f => f.brand_id === brand.id) || [];
+            const primaryFooter = brandFooters.find(f => f.is_primary);
+            
+            if (primaryFooter?.html) {
+              footerHtml = primaryFooter.html;
+            } else if (brandFooters.length > 0) {
+              footerHtml = brandFooters[0].html;
+            } else if (brand.footer_html) {
+              footerHtml = brand.footer_html;
             }
-          });
+            
+            brandDataMap[brand.id] = {
+              footerHtml,
+              allLinks: Array.isArray(brand.all_links) ? brand.all_links as string[] : [],
+              domain: brand.domain || null,
+            };
+          }
+          
+          setBrandDataByBrand(brandDataMap);
+          
+          // Prefetch Klaviyo lists for brands with API keys
+          const brandsWithKeys = brandsResult.data.filter(b => b.klaviyo_api_key);
+          if (brandsWithKeys.length > 0) {
+            const listFetchPromises = brandsWithKeys.map(async (brand) => {
+              try {
+                const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
+                  body: { klaviyoApiKey: brand.klaviyo_api_key }
+                });
+                return { brandId: brand.id, lists: (data?.lists || []) as KlaviyoList[] };
+              } catch {
+                return { brandId: brand.id, lists: [] as KlaviyoList[] };
+              }
+            });
 
-          const listResults = await Promise.all(listFetchPromises);
-          const klaviyoListsMap: Record<string, KlaviyoList[]> = {};
-          listResults.forEach(({ brandId, lists }) => {
-            klaviyoListsMap[brandId] = lists;
-          });
-          setKlaviyoListsByBrand(klaviyoListsMap);
+            const listResults = await Promise.all(listFetchPromises);
+            const klaviyoListsMap: Record<string, KlaviyoList[]> = {};
+            listResults.forEach(({ brandId, lists }) => {
+              klaviyoListsMap[brandId] = lists;
+            });
+            setKlaviyoListsByBrand(klaviyoListsMap);
+          }
         }
       }
     }
@@ -322,6 +370,8 @@ export function useCampaignQueue() {
     loading,
     presetsByBrand,
     klaviyoListsByBrand,
+    brandDataByBrand,
+    userZoomLevel,
     refresh,
     updateItem,
     deleteItem,
