@@ -22,6 +22,8 @@ interface SegmentRowProps {
   preset: SegmentPreset;
   klaviyoSegments: KlaviyoSegment[];
   loadingSegments: boolean;
+  segmentSize?: { loading: boolean; size: number | null };
+  formatSize: (size: number | null) => string;
   onUpdate: (id: string, updates: Partial<SegmentPreset>) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
 }
@@ -30,6 +32,8 @@ export function SegmentRow({
   preset,
   klaviyoSegments,
   loadingSegments,
+  segmentSize,
+  formatSize,
   onUpdate,
   onDelete,
 }: SegmentRowProps) {
@@ -90,6 +94,17 @@ export function SegmentRow({
           >
             {preset.name}
           </div>
+        )}
+      </TableCell>
+
+      {/* Size */}
+      <TableCell className="text-right">
+        {segmentSize?.loading ? (
+          <Loader2 className="h-4 w-4 animate-spin ml-auto" />
+        ) : (
+          <span className="text-sm font-medium tabular-nums">
+            {formatSize(segmentSize?.size ?? null)}
+          </span>
         )}
       </TableCell>
 
