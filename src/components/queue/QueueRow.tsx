@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { StatusSelector } from './StatusSelector';
 import { InlineEditableText } from './InlineEditableText';
 import { InlineDropdownSelector } from './InlineDropdownSelector';
@@ -102,6 +103,47 @@ export function QueueRow({ item, isExpanded, onToggleExpand, onUpdate, columnWid
     }
     onUpdate();
   };
+
+  // Refs to prevent duplicate auto-selections
+  const hasAutoSelectedSL = useRef(false);
+  const hasAutoSelectedPT = useRef(false);
+
+  // Reset refs when item changes
+  useEffect(() => {
+    hasAutoSelectedSL.current = false;
+    hasAutoSelectedPT.current = false;
+  }, [item.id]);
+
+  // Auto-select first options when available but nothing selected
+  useEffect(() => {
+    // Auto-select first subject line
+    if (
+      !hasAutoSelectedSL.current && 
+      !item.selected_subject_line && 
+      item.generated_subject_lines?.length > 0 &&
+      item.status !== 'processing'
+    ) {
+      hasAutoSelectedSL.current = true;
+      handleSubjectLineSelect(item.generated_subject_lines[0]);
+    }
+    
+    // Auto-select first preview text  
+    if (
+      !hasAutoSelectedPT.current &&
+      !item.selected_preview_text && 
+      item.generated_preview_texts?.length > 0 &&
+      item.status !== 'processing'
+    ) {
+      hasAutoSelectedPT.current = true;
+      handlePreviewTextSelect(item.generated_preview_texts[0]);
+    }
+  }, [
+    item.selected_subject_line, 
+    item.selected_preview_text,
+    item.generated_subject_lines, 
+    item.generated_preview_texts,
+    item.status
+  ]);
 
   return (
     <div 
