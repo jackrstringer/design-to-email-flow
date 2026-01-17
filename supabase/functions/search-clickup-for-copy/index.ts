@@ -80,6 +80,48 @@ function extractDocLinks(text: string): string[] {
   return matches;
 }
 
+// Extract file key and node ID from any Figma URL format
+// Handles: /file/ and /design/ URLs, node-id with :, -, or %3A encoding
+function parseFigmaUrl(url: string): { fileKey: string; nodeId: string } | null {
+  // Match file key from /file/ or /design/ URLs
+  const fileKeyMatch = url.match(/figma\.com\/(?:file|design)\/([a-zA-Z0-9]+)/);
+  if (!fileKeyMatch) return null;
+  
+  // Match node-id parameter (handles 489-885, 489%3A885, 489:885)
+  const nodeIdMatch = url.match(/node-id=([^&\s]+)/);
+  if (!nodeIdMatch) return null;
+  
+  // Normalize node ID: decode URL encoding, replace hyphens with colons
+  let nodeId = decodeURIComponent(nodeIdMatch[1]);
+  nodeId = nodeId.replace(/-/g, ':');  // 489-885 -> 489:885
+  
+  return {
+    fileKey: fileKeyMatch[1],
+    nodeId: nodeId
+  };
+}
+
+// Check if two Figma URLs point to the same frame
+function figmaUrlsMatch(url1: string, url2: string): boolean {
+  const parsed1 = parseFigmaUrl(url1);
+  const parsed2 = parseFigmaUrl(url2);
+  
+  if (!parsed1 || !parsed2) return false;
+  
+  return parsed1.fileKey === parsed2.fileKey && parsed1.nodeId === parsed2.nodeId;
+}
+
+// Find all Figma URLs in a text and check if any match the target
+function textContainsFigmaUrl(text: string, targetFigmaUrl: string): boolean {
+  const figmaUrlsInText = text.match(/https:\/\/[^\s"'<>]*figma\.com\/[^\s"'<>]+/g) || [];
+  for (const urlInText of figmaUrlsInText) {
+    if (figmaUrlsMatch(urlInText, targetFigmaUrl)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -96,7 +138,11 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[clickup] Searching for Figma URL in list ${listId}: ${figmaUrl}`);
+    // Parse and log the target Figma URL for debugging
+    const parsedTarget = parseFigmaUrl(figmaUrl);
+    console.log(`[clickup] Searching for Figma URL in list ${listId}`);
+    console.log(`[clickup] Target URL: ${figmaUrl}`);
+    console.log(`[clickup] Parsed target - fileKey: ${parsedTarget?.fileKey || 'NONE'}, nodeId: ${parsedTarget?.nodeId || 'NONE'}`);
 
     // Get tasks from the specific list
     const tasksResponse = await fetch(
@@ -118,21 +164,23 @@ serve(async (req) => {
     const tasks = tasksData.tasks || [];
     console.log(`[clickup] Found ${tasks.length} tasks in list`);
 
-    // Find task containing the Figma URL
+    // Find task containing the Figma URL (using normalized matching)
     let matchedTask = null;
     for (const task of tasks) {
       const description = task.description || '';
       const customFields = task.custom_fields || [];
       
-      // Check description
-      if (description.includes(figmaUrl)) {
+      // Check description using normalized Figma URL matching
+      if (textContainsFigmaUrl(description, figmaUrl)) {
+        console.log(`[clickup] MATCH found in description of task: ${task.name}`);
         matchedTask = task;
         break;
       }
       
-      // Check custom fields
+      // Check custom fields using normalized matching
       for (const field of customFields) {
-        if (field.value && String(field.value).includes(figmaUrl)) {
+        if (field.value && typeof field.value === 'string' && textContainsFigmaUrl(field.value, figmaUrl)) {
+          console.log(`[clickup] MATCH found in custom field "${field.name}" of task: ${task.name}`);
           matchedTask = task;
           break;
         }
