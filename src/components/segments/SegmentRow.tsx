@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Trash2, Loader2 } from 'lucide-react';
+import { Trash2, Loader2, Star } from 'lucide-react';
 import { SegmentPreset, KlaviyoSegment } from '@/hooks/useSegmentPresets';
 import { SegmentChipsEditor } from './SegmentChipsEditor';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
@@ -22,7 +21,6 @@ interface ColumnWidths {
   description: number;
   included: number;
   excluded: number;
-  default: number;
   actions: number;
 }
 
@@ -69,14 +67,16 @@ export function SegmentRow({
     setEditingDescription(false);
   };
 
-  const handleDefaultChange = async (checked: boolean) => {
-    await onUpdate(preset.id, { is_default: checked });
+  const handleSetDefault = async () => {
+    if (!preset.is_default) {
+      await onUpdate(preset.id, { is_default: true });
+    }
   };
 
   return (
     <div className="flex items-center hover:bg-muted/30 group">
-      {/* Name */}
-      <div className="px-3 py-2" style={{ width: columnWidths.name, minWidth: 120 }}>
+      {/* Name + Star */}
+      <div className="px-3 py-2 flex items-center gap-2" style={{ width: columnWidths.name, minWidth: 150 }}>
         {editingName ? (
           <Input
             value={tempName}
@@ -89,21 +89,31 @@ export function SegmentRow({
                 setEditingName(false);
               }
             }}
-            className="h-7 text-sm"
+            className="h-7 text-sm flex-1"
             autoFocus
           />
         ) : (
-          <span
-            className="text-sm font-medium cursor-pointer hover:text-primary"
-            onClick={() => setEditingName(true)}
-          >
-            {preset.name}
-          </span>
+          <>
+            <span
+              className="text-sm font-medium cursor-pointer hover:text-primary truncate"
+              onClick={() => setEditingName(true)}
+            >
+              {preset.name}
+            </span>
+            {preset.is_default ? (
+              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+            ) : (
+              <Star 
+                className="h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-yellow-400 hover:fill-yellow-400 cursor-pointer transition-all flex-shrink-0"
+                onClick={handleSetDefault}
+              />
+            )}
+          </>
         )}
       </div>
 
       {/* Description */}
-      <div className="px-3 py-2" style={{ width: columnWidths.description, minWidth: 150 }}>
+      <div className="px-3 py-2 flex-1" style={{ minWidth: 150 }}>
         {editingDescription ? (
           <Input
             value={tempDescription}
@@ -131,7 +141,7 @@ export function SegmentRow({
       </div>
 
       {/* Included Segments */}
-      <div className="px-3 py-2 overflow-hidden" style={{ width: columnWidths.included, minWidth: 150 }}>
+      <div className="px-3 py-2 overflow-hidden flex-1" style={{ minWidth: 150 }}>
         <SegmentChipsEditor
           selectedSegments={preset.included_segments}
           availableSegments={klaviyoSegments}
@@ -142,24 +152,13 @@ export function SegmentRow({
       </div>
 
       {/* Excluded Segments */}
-      <div className="px-3 py-2 overflow-hidden" style={{ width: columnWidths.excluded, minWidth: 150 }}>
+      <div className="px-3 py-2 overflow-hidden flex-1" style={{ minWidth: 150 }}>
         <SegmentChipsEditor
           selectedSegments={preset.excluded_segments}
           availableSegments={klaviyoSegments}
           loading={loadingSegments}
           onChange={(segments) => onUpdate(preset.id, { excluded_segments: segments })}
           placeholder="Exclude..."
-        />
-      </div>
-
-      {/* Default */}
-      <div 
-        className="px-3 py-2 flex justify-center" 
-        style={{ width: columnWidths.default, minWidth: 60 }}
-      >
-        <Checkbox
-          checked={preset.is_default}
-          onCheckedChange={handleDefaultChange}
         />
       </div>
 

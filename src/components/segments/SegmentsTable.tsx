@@ -11,25 +11,22 @@ interface ColumnWidths {
   description: number;
   included: number;
   excluded: number;
-  default: number;
   actions: number;
 }
 
 const DEFAULT_WIDTHS: ColumnWidths = {
-  name: 180,
-  description: 250,
-  included: 220,
-  excluded: 220,
-  default: 80,
+  name: 200,
+  description: 200,
+  included: 200,
+  excluded: 200,
   actions: 60,
 };
 
 const MIN_WIDTHS: ColumnWidths = {
-  name: 120,
+  name: 150,
   description: 150,
   included: 150,
   excluded: 150,
-  default: 60,
   actions: 60,
 };
 
@@ -39,7 +36,6 @@ interface SegmentsTableProps {
   klaviyoSegments: KlaviyoSegment[];
   loadingSegments: boolean;
   brandId: string;
-  klaviyoApiKey: string | null;
   onCreatePreset: (preset: Omit<SegmentPreset, 'id' | 'created_at' | 'updated_at'>) => Promise<any>;
   onUpdatePreset: (id: string, updates: Partial<SegmentPreset>) => Promise<boolean>;
   onDeletePreset: (id: string) => Promise<boolean>;
@@ -111,12 +107,11 @@ export function SegmentsTable({
     );
   }
 
-  const columns: { key: keyof ColumnWidths; label: string; align?: 'center' | 'left' | 'right' }[] = [
+  const columns: { key: keyof ColumnWidths; label: string; grow?: boolean }[] = [
     { key: 'name', label: 'Name' },
-    { key: 'description', label: 'Description' },
-    { key: 'included', label: 'Included Segments' },
-    { key: 'excluded', label: 'Excluded Segments' },
-    { key: 'default', label: 'Default', align: 'center' },
+    { key: 'description', label: 'Description', grow: true },
+    { key: 'included', label: 'Included Segments', grow: true },
+    { key: 'excluded', label: 'Excluded Segments', grow: true },
     { key: 'actions', label: '' },
   ];
 
@@ -129,9 +124,9 @@ export function SegmentsTable({
             key={col.key}
             className="relative flex items-center px-3 py-2 text-sm font-medium text-muted-foreground"
             style={{ 
-              width: columnWidths[col.key], 
+              width: col.grow ? undefined : columnWidths[col.key], 
               minWidth: MIN_WIDTHS[col.key],
-              justifyContent: col.align === 'center' ? 'center' : 'flex-start',
+              flex: col.grow ? 1 : undefined,
             }}
           >
             {col.label}
