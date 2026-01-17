@@ -68,6 +68,32 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           return;
         }
 
+        // Load footer from brand_footers table (same logic as ExpandedRowPanel)
+        let footerHtml: string | null = null;
+        const { data: primaryFooter } = await supabase
+          .from('brand_footers')
+          .select('html')
+          .eq('brand_id', item.brand_id)
+          .eq('is_primary', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (primaryFooter?.html) {
+          footerHtml = primaryFooter.html;
+        } else {
+          // Fallback to most recent footer
+          const { data: recentFooter } = await supabase
+            .from('brand_footers')
+            .select('html')
+            .eq('brand_id', item.brand_id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          // Final fallback to legacy brands.footer_html
+          footerHtml = recentFooter?.html || brand.footer_html || null;
+        }
+
         // Fetch segment preset for this campaign
         let includedSegments: string[] = [];
         let excludedSegments: string[] = [];
@@ -121,7 +147,7 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             previewText: item.selected_preview_text,
             slices: item.slices,
             imageUrl: item.image_url,
-            footerHtml: brand.footer_html,
+            footerHtml: footerHtml,
             mode: 'campaign',
             includedSegments,
             excludedSegments,
