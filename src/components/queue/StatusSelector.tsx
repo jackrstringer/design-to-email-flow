@@ -254,7 +254,8 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-green-600 text-white hover:bg-green-700 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-white hover:opacity-90 transition-colors whitespace-nowrap"
+            style={{ backgroundColor: '#4D9568' }}
           >
             <span className="whitespace-nowrap">Built in Klaviyo</span>
             <ChevronDown className="h-3 w-3 flex-shrink-0" />
@@ -315,11 +316,12 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           onClick={(e) => e.stopPropagation()}
           className={cn(
             "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap",
-            // Ready for Review: always yellow
-            isReady && "bg-yellow-100 text-yellow-700 hover:bg-yellow-200",
+            // Ready for Review: always yellow with black text
+            isReady && "text-black hover:opacity-90",
             // Approved: light green
             isApproved && "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
           )}
+          style={isReady ? { backgroundColor: '#f1c21b' } : undefined}
         >
           {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approve & Build'}
           <ChevronDown className="h-3 w-3" />
@@ -337,7 +339,10 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             isReady && "bg-gray-50"
           )}
         >
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-yellow-100 text-yellow-700 whitespace-nowrap">
+          <span 
+            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-black whitespace-nowrap"
+            style={{ backgroundColor: '#f1c21b' }}
+          >
             Ready for Review
           </span>
         </button>

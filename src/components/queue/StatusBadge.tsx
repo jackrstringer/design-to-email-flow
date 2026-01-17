@@ -37,10 +37,10 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
       return (
         <Tooltip>
           <TooltipTrigger>
-            <div className={cn(
-              "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-              "bg-yellow-100 text-yellow-700"
-            )}>
+            <div 
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap text-black"
+              style={{ backgroundColor: '#f1c21b' }}
+            >
               <AlertTriangle className="h-3 w-3 flex-shrink-0" />
               {issueCount} {issueCount === 1 ? 'issue' : 'issues'}
             </div>
@@ -54,10 +54,10 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
 
     // No issues - Yellow badge (same as with issues)
     return (
-      <div className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-        "bg-yellow-100 text-yellow-700"
-      )}>
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap text-black"
+        style={{ backgroundColor: '#f1c21b' }}
+      >
         Ready for Review
       </div>
     );
@@ -78,10 +78,10 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
   if (status === 'sent_to_klaviyo') {
     // Dark green for built in Klaviyo
     return (
-      <div className={cn(
-        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-        "bg-green-600 text-white"
-      )}>
+      <div 
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap text-white"
+        style={{ backgroundColor: '#4D9568' }}
+      >
         Built in Klaviyo
       </div>
     );
