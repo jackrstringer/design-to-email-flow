@@ -73,10 +73,25 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     lastScraped: string | null;
   }>({ subjectLines: [], previewTexts: [], lastScraped: null });
 
+  // ClickUp integration state
+  const [clickupApiKey, setClickupApiKey] = useState((brand as any).clickup_api_key || '');
+  const [clickupWorkspaceId, setClickupWorkspaceId] = useState((brand as any).clickup_workspace_id || '');
+  const [clickupListId, setClickupListId] = useState((brand as any).clickup_list_id || '');
+  const [showClickupApiKey, setShowClickupApiKey] = useState(false);
+  const [isLoadingClickupData, setIsLoadingClickupData] = useState(false);
+  const [isSavingClickup, setIsSavingClickup] = useState(false);
+  const [clickupWorkspaces, setClickupWorkspaces] = useState<{id: string; name: string}[]>([]);
+  const [clickupSpaces, setClickupSpaces] = useState<{id: string; name: string}[]>([]);
+  const [clickupFolders, setClickupFolders] = useState<{id: string; name: string}[]>([]);
+  const [clickupLists, setClickupLists] = useState<{id: string; name: string; folderless?: boolean}[]>([]);
+  const [selectedSpaceId, setSelectedSpaceId] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState('');
+
   // Collapsible sections
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     footers: true,
     api: true,
+    clickup: false,
     copyExamples: false,
   });
 
@@ -522,6 +537,108 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     setCopyExamples(emptyExamples);
     toast.success('Copy examples cleared');
     onBrandChange();
+  };
+
+  // ClickUp integration handlers
+  const fetchClickupWorkspaces = async (apiKey: string) => {
+    if (!apiKey) return;
+    setIsLoadingClickupData(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
+        body: { type: 'workspaces', clickupApiKey: apiKey }
+      });
+      if (error) throw error;
+      setClickupWorkspaces(data.workspaces || []);
+    } catch (err) {
+      console.error('Failed to fetch ClickUp workspaces:', err);
+      toast.error('Failed to connect to ClickUp. Check your API key.');
+      setClickupWorkspaces([]);
+    } finally {
+      setIsLoadingClickupData(false);
+    }
+  };
+
+  const fetchClickupSpaces = async (workspaceId: string) => {
+    if (!workspaceId || !clickupApiKey) return;
+    setIsLoadingClickupData(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
+        body: { type: 'spaces', clickupApiKey, workspaceId }
+      });
+      if (error) throw error;
+      setClickupSpaces(data.spaces || []);
+      setClickupFolders([]);
+      setClickupLists([]);
+      setSelectedSpaceId('');
+      setSelectedFolderId('');
+    } catch (err) {
+      console.error('Failed to fetch ClickUp spaces:', err);
+    } finally {
+      setIsLoadingClickupData(false);
+    }
+  };
+
+  const fetchClickupFoldersAndLists = async (spaceId: string) => {
+    if (!spaceId || !clickupApiKey) return;
+    setIsLoadingClickupData(true);
+    setSelectedSpaceId(spaceId);
+    setSelectedFolderId('');
+    try {
+      // Fetch folders
+      const { data: foldersData } = await supabase.functions.invoke('get-clickup-hierarchy', {
+        body: { type: 'folders', clickupApiKey, spaceId }
+      });
+      setClickupFolders(foldersData?.folders || []);
+      
+      // Also fetch folderless lists
+      const { data: listsData } = await supabase.functions.invoke('get-clickup-hierarchy', {
+        body: { type: 'lists', clickupApiKey, spaceId }
+      });
+      setClickupLists(listsData?.lists || []);
+    } catch (err) {
+      console.error('Failed to fetch ClickUp folders/lists:', err);
+    } finally {
+      setIsLoadingClickupData(false);
+    }
+  };
+
+  const fetchClickupListsFromFolder = async (folderId: string) => {
+    if (!folderId || !clickupApiKey) return;
+    setIsLoadingClickupData(true);
+    setSelectedFolderId(folderId);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
+        body: { type: 'lists', clickupApiKey, folderId, spaceId: selectedSpaceId }
+      });
+      if (error) throw error;
+      setClickupLists(data.lists || []);
+    } catch (err) {
+      console.error('Failed to fetch ClickUp lists:', err);
+    } finally {
+      setIsLoadingClickupData(false);
+    }
+  };
+
+  const handleSaveClickupSettings = async () => {
+    setIsSavingClickup(true);
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .update({
+          clickup_api_key: clickupApiKey || null,
+          clickup_workspace_id: clickupWorkspaceId || null,
+          clickup_list_id: clickupListId || null,
+        })
+        .eq('id', brand.id);
+
+      if (error) throw error;
+      toast.success('ClickUp settings saved');
+      onBrandChange();
+    } catch (error) {
+      toast.error('Failed to save ClickUp settings');
+    } finally {
+      setIsSavingClickup(false);
+    }
   };
 
   const handleLogoUpload = useCallback(async (file: File, type: 'dark' | 'light') => {
@@ -1012,6 +1129,145 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
               <Plus className="h-4 w-4 mr-2" />
               <span className="text-sm">Add Footer</span>
             </button>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* ClickUp Integration */}
+      <Collapsible open={openSections.clickup} onOpenChange={() => toggleSection('clickup')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.clickup ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">ClickUp Integration</span>
+            {clickupListId ? (
+              <span className="text-xs text-green-600">Connected</span>
+            ) : (
+              <span className="text-xs text-muted-foreground">Optional</span>
+            )}
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Connect ClickUp to automatically pull subject lines and preview text from campaign tasks.
+            </p>
+            
+            {/* API Token */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">API Token</Label>
+              <div className="flex gap-2">
+                <Input
+                  type={showClickupApiKey ? 'text' : 'password'}
+                  value={clickupApiKey}
+                  onChange={(e) => setClickupApiKey(e.target.value)}
+                  placeholder="pk_..."
+                  className="flex-1 h-8 text-xs font-mono"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setShowClickupApiKey(!showClickupApiKey)}
+                >
+                  {showClickupApiKey ? 'Hide' : 'Show'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => fetchClickupWorkspaces(clickupApiKey)}
+                  disabled={!clickupApiKey || isLoadingClickupData}
+                >
+                  {isLoadingClickupData ? 'Loading...' : 'Connect'}
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Get your token at <a href="https://app.clickup.com/settings/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">app.clickup.com → Settings → Apps</a>
+              </p>
+            </div>
+
+            {/* Workspace selector */}
+            {clickupWorkspaces.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Workspace</Label>
+                <select
+                  value={clickupWorkspaceId}
+                  onChange={(e) => {
+                    setClickupWorkspaceId(e.target.value);
+                    fetchClickupSpaces(e.target.value);
+                  }}
+                  className="w-full h-8 text-xs border rounded px-2"
+                >
+                  <option value="">Select workspace...</option>
+                  {clickupWorkspaces.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Space selector */}
+            {clickupSpaces.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Space</Label>
+                <select
+                  value={selectedSpaceId}
+                  onChange={(e) => fetchClickupFoldersAndLists(e.target.value)}
+                  className="w-full h-8 text-xs border rounded px-2"
+                >
+                  <option value="">Select space...</option>
+                  {clickupSpaces.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Folder selector (optional) */}
+            {clickupFolders.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Folder (optional)</Label>
+                <select
+                  value={selectedFolderId}
+                  onChange={(e) => fetchClickupListsFromFolder(e.target.value)}
+                  className="w-full h-8 text-xs border rounded px-2"
+                >
+                  <option value="">No folder (folderless lists)</option>
+                  {clickupFolders.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* List selector */}
+            {clickupLists.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">List (where campaign tasks live)</Label>
+                <select
+                  value={clickupListId}
+                  onChange={(e) => setClickupListId(e.target.value)}
+                  className="w-full h-8 text-xs border rounded px-2"
+                >
+                  <option value="">Select list...</option>
+                  {clickupLists.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}{l.folderless ? ' (folderless)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Save button */}
+            {(clickupApiKey || clickupListId) && (
+              <Button
+                size="sm"
+                onClick={handleSaveClickupSettings}
+                disabled={isSavingClickup}
+                className="text-xs"
+              >
+                {isSavingClickup ? 'Saving...' : 'Save ClickUp Settings'}
+              </Button>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

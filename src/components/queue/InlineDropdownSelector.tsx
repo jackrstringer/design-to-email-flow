@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Loader2 } from 'lucide-react';
+import { ChevronDown, Check, Loader2, Bot } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -15,6 +15,7 @@ interface InlineDropdownSelectorProps {
   placeholder?: string;
   isProcessing?: boolean;
   processingStep?: string | null;
+  isAiGenerated?: boolean;
 }
 
 export function InlineDropdownSelector({
@@ -25,6 +26,7 @@ export function InlineDropdownSelector({
   placeholder = 'Select...',
   isProcessing = false,
   processingStep = null,
+  isAiGenerated = false,
 }: InlineDropdownSelectorProps) {
   const [open, setOpen] = useState(false);
   const [editValue, setEditValue] = useState(selected || '');
@@ -164,12 +166,17 @@ export function InlineDropdownSelector({
           ) : (
             <span
               className={cn(
-                "text-[13px] truncate px-1 py-0.5 flex-1 min-w-0 text-gray-900",
+                "text-[13px] truncate px-1 py-0.5 flex-1 min-w-0 text-gray-900 flex items-center gap-1",
                 !displayValue && "text-gray-400 italic"
               )}
               title={displayValue || placeholder}
             >
-              {displayValue || placeholder}
+              <span className="truncate">{displayValue || placeholder}</span>
+              {isAiGenerated && displayValue && (
+                <span title="AI generated">
+                  <Bot className="h-3 w-3 text-gray-400 shrink-0" />
+                </span>
+              )}
             </span>
           )}
 

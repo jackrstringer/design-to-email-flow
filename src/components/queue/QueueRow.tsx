@@ -243,6 +243,7 @@ export function QueueRow({
           placeholder="Select subject..."
           isProcessing={item.status === 'processing'}
           processingStep={item.processing_step}
+          isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
         />
       </div>
 
@@ -260,6 +261,7 @@ export function QueueRow({
           placeholder="Select preview..."
           isProcessing={item.status === 'processing'}
           processingStep={item.processing_step}
+          isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
         />
       </div>
       

@@ -42,6 +42,10 @@ export interface CampaignQueueItem {
   klaviyo_campaign_url: string | null;
   sent_to_klaviyo_at: string | null;
   selected_segment_preset_id: string | null;
+  // ClickUp integration fields
+  copy_source: 'ai' | 'clickup' | 'figma' | 'manual' | null;
+  clickup_task_id: string | null;
+  clickup_task_url: string | null;
   created_at: string;
   updated_at: string;
   // Joined brand data

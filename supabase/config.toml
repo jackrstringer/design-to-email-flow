@@ -101,3 +101,9 @@ verify_jwt = false
 
 [functions.get-plugin-brands]
 verify_jwt = false
+
+[functions.search-clickup-for-copy]
+verify_jwt = false
+
+[functions.get-clickup-hierarchy]
+verify_jwt = false
