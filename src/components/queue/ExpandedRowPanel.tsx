@@ -15,16 +15,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+interface KlaviyoList {
+  id: string;
+  name: string;
+}
+
 interface ExpandedRowPanelProps {
   item: CampaignQueueItem;
   onUpdate: () => void;
   onClose: () => void;
   preloadedPresets?: SegmentPreset[];
-}
-
-interface KlaviyoList {
-  id: string;
-  name: string;
+  preloadedKlaviyoLists?: KlaviyoList[];
 }
 
 interface SliceData {
@@ -53,7 +54,19 @@ interface SegmentPreset {
 // Base width for email content (standard email width)
 const BASE_WIDTH = 600;
 
-export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: ExpandedRowPanelProps) {
+// Normalize segment data - handles both string IDs and {id, name} objects
+function normalizeSegmentIds(segments: unknown): string[] {
+  if (!Array.isArray(segments)) return [];
+  return segments.map(seg => {
+    if (typeof seg === 'string') return seg;
+    if (typeof seg === 'object' && seg !== null && 'id' in seg) {
+      return (seg as { id: string }).id;
+    }
+    return String(seg);
+  });
+}
+
+export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets, preloadedKlaviyoLists }: ExpandedRowPanelProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -223,8 +236,10 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
           }
         }
 
-        // Load Klaviyo lists
-        if (brand?.klaviyo_api_key) {
+        // Load Klaviyo lists - use preloaded if available
+        if (preloadedKlaviyoLists && preloadedKlaviyoLists.length > 0) {
+          setKlaviyoLists(preloadedKlaviyoLists);
+        } else if (brand?.klaviyo_api_key) {
           const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
             body: { klaviyoApiKey: brand.klaviyo_api_key }
           });
@@ -260,8 +275,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
             const mappedPresets = presetsData.map(p => ({
               id: p.id,
               name: p.name,
-              included_segments: (p.included_segments as string[]) || [],
-              excluded_segments: (p.excluded_segments as string[]) || [],
+              included_segments: normalizeSegmentIds(p.included_segments),
+              excluded_segments: normalizeSegmentIds(p.excluded_segments),
               is_default: p.is_default || false,
             }));
             
@@ -288,7 +303,7 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
     };
 
     loadBrandData();
-  }, [item.brand_id, preloadedPresets]);
+  }, [item.brand_id, preloadedPresets, preloadedKlaviyoLists]);
 
   // Force default segment modal if no default preset exists
   useEffect(() => {
@@ -382,8 +397,8 @@ export function ExpandedRowPanel({ item, onUpdate, onClose, preloadedPresets }: 
 
   // Apply a preset
   const applyPreset = (preset: SegmentPreset) => {
-    setIncludedSegments(preset.included_segments);
-    setExcludedSegments(preset.excluded_segments);
+    setIncludedSegments(normalizeSegmentIds(preset.included_segments));
+    setExcludedSegments(normalizeSegmentIds(preset.excluded_segments));
     setSelectedPresetId(preset.id);
     toast.success(`Applied "${preset.name}"`);
   };

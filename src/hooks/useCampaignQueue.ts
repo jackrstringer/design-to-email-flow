@@ -2,12 +2,29 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
+export interface KlaviyoList {
+  id: string;
+  name: string;
+}
+
 export interface SegmentPreset {
   id: string;
   name: string;
   included_segments: string[];
   excluded_segments: string[];
   is_default: boolean;
+}
+
+// Normalize segment data - handles both string IDs and {id, name} objects
+function normalizeSegmentIds(segments: unknown): string[] {
+  if (!Array.isArray(segments)) return [];
+  return segments.map(seg => {
+    if (typeof seg === 'string') return seg;
+    if (typeof seg === 'object' && seg !== null && 'id' in seg) {
+      return (seg as { id: string }).id;
+    }
+    return String(seg);
+  });
 }
 
 export interface CampaignQueueItem {
@@ -57,6 +74,7 @@ export function useCampaignQueue() {
   const [items, setItems] = useState<CampaignQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [presetsByBrand, setPresetsByBrand] = useState<Record<string, SegmentPreset[]>>({});
+  const [klaviyoListsByBrand, setKlaviyoListsByBrand] = useState<Record<string, KlaviyoList[]>>({});
 
   const fetchItems = useCallback(async (isInitial = false) => {
     if (!user) {
@@ -98,8 +116,8 @@ export function useCampaignQueue() {
             acc[brandId].push({
               id: p.id,
               name: p.name,
-              included_segments: (p.included_segments as string[]) || [],
-              excluded_segments: (p.excluded_segments as string[]) || [],
+              included_segments: normalizeSegmentIds(p.included_segments),
+              excluded_segments: normalizeSegmentIds(p.excluded_segments),
               is_default: p.is_default || false,
             });
             return acc;
@@ -111,6 +129,34 @@ export function useCampaignQueue() {
           });
           
           setPresetsByBrand(grouped);
+        }
+
+        // Prefetch Klaviyo lists for all brands
+        const { data: brandsWithKeys } = await supabase
+          .from('brands')
+          .select('id, klaviyo_api_key')
+          .in('id', brandIds)
+          .not('klaviyo_api_key', 'is', null);
+
+        if (brandsWithKeys && brandsWithKeys.length > 0) {
+          // Fetch Klaviyo lists in parallel for all brands
+          const listFetchPromises = brandsWithKeys.map(async (brand) => {
+            try {
+              const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
+                body: { klaviyoApiKey: brand.klaviyo_api_key }
+              });
+              return { brandId: brand.id, lists: (data?.lists || []) as KlaviyoList[] };
+            } catch {
+              return { brandId: brand.id, lists: [] as KlaviyoList[] };
+            }
+          });
+
+          const listResults = await Promise.all(listFetchPromises);
+          const klaviyoListsMap: Record<string, KlaviyoList[]> = {};
+          listResults.forEach(({ brandId, lists }) => {
+            klaviyoListsMap[brandId] = lists;
+          });
+          setKlaviyoListsByBrand(klaviyoListsMap);
         }
       }
     }
@@ -160,8 +206,8 @@ export function useCampaignQueue() {
                   const mapped = presetsData.map(p => ({
                     id: p.id,
                     name: p.name,
-                    included_segments: (p.included_segments as string[]) || [],
-                    excluded_segments: (p.excluded_segments as string[]) || [],
+                    included_segments: normalizeSegmentIds(p.included_segments),
+                    excluded_segments: normalizeSegmentIds(p.excluded_segments),
                     is_default: p.is_default || false,
                   }));
                   mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
@@ -221,8 +267,8 @@ export function useCampaignQueue() {
               const mapped = presetsData.map(p => ({
                 id: p.id,
                 name: p.name,
-                included_segments: (p.included_segments as string[]) || [],
-                excluded_segments: (p.excluded_segments as string[]) || [],
+                included_segments: normalizeSegmentIds(p.included_segments),
+                excluded_segments: normalizeSegmentIds(p.excluded_segments),
                 is_default: p.is_default || false,
               }));
               mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
@@ -275,6 +321,7 @@ export function useCampaignQueue() {
     items,
     loading,
     presetsByBrand,
+    klaviyoListsByBrand,
     refresh,
     updateItem,
     deleteItem,
