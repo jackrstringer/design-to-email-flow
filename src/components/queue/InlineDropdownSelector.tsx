@@ -5,6 +5,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 // ClickUp brand icon as inline SVG
@@ -193,14 +198,28 @@ export function InlineDropdownSelector({
             >
               <span className="truncate">{displayValue || placeholder}</span>
               {isClickUpSource && displayValue && (
-                <span title="Retrieved from ClickUp Task">
-                  <ClickUpIcon className="h-3.5 w-3.5 shrink-0" />
-                </span>
+                <Tooltip delayDuration={100}>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center">
+                      <ClickUpIcon className="h-3.5 w-3.5 shrink-0 relative top-[-0.5px]" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Retrieved from ClickUp Task
+                  </TooltipContent>
+                </Tooltip>
               )}
               {isAiGenerated && displayValue && !isClickUpSource && (
-                <span title="AI generated">
-                  <Bot className="h-3 w-3 text-gray-400 shrink-0" />
-                </span>
+                <Tooltip delayDuration={100}>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center">
+                      <Bot className="h-3 w-3 text-gray-400 shrink-0" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    AI generated
+                  </TooltipContent>
+                </Tooltip>
               )}
             </span>
           )}
