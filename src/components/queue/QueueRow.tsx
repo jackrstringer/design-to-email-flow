@@ -244,6 +244,7 @@ export function QueueRow({
           isProcessing={item.status === 'processing'}
           processingStep={item.processing_step}
           isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
+          isClickUpSource={item.copy_source === 'clickup'}
         />
       </div>
 
@@ -262,6 +263,7 @@ export function QueueRow({
           isProcessing={item.status === 'processing'}
           processingStep={item.processing_step}
           isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
+          isClickUpSource={item.copy_source === 'clickup'}
         />
       </div>
       
