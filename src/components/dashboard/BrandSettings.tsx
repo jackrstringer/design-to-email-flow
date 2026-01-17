@@ -78,26 +78,10 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     footers: true,
     api: true,
     copyExamples: false,
-    audience: true,
   });
-
-  // Default Audience state
-  const [defaultAudience, setDefaultAudience] = useState<{
-    id: string;
-    name: string;
-    included_segments: string[];
-    excluded_segments: string[];
-  } | null>(null);
-  const [klaviyoLists, setKlaviyoLists] = useState<Array<{ id: string; name: string }>>([]);
-  const [isLoadingAudience, setIsLoadingAudience] = useState(false);
-  const [audienceEditorOpen, setAudienceEditorOpen] = useState(false);
-  const [tempIncluded, setTempIncluded] = useState<string[]>([]);
-  const [tempExcluded, setTempExcluded] = useState<string[]>([]);
-  const [tempAudienceName, setTempAudienceName] = useState('');
 
   useEffect(() => {
     fetchFooters();
-    fetchDefaultAudience();
     // Parse copy_examples from brand if available
     if ((brand as any).copy_examples) {
       const examples = (brand as any).copy_examples;
@@ -110,7 +94,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     
     // Handle hash navigation - auto-expand and scroll to section
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['footers', 'api', 'copyExamples', 'audience'].includes(hash)) {
+    if (hash && ['footers', 'api', 'copyExamples'].includes(hash)) {
       setOpenSections(prev => ({ ...prev, [hash]: true }));
       // Scroll to section after a short delay to allow render
       setTimeout(() => {
@@ -121,91 +105,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       }, 100);
     }
   }, [brand.id]);
-
-  const fetchDefaultAudience = async () => {
-    setIsLoadingAudience(true);
-    
-    // Fetch default segment preset
-    const { data: preset } = await supabase
-      .from('segment_presets')
-      .select('*')
-      .eq('brand_id', brand.id)
-      .eq('is_default', true)
-      .maybeSingle();
-    
-    if (preset) {
-      setDefaultAudience({
-        id: preset.id,
-        name: preset.name,
-        included_segments: (preset.included_segments as string[]) || [],
-        excluded_segments: (preset.excluded_segments as string[]) || [],
-      });
-    } else {
-      setDefaultAudience(null);
-    }
-    
-    // Fetch Klaviyo lists if we have an API key
-    if (brand.klaviyoApiKey) {
-      const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
-        body: { klaviyoApiKey: brand.klaviyoApiKey }
-      });
-      if (data?.lists) {
-        setKlaviyoLists(data.lists);
-      }
-    }
-    
-    setIsLoadingAudience(false);
-  };
-
-  const openAudienceEditor = () => {
-    setTempIncluded(defaultAudience?.included_segments || []);
-    setTempExcluded(defaultAudience?.excluded_segments || []);
-    setTempAudienceName(defaultAudience?.name || 'Default Audience');
-    setAudienceEditorOpen(true);
-  };
-
-  const saveDefaultAudience = async () => {
-    if (tempIncluded.length === 0) {
-      toast.error('Please select at least one segment to include');
-      return;
-    }
-    
-    setIsSaving(true);
-    try {
-      if (defaultAudience) {
-        // Update existing
-        const { error } = await supabase
-          .from('segment_presets')
-          .update({
-            name: tempAudienceName,
-            included_segments: tempIncluded,
-            excluded_segments: tempExcluded,
-          })
-          .eq('id', defaultAudience.id);
-        if (error) throw error;
-      } else {
-        // Create new default
-        const { error } = await supabase
-          .from('segment_presets')
-          .insert({
-            brand_id: brand.id,
-            name: tempAudienceName,
-            included_segments: tempIncluded,
-            excluded_segments: tempExcluded,
-            is_default: true,
-          });
-        if (error) throw error;
-      }
-      
-      toast.success('Default audience saved');
-      setAudienceEditorOpen(false);
-      fetchDefaultAudience();
-    } catch (error) {
-      toast.error('Failed to save audience');
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const fetchFooters = async () => {
     const { data, error } = await supabase
@@ -1147,48 +1046,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         </CollapsibleContent>
       </Collapsible>
 
-      {/* Default Audience Section */}
-      <Collapsible id="section-audience" open={openSections.audience} onOpenChange={() => toggleSection('audience')}>
-        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
-          <div className="flex items-center gap-2">
-            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.audience ? 'rotate-90' : ''}`} />
-            <span className="text-sm font-medium">Default Audience</span>
-            {!defaultAudience && brand.klaviyoApiKey && (
-              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Not set</span>
-            )}
-            {defaultAudience && (
-              <span className="text-xs text-green-600">Configured</span>
-            )}
-          </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="py-4">
-          {!brand.klaviyoApiKey ? (
-            <p className="text-sm text-muted-foreground">Add a Klaviyo API key first to configure audiences.</p>
-          ) : isLoadingAudience ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          ) : defaultAudience ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{defaultAudience.name}</span>
-                <Button variant="ghost" size="sm" onClick={openAudienceEditor}>
-                  <Pencil className="h-3 w-3 mr-1" /> Edit
-                </Button>
-              </div>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>Include: {defaultAudience.included_segments.map(id => klaviyoLists.find(l => l.id === id)?.name || id).join(', ') || 'None'}</p>
-                <p>Exclude: {defaultAudience.excluded_segments.map(id => klaviyoLists.find(l => l.id === id)?.name || id).join(', ') || 'None'}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">No default audience set. Campaigns will require manual segment selection.</p>
-              <Button size="sm" onClick={openAudienceEditor}>
-                <Plus className="h-3 w-3 mr-1" /> Set Default Audience
-              </Button>
-            </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
 
       {/* Copy Examples */}
       <Collapsible open={openSections.copyExamples} onOpenChange={() => toggleSection('copyExamples')}>
@@ -1532,95 +1389,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         </DialogContent>
       </Dialog>
 
-      {/* Default Audience Editor Dialog */}
-      <Dialog open={audienceEditorOpen} onOpenChange={setAudienceEditorOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Default Audience</DialogTitle>
-            <DialogDescription>
-              This audience will be automatically applied to all campaigns for {brand.name}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input
-                value={tempAudienceName}
-                onChange={(e) => setTempAudienceName(e.target.value)}
-                placeholder="e.g., All Subscribers"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Include Segments</Label>
-              <div className="flex flex-wrap gap-1.5 min-h-[40px] p-2 border rounded-md bg-muted/20">
-                {tempIncluded.map(id => {
-                  const list = klaviyoLists.find(l => l.id === id);
-                  return (
-                    <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary">
-                      {list?.name || id}
-                      <button onClick={() => setTempIncluded(prev => prev.filter(x => x !== id))}>
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-                {klaviyoLists.filter(l => !tempIncluded.includes(l.id) && !tempExcluded.includes(l.id)).length > 0 && (
-                  <select
-                    className="h-6 text-xs border border-dashed rounded px-1 bg-transparent"
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) setTempIncluded(prev => [...prev, e.target.value]);
-                    }}
-                  >
-                    <option value="">+ Add</option>
-                    {klaviyoLists.filter(l => !tempIncluded.includes(l.id) && !tempExcluded.includes(l.id)).map(list => (
-                      <option key={list.id} value={list.id}>{list.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Exclude Segments</Label>
-              <div className="flex flex-wrap gap-1.5 min-h-[40px] p-2 border rounded-md bg-muted/20">
-                {tempExcluded.map(id => {
-                  const list = klaviyoLists.find(l => l.id === id);
-                  return (
-                    <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-destructive/10 text-destructive">
-                      {list?.name || id}
-                      <button onClick={() => setTempExcluded(prev => prev.filter(x => x !== id))}>
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-                {klaviyoLists.filter(l => !tempIncluded.includes(l.id) && !tempExcluded.includes(l.id)).length > 0 && (
-                  <select
-                    className="h-6 text-xs border border-dashed rounded px-1 bg-transparent"
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) setTempExcluded(prev => [...prev, e.target.value]);
-                    }}
-                  >
-                    <option value="">+ Exclude</option>
-                    {klaviyoLists.filter(l => !tempIncluded.includes(l.id) && !tempExcluded.includes(l.id)).map(list => (
-                      <option key={list.id} value={list.id}>{list.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAudienceEditorOpen(false)}>Cancel</Button>
-            <Button onClick={saveDefaultAudience} disabled={isSaving || tempIncluded.length === 0}>
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
