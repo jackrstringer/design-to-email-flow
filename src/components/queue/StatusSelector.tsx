@@ -25,14 +25,16 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
       setIsUpdating(true);
       setOpen(false);
 
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('campaign_queue')
         .update({ status: 'closed' })
-        .eq('id', item.id);
+        .eq('id', item.id)
+        .select();
 
       setIsUpdating(false);
 
       if (error) {
+        console.error('Failed to close campaign:', error);
         toast.error('Failed to close campaign');
       } else {
         toast.success('Campaign closed');
