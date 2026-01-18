@@ -140,6 +140,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [figmaUrl, setFigmaUrl] = useState('');
   const [isFetchingFigma, setIsFetchingFigma] = useState(false);
   const [figmaData, setFigmaData] = useState<FigmaDesignData | null>(null);
+  const [hasFigmaToken, setHasFigmaToken] = useState<boolean | null>(null); // null = checking
   
   // Campaign state
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -231,6 +232,34 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     
     return () => clearInterval(interval);
   }, [isProcessingReference, processingStartTime]);
+
+  // Check for Figma plugin token on mount
+  useEffect(() => {
+    const checkFigmaToken = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setHasFigmaToken(false);
+          return;
+        }
+        
+        const { data, error } = await supabase
+          .from('plugin_tokens')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+        
+        setHasFigmaToken(!error && data && data.length > 0);
+      } catch (err) {
+        console.error('Error checking Figma token:', err);
+        setHasFigmaToken(false);
+      }
+    };
+    
+    if (open) {
+      checkFigmaToken();
+    }
+  }, [open]);
 
   // Reset to reference step - clears all state for a fresh start
   const resetToReference = useCallback(() => {
@@ -893,19 +922,51 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   </Button>
                   <Label className="text-sm font-medium">Paste Figma link</Label>
                 </div>
-                <Input
-                  placeholder="https://www.figma.com/design/..."
-                  value={figmaUrl}
-                  onChange={(e) => setFigmaUrl(e.target.value)}
-                  className="w-full"
-                />
-                <Button onClick={handleFetchFigma} disabled={isFetchingFigma || !figmaUrl.trim()} className="w-full">
-                  {isFetchingFigma ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Fetching...</>
-                  ) : (
-                    <><Figma className="w-4 h-4 mr-2" />Fetch Design</>
-                  )}
-                </Button>
+                
+                {/* Check if Figma token exists */}
+                {hasFigmaToken === false ? (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-950 dark:border-amber-800">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Figma not connected</p>
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                            Set up your Figma Plugin Token in Integrations to use Figma designs.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        onOpenChange(false);
+                        window.location.href = '/settings';
+                      }}
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Go to Integrations
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Input
+                      placeholder="https://www.figma.com/design/..."
+                      value={figmaUrl}
+                      onChange={(e) => setFigmaUrl(e.target.value)}
+                      className="w-full"
+                    />
+                    <Button onClick={handleFetchFigma} disabled={isFetchingFigma || !figmaUrl.trim()} className="w-full">
+                      {isFetchingFigma ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Fetching...</>
+                      ) : (
+                        <><Figma className="w-4 h-4 mr-2" />Fetch Design</>
+                      )}
+                    </Button>
+                  </>
+                )}
               </div>
             )}
 
