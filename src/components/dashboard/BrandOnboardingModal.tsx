@@ -438,7 +438,7 @@ export function BrandOnboardingModal({
   return (
     <>
       <Dialog open={open && !showFooterBuilder} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {step === 'url' && 'Add New Brand'}
@@ -502,7 +502,7 @@ export function BrandOnboardingModal({
 
           {/* Step 2: Analysis Results + Logo Upload */}
           {step === 'analyze' && (
-            <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-4 py-4">
               {/* Brand Name */}
               <div className="space-y-2">
                 <Label>Brand Name</Label>
