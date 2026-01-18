@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Check, RefreshCw, Upload, AlertTriangle, ArrowRight, Globe, Palette, Image } from 'lucide-react';
+import { Loader2, Check, RefreshCw, Upload, AlertTriangle, ArrowRight, Globe, Palette, Image, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -158,8 +158,36 @@ export function BrandOnboardingModal({
     });
   };
 
-  // Handle upload of missing logo variant
-  const handleMissingLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, variant: 'dark' | 'light') => {
+  // Remove a logo variant
+  const removeLogo = (variant: 'dark' | 'light') => {
+    if (!logoData) return;
+    
+    const newLogoData = { ...logoData };
+    
+    if (variant === 'dark') {
+      newLogoData.darkLogoUrl = null;
+      newLogoData.darkLogoPublicId = null;
+    } else {
+      newLogoData.lightLogoUrl = null;
+      newLogoData.lightLogoPublicId = null;
+    }
+    
+    // Check if both logos are now empty
+    if (!newLogoData.darkLogoUrl && !newLogoData.lightLogoUrl) {
+      setLogoData(null);
+      return;
+    }
+    
+    // Update variant status
+    newLogoData.hasOnlyOneVariant = true;
+    newLogoData.missingVariant = variant;
+    
+    setLogoData(newLogoData);
+    toast.success(`${variant === 'dark' ? 'Dark' : 'Light'} logo removed`);
+  };
+
+  // Handle upload of logo variant (works whether logoData exists or not)
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, variant: 'dark' | 'light') => {
     const file = e.target.files?.[0];
     if (!file) return;
     
@@ -190,15 +218,30 @@ export function BrandOnboardingModal({
 
       if (error) throw error;
 
-      setLogoData(prev => prev ? {
-        ...prev,
-        hasOnlyOneVariant: false,
-        missingVariant: undefined,
-        [variant === 'light' ? 'lightLogoUrl' : 'darkLogoUrl']: data.url,
-        [variant === 'light' ? 'lightLogoPublicId' : 'darkLogoPublicId']: data.publicId,
-      } : null);
+      if (logoData) {
+        // Update existing logoData
+        const hasOtherVariant = variant === 'dark' ? !!logoData.lightLogoUrl : !!logoData.darkLogoUrl;
+        setLogoData({
+          ...logoData,
+          hasOnlyOneVariant: !hasOtherVariant,
+          missingVariant: hasOtherVariant ? undefined : (variant === 'dark' ? 'light' : 'dark'),
+          [variant === 'dark' ? 'darkLogoUrl' : 'lightLogoUrl']: data.url,
+          [variant === 'dark' ? 'darkLogoPublicId' : 'lightLogoPublicId']: data.publicId,
+        });
+      } else {
+        // Create new logoData
+        setLogoData({
+          darkLogoUrl: variant === 'dark' ? data.url : null,
+          darkLogoPublicId: variant === 'dark' ? data.publicId : null,
+          lightLogoUrl: variant === 'light' ? data.url : null,
+          lightLogoPublicId: variant === 'light' ? data.publicId : null,
+          detectedType: variant,
+          hasOnlyOneVariant: true,
+          missingVariant: variant === 'dark' ? 'light' : 'dark',
+        });
+      }
       
-      toast.success(`${variant === 'light' ? 'Light' : 'Dark'} logo uploaded`);
+      toast.success(`${variant === 'dark' ? 'Dark' : 'Light'} logo uploaded`);
     } catch (error) {
       console.error('Logo upload error:', error);
       toast.error('Failed to upload logo');
@@ -492,24 +535,24 @@ export function BrandOnboardingModal({
               </div>
 
               {/* Logo Preview */}
-              {(isProcessingLogo || logoData) && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Image className="h-3 w-3" />
-                    Brand Logos
-                  </Label>
-                  {isProcessingLogo ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Processing logo...</span>
-                    </div>
-                  ) : logoData && (
-                    <div className="space-y-2">
-                      <div className="flex gap-4">
-                        {/* Dark logo (for light backgrounds) */}
-                        <div className="flex-1 space-y-1">
-                          <span className="text-xs text-muted-foreground">Dark (for light bg)</span>
-                          {logoData.darkLogoUrl ? (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Image className="h-3 w-3" />
+                  Brand Logos
+                </Label>
+                {isProcessingLogo ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processing logo...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-4">
+                      {/* Dark logo (for light backgrounds) */}
+                      <div className="flex-1 space-y-1">
+                        <span className="text-xs text-muted-foreground">Dark (for light bg)</span>
+                        {logoData?.darkLogoUrl ? (
+                          <div className="relative group">
                             <div className="p-2 bg-white rounded-md border flex items-center justify-center h-12">
                               <img 
                                 src={logoData.darkLogoUrl} 
@@ -517,22 +560,31 @@ export function BrandOnboardingModal({
                                 className="max-h-8 max-w-full object-contain"
                               />
                             </div>
-                          ) : (
-                            <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
-                              <span className="text-xs text-amber-700">Upload dark logo</span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => handleMissingLogoUpload(e, 'dark')}
-                              />
-                            </label>
-                          )}
-                        </div>
-                        {/* Light logo (for dark backgrounds) */}
-                        <div className="flex-1 space-y-1">
-                          <span className="text-xs text-muted-foreground">Light (for dark bg)</span>
-                          {logoData.lightLogoUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => removeLogo('dark')}
+                              className="absolute -top-2 -right-2 p-1 bg-destructive rounded-full text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-muted-foreground/30 bg-muted/50 cursor-pointer hover:bg-muted transition-colors">
+                            <span className="text-xs text-muted-foreground">Upload dark logo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleLogoUpload(e, 'dark')}
+                            />
+                          </label>
+                        )}
+                      </div>
+                      {/* Light logo (for dark backgrounds) */}
+                      <div className="flex-1 space-y-1">
+                        <span className="text-xs text-muted-foreground">Light (for dark bg)</span>
+                        {logoData?.lightLogoUrl ? (
+                          <div className="relative group">
                             <div className="p-2 bg-gray-900 rounded-md border flex items-center justify-center h-12">
                               <img 
                                 src={logoData.lightLogoUrl} 
@@ -540,51 +592,58 @@ export function BrandOnboardingModal({
                                 className="max-h-8 max-w-full object-contain"
                               />
                             </div>
-                          ) : (
-                            <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-amber-300 bg-gray-900 cursor-pointer hover:bg-gray-800 transition-colors">
-                              <span className="text-xs text-amber-400">Upload light logo</span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => handleMissingLogoUpload(e, 'light')}
-                              />
-                            </label>
-                          )}
+                            <button
+                              type="button"
+                              onClick={() => removeLogo('light')}
+                              className="absolute -top-2 -right-2 p-1 bg-destructive rounded-full text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-muted-foreground/30 bg-gray-900 cursor-pointer hover:bg-gray-800 transition-colors">
+                            <span className="text-xs text-gray-400">Upload light logo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleLogoUpload(e, 'light')}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Missing variant warning */}
+                    {logoData?.hasOnlyOneVariant && logoData?.missingVariant && (
+                      <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs text-amber-800">
+                          <p className="font-medium">Missing {logoData.missingVariant === 'light' ? 'light' : 'dark'} logo</p>
+                          <p className="text-amber-700">
+                            {logoData.missingVariant === 'light' 
+                              ? 'Upload a light version for dark backgrounds (like footers)' 
+                              : 'Upload a dark version for light backgrounds'}
+                          </p>
                         </div>
                       </div>
-                      
-                      {/* Missing variant warning */}
-                      {logoData.hasOnlyOneVariant && logoData.missingVariant && (
-                        <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
-                          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                          <div className="text-xs text-amber-800">
-                            <p className="font-medium">Missing {logoData.missingVariant === 'light' ? 'light' : 'dark'} logo</p>
-                            <p className="text-amber-700">
-                              {logoData.missingVariant === 'light' 
-                                ? 'Upload a light version for dark backgrounds (like footers)' 
-                                : 'Upload a dark version for light backgrounds'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {logoData.darkLogoUrl && logoData.lightLogoUrl && (
-                        <Button 
-                          type="button" 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={swapLogos}
-                          className="text-xs h-7"
-                        >
-                          <RefreshCw className="w-3 h-3 mr-1" />
-                          Swap if incorrect
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                    
+                    {logoData?.darkLogoUrl && logoData?.lightLogoUrl && (
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={swapLogos}
+                        className="text-xs h-7"
+                      >
+                        <RefreshCw className="w-3 h-3 mr-1" />
+                        Swap if incorrect
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Klaviyo API Key */}
               <div className="space-y-2 pt-2 border-t">
