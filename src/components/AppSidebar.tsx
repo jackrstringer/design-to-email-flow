@@ -1,4 +1,4 @@
-import { List, Building2, Users, Upload, Settings } from "lucide-react";
+import { List, Building2, Users, Upload, Plug } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -66,11 +66,11 @@ export function AppSidebar() {
             <SidebarMenuButton
               asChild
               isActive={isActive("/settings")}
-              tooltip="Settings"
+              tooltip="Integrations"
             >
               <NavLink to="/settings">
-                <Settings className="h-4 w-4" />
-                <span>Settings</span>
+                <Plug className="h-4 w-4" />
+                <span>Integrations</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>

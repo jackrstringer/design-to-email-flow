@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { ClickUpIntegrationCard } from '@/components/integrations/ClickUpIntegrationCard';
 
 interface PluginToken {
   id: string;
@@ -109,116 +109,113 @@ export default function Settings() {
       <header className="border-b bg-background shrink-0">
         <div className="px-6">
           <div className="flex h-12 items-center">
-            <span className="text-sm font-medium">Settings</span>
+            <span className="text-sm font-medium">Integrations</span>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl space-y-8">
-          {/* Integrations Section */}
-          <section>
-            <h2 className="text-xl font-semibold mb-4">Integrations</h2>
-            
-            {/* Plugin Tokens */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Key className="h-5 w-5" />
-                  Figma Plugin Tokens
-                </CardTitle>
-                <CardDescription>
-                  Generate tokens to connect your Figma plugin. Each token can be used in one Figma installation.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Generate New Token */}
-                <Button onClick={handleGenerateToken} disabled={generating}>
-                  {generating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Generate New Token
-                    </>
-                  )}
-                </Button>
+        <div className="max-w-3xl space-y-6">
+          {/* ClickUp Integration */}
+          <ClickUpIntegrationCard />
 
-                {/* Newly Generated Token (show once) */}
-                {newlyGeneratedToken && (
-                  <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
-                    <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                      ✓ New token generated! Copy it now - this is the only time you'll see it.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Input 
-                        value={newlyGeneratedToken} 
-                        readOnly 
-                        className="font-mono text-sm"
-                      />
+          {/* Figma Plugin Tokens */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                Figma Plugin Tokens
+              </CardTitle>
+              <CardDescription>
+                Generate tokens to connect your Figma plugin. Each token can be used in one Figma installation.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Generate New Token */}
+              <Button onClick={handleGenerateToken} disabled={generating}>
+                {generating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Generate New Token
+                  </>
+                )}
+              </Button>
+
+              {/* Newly Generated Token (show once) */}
+              {newlyGeneratedToken && (
+                <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                    ✓ New token generated! Copy it now - this is the only time you'll see it.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      value={newlyGeneratedToken} 
+                      readOnly 
+                      className="font-mono text-sm"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={() => handleCopyToken(newlyGeneratedToken)}
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Token List */}
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : tokens.length > 0 ? (
+                <div className="space-y-2">
+                  <Separator className="my-4" />
+                  <p className="text-sm font-medium text-muted-foreground">Existing Tokens</p>
+                  {tokens.map((token) => (
+                    <div 
+                      key={token.id}
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{token.name || 'Figma Plugin'}</p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {maskToken(token.token)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Created {new Date(token.created_at).toLocaleDateString()}
+                          {token.last_used_at && ` • Last used ${new Date(token.last_used_at).toLocaleDateString()}`}
+                        </p>
+                      </div>
                       <Button 
-                        variant="outline" 
+                        variant="ghost" 
                         size="icon"
-                        onClick={() => handleCopyToken(newlyGeneratedToken)}
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteToken(token.id)}
                       >
-                        {copied ? (
-                          <Check className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
-                )}
-
-                {/* Token List */}
-                {loading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : tokens.length > 0 ? (
-                  <div className="space-y-2">
-                    <Separator className="my-4" />
-                    <p className="text-sm font-medium text-muted-foreground">Existing Tokens</p>
-                    {tokens.map((token) => (
-                      <div 
-                        key={token.id}
-                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                      >
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{token.name || 'Figma Plugin'}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {maskToken(token.token)}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Created {new Date(token.created_at).toLocaleDateString()}
-                            {token.last_used_at && ` • Last used ${new Date(token.last_used_at).toLocaleDateString()}`}
-                          </p>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteToken(token.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : !newlyGeneratedToken && (
-                  <p className="text-sm text-muted-foreground py-4">
-                    No tokens yet. Generate one to connect your Figma plugin.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-          </section>
+                  ))}
+                </div>
+              ) : !newlyGeneratedToken && (
+                <p className="text-sm text-muted-foreground py-4">
+                  No tokens yet. Generate one to connect your Figma plugin.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>
