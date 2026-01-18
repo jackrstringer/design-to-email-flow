@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import type { Brand, BrandFooter, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
+import type { Brand, BrandFooter, BrandTypography } from '@/types/brand-assets';
 import { ChevronRight } from 'lucide-react';
 import { FooterBuilderModal } from '@/components/FooterBuilderModal';
 
@@ -38,6 +38,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [editApiKey, setEditApiKey] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState(brand.klaviyoApiKey || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
   
@@ -53,13 +54,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [primaryColor, setPrimaryColor] = useState(brand.primaryColor);
   const [secondaryColor, setSecondaryColor] = useState(brand.secondaryColor);
   const [accentColor, setAccentColor] = useState(brand.accentColor || '');
-
-  // Formatting rules state
-  const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
-  const [editingRule, setEditingRule] = useState<HtmlFormattingRule | null>(null);
-  const [ruleName, setRuleName] = useState('');
-  const [ruleDescription, setRuleDescription] = useState('');
-  const [ruleCode, setRuleCode] = useState('');
 
   // Footer method selection state
   const [addFooterMethodOpen, setAddFooterMethodOpen] = useState(false);
@@ -404,77 +398,28 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     }
   };
 
-  const openRulesEditor = (rule?: HtmlFormattingRule) => {
-    if (rule) {
-      setEditingRule(rule);
-      setRuleName(rule.name);
-      setRuleDescription(rule.description || '');
-      setRuleCode(rule.code);
-    } else {
-      setEditingRule(null);
-      setRuleName('');
-      setRuleDescription('');
-      setRuleCode('');
-    }
-    setRulesEditorOpen(true);
-  };
-
-  const handleSaveRule = async () => {
-    if (!ruleName.trim() || !ruleCode.trim()) {
-      toast.error('Name and code are required');
+  const handleDeleteBrand = async () => {
+    if (!confirm(`Are you sure you want to delete "${brand.name}"? This action cannot be undone.`)) {
       return;
     }
 
-    setIsSaving(true);
+    setIsDeleting(true);
     try {
-      const currentRules = brand.htmlFormattingRules || [];
-      const newRule: HtmlFormattingRule = {
-        id: editingRule?.id || crypto.randomUUID(),
-        name: ruleName,
-        description: ruleDescription || undefined,
-        code: ruleCode,
-      };
-
-      let updatedRules: HtmlFormattingRule[];
-      if (editingRule) {
-        updatedRules = currentRules.map(r => r.id === editingRule.id ? newRule : r);
-      } else {
-        updatedRules = [...currentRules, newRule];
-      }
-
       const { error } = await supabase
         .from('brands')
-        .update({ html_formatting_rules: updatedRules as any })
+        .delete()
         .eq('id', brand.id);
 
       if (error) throw error;
-      toast.success('Formatting rule saved');
-      setRulesEditorOpen(false);
-      onBrandChange();
+
+      toast.success('Brand deleted');
+      navigate('/brands');
     } catch (error) {
-      toast.error('Failed to save rule');
+      console.error('Error deleting brand:', error);
+      toast.error('Failed to delete brand');
     } finally {
-      setIsSaving(false);
+      setIsDeleting(false);
     }
-  };
-
-  const handleDeleteRule = async (ruleId: string) => {
-    if (!confirm('Delete this formatting rule?')) return;
-
-    const updatedRules = (brand.htmlFormattingRules || []).filter(r => r.id !== ruleId);
-    
-    const { error } = await supabase
-      .from('brands')
-      .update({ html_formatting_rules: updatedRules as any })
-      .eq('id', brand.id);
-
-    if (error) {
-      toast.error('Failed to delete rule');
-      return;
-    }
-
-    toast.success('Rule deleted');
-    onBrandChange();
   };
 
   const toggleSection = (key: string) => {
@@ -839,16 +784,28 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             <p className="text-sm text-muted-foreground">{brand.domain}</p>
           </div>
         </div>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={handleReanalyze}
-          disabled={isReanalyzing || !brand.websiteUrl}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isReanalyzing ? 'animate-spin' : ''}`} />
-          {isReanalyzing ? 'Analyzing...' : 'Re-analyze'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleReanalyze}
+            disabled={isReanalyzing || !brand.websiteUrl}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isReanalyzing ? 'animate-spin' : ''}`} />
+            {isReanalyzing ? 'Analyzing...' : 'Re-analyze'}
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleDeleteBrand}
+            disabled={isDeleting}
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className={`h-4 w-4 mr-2`} />
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
       </div>
 
       {/* Colors Section */}
@@ -1565,48 +1522,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         </CollapsibleContent>
       </Collapsible>
 
-      <Collapsible open={openSections.rules} onOpenChange={() => toggleSection('rules')}>
-        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
-          <div className="flex items-center gap-2">
-            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.rules ? 'rotate-90' : ''}`} />
-            <span className="text-sm font-medium">HTML Formatting Rules</span>
-            <span className="text-xs text-muted-foreground">({(brand.htmlFormattingRules || []).length})</span>
-          </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="py-4">
-          <div className="space-y-3">
-            {(brand.htmlFormattingRules || []).map((rule) => (
-              <div key={rule.id} className="group">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-sm font-medium">{rule.name}</span>
-                    {rule.description && (
-                      <p className="text-xs text-muted-foreground">{rule.description}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openRulesEditor(rule)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteRule(rule.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-                <pre className="text-xs text-muted-foreground mt-1 font-mono">
-                  {rule.code.slice(0, 100)}{rule.code.length > 100 ? '...' : ''}
-                </pre>
-              </div>
-            ))}
-            
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => openRulesEditor()}>
-              <Plus className="h-3 w-3 mr-2" />
-              Add Rule
-            </Button>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
       {/* API Key Dialog */}
       <Dialog open={editApiKey} onOpenChange={setEditApiKey}>
         <DialogContent>
@@ -1760,48 +1675,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           });
         }}
       />
-
-      {/* Formatting Rules Dialog */}
-      <Dialog open={rulesEditorOpen} onOpenChange={setRulesEditorOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingRule ? 'Edit Rule' : 'Add Formatting Rule'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input
-                placeholder="e.g., Button Style, Link Format"
-                value={ruleName}
-                onChange={(e) => setRuleName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Description (optional)</Label>
-              <Input
-                placeholder="Brief description of this rule"
-                value={ruleDescription}
-                onChange={(e) => setRuleDescription(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Code / Template</Label>
-              <Textarea
-                placeholder="HTML or CSS template..."
-                value={ruleCode}
-                onChange={(e) => setRuleCode(e.target.value)}
-                className="font-mono text-xs min-h-[150px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRulesEditorOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveRule} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
     </div>
   );
