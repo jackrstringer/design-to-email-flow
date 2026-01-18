@@ -67,14 +67,12 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     lastScraped: string | null;
   }>({ subjectLines: [], previewTexts: [], lastScraped: null });
 
-  // ClickUp integration state
-  const [clickupApiKey, setClickupApiKey] = useState(brand.clickupApiKey || '');
-  const [clickupWorkspaceId, setClickupWorkspaceId] = useState(brand.clickupWorkspaceId || '');
+  // ClickUp integration state - uses master API key from profile
+  const [masterClickupApiKey, setMasterClickupApiKey] = useState<string | null>(null);
+  const [masterClickupWorkspaceId, setMasterClickupWorkspaceId] = useState<string | null>(null);
   const [clickupListId, setClickupListId] = useState(brand.clickupListId || '');
-  const [showClickupApiKey, setShowClickupApiKey] = useState(false);
   const [isLoadingClickupData, setIsLoadingClickupData] = useState(false);
   const [isSavingClickup, setIsSavingClickup] = useState(false);
-  const [clickupWorkspaces, setClickupWorkspaces] = useState<{id: string; name: string}[]>([]);
   const [clickupSpaces, setClickupSpaces] = useState<{id: string; name: string}[]>([]);
   const [clickupFolders, setClickupFolders] = useState<{id: string; name: string}[]>([]);
   const [clickupLists, setClickupLists] = useState<{id: string; name: string; folderless?: boolean}[]>([]);
@@ -82,6 +80,12 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [clickupConnectedInfo, setClickupConnectedInfo] = useState<{ workspaceName: string; listName: string } | null>(null);
   const [isReconfiguring, setIsReconfiguring] = useState(false);
+  
+  // Sent Copy state - aggregated from campaign_queue
+  const [sentCopy, setSentCopy] = useState<{
+    subjectLines: { text: string; count: number }[];
+    previewTexts: { text: string; count: number }[];
+  }>({ subjectLines: [], previewTexts: [] });
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -89,10 +93,14 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     api: true,
     clickup: false,
     copyExamples: false,
+    sentCopy: false,
   });
 
   useEffect(() => {
     fetchFooters();
+    fetchMasterClickUpConnection();
+    fetchSentCopy();
+    
     // Parse copy_examples from brand if available
     if ((brand as any).copy_examples) {
       const examples = (brand as any).copy_examples;
@@ -105,7 +113,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     
     // Handle hash navigation - auto-expand and scroll to section
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['footers', 'api', 'copyExamples'].includes(hash)) {
+    if (hash && ['footers', 'api', 'copyExamples', 'sentCopy'].includes(hash)) {
       setOpenSections(prev => ({ ...prev, [hash]: true }));
       // Scroll to section after a short delay to allow render
       setTimeout(() => {
@@ -115,32 +123,93 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         }
       }, 100);
     }
-    
-    // Fetch ClickUp connected info if already connected
-    if (brand.clickupApiKey && brand.clickupListId) {
-      fetchClickupConnectedInfo();
-    }
   }, [brand.id]);
+  
+  // Fetch master ClickUp connection from user profile
+  const fetchMasterClickUpConnection = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('clickup_api_key, clickup_workspace_id')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile) {
+        setMasterClickupApiKey(profile.clickup_api_key);
+        setMasterClickupWorkspaceId(profile.clickup_workspace_id);
+        
+        // If we have a master connection and brand has list configured, fetch connected info
+        if (profile.clickup_api_key && brand.clickupListId) {
+          fetchClickupConnectedInfo(profile.clickup_api_key, profile.clickup_workspace_id);
+        }
+        
+        // Auto-fetch spaces if master is connected
+        if (profile.clickup_api_key && profile.clickup_workspace_id) {
+          fetchClickupSpaces(profile.clickup_workspace_id, profile.clickup_api_key);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch master ClickUp connection:', err);
+    }
+  };
+  
+  // Fetch sent copy from campaign_queue
+  const fetchSentCopy = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('campaign_queue')
+        .select('selected_subject_line, selected_preview_text')
+        .eq('brand_id', brand.id)
+        .eq('status', 'sent_to_klaviyo')
+        .not('selected_subject_line', 'is', null);
+      
+      if (error) throw error;
+      
+      // Aggregate unique values with counts
+      const slCounts = new Map<string, number>();
+      const ptCounts = new Map<string, number>();
+      
+      data?.forEach(item => {
+        if (item.selected_subject_line) {
+          slCounts.set(item.selected_subject_line, 
+            (slCounts.get(item.selected_subject_line) || 0) + 1);
+        }
+        if (item.selected_preview_text) {
+          ptCounts.set(item.selected_preview_text,
+            (ptCounts.get(item.selected_preview_text) || 0) + 1);
+        }
+      });
+      
+      setSentCopy({
+        subjectLines: Array.from(slCounts.entries())
+          .map(([text, count]) => ({ text, count }))
+          .sort((a, b) => b.count - a.count),
+        previewTexts: Array.from(ptCounts.entries())
+          .map(([text, count]) => ({ text, count }))
+          .sort((a, b) => b.count - a.count)
+      });
+    } catch (err) {
+      console.error('Failed to fetch sent copy:', err);
+    }
+  };
 
-  // Sync ClickUp state when brand prop changes (e.g., after save + refetch)
+  // Sync ClickUp list ID when brand prop changes
   useEffect(() => {
-    setClickupApiKey(brand.clickupApiKey || '');
-    setClickupWorkspaceId(brand.clickupWorkspaceId || '');
     setClickupListId(brand.clickupListId || '');
     
-    if (brand.clickupApiKey && brand.clickupListId) {
-      fetchClickupConnectedInfo();
+    // Refetch connected info with master key
+    if (masterClickupApiKey && brand.clickupListId) {
+      fetchClickupConnectedInfo(masterClickupApiKey, masterClickupWorkspaceId);
     } else {
       setClickupConnectedInfo(null);
     }
-  }, [brand.clickupApiKey, brand.clickupWorkspaceId, brand.clickupListId]);
+  }, [brand.clickupListId, masterClickupApiKey, masterClickupWorkspaceId]);
 
-  const fetchClickupConnectedInfo = async () => {
-    const apiKey = brand.clickupApiKey;
-    const workspaceId = brand.clickupWorkspaceId;
-    const listId = brand.clickupListId;
-    
-    if (!apiKey || !listId) return;
+  const fetchClickupConnectedInfo = async (apiKey: string, workspaceId: string | null) => {
+    if (!apiKey || !brand.clickupListId) return;
     
     try {
       // Fetch workspaces to get workspace name
@@ -150,20 +219,19 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       
       const workspaceName = wsData?.workspaces?.find(
         (w: { id: string; name: string }) => w.id === workspaceId
-      )?.name || `Workspace ${workspaceId}`;
+      )?.name || (workspaceId ? `Workspace ${workspaceId}` : 'Unknown');
       
       // For list name, we'd need to traverse - for now show list ID
-      // A future enhancement could store the list name in the DB
       setClickupConnectedInfo({
         workspaceName,
-        listName: `List ID: ${listId}`,
+        listName: `List ID: ${brand.clickupListId}`,
       });
     } catch (err) {
       console.error('Failed to fetch ClickUp connected info:', err);
       // Even if fetch fails, show basic info
       setClickupConnectedInfo({
         workspaceName: workspaceId ? `Workspace ${workspaceId}` : 'Unknown',
-        listName: `List ID: ${listId}`,
+        listName: `List ID: ${brand.clickupListId}`,
       });
     }
   };
@@ -537,31 +605,14 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     onBrandChange();
   };
 
-  // ClickUp integration handlers
-  const fetchClickupWorkspaces = async (apiKey: string) => {
-    if (!apiKey) return;
+  // ClickUp integration handlers - use master API key from profile
+  const fetchClickupSpaces = async (workspaceId: string, apiKey?: string) => {
+    const key = apiKey || masterClickupApiKey;
+    if (!workspaceId || !key) return;
     setIsLoadingClickupData(true);
     try {
       const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'workspaces', clickupApiKey: apiKey }
-      });
-      if (error) throw error;
-      setClickupWorkspaces(data.workspaces || []);
-    } catch (err) {
-      console.error('Failed to fetch ClickUp workspaces:', err);
-      toast.error('Failed to connect to ClickUp. Check your API key.');
-      setClickupWorkspaces([]);
-    } finally {
-      setIsLoadingClickupData(false);
-    }
-  };
-
-  const fetchClickupSpaces = async (workspaceId: string) => {
-    if (!workspaceId || !clickupApiKey) return;
-    setIsLoadingClickupData(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'spaces', clickupApiKey, workspaceId }
+        body: { type: 'spaces', clickupApiKey: key, workspaceId }
       });
       if (error) throw error;
       setClickupSpaces(data.spaces || []);
@@ -577,20 +628,20 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   };
 
   const fetchClickupFoldersAndLists = async (spaceId: string) => {
-    if (!spaceId || !clickupApiKey) return;
+    if (!spaceId || !masterClickupApiKey) return;
     setIsLoadingClickupData(true);
     setSelectedSpaceId(spaceId);
     setSelectedFolderId('');
     try {
       // Fetch folders
       const { data: foldersData } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'folders', clickupApiKey, spaceId }
+        body: { type: 'folders', clickupApiKey: masterClickupApiKey, spaceId }
       });
       setClickupFolders(foldersData?.folders || []);
       
       // Also fetch folderless lists
       const { data: listsData } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'lists', clickupApiKey, spaceId }
+        body: { type: 'lists', clickupApiKey: masterClickupApiKey, spaceId }
       });
       setClickupLists(listsData?.lists || []);
     } catch (err) {
@@ -601,12 +652,12 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   };
 
   const fetchClickupListsFromFolder = async (folderId: string) => {
-    if (!folderId || !clickupApiKey) return;
+    if (!folderId || !masterClickupApiKey) return;
     setIsLoadingClickupData(true);
     setSelectedFolderId(folderId);
     try {
       const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'lists', clickupApiKey, folderId, spaceId: selectedSpaceId }
+        body: { type: 'lists', clickupApiKey: masterClickupApiKey, folderId, spaceId: selectedSpaceId }
       });
       if (error) throw error;
       setClickupLists(data.lists || []);
@@ -620,11 +671,10 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const handleSaveClickupSettings = async () => {
     setIsSavingClickup(true);
     try {
+      // Only save the list_id to the brand - API key is stored at user level
       const { error } = await supabase
         .from('brands')
         .update({
-          clickup_api_key: clickupApiKey || null,
-          clickup_workspace_id: clickupWorkspaceId || null,
           clickup_list_id: clickupListId || null,
         })
         .eq('id', brand.id);
@@ -632,12 +682,14 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       if (error) throw error;
       
       // Update connected info display
-      const workspaceName = clickupWorkspaces.find(w => w.id === clickupWorkspaceId)?.name || `Workspace ${clickupWorkspaceId}`;
       const listName = clickupLists.find(l => l.id === clickupListId)?.name || `List ID: ${clickupListId}`;
-      setClickupConnectedInfo({ workspaceName, listName });
+      setClickupConnectedInfo({ 
+        workspaceName: masterClickupWorkspaceId ? `Workspace ${masterClickupWorkspaceId}` : 'Unknown',
+        listName 
+      });
       setIsReconfiguring(false);
       
-      toast.success('ClickUp settings saved');
+      toast.success('ClickUp location saved');
       onBrandChange();
     } catch (error) {
       toast.error('Failed to save ClickUp settings');
@@ -647,15 +699,13 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   };
 
   const handleDisconnectClickup = async () => {
-    if (!confirm('Disconnect ClickUp? Campaign tasks will no longer pull copy from ClickUp.')) return;
+    if (!confirm('Disconnect ClickUp location? Campaign tasks will no longer pull copy from ClickUp.')) return;
     
     setIsSavingClickup(true);
     try {
       const { error } = await supabase
         .from('brands')
         .update({
-          clickup_api_key: null,
-          clickup_workspace_id: null,
           clickup_list_id: null,
         })
         .eq('id', brand.id);
@@ -663,11 +713,8 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       if (error) throw error;
       
       // Reset local state
-      setClickupApiKey('');
-      setClickupWorkspaceId('');
       setClickupListId('');
       setClickupConnectedInfo(null);
-      setClickupWorkspaces([]);
       setClickupSpaces([]);
       setClickupFolders([]);
       setClickupLists([]);
@@ -675,7 +722,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       setSelectedFolderId('');
       setIsReconfiguring(false);
       
-      toast.success('ClickUp disconnected');
+      toast.success('ClickUp location disconnected');
       onBrandChange();
     } catch (error) {
       toast.error('Failed to disconnect ClickUp');
@@ -1203,8 +1250,28 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         </CollapsibleTrigger>
         <CollapsibleContent className="py-4">
           <div className="space-y-4">
-            {/* Connected state view */}
-            {clickupListId && clickupConnectedInfo && !isReconfiguring ? (
+            {/* Check if master ClickUp connection exists */}
+            {!masterClickupApiKey ? (
+              /* No master connection - prompt to set up in Integrations */
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-950 dark:border-amber-800">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">ClickUp not connected</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Set up your ClickUp connection in Integrations to enable automatic copy fetching.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => navigate('/settings')}
+                >
+                  <ExternalLink className="h-3 w-3 mr-2" />
+                  Go to Integrations
+                </Button>
+              </div>
+            ) : clickupListId && clickupConnectedInfo && !isReconfiguring ? (
+              /* Connected state view */
               <div className="space-y-3">
                 <div className="p-3 bg-green-50 border border-green-200 rounded-md dark:bg-green-950 dark:border-green-800">
                   <div className="flex items-start justify-between gap-4">
@@ -1222,9 +1289,9 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                         className="h-7 text-xs"
                         onClick={() => {
                           setIsReconfiguring(true);
-                          // Pre-fetch workspaces for reconfigure
-                          if (clickupApiKey) {
-                            fetchClickupWorkspaces(clickupApiKey);
+                          // Pre-fetch spaces using master connection
+                          if (masterClickupApiKey && masterClickupWorkspaceId) {
+                            fetchClickupSpaces(masterClickupWorkspaceId, masterClickupApiKey);
                           }
                         }}
                       >
@@ -1247,65 +1314,11 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                 </p>
               </div>
             ) : (
-              /* Configuration view */
+              /* Location selection view - using master API key */
               <>
                 <p className="text-xs text-muted-foreground">
-                  Connect ClickUp to automatically pull subject lines and preview text from campaign tasks.
+                  Select the ClickUp list where this brand's campaign tasks live.
                 </p>
-                
-                {/* API Token */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs">API Token</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type={showClickupApiKey ? 'text' : 'password'}
-                      value={clickupApiKey}
-                      onChange={(e) => setClickupApiKey(e.target.value)}
-                      placeholder="pk_..."
-                      className="flex-1 h-8 text-xs font-mono"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={() => setShowClickupApiKey(!showClickupApiKey)}
-                    >
-                      {showClickupApiKey ? 'Hide' : 'Show'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={() => fetchClickupWorkspaces(clickupApiKey)}
-                      disabled={!clickupApiKey || isLoadingClickupData}
-                    >
-                      {isLoadingClickupData ? 'Loading...' : 'Connect'}
-                    </Button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Get your token at <a href="https://app.clickup.com/settings/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">app.clickup.com → Settings → Apps</a>
-                  </p>
-                </div>
-
-                {/* Workspace selector */}
-                {clickupWorkspaces.length > 0 && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Workspace</Label>
-                    <select
-                      value={clickupWorkspaceId}
-                      onChange={(e) => {
-                        setClickupWorkspaceId(e.target.value);
-                        fetchClickupSpaces(e.target.value);
-                      }}
-                      className="w-full h-8 text-xs border rounded px-2"
-                    >
-                      <option value="">Select workspace...</option>
-                      {clickupWorkspaces.map(w => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
 
                 {/* Space selector */}
                 {clickupSpaces.length > 0 && (
@@ -1358,16 +1371,23 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                   </div>
                 )}
 
+                {/* No spaces loaded yet - show loading or prompt */}
+                {clickupSpaces.length === 0 && !isLoadingClickupData && (
+                  <p className="text-xs text-muted-foreground">
+                    Loading ClickUp workspaces...
+                  </p>
+                )}
+
                 {/* Save button */}
                 <div className="flex gap-2">
-                  {(clickupApiKey || clickupListId) && (
+                  {clickupListId && (
                     <Button
                       size="sm"
                       onClick={handleSaveClickupSettings}
                       disabled={isSavingClickup || !clickupListId}
                       className="text-xs"
                     >
-                      {isSavingClickup ? 'Saving...' : 'Save ClickUp Settings'}
+                      {isSavingClickup ? 'Saving...' : 'Save Location'}
                     </Button>
                   )}
                   {isReconfiguring && (
@@ -1516,6 +1536,66 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             {copyExamples.subjectLines.length === 0 && copyExamples.previewTexts.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 No examples yet. Sync from Klaviyo or upload a CSV to train the AI on your brand voice.
+              </p>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Sent Copy - Historically sent subject lines and preview texts */}
+      <Collapsible open={openSections.sentCopy} onOpenChange={() => toggleSection('sentCopy')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.sentCopy ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">Sent Copy</span>
+            <span className="text-xs text-muted-foreground">
+              ({sentCopy.subjectLines.length} SL, {sentCopy.previewTexts.length} PT)
+            </span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Subject lines and preview texts that were actually sent to Klaviyo.
+            </p>
+
+            {sentCopy.subjectLines.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Subject Lines ({sentCopy.subjectLines.length})</p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {sentCopy.subjectLines.slice(0, 10).map((item, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="text-muted-foreground truncate flex-1">• {item.text}</span>
+                      <span className="text-muted-foreground/60 shrink-0">({item.count}x)</span>
+                    </div>
+                  ))}
+                  {sentCopy.subjectLines.length > 10 && (
+                    <p className="text-xs text-muted-foreground">...and {sentCopy.subjectLines.length - 10} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {sentCopy.previewTexts.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Preview Texts ({sentCopy.previewTexts.length})</p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {sentCopy.previewTexts.slice(0, 10).map((item, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="text-muted-foreground truncate flex-1">• {item.text}</span>
+                      <span className="text-muted-foreground/60 shrink-0">({item.count}x)</span>
+                    </div>
+                  ))}
+                  {sentCopy.previewTexts.length > 10 && (
+                    <p className="text-xs text-muted-foreground">...and {sentCopy.previewTexts.length - 10} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {sentCopy.subjectLines.length === 0 && sentCopy.previewTexts.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No campaigns have been sent to Klaviyo yet. Sent copy will appear here after you push campaigns.
               </p>
             )}
           </div>
