@@ -43,6 +43,27 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
 - NEVER render the brand name as text when logo URL is provided
 - If current HTML has text instead of logo image, REPLACE it with <img>
 
+## KLAVIYO DYNAMIC PLACEHOLDERS (MUST PRESERVE)
+If the footer contains or should contain fine print, use these exact Klaviyo merge tags:
+- {% unsubscribe_url %} - for unsubscribe links
+- {% manage_preferences_url %} - for preference center links
+- {{ organization.address }} - for physical address (legally required)
+- {{ organization.name }} - for organization name
+
+NEVER replace these with actual URLs or placeholder text. They are ESP placeholders.
+If the current HTML has these tags, PRESERVE them exactly. If adding fine print, USE these tags.
+
+Example fine print:
+\`\`\`html
+<tr>
+  <td style="padding: 20px; text-align: center; font-size: 11px; color: #888888;">
+    {{ organization.name }} | {{ organization.address }}<br><br>
+    <a href="{% unsubscribe_url %}" style="color: #888888;">Unsubscribe</a> | 
+    <a href="{% manage_preferences_url %}" style="color: #888888;">Manage Preferences</a>
+  </td>
+</tr>
+\`\`\`
+
 ## STRUCTURE TEMPLATE (MANDATORY - USE EXACTLY)
 \`\`\`html
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff;">
@@ -51,6 +72,7 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 600px; max-width: 600px; background-color: {BG};">
         {CONTENT ROWS}
+        {FINE PRINT WITH KLAVIYO TAGS}
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
     </td>

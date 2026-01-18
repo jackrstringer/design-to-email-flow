@@ -120,7 +120,26 @@ CRITICAL RULES:
 - VML fallbacks for Outlook backgrounds if needed
 - Mobile responsive where possible using max-width
 - EVERY clickable element MUST have the correct href from the link mappings
-- Use ESP placeholders (like {{ unsubscribe_url }}) exactly as provided
+
+## KLAVIYO MERGE TAGS (REQUIRED FOR FINE PRINT)
+Every footer MUST include a fine print section with these Klaviyo dynamic tags:
+- Unsubscribe: <a href="{% unsubscribe_url %}">Unsubscribe</a>
+- Preferences: <a href="{% manage_preferences_url %}">Manage Preferences</a>
+- Address: {{ organization.address }}
+- Organization: {{ organization.name }}
+
+These are ESP placeholders that get replaced when the email is sent. NEVER use real URLs for unsubscribe/preferences links.
+
+Example fine print row:
+\`\`\`html
+<tr>
+  <td style="padding: 20px; text-align: center; font-size: 11px; color: #888888;">
+    {{ organization.name }} | {{ organization.address }}<br><br>
+    <a href="{% unsubscribe_url %}" style="color: #888888;">Unsubscribe</a> | 
+    <a href="{% manage_preferences_url %}" style="color: #888888;">Manage Preferences</a>
+  </td>
+</tr>
+\`\`\`
 
 MANDATORY STRUCTURE:
 \`\`\`html
@@ -130,6 +149,7 @@ MANDATORY STRUCTURE:
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td><![endif]-->
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 600px; max-width: 600px; background-color: {BG_COLOR};">
         <!-- All content here -->
+        <!-- Fine print row with Klaviyo tags REQUIRED -->
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
     </td>

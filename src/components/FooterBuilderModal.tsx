@@ -232,6 +232,28 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     return () => clearInterval(interval);
   }, [isProcessingReference, processingStartTime]);
 
+  // Reset to reference step - clears all state for a fresh start
+  const resetToReference = useCallback(() => {
+    setReferenceImageUrl(null);
+    setSourceType(null);
+    setFigmaUrl('');
+    setFigmaData(null);
+    setCampaigns([]);
+    setSelectedCampaignImage(null);
+    setAssetsNeeded([]);
+    setTextBasedElements([]);
+    setClickableElements([]);
+    setSocialPlatforms([]);
+    setExtractedStyles(null);
+    setLogoAnalysis(null);
+    setLogoConversionNeeded(null);
+    setCollectedAssets({});
+    setDetectedLinks([]);
+    setApprovedLinks([]);
+    setSocialLinks(brand.socialLinks || []);
+    setStep('reference');
+  }, [brand.socialLinks]);
+
   // No brand library - user uploads all assets explicitly
 
   // Handle campaign source click
@@ -1462,7 +1484,11 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               variant="ghost"
               onClick={() => {
                 const prev = getPrevStep();
-                if (prev) setStep(prev);
+                if (prev === 'reference') {
+                  resetToReference();
+                } else if (prev) {
+                  setStep(prev);
+                }
               }}
               disabled={!getPrevStep()}
             >
