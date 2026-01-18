@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { FooterBuilderModal } from '@/components/FooterBuilderModal';
-import { ClickUpSetupPanel } from '@/components/ClickUpSetupPanel';
+import { BrandClickUpLocationSelector } from '@/components/BrandClickUpLocationSelector';
 import { useAuth } from '@/hooks/useAuth';
 import type { Brand } from '@/types/brand-assets';
 import type { Json } from '@/integrations/supabase/types';
@@ -36,7 +36,7 @@ interface LogoData {
   missingVariant?: 'dark' | 'light';
 }
 
-type Step = 'url' | 'analyze' | 'footer';
+type Step = 'url' | 'analyze' | 'clickup' | 'footer';
 
 export function BrandOnboardingModal({ 
   open, 
@@ -330,7 +330,7 @@ export function BrandOnboardingModal({
     }
   };
 
-  const handleContinueToFooter = async () => {
+  const handleContinueToClickUp = async () => {
     if (!brandName.trim()) {
       toast.error('Please enter a brand name');
       return;
@@ -399,16 +399,25 @@ export function BrandOnboardingModal({
         updatedAt: data.updated_at,
       };
 
-      toast.success('Brand created! Now let\'s set up your footer.');
+      toast.success('Brand created! Now let\'s connect ClickUp.');
       setCreatedBrand(newBrand);
-      setStep('footer');
-      setShowFooterBuilder(true);
+      setStep('clickup');
     } catch (error) {
       console.error('Error creating brand:', error);
       toast.error('Failed to create brand');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleClickUpComplete = () => {
+    setStep('footer');
+    setShowFooterBuilder(true);
+  };
+
+  const handleClickUpSkip = () => {
+    setStep('footer');
+    setShowFooterBuilder(true);
   };
 
   const handleFooterSaved = () => {
@@ -427,13 +436,6 @@ export function BrandOnboardingModal({
     onOpenChange(false);
   };
 
-  const handleClickUpComplete = () => {
-    // ClickUp setup done, continue with footer
-  };
-
-  const handleClickUpSkip = () => {
-    // Skipped, continue with footer
-  };
 
   return (
     <>
@@ -678,7 +680,7 @@ export function BrandOnboardingModal({
                   Back
                 </Button>
                 <Button 
-                  onClick={handleContinueToFooter} 
+                  onClick={handleContinueToClickUp} 
                   disabled={isSaving || !brandName || !klaviyoApiKey}
                 >
                   {isSaving ? (
@@ -688,7 +690,7 @@ export function BrandOnboardingModal({
                     </>
                   ) : (
                     <>
-                      Continue to Footer
+                      Continue
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </>
                   )}
@@ -696,10 +698,21 @@ export function BrandOnboardingModal({
               </DialogFooter>
             </div>
           )}
+
+          {/* Step 3: ClickUp Location Selection */}
+          {step === 'clickup' && createdBrand && (
+            <div className="py-4">
+              <BrandClickUpLocationSelector
+                brandId={createdBrand.id}
+                onComplete={handleClickUpComplete}
+                onSkip={handleClickUpSkip}
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
-      {/* Footer Builder Modal with ClickUp Setup overlay during generation */}
+      {/* Footer Builder Modal - no ClickUp overlay, it's handled in previous step */}
       {createdBrand && showFooterBuilder && (
         <FooterBuilderModal
           open={showFooterBuilder}
@@ -721,19 +734,6 @@ export function BrandOnboardingModal({
               }
             });
           }}
-          // Render ClickUp setup during footer generation
-          renderDuringGeneration={isFooterGenerating ? (
-            <div className="border-t pt-4 mt-4">
-              <p className="text-sm font-medium mb-2">While we build your footer...</p>
-              <ClickUpSetupPanel
-                brandId={createdBrand.id}
-                onComplete={handleClickUpComplete}
-                onSkip={handleClickUpSkip}
-                isOptional={true}
-                compact={true}
-              />
-            </div>
-          ) : null}
         />
       )}
     </>

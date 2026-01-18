@@ -418,6 +418,8 @@ export type Database = {
       }
       profiles: {
         Row: {
+          clickup_api_key: string | null
+          clickup_workspace_id: string | null
           created_at: string | null
           email: string | null
           figma_access_token: string | null
@@ -427,6 +429,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          clickup_api_key?: string | null
+          clickup_workspace_id?: string | null
           created_at?: string | null
           email?: string | null
           figma_access_token?: string | null
@@ -436,6 +440,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          clickup_api_key?: string | null
+          clickup_workspace_id?: string | null
           created_at?: string | null
           email?: string | null
           figma_access_token?: string | null
