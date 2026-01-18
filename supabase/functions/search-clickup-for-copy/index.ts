@@ -104,28 +104,36 @@ async function extractWithAI(allTextContent: string): Promise<{ subjectLine?: st
     console.log(`[clickup] Content truncated: ${allTextContent.length} -> ${truncatedContent.length} chars (first 4000 + last 4000)`);
   }
 
-  const prompt = `You are analyzing content from a marketing/email task in a project management system.
+const prompt = `You are analyzing content from an email marketing task.
 Your job is to find the EMAIL SUBJECT LINE and EMAIL PREVIEW TEXT if they exist.
 
-Common labels for Subject Line include (but are not limited to):
-- Subject Line, SL, Subject, Headline, Email Subject, Email Header, Header, Title
-- Copy (when it's short and appears to be a subject)
-- Any field with "subject" in the name
+ONLY look for these specific labels (case-insensitive):
 
-Common labels for Preview Text include (but are not limited to):
-- Preview Text, Pretext, PT, Pre-header, Preheader, Subheadline, Teaser
-- Secondary copy, Subhead
-- Any field with "preview" or "pretext" in the name
+SUBJECT LINE labels:
+- "Subject Line" / "Subject Line:" / "Subject-Line"
+- "SL" / "SL:" / "SL -"
+- "Email Subject" / "Email Subject:"
 
-The content below contains ALL text from a task's name, description, custom fields, and comments.
-Look for patterns like:
-- "Subject Line: ..." or "SL: ..."
-- "Preview Text: ..." or "PT: ..."
-- Fields labeled with these names followed by their values
-- Bold/markdown formatted labels like **Subject Line**
+PREVIEW TEXT labels:
+- "Preview Text" / "Preview Text:" / "Preview-Text"
+- "PT" / "PT:" / "PT -"
+- "Pretext" / "Pre-text" / "Pre text"
+- "Preheader" / "Pre-header" / "Pre header"
 
-IMPORTANT: Extract the actual subject line and preview text VALUES, not the labels.
-If you find multiple candidates, prefer ones that are explicitly labeled.
+DO NOT extract:
+- Headlines, titles, or headers (these are different)
+- Body copy or general copy
+- Teasers or secondary copy
+- Any other marketing copy fields
+
+FORMATS TO RECOGNIZE:
+- "Subject Line: Your text here" → extract "Your text here"
+- "SL: Your text here" → extract "Your text here"
+- "PT: Your text here" → extract "Your text here"
+- **Subject Line:** Your text here (markdown bold label)
+- Label on one line, value on next line
+
+Extract ONLY the value, not the label itself.
 
 TASK CONTENT:
 ---

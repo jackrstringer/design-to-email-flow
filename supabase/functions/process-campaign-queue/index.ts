@@ -597,6 +597,13 @@ serve(async (req) => {
     let clickupListId = null;
     let clickupWorkspaceId = null;
     
+    // Fetch user's profile for master ClickUp connection
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('clickup_api_key, clickup_workspace_id')
+      .eq('id', item.user_id)
+      .maybeSingle();
+    
     // Get brand info first for early generation
     if (brandId) {
       const { data: brand } = await supabase
@@ -611,9 +618,11 @@ serve(async (req) => {
           domain: brand.domain,
         };
         copyExamples = brand.copy_examples;
-        clickupApiKey = brand.clickup_api_key;
-        clickupListId = brand.clickup_list_id;
-        clickupWorkspaceId = brand.clickup_workspace_id;
+        // Use profile's master API key, fallback to brand's if exists (legacy)
+        clickupApiKey = userProfile?.clickup_api_key || brand.clickup_api_key || null;
+        clickupWorkspaceId = userProfile?.clickup_workspace_id || brand.clickup_workspace_id || null;
+        // List ID still comes from brand (location-specific)
+        clickupListId = brand.clickup_list_id || null;
       }
     }
 
