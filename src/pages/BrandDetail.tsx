@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Header } from '@/components/Header';
 import { CampaignCard } from '@/components/CampaignCard';
 import { BrandSettings } from '@/components/dashboard/BrandSettings';
 import { Button } from '@/components/ui/button';
@@ -134,7 +133,6 @@ export default function BrandDetail() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <Header />
         <div className="flex items-center justify-center py-24">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
@@ -145,7 +143,6 @@ export default function BrandDetail() {
   if (!brand) {
     return (
       <div className="min-h-screen bg-background">
-        <Header />
         <div className="max-w-6xl mx-auto px-6 py-8">
           <p className="text-muted-foreground">Brand not found</p>
           <Link to="/brands">
@@ -161,7 +158,6 @@ export default function BrandDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
       
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Back link */}
