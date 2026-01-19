@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useSegmentPresets } from '@/hooks/useSegmentPresets';
 import { SegmentsTable } from '@/components/segments/SegmentsTable';
 import { useBrandsQuery } from '@/hooks/useBrandsQuery';
@@ -12,16 +13,26 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function Segments() {
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedBrandId = searchParams.get('brand');
 
   const { data: brands = [], isLoading: loadingBrands } = useBrandsQuery();
 
-  // Auto-select first brand when brands load
+  // Auto-select first brand when brands load, or reset if selected brand doesn't exist
   useEffect(() => {
-    if (brands.length > 0 && !selectedBrandId) {
-      setSelectedBrandId(brands[0].id);
+    if (brands.length === 0) return;
+    
+    const currentBrand = searchParams.get('brand');
+    const brandExists = currentBrand && brands.some(b => b.id === currentBrand);
+    
+    if (!brandExists) {
+      setSearchParams({ brand: brands[0].id }, { replace: true });
     }
-  }, [brands, selectedBrandId]);
+  }, [brands, searchParams, setSearchParams]);
+
+  const setSelectedBrandId = (brandId: string) => {
+    setSearchParams({ brand: brandId });
+  };
 
   const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
 
