@@ -721,7 +721,7 @@ export function ExpandedRowPanel({
                               </button>
                             )}
                           </PopoverTrigger>
-                          <PopoverContent className="w-72 p-0" align="end" side="left">
+                          <PopoverContent className="w-96 p-0" align="end" side="left">
                             <Command>
                               <CommandInput 
                                 placeholder="Search or enter URL..." 
