@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useSegmentPresets } from '@/hooks/useSegmentPresets';
 import { SegmentsTable } from '@/components/segments/SegmentsTable';
+import { useBrandsQuery } from '@/hooks/useBrandsQuery';
 import {
   Select,
   SelectContent,
@@ -11,17 +11,17 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface Brand {
-  id: string;
-  name: string;
-  klaviyo_api_key: string | null;
-  primary_color: string;
-}
-
 export default function Segments() {
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  const [loadingBrands, setLoadingBrands] = useState(true);
+
+  const { data: brands = [], isLoading: loadingBrands } = useBrandsQuery();
+
+  // Auto-select first brand when brands load
+  useEffect(() => {
+    if (brands.length > 0 && !selectedBrandId) {
+      setSelectedBrandId(brands[0].id);
+    }
+  }, [brands, selectedBrandId]);
 
   const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
 
@@ -36,37 +36,12 @@ export default function Segments() {
     deletePreset,
   } = useSegmentPresets(selectedBrandId);
 
-  // Fetch brands on mount
-  useEffect(() => {
-    const fetchBrands = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('brands')
-          .select('id, name, klaviyo_api_key, primary_color')
-          .order('name');
-
-        if (error) throw error;
-
-        setBrands(data || []);
-        if (data && data.length > 0 && !selectedBrandId) {
-          setSelectedBrandId(data[0].id);
-        }
-      } catch (error) {
-        console.error('Error fetching brands:', error);
-      } finally {
-        setLoadingBrands(false);
-      }
-    };
-
-    fetchBrands();
-  }, []);
-
   // Fetch Klaviyo segments when brand changes
   useEffect(() => {
-    if (selectedBrand?.klaviyo_api_key) {
-      fetchKlaviyoSegments(selectedBrand.klaviyo_api_key);
+    if (selectedBrand?.klaviyoApiKey) {
+      fetchKlaviyoSegments(selectedBrand.klaviyoApiKey);
     }
-  }, [selectedBrand?.klaviyo_api_key, fetchKlaviyoSegments]);
+  }, [selectedBrand?.klaviyoApiKey, fetchKlaviyoSegments]);
 
   return (
     <div className="flex flex-col h-full">
@@ -89,13 +64,13 @@ export default function Segments() {
                     <span 
                       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
                       style={{ 
-                        background: `linear-gradient(135deg, ${selectedBrand.primary_color}18 0%, ${selectedBrand.primary_color}08 100%)`,
-                        color: selectedBrand.primary_color,
+                        background: `linear-gradient(135deg, ${selectedBrand.primaryColor}18 0%, ${selectedBrand.primaryColor}08 100%)`,
+                        color: selectedBrand.primaryColor,
                       }}
                     >
                       <span 
                         className="w-1.5 h-1.5 rounded-full" 
-                        style={{ backgroundColor: selectedBrand.primary_color }} 
+                        style={{ backgroundColor: selectedBrand.primaryColor }} 
                       />
                       {selectedBrand.name}
                     </span>
@@ -108,13 +83,13 @@ export default function Segments() {
                     <span 
                       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
                       style={{ 
-                        background: `linear-gradient(135deg, ${brand.primary_color}18 0%, ${brand.primary_color}08 100%)`,
-                        color: brand.primary_color,
+                        background: `linear-gradient(135deg, ${brand.primaryColor}18 0%, ${brand.primaryColor}08 100%)`,
+                        color: brand.primaryColor,
                       }}
                     >
                       <span 
                         className="w-1.5 h-1.5 rounded-full" 
-                        style={{ backgroundColor: brand.primary_color }} 
+                        style={{ backgroundColor: brand.primaryColor }} 
                       />
                       {brand.name}
                     </span>
@@ -132,7 +107,7 @@ export default function Segments() {
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             Select a brand to manage segment sets
           </div>
-        ) : !selectedBrand?.klaviyo_api_key ? (
+        ) : !selectedBrand?.klaviyoApiKey ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             This brand doesn't have a Klaviyo API key configured.
             <br />
