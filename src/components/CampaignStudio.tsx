@@ -932,7 +932,7 @@ export function CampaignStudio({
                                                 </button>
                                               )}
                                             </PopoverTrigger>
-                                            <PopoverContent className="w-72 p-0" align="start">
+                                            <PopoverContent className="w-96 p-0" align="start">
                                               <Command>
                                                 <CommandInput 
                                                   placeholder="Search or enter URL..." 
