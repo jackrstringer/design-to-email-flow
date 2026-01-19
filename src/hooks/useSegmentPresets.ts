@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -20,7 +21,6 @@ export interface SegmentPreset {
 }
 
 // Helper to hydrate segment IDs with names from Klaviyo segments list
-// Returns null for segments that aren't found (to filter out while loading)
 const hydrateSegments = (
   segmentData: unknown[],
   klaviyoList: KlaviyoSegment[]
@@ -28,44 +28,56 @@ const hydrateSegments = (
   if (!Array.isArray(segmentData)) return [];
   
   return segmentData.map((seg) => {
-    // If already an object with id and name, return as-is
     if (typeof seg === 'object' && seg !== null && 'id' in seg && 'name' in seg) {
       return seg as KlaviyoSegment;
     }
-    // If it's just an ID string, find the matching Klaviyo segment
     const id = typeof seg === 'object' && seg !== null && 'id' in seg 
       ? (seg as { id: string }).id 
       : String(seg);
     const found = klaviyoList.find((k) => k.id === id);
-    // Return null if not found - we'll filter these out to avoid showing IDs
     return found || null;
   }).filter(Boolean) as KlaviyoSegment[];
 };
 
-export function useSegmentPresets(brandId: string | null) {
-  const [presets, setPresets] = useState<SegmentPreset[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [klaviyoSegments, setKlaviyoSegments] = useState<KlaviyoSegment[]>([]);
-  const [loadingSegments, setLoadingSegments] = useState(false);
-  const [klaviyoLoaded, setKlaviyoLoaded] = useState(false);
-  
-  // Use ref to avoid recreating callbacks when klaviyoSegments changes
-  const klaviyoSegmentsRef = useRef<KlaviyoSegment[]>([]);
-  useEffect(() => {
-    klaviyoSegmentsRef.current = klaviyoSegments;
-  }, [klaviyoSegments]);
+// Separate hook for Klaviyo segments - cached per API key
+export function useKlaviyoSegments(klaviyoApiKey: string | null | undefined) {
+  return useQuery({
+    queryKey: ['klaviyo-segments', klaviyoApiKey],
+    queryFn: async () => {
+      if (!klaviyoApiKey) return [];
+      
+      const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
+        body: { klaviyoApiKey },
+      });
 
-  const fetchPresets = useCallback(async (klaviyoList?: KlaviyoSegment[]) => {
-    if (!brandId) {
-      setPresets([]);
-      setLoading(false);
-      return;
-    }
+      if (error) throw error;
+      return (data.lists || []) as KlaviyoSegment[];
+    },
+    enabled: !!klaviyoApiKey,
+    staleTime: 1000 * 60 * 5, // 5 minutes - segments rarely change
+  });
+}
 
-    // Use provided list or current ref value
-    const segmentsToUse = klaviyoList ?? klaviyoSegmentsRef.current;
+export function useSegmentPresets(brandId: string | null, klaviyoApiKey?: string | null) {
+  const queryClient = useQueryClient();
 
-    try {
+  // Fetch Klaviyo segments (cached per API key)
+  const {
+    data: klaviyoSegments = [],
+    isLoading: loadingSegments,
+    isFetched: klaviyoLoaded,
+  } = useKlaviyoSegments(klaviyoApiKey);
+
+  // Fetch segment presets (cached per brand ID)
+  const {
+    data: presets = [],
+    isLoading: loadingPresets,
+    isFetching,
+  } = useQuery({
+    queryKey: ['segment-presets', brandId, klaviyoSegments],
+    queryFn: async () => {
+      if (!brandId) return [];
+
       const { data, error } = await supabase
         .from('segment_presets')
         .select('*')
@@ -75,64 +87,28 @@ export function useSegmentPresets(brandId: string | null) {
 
       if (error) throw error;
 
-      const formattedPresets: SegmentPreset[] = (data || []).map((p) => ({
+      return (data || []).map((p): SegmentPreset => ({
         id: p.id,
         brand_id: p.brand_id,
         name: p.name,
         description: p.description || null,
-        included_segments: hydrateSegments(p.included_segments as unknown[], segmentsToUse),
-        excluded_segments: hydrateSegments(p.excluded_segments as unknown[], segmentsToUse),
+        included_segments: hydrateSegments(p.included_segments as unknown[], klaviyoSegments),
+        excluded_segments: hydrateSegments(p.excluded_segments as unknown[], klaviyoSegments),
         is_default: p.is_default,
         created_at: p.created_at,
         updated_at: p.updated_at,
       }));
+    },
+    enabled: !!brandId && (!!klaviyoApiKey ? klaviyoLoaded : true),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
 
-      setPresets(formattedPresets);
-    } catch (error) {
-      console.error('Error fetching segment presets:', error);
-      toast.error('Failed to load segment presets');
-    } finally {
-      setLoading(false);
-    }
-  }, [brandId]);
-
-  const fetchKlaviyoSegments = useCallback(async (klaviyoApiKey: string) => {
-    if (!klaviyoApiKey) {
-      setKlaviyoSegments([]);
-      setKlaviyoLoaded(true);
-      // Still fetch presets even without Klaviyo
-      await fetchPresets([]);
-      return;
-    }
-
-    setLoadingSegments(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
-        body: { klaviyoApiKey },
-      });
-
-      if (error) throw error;
-
-      const segments = data.lists || [];
-      setKlaviyoSegments(segments);
-      klaviyoSegmentsRef.current = segments;
-      
-      // Fetch presets with the fresh segments data
-      await fetchPresets(segments);
-    } catch (error) {
-      console.error('Error fetching Klaviyo segments:', error);
-      toast.error('Failed to load Klaviyo segments');
-      // Still fetch presets even on error
-      await fetchPresets([]);
-    } finally {
-      setLoadingSegments(false);
-      setKlaviyoLoaded(true);
-    }
-  }, [fetchPresets]);
+  const invalidatePresets = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['segment-presets', brandId] });
+  }, [queryClient, brandId]);
 
   const createPreset = useCallback(async (preset: Omit<SegmentPreset, 'id' | 'created_at' | 'updated_at'>) => {
     try {
-      // If this is being set as default, unset other defaults first
       if (preset.is_default && brandId) {
         await supabase
           .from('segment_presets')
@@ -155,7 +131,7 @@ export function useSegmentPresets(brandId: string | null) {
 
       if (error) throw error;
 
-      await fetchPresets();
+      invalidatePresets();
       toast.success('Segment set created');
       return data;
     } catch (error) {
@@ -163,11 +139,10 @@ export function useSegmentPresets(brandId: string | null) {
       toast.error('Failed to create segment set');
       return null;
     }
-  }, [brandId, fetchPresets]);
+  }, [brandId, invalidatePresets]);
 
   const updatePreset = useCallback(async (id: string, updates: Partial<SegmentPreset>) => {
     try {
-      // If setting as default, unset other defaults first
       if (updates.is_default && brandId) {
         await supabase
           .from('segment_presets')
@@ -190,14 +165,14 @@ export function useSegmentPresets(brandId: string | null) {
 
       if (error) throw error;
 
-      await fetchPresets();
+      invalidatePresets();
       return true;
     } catch (error) {
       console.error('Error updating segment preset:', error);
       toast.error('Failed to update segment set');
       return false;
     }
-  }, [brandId, fetchPresets]);
+  }, [brandId, invalidatePresets]);
 
   const deletePreset = useCallback(async (id: string) => {
     try {
@@ -208,7 +183,7 @@ export function useSegmentPresets(brandId: string | null) {
 
       if (error) throw error;
 
-      await fetchPresets();
+      invalidatePresets();
       toast.success('Segment set deleted');
       return true;
     } catch (error) {
@@ -216,53 +191,22 @@ export function useSegmentPresets(brandId: string | null) {
       toast.error('Failed to delete segment set');
       return false;
     }
-  }, [fetchPresets]);
+  }, [invalidatePresets]);
 
-  // Reset state when brand changes
-  useEffect(() => {
-    setKlaviyoLoaded(false);
-    setPresets([]);
-    setKlaviyoSegments([]);
-    klaviyoSegmentsRef.current = [];
-    setLoading(true);
-  }, [brandId]);
-
-  // Set up realtime subscription
-  useEffect(() => {
-    if (!brandId) return;
-
-    const channel = supabase
-      .channel(`segment_presets_${brandId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'segment_presets',
-          filter: `brand_id=eq.${brandId}`,
-        },
-        () => {
-          // Use ref to get current klaviyo segments
-          fetchPresets(klaviyoSegmentsRef.current);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [brandId, fetchPresets]);
+  // Determine loading state - only show loading on initial load with no data
+  const isInitialLoading = (loadingPresets && presets.length === 0) || 
+    (!!klaviyoApiKey && !klaviyoLoaded);
 
   return {
     presets,
-    loading: loading || !klaviyoLoaded,
+    loading: isInitialLoading,
+    isFetching,
     klaviyoSegments,
     loadingSegments,
     klaviyoLoaded,
-    fetchKlaviyoSegments,
     createPreset,
     updatePreset,
     deletePreset,
-    refresh: () => fetchPresets(klaviyoSegmentsRef.current),
+    refresh: invalidatePresets,
   };
 }
