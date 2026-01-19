@@ -12,11 +12,23 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 
+const SEGMENTS_LAST_BRAND_KEY = 'segments-last-brand-id';
+
 export default function Segments() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedBrandId = searchParams.get('brand');
 
   const { data: brands = [], isLoading: loadingBrands } = useBrandsQuery();
+
+  // Restore from localStorage on mount if no brand param in URL
+  useEffect(() => {
+    if (searchParams.get('brand')) return; // Already have a brand param
+    
+    const storedBrandId = localStorage.getItem(SEGMENTS_LAST_BRAND_KEY);
+    if (storedBrandId) {
+      setSearchParams({ brand: storedBrandId }, { replace: true });
+    }
+  }, []); // Only run on mount
 
   // Auto-select first brand when brands load, or reset if selected brand doesn't exist
   useEffect(() => {
@@ -26,12 +38,15 @@ export default function Segments() {
     const brandExists = currentBrand && brands.some(b => b.id === currentBrand);
     
     if (!brandExists) {
-      setSearchParams({ brand: brands[0].id }, { replace: true });
+      const fallbackBrand = brands[0].id;
+      setSearchParams({ brand: fallbackBrand }, { replace: true });
+      localStorage.setItem(SEGMENTS_LAST_BRAND_KEY, fallbackBrand);
     }
   }, [brands, searchParams, setSearchParams]);
 
   const setSelectedBrandId = (brandId: string) => {
     setSearchParams({ brand: brandId });
+    localStorage.setItem(SEGMENTS_LAST_BRAND_KEY, brandId);
   };
 
   const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
