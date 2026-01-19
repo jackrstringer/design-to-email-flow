@@ -25,23 +25,16 @@ export default function Segments() {
 
   const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
 
+  // Pass klaviyoApiKey directly - hook handles caching internally
   const {
     presets,
     loading: loadingPresets,
     klaviyoSegments,
     loadingSegments,
-    fetchKlaviyoSegments,
     createPreset,
     updatePreset,
     deletePreset,
-  } = useSegmentPresets(selectedBrandId);
-
-  // Fetch Klaviyo segments when brand changes
-  useEffect(() => {
-    if (selectedBrand?.klaviyoApiKey) {
-      fetchKlaviyoSegments(selectedBrand.klaviyoApiKey);
-    }
-  }, [selectedBrand?.klaviyoApiKey, fetchKlaviyoSegments]);
+  } = useSegmentPresets(selectedBrandId, selectedBrand?.klaviyoApiKey);
 
   return (
     <div className="flex flex-col h-full">
