@@ -696,10 +696,44 @@ Split these into multiple slices:
 
 ### RULE 4: Slice Boundaries
 
-- Cut in visual GAPS between sections (whitespace, color changes, divider lines)
+- Cut in the CENTER of visual GAPS between sections (not at the edge of content)
 - NEVER cut through: text blocks, images, logos, buttons, or faces
+- Maintain 30-50px MINIMUM padding from any text bounding box
+- Use horizontal edge data to find clean color transitions in the middle of gaps
+- If no clear gap exists, prefer cutting ABOVE a section (more padding on top)
 - Each slice should make sense as a standalone visual unit
 - Typical email: 6-15 slices (more if there are many buttons)
+
+### RULE 5: Text Padding/Safety Margins
+
+When placing slice boundaries near text blocks, you MUST maintain visual breathing room:
+
+**Minimum Padding Requirements:**
+- NEVER place a slice boundary within 30px of a text block's yTop or yBottom
+- Prefer 40-50px padding when whitespace allows
+- Look for whitespace BETWEEN content sections, not at the edge of text
+
+**How to Find Good Cut Points:**
+1. Look at OCR data for text bounding boxes
+2. Look at horizontal edges for color transitions
+3. Find where edges occur in GAPS between text blocks (not near text edges)
+4. Cut at the edge that is furthest from any text
+
+**Examples of BAD slice placement:**
+- Text bounding box: yTop=200, yBottom=280
+- Slice at y=198 ❌ (too close to text top - only 2px)
+- Slice at y=282 ❌ (too close to text bottom - only 2px)
+- Slice at y=310 ❌ (only 30px below, but next text starts at y=340 - cut at 325 instead)
+
+**Examples of GOOD slice placement:**
+- Text bounding box: yTop=200, yBottom=280
+- Next text block: yTop=340
+- Slice at y=310 ✓ (center of the 60px gap between 280-340)
+- If gap is small (40px), slice at center (y=300)
+
+**When gaps are tight (< 60px between text blocks):**
+- Cut in the EXACT CENTER of the available gap
+- This ensures equal padding above and below the cut line
 
 ---
 
@@ -866,7 +900,9 @@ Before returning your response, verify:
 ☐ Last section ends at footerStartY
 ☐ No gaps between sections
 ☐ No overlapping sections
-☐ Cuts are in visual gaps, not through content`;
+☐ Cuts are in visual gaps, not through content
+☐ Slice boundaries have 30+ px padding from nearest text block
+☐ Cuts are in the CENTER of whitespace gaps, not at edges of content`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
