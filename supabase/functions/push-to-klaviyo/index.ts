@@ -404,9 +404,6 @@ serve(async (req) => {
 
     const campaignResponseText = await campaignResponse.text();
     console.log(`Klaviyo campaign response status: ${campaignResponse.status}`);
-    if (!campaignResponse.ok) {
-      console.log(`Campaign creation error response: ${campaignResponseText}`);
-    }
 
     if (!campaignResponse.ok) {
       let errorMessage = 'Failed to create Klaviyo campaign';
@@ -416,6 +413,13 @@ serve(async (req) => {
       } catch {
         errorMessage = campaignResponseText || errorMessage;
       }
+      
+      // Log detailed error for debugging
+      console.error(`Campaign creation FAILED for template ${templateId}:`);
+      console.error(`  Included segments: ${JSON.stringify(included)}`);
+      console.error(`  Excluded segments: ${JSON.stringify(excluded)}`);
+      console.error(`  Error: ${errorMessage}`);
+      console.error(`  Full response: ${campaignResponseText}`);
 
       // Still return template ID so user can use it
       return new Response(

@@ -10,6 +10,18 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 
+// Normalize segment IDs - handle both object format {id, name} and plain string IDs
+function normalizeSegmentIds(segments: unknown): string[] {
+  if (!Array.isArray(segments)) return [];
+  return segments.map(seg => {
+    if (typeof seg === 'string') return seg;
+    if (typeof seg === 'object' && seg !== null && 'id' in seg) {
+      return (seg as { id: string }).id;
+    }
+    return String(seg);
+  });
+}
+
 interface StatusSelectorProps {
   item: CampaignQueueItem;
   onUpdate: () => void;
@@ -107,8 +119,8 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             .single();
 
           if (preset) {
-            includedSegments = (preset.included_segments as string[]) || [];
-            excludedSegments = (preset.excluded_segments as string[]) || [];
+            includedSegments = normalizeSegmentIds(preset.included_segments);
+            excludedSegments = normalizeSegmentIds(preset.excluded_segments);
           }
         } else if (item.brand_id) {
           // Fall back to default preset for the brand
@@ -120,8 +132,8 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             .single();
 
           if (defaultPreset) {
-            includedSegments = (defaultPreset.included_segments as string[]) || [];
-            excludedSegments = (defaultPreset.excluded_segments as string[]) || [];
+            includedSegments = normalizeSegmentIds(defaultPreset.included_segments);
+            excludedSegments = normalizeSegmentIds(defaultPreset.excluded_segments);
           }
         }
 
@@ -158,18 +170,31 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
         if (error) throw error;
 
         if (data) {
-          await supabase
-            .from('campaign_queue')
-            .update({
-              status: 'sent_to_klaviyo',
-              klaviyo_template_id: data.templateId,
-              klaviyo_campaign_id: data.campaignId,
-              klaviyo_campaign_url: data.campaignUrl,
-              sent_to_klaviyo_at: new Date().toISOString()
-            })
-            .eq('id', item.id);
+          // Check if campaign creation failed but template succeeded (partial failure)
+          if (data.error && !data.campaignId) {
+            console.error('Klaviyo partial failure:', data.error);
+            toast.error(data.error);
+            
+            // Revert status since campaign wasn't fully created
+            await supabase
+              .from('campaign_queue')
+              .update({ status: 'ready_for_review' })
+              .eq('id', item.id);
+          } else {
+            // Full success - both template and campaign created
+            await supabase
+              .from('campaign_queue')
+              .update({
+                status: 'sent_to_klaviyo',
+                klaviyo_template_id: data.templateId,
+                klaviyo_campaign_id: data.campaignId,
+                klaviyo_campaign_url: data.campaignUrl,
+                sent_to_klaviyo_at: new Date().toISOString()
+              })
+              .eq('id', item.id);
 
-          toast.success('Built in Klaviyo');
+            toast.success('Built in Klaviyo');
+          }
         }
       } catch (err) {
         console.error('Failed to send to Klaviyo:', err);
