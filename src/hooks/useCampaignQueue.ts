@@ -186,12 +186,15 @@ export function useCampaignQueue() {
   const queryClient = useQueryClient();
 
   // Main campaign queue query - cached and persisted
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['campaign-queue', user?.id],
     queryFn: fetchCampaignQueueData,
     enabled: !!user,
     staleTime: 1000 * 60 * 2, // 2 minutes before considered stale
   });
+
+  // Only show loading skeleton if there's no cached data at all
+  const isInitialLoading = isLoading && !data;
 
   // Fetch user zoom level
   const { data: userZoomLevel = 39 } = useQuery({
@@ -396,7 +399,8 @@ export function useCampaignQueue() {
 
   return {
     items: data?.items ?? [],
-    loading: isLoading,
+    loading: isInitialLoading, // Only true on first load with no cache
+    isFetching, // True during any fetch (initial or background)
     presetsByBrand: data?.presetsByBrand ?? {},
     klaviyoListsByBrand: data?.klaviyoListsByBrand ?? {},
     brandDataByBrand: data?.brandDataByBrand ?? {},
