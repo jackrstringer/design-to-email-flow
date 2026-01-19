@@ -417,7 +417,7 @@ async function analyzeSlices(
       const analysis = analysisByIndex.get(i);
       return {
         ...slice,
-        altText: analysis?.altText || `Email section ${i + 1}`,
+        altText: analysis?.altText !== undefined && analysis?.altText !== null ? analysis.altText : `Email section ${i + 1}`,
         link: analysis?.suggestedLink || slice.link || null,
         isClickable: analysis?.isClickable ?? true,
         linkVerified: analysis?.linkVerified || false,
@@ -825,12 +825,12 @@ serve(async (req) => {
       processing_percent: 65
     });
 
-    console.log('[process] Polling for early copy results (session:', earlySessionKey, ')...');
+    console.log('[process] Step 5: Polling for early copy results (session:', earlySessionKey, ')...');
     
-    // Poll for early generation results (max 20 seconds, 1s intervals)
+    // Poll for early generation results (max 12 seconds, 2s intervals - reduced to fail fast)
     let copyResult: { subjectLines: string[]; previewTexts: string[] } | null = null;
-    const maxWaitMs = 20000;
-    const pollIntervalMs = 1000;
+    const maxWaitMs = 12000;
+    const pollIntervalMs = 2000;
     const pollStartTime = Date.now();
     
     while (Date.now() - pollStartTime < maxWaitMs) {
@@ -843,6 +843,7 @@ serve(async (req) => {
         console.log('[process] Early copy ready after', Date.now() - pollStartTime, 'ms');
         break;
       }
+      console.log('[process] Polling... no result yet');
       await new Promise(r => setTimeout(r, pollIntervalMs));
     }
     

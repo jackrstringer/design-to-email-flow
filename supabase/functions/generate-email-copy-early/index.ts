@@ -359,18 +359,37 @@ Respond in JSON:
     ];
 
     if (imageUrl) {
-      // CRITICAL: Resize image URL to stay under Anthropic's 8000px dimension limit
-      // Max 600px wide (email standard), max 7900px tall (under 8000px API limit)
-      const resizedImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
-      console.log('[EARLY] Using resized image URL:', resizedImageUrl.substring(0, 80) + '...');
+      // Pre-fetch image as base64 to avoid Anthropic download timeout issues
+      // Only resize if not already resized (avoid double transformation)
+      let finalImageUrl = imageUrl;
+      if (imageUrl.includes('cloudinary.com/') && !imageUrl.includes('/c_limit,')) {
+        finalImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
+      }
+      console.log('[EARLY] Fetching image as base64:', finalImageUrl.substring(0, 80) + '...');
       
-      messageContent.push({
-        type: 'image',
-        source: {
-          type: 'url',
-          url: resizedImageUrl
+      try {
+        const imageResponse = await fetch(finalImageUrl);
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to fetch image: ${imageResponse.status}`);
         }
-      });
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Data = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        const contentType = imageResponse.headers.get('content-type') || 'image/png';
+        
+        console.log('[EARLY] Image fetched successfully, size:', imageBuffer.byteLength, 'bytes');
+        
+        messageContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: contentType,
+            data: base64Data
+          }
+        });
+      } catch (imgErr) {
+        console.error('[EARLY] Failed to fetch image, proceeding without it:', imgErr);
+        // Continue without image rather than failing entirely
+      }
     }
 
     console.log(`[EARLY] Sending request to Anthropic with image: ${imageUrl ? 'yes' : 'no'}`);

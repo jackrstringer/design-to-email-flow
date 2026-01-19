@@ -62,20 +62,22 @@ Brand: ${domain || 'Unknown'}
 
 For each labeled slice:
 
-**ALT TEXT** - Only for slices with marketing messages or CTAs:
-- If there's a headline, offer, or CTA text visible → capture that message (max 200 chars)
-- If there's a CTA, end with "Click to [CTA action]"
-- If the slice is PURELY visual (product photo, lifestyle image, person, logo, spacer, divider, footer bar, gap, solid color block) with NO marketing text → return EMPTY string ""
-- Do NOT describe images visually. "Woman drinking protein" or "Product bottles" is NOT useful alt text.
-- Alt text should convey the MESSAGE, not describe what you see.
+**ALT TEXT** (max 200 chars) - Capture the marketing message:
+- If there's a headline, offer text, body copy, or CTA visible → capture the key message
+- Include any visible text that communicates value (discounts, product benefits, urgency, etc.)
+- For CTAs, end with "Click to [action]"
+- ONLY return empty "" for slices that are PURELY decorative with ZERO text:
+  - Solid color spacer bars or dividers
+  - Footer bars with only icons (no readable text)
+- If you can see ANY marketing text in the slice, it needs alt text
 
 Examples:
-- Headline + CTA → "Sale ends soon! Claim your discount. Click to Bundle and Save"
-- CTA button only → "Click to Shop Now"
-- Product image with NO text overlay → "" (empty - purely visual)
-- Logo/header with NO text → "" (empty)
-- Spacer, divider, footer bar, gap, solid color → "" (empty)
-- Lifestyle photo of person → "" (empty - just decorative)
+- "How are you showing up in 2026?" headline → "How are you showing up in 2026? New routines. New habits. New goals."
+- Body copy about products → "Our tonics are here to support you through the reset."
+- Hero with headline + CTA → "Sale ends tonight! Click to Shop Now"
+- CTA button visible → "Click to Shop Now"
+- Product grid with product names → "Deep Sleep, Focus, Calming tonic. Click to shop."
+- Solid color divider with NO text → "" (empty)
 
 **CLICKABLE** - Be selective, not aggressive:
 SHOULD be clickable (isClickable: true):
