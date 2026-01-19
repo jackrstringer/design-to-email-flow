@@ -29,10 +29,9 @@ interface Brand {
 export default function CampaignQueue() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { items, loading, refresh, presetsByBrand, klaviyoListsByBrand, brandDataByBrand, userZoomLevel } = useCampaignQueue();
+  const { items, loading, isFetching, refresh, presetsByBrand, klaviyoListsByBrand, brandDataByBrand, userZoomLevel } = useCampaignQueue();
   
   const [brandFilter, setBrandFilter] = useState<string>('all');
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   
@@ -41,18 +40,18 @@ export default function CampaignQueue() {
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Fetch brands for filter dropdown
-  useEffect(() => {
-    async function fetchBrands() {
-      if (!user) return;
-      const { data } = await supabase
-        .from('brands')
-        .select('id, name')
-        .order('name');
-      if (data) setBrands(data);
-    }
-    fetchBrands();
-  }, [user]);
+  // Derive unique brands from loaded items (no extra fetch needed)
+  const brands = useMemo(() => {
+    const brandMap = new Map<string, string>();
+    items.forEach(item => {
+      if (item.brand_id && item.brands?.name) {
+        brandMap.set(item.brand_id, item.brands.name);
+      }
+    });
+    return Array.from(brandMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
 
   const filteredItems = items.filter(item => {
     const matchesBrand = brandFilter === 'all' || item.brand_id === brandFilter;
@@ -377,8 +376,9 @@ export default function CampaignQueue() {
                 size="icon" 
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => refresh()}
+                disabled={isFetching}
               >
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
               </Button>
             </div>
           </div>
