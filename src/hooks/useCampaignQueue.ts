@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
@@ -76,150 +77,138 @@ export interface CampaignQueueItem {
   brands?: { id: string; name: string; domain?: string; primary_color?: string } | null;
 }
 
+interface CampaignQueueData {
+  items: CampaignQueueItem[];
+  presetsByBrand: Record<string, SegmentPreset[]>;
+  klaviyoListsByBrand: Record<string, KlaviyoList[]>;
+  brandDataByBrand: Record<string, BrandData>;
+}
+
+async function fetchCampaignQueueData(): Promise<CampaignQueueData> {
+  const { data, error } = await supabase
+    .from('campaign_queue')
+    .select('*, brands(id, name, domain, primary_color)')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching campaign queue:', error);
+    throw error;
+  }
+
+  const items = (data as CampaignQueueItem[]) || [];
+  let presetsByBrand: Record<string, SegmentPreset[]> = {};
+  let klaviyoListsByBrand: Record<string, KlaviyoList[]> = {};
+  let brandDataByBrand: Record<string, BrandData> = {};
+
+  // Extract unique brand IDs and fetch all segment presets
+  const brandIds = [...new Set(data?.filter(d => d.brand_id).map(d => d.brand_id) || [])];
+
+  if (brandIds.length > 0) {
+    // Fetch presets, brand data, and Klaviyo lists in parallel
+    const [presetsResult, brandsResult, footersResult] = await Promise.all([
+      supabase.from('segment_presets').select('*').in('brand_id', brandIds),
+      supabase.from('brands').select('id, klaviyo_api_key, footer_html, all_links, domain').in('id', brandIds),
+      supabase.from('brand_footers').select('brand_id, html, is_primary').in('brand_id', brandIds)
+    ]);
+
+    // Process presets
+    if (presetsResult.data) {
+      const grouped = presetsResult.data.reduce((acc, p) => {
+        const brandId = p.brand_id;
+        if (!acc[brandId]) acc[brandId] = [];
+        acc[brandId].push({
+          id: p.id,
+          name: p.name,
+          included_segments: normalizeSegmentIds(p.included_segments),
+          excluded_segments: normalizeSegmentIds(p.excluded_segments),
+          is_default: p.is_default || false,
+        });
+        return acc;
+      }, {} as Record<string, SegmentPreset[]>);
+
+      Object.keys(grouped).forEach(brandId => {
+        grouped[brandId].sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+      });
+
+      presetsByBrand = grouped;
+    }
+
+    // Process brand data (footer, links, domain)
+    if (brandsResult.data) {
+      for (const brand of brandsResult.data) {
+        // Find footer - primary first, then most recent from brand_footers, then legacy footer_html
+        let footerHtml: string | null = null;
+        const brandFooters = footersResult.data?.filter(f => f.brand_id === brand.id) || [];
+        const primaryFooter = brandFooters.find(f => f.is_primary);
+
+        if (primaryFooter?.html) {
+          footerHtml = primaryFooter.html;
+        } else if (brandFooters.length > 0) {
+          footerHtml = brandFooters[0].html;
+        } else if (brand.footer_html) {
+          footerHtml = brand.footer_html;
+        }
+
+        brandDataByBrand[brand.id] = {
+          footerHtml,
+          allLinks: Array.isArray(brand.all_links) ? brand.all_links as string[] : [],
+          domain: brand.domain || null,
+        };
+      }
+
+      // Prefetch Klaviyo lists for brands with API keys
+      const brandsWithKeys = brandsResult.data.filter(b => b.klaviyo_api_key);
+      if (brandsWithKeys.length > 0) {
+        const listFetchPromises = brandsWithKeys.map(async (brand) => {
+          try {
+            const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
+              body: { klaviyoApiKey: brand.klaviyo_api_key }
+            });
+            return { brandId: brand.id, lists: (data?.lists || []) as KlaviyoList[] };
+          } catch {
+            return { brandId: brand.id, lists: [] as KlaviyoList[] };
+          }
+        });
+
+        const listResults = await Promise.all(listFetchPromises);
+        listResults.forEach(({ brandId, lists }) => {
+          klaviyoListsByBrand[brandId] = lists;
+        });
+      }
+    }
+  }
+
+  return { items, presetsByBrand, klaviyoListsByBrand, brandDataByBrand };
+}
+
 export function useCampaignQueue() {
   const { user } = useAuth();
-  const [items, setItems] = useState<CampaignQueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [presetsByBrand, setPresetsByBrand] = useState<Record<string, SegmentPreset[]>>({});
-  const [klaviyoListsByBrand, setKlaviyoListsByBrand] = useState<Record<string, KlaviyoList[]>>({});
-  const [brandDataByBrand, setBrandDataByBrand] = useState<Record<string, BrandData>>({});
-  const [userZoomLevel, setUserZoomLevel] = useState<number>(39);
+  const queryClient = useQueryClient();
 
-  // Fetch user zoom level once on mount
-  useEffect(() => {
-    const loadUserPrefs = async () => {
-      if (!user) return;
+  // Main campaign queue query - cached and persisted
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['campaign-queue', user?.id],
+    queryFn: fetchCampaignQueueData,
+    enabled: !!user,
+    staleTime: 1000 * 60 * 2, // 2 minutes before considered stale
+  });
+
+  // Fetch user zoom level
+  const { data: userZoomLevel = 39 } = useQuery({
+    queryKey: ['user-zoom-level', user?.id],
+    queryFn: async () => {
       const { data: profile } = await supabase
         .from('profiles')
         .select('queue_zoom_level')
-        .eq('id', user.id)
+        .eq('id', user!.id)
         .single();
-      if (profile?.queue_zoom_level) {
-        setUserZoomLevel(profile.queue_zoom_level);
-      }
-    };
-    loadUserPrefs();
-  }, [user]);
+      return profile?.queue_zoom_level ?? 39;
+    },
+    enabled: !!user,
+    staleTime: 1000 * 60 * 30, // 30 minutes
+  });
 
-  const fetchItems = useCallback(async (isInitial = false) => {
-    if (!user) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
-    // Only show loading skeleton on initial load, not refreshes
-    if (isInitial) {
-      setLoading(true);
-    }
-    
-    const { data, error } = await supabase
-      .from('campaign_queue')
-      .select('*, brands(id, name, domain, primary_color)')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching campaign queue:', error);
-      setItems([]);
-    } else {
-      setItems((data as CampaignQueueItem[]) || []);
-      
-      // Extract unique brand IDs and fetch all segment presets
-      const brandIds = [...new Set(data?.filter(d => d.brand_id).map(d => d.brand_id) || [])];
-      
-      if (brandIds.length > 0) {
-        // Fetch presets, brand data, and Klaviyo lists in parallel
-        const [presetsResult, brandsResult, footersResult] = await Promise.all([
-          supabase.from('segment_presets').select('*').in('brand_id', brandIds),
-          supabase.from('brands').select('id, klaviyo_api_key, footer_html, all_links, domain').in('id', brandIds),
-          supabase.from('brand_footers').select('brand_id, html, is_primary').in('brand_id', brandIds)
-        ]);
-        
-        // Process presets
-        if (presetsResult.data) {
-          const grouped = presetsResult.data.reduce((acc, p) => {
-            const brandId = p.brand_id;
-            if (!acc[brandId]) acc[brandId] = [];
-            acc[brandId].push({
-              id: p.id,
-              name: p.name,
-              included_segments: normalizeSegmentIds(p.included_segments),
-              excluded_segments: normalizeSegmentIds(p.excluded_segments),
-              is_default: p.is_default || false,
-            });
-            return acc;
-          }, {} as Record<string, SegmentPreset[]>);
-          
-          Object.keys(grouped).forEach(brandId => {
-            grouped[brandId].sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
-          });
-          
-          setPresetsByBrand(grouped);
-        }
-
-        // Process brand data (footer, links, domain)
-        if (brandsResult.data) {
-          const brandDataMap: Record<string, BrandData> = {};
-          
-          for (const brand of brandsResult.data) {
-            // Find footer - primary first, then most recent from brand_footers, then legacy footer_html
-            let footerHtml: string | null = null;
-            const brandFooters = footersResult.data?.filter(f => f.brand_id === brand.id) || [];
-            const primaryFooter = brandFooters.find(f => f.is_primary);
-            
-            if (primaryFooter?.html) {
-              footerHtml = primaryFooter.html;
-            } else if (brandFooters.length > 0) {
-              footerHtml = brandFooters[0].html;
-            } else if (brand.footer_html) {
-              footerHtml = brand.footer_html;
-            }
-            
-            brandDataMap[brand.id] = {
-              footerHtml,
-              allLinks: Array.isArray(brand.all_links) ? brand.all_links as string[] : [],
-              domain: brand.domain || null,
-            };
-          }
-          
-          setBrandDataByBrand(brandDataMap);
-          
-          // Prefetch Klaviyo lists for brands with API keys
-          const brandsWithKeys = brandsResult.data.filter(b => b.klaviyo_api_key);
-          if (brandsWithKeys.length > 0) {
-            const listFetchPromises = brandsWithKeys.map(async (brand) => {
-              try {
-                const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
-                  body: { klaviyoApiKey: brand.klaviyo_api_key }
-                });
-                return { brandId: brand.id, lists: (data?.lists || []) as KlaviyoList[] };
-              } catch {
-                return { brandId: brand.id, lists: [] as KlaviyoList[] };
-              }
-            });
-
-            const listResults = await Promise.all(listFetchPromises);
-            const klaviyoListsMap: Record<string, KlaviyoList[]> = {};
-            listResults.forEach(({ brandId, lists }) => {
-              klaviyoListsMap[brandId] = lists;
-            });
-            setKlaviyoListsByBrand(klaviyoListsMap);
-          }
-        }
-      }
-    }
-    setLoading(false);
-  }, [user]);
-
-  // Initial fetch
-  useEffect(() => {
-    fetchItems(true);
-  }, [fetchItems]);
-
-  // Wrapper for manual refresh (no loading skeleton)
-  const refresh = useCallback(() => fetchItems(false), [fetchItems]);
-
-  // Realtime subscription for campaign_queue
+  // Realtime subscription for campaign_queue - updates React Query cache directly
   useEffect(() => {
     if (!user) return;
 
@@ -240,28 +229,48 @@ export function useCampaignQueue() {
               .select('*, brands(id, name, domain, primary_color)')
               .eq('id', payload.new.id)
               .single();
-            if (fullItem) {
-              setItems(prev => [fullItem as CampaignQueueItem, ...prev]);
               
-              // Fetch presets for the new brand if not already loaded
-              if (fullItem.brand_id && !presetsByBrand[fullItem.brand_id]) {
-                const { data: presetsData } = await supabase
-                  .from('segment_presets')
-                  .select('*')
-                  .eq('brand_id', fullItem.brand_id);
-                
-                if (presetsData && presetsData.length > 0) {
-                  const mapped = presetsData.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    included_segments: normalizeSegmentIds(p.included_segments),
-                    excluded_segments: normalizeSegmentIds(p.excluded_segments),
-                    is_default: p.is_default || false,
-                  }));
-                  mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
-                  setPresetsByBrand(prev => ({ ...prev, [fullItem.brand_id]: mapped }));
+            if (fullItem) {
+              queryClient.setQueryData<CampaignQueueData>(
+                ['campaign-queue', user.id],
+                (old) => {
+                  if (!old) return old;
+                  
+                  // Fetch presets for the new brand if not already loaded
+                  if (fullItem.brand_id && !old.presetsByBrand[fullItem.brand_id]) {
+                    // Trigger a background fetch for brand data
+                    supabase
+                      .from('segment_presets')
+                      .select('*')
+                      .eq('brand_id', fullItem.brand_id)
+                      .then(({ data: presetsData }) => {
+                        if (presetsData && presetsData.length > 0) {
+                          const mapped = presetsData.map(p => ({
+                            id: p.id,
+                            name: p.name,
+                            included_segments: normalizeSegmentIds(p.included_segments),
+                            excluded_segments: normalizeSegmentIds(p.excluded_segments),
+                            is_default: p.is_default || false,
+                          }));
+                          mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+                          
+                          queryClient.setQueryData<CampaignQueueData>(
+                            ['campaign-queue', user.id],
+                            (current) => current ? {
+                              ...current,
+                              presetsByBrand: { ...current.presetsByBrand, [fullItem.brand_id!]: mapped }
+                            } : current
+                          );
+                        }
+                      });
+                  }
+                  
+                  return {
+                    ...old,
+                    items: [fullItem as CampaignQueueItem, ...old.items],
+                  };
                 }
-              }
+              );
             }
           } else if (payload.eventType === 'UPDATE') {
             // Fetch full item with brands join to get complete data
@@ -270,15 +279,26 @@ export function useCampaignQueue() {
               .select('*, brands(id, name, domain, primary_color)')
               .eq('id', payload.new.id)
               .single();
+              
             if (fullItem) {
-              setItems(prev => 
-                prev.map(item => 
-                  item.id === fullItem.id ? fullItem as CampaignQueueItem : item
-                )
+              queryClient.setQueryData<CampaignQueueData>(
+                ['campaign-queue', user.id],
+                (old) => old ? {
+                  ...old,
+                  items: old.items.map(item =>
+                    item.id === fullItem.id ? fullItem as CampaignQueueItem : item
+                  ),
+                } : old
               );
             }
           } else if (payload.eventType === 'DELETE') {
-            setItems(prev => prev.filter(item => item.id !== payload.old.id));
+            queryClient.setQueryData<CampaignQueueData>(
+              ['campaign-queue', user.id],
+              (old) => old ? {
+                ...old,
+                items: old.items.filter(item => item.id !== payload.old.id),
+              } : old
+            );
           }
         }
       )
@@ -287,7 +307,7 @@ export function useCampaignQueue() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, presetsByBrand]);
+  }, [user, queryClient]);
 
   // Realtime subscription for segment_presets
   useEffect(() => {
@@ -304,31 +324,40 @@ export function useCampaignQueue() {
         },
         async (payload) => {
           // Re-fetch presets for the affected brand
-          const brandId = (payload.new as any)?.brand_id || (payload.old as any)?.brand_id;
-          if (brandId) {
+          const brandId = (payload.new as Record<string, unknown>)?.brand_id || 
+                         (payload.old as Record<string, unknown>)?.brand_id;
+          if (brandId && typeof brandId === 'string') {
             const { data: presetsData } = await supabase
               .from('segment_presets')
               .select('*')
               .eq('brand_id', brandId);
-            
-            if (presetsData) {
-              const mapped = presetsData.map(p => ({
-                id: p.id,
-                name: p.name,
-                included_segments: normalizeSegmentIds(p.included_segments),
-                excluded_segments: normalizeSegmentIds(p.excluded_segments),
-                is_default: p.is_default || false,
-              }));
-              mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
-              setPresetsByBrand(prev => ({ ...prev, [brandId]: mapped }));
-            } else {
-              // All presets deleted for this brand
-              setPresetsByBrand(prev => {
-                const next = { ...prev };
-                delete next[brandId];
-                return next;
-              });
-            }
+
+            queryClient.setQueryData<CampaignQueueData>(
+              ['campaign-queue', user.id],
+              (old) => {
+                if (!old) return old;
+                
+                if (presetsData && presetsData.length > 0) {
+                  const mapped = presetsData.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    included_segments: normalizeSegmentIds(p.included_segments),
+                    excluded_segments: normalizeSegmentIds(p.excluded_segments),
+                    is_default: p.is_default || false,
+                  }));
+                  mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
+                  
+                  return {
+                    ...old,
+                    presetsByBrand: { ...old.presetsByBrand, [brandId]: mapped }
+                  };
+                } else {
+                  // All presets deleted for this brand
+                  const { [brandId]: _, ...rest } = old.presetsByBrand;
+                  return { ...old, presetsByBrand: rest };
+                }
+              }
+            );
           }
         }
       )
@@ -337,9 +366,9 @@ export function useCampaignQueue() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, queryClient]);
 
-  const updateItem = async (id: string, updates: Record<string, unknown>) => {
+  const updateItem = useCallback(async (id: string, updates: Record<string, unknown>) => {
     const { error } = await supabase
       .from('campaign_queue')
       .update(updates)
@@ -350,9 +379,9 @@ export function useCampaignQueue() {
       return false;
     }
     return true;
-  };
+  }, []);
 
-  const deleteItem = async (id: string) => {
+  const deleteItem = useCallback(async (id: string) => {
     const { error } = await supabase
       .from('campaign_queue')
       .delete()
@@ -363,16 +392,16 @@ export function useCampaignQueue() {
       return false;
     }
     return true;
-  };
+  }, []);
 
   return {
-    items,
-    loading,
-    presetsByBrand,
-    klaviyoListsByBrand,
-    brandDataByBrand,
+    items: data?.items ?? [],
+    loading: isLoading,
+    presetsByBrand: data?.presetsByBrand ?? {},
+    klaviyoListsByBrand: data?.klaviyoListsByBrand ?? {},
+    brandDataByBrand: data?.brandDataByBrand ?? {},
     userZoomLevel,
-    refresh,
+    refresh: refetch,
     updateItem,
     deleteItem,
   };
