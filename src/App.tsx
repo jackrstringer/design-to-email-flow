@@ -19,7 +19,15 @@ import Settings from "./pages/Settings";
 import FooterEditor from "./pages/FooterEditor";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes before data is considered stale
+      gcTime: 1000 * 60 * 30, // Keep in cache for 30 minutes
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
