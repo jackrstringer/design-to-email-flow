@@ -247,13 +247,14 @@ async function autoSliceImage(
 }
 
 // Step 3.5: Crop and upload each slice individually (matches CampaignCreator.processSlices)
+// OPTIMIZED: Parallel uploads to Cloudinary
 async function cropAndUploadSlices(
   imageBase64: string,
   sliceBoundaries: any[],
   imageWidth: number,
   imageHeight: number
 ): Promise<any[]> {
-  console.log('[process] Step 3.5: Cropping and uploading slices...');
+  console.log('[process] Step 3.5: Cropping and uploading slices (parallel)...');
 
   try {
     // Decode the full image
@@ -267,8 +268,9 @@ async function cropAndUploadSlices(
     
     console.log(`[process] Actual image dimensions: ${actualWidth}x${actualHeight} (passed: ${imageWidth}x${imageHeight})`);
 
-    const uploadedSlices: any[] = [];
-
+    // Phase 1: Crop all slices (CPU-bound, fast, sequential is fine)
+    const croppedSlices: { slice: any; sliceDataUrl: string; height: number; yTop: number; yBottom: number }[] = [];
+    
     for (let i = 0; i < sliceBoundaries.length; i++) {
       const slice = sliceBoundaries[i];
       const yTop = slice.yTop;
@@ -284,39 +286,60 @@ async function cropAndUploadSlices(
       const sliceBytes = await sliceImage.encodeJPEG(90);
       const sliceBase64 = bytesToBase64(sliceBytes);
       const sliceDataUrl = `data:image/jpeg;base64,${sliceBase64}`;
-
-      // Upload to Cloudinary via edge function
-      const uploadUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/upload-to-cloudinary';
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-        },
-        body: JSON.stringify({ imageData: sliceDataUrl })
-      });
-
-      let uploadResult = null;
-      if (uploadResponse.ok) {
-        uploadResult = await uploadResponse.json();
-        console.log(`[process] Slice ${i + 1} uploaded:`, uploadResult?.url?.substring(0, 50));
-      } else {
-        console.error(`[process] Failed to upload slice ${i + 1}:`, await uploadResponse.text());
-      }
-
-      uploadedSlices.push({
-        ...slice,
-        imageUrl: uploadResult?.url || null,
-        dataUrl: sliceDataUrl,
-        width: actualWidth,
-        height: height,
-        startPercent: (yTop / actualHeight) * 100,
-        endPercent: (yBottom / actualHeight) * 100,
-        type: slice.hasCta ? 'cta' : 'image',
-      });
+      
+      croppedSlices.push({ slice, sliceDataUrl, height, yTop, yBottom });
     }
 
-    console.log('[process] Uploaded', uploadedSlices.length, 'slices');
+    // Phase 2: Upload all slices in PARALLEL (I/O-bound, big speed win)
+    console.log(`[process] Uploading ${croppedSlices.length} slices in parallel...`);
+    const uploadUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/upload-to-cloudinary';
+    
+    const uploadPromises = croppedSlices.map(async ({ slice, sliceDataUrl, height, yTop, yBottom }, i) => {
+      try {
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({ imageData: sliceDataUrl })
+        });
+
+        let uploadResult = null;
+        if (uploadResponse.ok) {
+          uploadResult = await uploadResponse.json();
+          console.log(`[process] Slice ${i + 1} uploaded:`, uploadResult?.url?.substring(0, 50));
+        } else {
+          console.error(`[process] Failed to upload slice ${i + 1}:`, await uploadResponse.text());
+        }
+
+        return {
+          ...slice,
+          imageUrl: uploadResult?.url || null,
+          dataUrl: sliceDataUrl,
+          width: actualWidth,
+          height: height,
+          startPercent: (yTop / actualHeight) * 100,
+          endPercent: (yBottom / actualHeight) * 100,
+          type: slice.hasCta ? 'cta' : 'image',
+        };
+      } catch (err) {
+        console.error(`[process] Error uploading slice ${i + 1}:`, err);
+        return {
+          ...slice,
+          imageUrl: null,
+          dataUrl: sliceDataUrl,
+          width: actualWidth,
+          height: height,
+          startPercent: (yTop / actualHeight) * 100,
+          endPercent: (yBottom / actualHeight) * 100,
+          type: slice.hasCta ? 'cta' : 'image',
+        };
+      }
+    });
+
+    const uploadedSlices = await Promise.all(uploadPromises);
+    console.log('[process] Uploaded', uploadedSlices.length, 'slices in parallel');
     return uploadedSlices;
 
   } catch (err) {
@@ -682,53 +705,53 @@ serve(async (req) => {
       }
     }
 
-    // === STEP 2: Detect brand (25%) ===
-    // Skip brand detection if already set from plugin
-    if (!brandId) {
-      await updateQueueItem(supabase, campaignQueueId, {
-        processing_step: 'detecting_brand',
-        processing_percent: 15
-      });
-
-      brandId = await detectBrand(supabase, imageResult.imageBase64);
-      
-      // Get brand info if newly detected
-      if (brandId) {
-        const { data: brand } = await supabase
-          .from('brands')
-          .select('*')
-          .eq('id', brandId)
-          .single();
-        
-        if (brand) {
-          brandContext = {
-            name: brand.name,
-            domain: brand.domain,
-          };
-          copyExamples = brand.copy_examples;
-        }
-      }
-    } else {
-      console.log('[process] Using brand from plugin:', brandId);
-    }
-
+    // === STEP 2+3: PARALLEL - Detect brand + Auto-slice image (35%) ===
+    // OPTIMIZATION: These are independent operations, run them in parallel
     await updateQueueItem(supabase, campaignQueueId, {
-      brand_id: brandId,
-      processing_percent: 25
+      processing_step: 'analyzing_image',
+      processing_percent: 15
     });
 
-    // === STEP 3: Auto-slice image (35%) ===
-    await updateQueueItem(supabase, campaignQueueId, {
-      processing_step: 'slicing_image',
-      processing_percent: 30
-    });
-
-    const sliceResult = await autoSliceImage(
+    // Start both operations in parallel
+    const brandDetectionPromise = !brandId 
+      ? detectBrand(supabase, imageResult.imageBase64)
+      : Promise.resolve(brandId);
+    
+    const slicePromise = autoSliceImage(
       imageResult.imageBase64,
       item.image_width || 600,
       item.image_height || 2000
     );
 
+    console.log('[process] Running brand detection + auto-slice in parallel...');
+    const [detectedBrandId, sliceResult] = await Promise.all([brandDetectionPromise, slicePromise]);
+
+    // Handle brand detection result
+    if (!brandId && detectedBrandId) {
+      brandId = detectedBrandId;
+      const { data: brand } = await supabase
+        .from('brands')
+        .select('*')
+        .eq('id', brandId)
+        .single();
+      
+      if (brand) {
+        brandContext = {
+          name: brand.name,
+          domain: brand.domain,
+        };
+        copyExamples = brand.copy_examples;
+      }
+    } else if (brandId) {
+      console.log('[process] Using brand from plugin:', brandId);
+    }
+
+    await updateQueueItem(supabase, campaignQueueId, {
+      brand_id: brandId,
+      processing_percent: 30
+    });
+
+    // Validate slice result
     if (!sliceResult || sliceResult.slices.length === 0) {
       await updateQueueItem(supabase, campaignQueueId, {
         status: 'failed',
@@ -795,22 +818,45 @@ serve(async (req) => {
       processing_percent: 60
     });
 
-    // === STEP 5: Generate copy (80%) ===
+    // === STEP 5: Wait for early copy generation (80%) ===
+    // OPTIMIZATION: Early generation was fired in Step 1.5, poll for results instead of regenerating
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'generating_copy',
       processing_percent: 65
     });
 
-    // Resize image URL for AI processing (keep under 8000px height limit)
-    const resizedCampaignImageUrl = getResizedCloudinaryUrl(imageResult.imageUrl, 600, 7900);
-    console.log('[process] Copy gen using resized URL:', resizedCampaignImageUrl.substring(0, 80) + '...');
+    console.log('[process] Polling for early copy results (session:', earlySessionKey, ')...');
     
-    const copyResult = await generateCopy(
-      currentSlices,
-      brandContext,
-      resizedCampaignImageUrl,
-      copyExamples
-    );
+    // Poll for early generation results (max 20 seconds, 1s intervals)
+    let copyResult: { subjectLines: string[]; previewTexts: string[] } | null = null;
+    const maxWaitMs = 20000;
+    const pollIntervalMs = 1000;
+    const pollStartTime = Date.now();
+    
+    while (Date.now() - pollStartTime < maxWaitMs) {
+      const earlyCopyCheck = await retrieveEarlyCopy(supabase, earlySessionKey);
+      if (earlyCopyCheck && earlyCopyCheck.subjectLines.length > 0) {
+        copyResult = {
+          subjectLines: earlyCopyCheck.subjectLines,
+          previewTexts: earlyCopyCheck.previewTexts
+        };
+        console.log('[process] Early copy ready after', Date.now() - pollStartTime, 'ms');
+        break;
+      }
+      await new Promise(r => setTimeout(r, pollIntervalMs));
+    }
+    
+    if (!copyResult) {
+      console.log('[process] Early copy not ready after polling, falling back to sync generation...');
+      // Fallback: Generate synchronously if early generation didn't complete
+      const resizedCampaignImageUrl = getResizedCloudinaryUrl(imageResult.imageUrl, 600, 7900);
+      copyResult = await generateCopy(
+        currentSlices,
+        brandContext,
+        resizedCampaignImageUrl,
+        copyExamples
+      );
+    }
 
     if (copyResult) {
       await updateQueueItem(supabase, campaignQueueId, {
