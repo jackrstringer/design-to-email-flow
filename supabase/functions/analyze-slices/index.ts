@@ -62,18 +62,20 @@ Brand: ${domain || 'Unknown'}
 
 For each labeled slice:
 
-**ALT TEXT (max 200 chars)** - CAPTURE THE FULL MESSAGE:
-- Include the main headline/copy that appears IN THIS SLICE
-- Paraphrase if needed to fit, but PRESERVE the core marketing message
-- If there's a CTA in the slice, add "Click to [CTA action]" at the end
-- Do NOT pull copy from other slices - only what's visible in THIS slice
+**ALT TEXT** - Only for slices with marketing messages or CTAs:
+- If there's a headline, offer, or CTA text visible → capture that message (max 200 chars)
+- If there's a CTA, end with "Click to [CTA action]"
+- If the slice is PURELY visual (product photo, lifestyle image, person, logo, spacer, divider, footer bar, gap, solid color block) with NO marketing text → return EMPTY string ""
+- Do NOT describe images visually. "Woman drinking protein" or "Product bottles" is NOT useful alt text.
+- Alt text should convey the MESSAGE, not describe what you see.
 
 Examples:
-- Hero with headline + CTA → "Fasted Training is a Tool. Done right, it supports fat loss. Done wrong, it costs you muscle. Click to Shop Ambrosia"
-- Product promo with CTA → "Hydroglyph + Planta. Train Fasted. Recover Smart. Click to Shop"
-- CTA button only → "Click to Shop Planta"
-- Product image without text → "Hydroglyph and Planta protein supplements"
-- Logo header → "Ambrosia Collective"
+- Headline + CTA → "Sale ends soon! Claim your discount. Click to Bundle and Save"
+- CTA button only → "Click to Shop Now"
+- Product image with NO text overlay → "" (empty - purely visual)
+- Logo/header with NO text → "" (empty)
+- Spacer, divider, footer bar, gap, solid color → "" (empty)
+- Lifestyle photo of person → "" (empty - just decorative)
 
 **CLICKABLE** - Be selective, not aggressive:
 SHOULD be clickable (isClickable: true):
@@ -183,7 +185,7 @@ Return JSON with exactly ${slices.length} slices:
       // Return default analysis if AI fails
       const defaultAnalysis: SliceAnalysis[] = slices.map((_, i) => ({
         index: i,
-        altText: `Email section ${i + 1}`,
+        altText: '',
         suggestedLink: null,
         isClickable: false,
         linkVerified: false
@@ -335,7 +337,7 @@ Return JSON with exactly ${slices.length} slices:
         console.warn(`Missing analysis for index ${i}, using default`);
         analyses.push({
           index: i,
-          altText: `Email section ${i + 1}`,
+          altText: '',
           suggestedLink: null,
           isClickable: false,
           linkVerified: false
