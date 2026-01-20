@@ -81,6 +81,7 @@ Examples:
 
 **CLICKABLE** - Be selective, not aggressive:
 SHOULD be clickable (isClickable: true):
+- Header logo slices (named "header_logo" or standalone logo at the very top) → YES, always link to homepage
 - ANY slice with a CTA button or "Shop" / "Buy" / "Order" text → YES
 - Product images (with or without CTA) → YES
 - Hero sections that contain a CTA → YES
@@ -88,17 +89,17 @@ SHOULD be clickable (isClickable: true):
 Should NOT be clickable (isClickable: false):
 - Text-only sections WITHOUT a CTA button → NO (they set up products below)
 - Educational/informational copy leading into product sections → NO
-- Headers/logos without CTAs → NO
 - Dividers, spacers, legal/footer text → NO
 
 Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't need its own link.
 
 **LINKS** - Find the best destination:
+- For header_logo slices or standalone brand logos → use brand homepage: https://${domain}/
 - For CTA like "Shop [Product]" → search for that specific product page
 - For general CTA like "Shop [Brand]" with multiple products mentioned → find "All Products", "Shop All", or category page
 - If multiple products shown, find a collection/category containing them
 - Use web search: "site:${domain} [product name]" or "site:${domain} collections" or "site:${domain} all products"
-- Homepage is LAST RESORT only
+- Homepage is LAST RESORT (except for header logos where it's correct)
 
 For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 

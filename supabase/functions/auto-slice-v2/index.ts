@@ -802,12 +802,38 @@ Some footers don't have a hard line - they fade in with gradients or decorative 
 
 ## COMMON PATTERNS
 
+### Header Logo Section (1 slice) - CHECK FIRST!
+
+If there's a brand logo in the TOP 200px of the email that appears:
+- ABOVE and SEPARATE from the hero headline
+- As a standalone element (not integrated with hero text)
+- With a visible gap/whitespace between it and the content below
+
+This MUST be its own slice:
+
+[Brand Logo]
+---------------- ← SLICE BOUNDARY (in the gap)
+[Hero Headline]
+[Hero Image + CTA]
+
+→ TWO slices:
+  - Slice 1: "header_logo" (yTop: 0, yBottom: center of gap below logo)
+  - Slice 2: "hero_section" (the actual hero content below)
+
+**Detection Hints:**
+- Check "Detected Logos" data for logos with yTop < 200
+- If logo is detected AND there's a clear whitespace gap before the main headline, separate them
+- The logo section typically has a solid background color
+
+**Why:** Header logos should link to brand homepage, while hero sections link to campaign-specific pages.
+
 ### Hero Section (1 slice)
 
-[Logo] [Headline] [Subheadline]
+[Headline] [Subheadline]
 [Hero Image] [CTA Button]
 
 → All ONE slice (single click destination)
+NOTE: If there's a separate logo ABOVE, it should be its own slice (see above)
 
 ### Dual CTA Section (2 slices)
 
@@ -893,6 +919,7 @@ Return ONLY a valid JSON object:
 
 Before returning your response, verify:
 
+☐ If a logo exists in top 200px with a gap below it → it's sliced separately as "header_logo"
 ☐ Every visible button has its own slice
 ☐ No slice contains two or more buttons
 ☐ footerStartY is at the START of utility content (not the bottom of the email)
