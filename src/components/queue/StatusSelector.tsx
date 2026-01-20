@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 // Normalize segment IDs - handle both object format {id, name} and plain string IDs
 function normalizeSegmentIds(segments: unknown): string[] {
@@ -28,6 +29,7 @@ interface StatusSelectorProps {
 }
 
 export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
+  const { user } = useAuthContext();
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -163,7 +165,8 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             mode: 'campaign',
             includedSegments,
             excludedSegments,
-            listId: includedSegments[0] // Fallback for legacy support
+            listId: includedSegments[0], // Fallback for legacy support
+            sendPreviewTo: user?.email,
           }
         });
 
@@ -193,7 +196,8 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
               })
               .eq('id', item.id);
 
-            toast.success('Built in Klaviyo');
+            const previewMsg = data.previewSent && user?.email ? ` Preview sent to ${user.email}` : '';
+            toast.success(`Built in Klaviyo${previewMsg}`);
           }
         }
       } catch (err) {

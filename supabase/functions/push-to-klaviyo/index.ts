@@ -38,6 +38,7 @@ serve(async (req) => {
       excludedSegments,
       subjectLine,
       previewText,
+      sendPreviewTo, // Email address to send preview to after campaign creation
     } = body;
 
     // Support both single image and slices array
@@ -497,12 +498,58 @@ serve(async (req) => {
     // Build the campaign URL for Klaviyo - correct template editor URL format
     const campaignUrl = `https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`;
 
+    // Send preview email if requested
+    let previewSent = false;
+    if (sendPreviewTo && campaignMessageId) {
+      console.log(`Sending preview email to: ${sendPreviewTo}`);
+      
+      try {
+        const previewResponse = await fetch('https://a.klaviyo.com/api/campaign-message-preview-jobs/', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
+            'Content-Type': 'application/vnd.api+json',
+            'accept': 'application/vnd.api+json',
+            'revision': '2025-10-15'
+          },
+          body: JSON.stringify({
+            data: {
+              type: 'campaign-message-preview-job',
+              attributes: {
+                emails: [sendPreviewTo]
+              },
+              relationships: {
+                'campaign-message': {
+                  data: {
+                    type: 'campaign-message',
+                    id: campaignMessageId
+                  }
+                }
+              }
+            }
+          })
+        });
+
+        if (previewResponse.ok) {
+          console.log('Preview email queued successfully');
+          previewSent = true;
+        } else {
+          const previewError = await previewResponse.text();
+          console.error('Failed to send preview email:', previewError);
+          // Don't fail the whole operation - just log the error
+        }
+      } catch (previewErr) {
+        console.error('Preview email error:', previewErr);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         templateId,
         campaignId,
         campaignUrl,
+        previewSent,
         message: 'Campaign created successfully with template',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

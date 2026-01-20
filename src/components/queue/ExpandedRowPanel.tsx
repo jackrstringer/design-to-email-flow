@@ -14,6 +14,7 @@ import { SpellingErrorsPanel } from './SpellingErrorsPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface KlaviyoList {
   id: string;
@@ -83,6 +84,7 @@ export function ExpandedRowPanel({
   preloadedBrandData,
   initialZoomLevel = 39
 }: ExpandedRowPanelProps) {
+  const { user } = useAuthContext();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprocessing, setIsReprocessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -515,6 +517,7 @@ export function ExpandedRowPanel({
         footerHtml: footerHtml,
         mode: 'campaign',
         listId: includedSegments[0],
+        sendPreviewTo: user?.email,
       }
     });
     
@@ -548,7 +551,8 @@ export function ExpandedRowPanel({
       .eq('id', item.id);
     
     setIsSending(false);
-    toast.success('Built in Klaviyo!');
+    const previewMsg = data?.previewSent && user?.email ? ` Preview sent to ${user.email}` : '';
+    toast.success(`Built in Klaviyo!${previewMsg}`);
     onUpdate();
   };
 
