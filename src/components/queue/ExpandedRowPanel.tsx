@@ -513,6 +513,8 @@ export function ExpandedRowPanel({
         includedSegments,
         excludedSegments,
         footerHtml: footerHtml,
+        mode: 'campaign',
+        listId: includedSegments[0],
       }
     });
     
