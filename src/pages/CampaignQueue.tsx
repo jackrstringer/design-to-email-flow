@@ -37,6 +37,7 @@ export default function CampaignQueue() {
   
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -69,13 +70,35 @@ export default function CampaignQueue() {
   };
 
   // Selection handlers
-  const handleSelectItem = (id: string, isSelected: boolean) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (isSelected) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  const handleSelectItem = (id: string, isSelected: boolean, shiftKey?: boolean) => {
+    const currentIndex = filteredItems.findIndex(item => item.id === id);
+    
+    if (shiftKey && lastSelectedIndex !== null && currentIndex !== -1) {
+      // Shift+click: select range between lastSelectedIndex and currentIndex
+      const start = Math.min(lastSelectedIndex, currentIndex);
+      const end = Math.max(lastSelectedIndex, currentIndex);
+      
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          next.add(filteredItems[i].id);
+        }
+        return next;
+      });
+    } else {
+      // Normal click: toggle single item
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (isSelected) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    }
+    
+    // Always update last selected index on any click
+    if (currentIndex !== -1) {
+      setLastSelectedIndex(currentIndex);
+    }
   };
 
   const handleSelectAll = () => {

@@ -18,7 +18,7 @@ interface QueueTableProps {
   brandDataByBrand: Record<string, BrandData>;
   userZoomLevel: number;
   selectedIds: Set<string>;
-  onSelectItem: (id: string, selected: boolean) => void;
+  onSelectItem: (id: string, selected: boolean, shiftKey?: boolean) => void;
   onSelectAll: () => void;
 }
 
