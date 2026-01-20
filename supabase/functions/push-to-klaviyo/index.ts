@@ -504,7 +504,7 @@ serve(async (req) => {
       console.log(`Sending preview email to: ${sendPreviewTo}`);
       
       try {
-        const previewResponse = await fetch('https://a.klaviyo.com/api/campaign-message-preview-jobs/', {
+        const previewResponse = await fetch('https://a.klaviyo.com/api/campaign-message-preview-jobs', {
           method: 'POST',
           headers: {
             'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
