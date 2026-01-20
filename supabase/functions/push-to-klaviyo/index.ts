@@ -38,7 +38,6 @@ serve(async (req) => {
       excludedSegments,
       subjectLine,
       previewText,
-      sendPreviewTo, // Email address to send preview to after campaign creation
     } = body;
 
     // Support both single image and slices array
@@ -498,66 +497,12 @@ serve(async (req) => {
     // Build the campaign URL for Klaviyo - correct template editor URL format
     const campaignUrl = `https://www.klaviyo.com/email-template-editor/campaign/${campaignId}/content/edit`;
 
-    // Send preview email if requested
-    let previewSent = false;
-    let previewError: string | null = null;
-    let previewStatus: number | null = null;
-    if (sendPreviewTo && campaignMessageId) {
-      console.log(`Sending preview email to: ${sendPreviewTo}`);
-      
-      try {
-        const previewResponse = await fetch('https://a.klaviyo.com/api/campaign-message-preview-jobs', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
-            'Content-Type': 'application/vnd.api+json',
-            'accept': 'application/vnd.api+json',
-            'revision': '2025-01-15'
-          },
-          body: JSON.stringify({
-            data: {
-              type: 'campaign-message-preview-job',
-              attributes: {
-                emails: [sendPreviewTo]
-              },
-              relationships: {
-                'campaign-message': {
-                  data: {
-                    type: 'campaign-message',
-                    id: campaignMessageId
-                  }
-                }
-              }
-            }
-          })
-        });
-
-        console.log(`Preview response status: ${previewResponse.status}`);
-        
-        if (previewResponse.ok) {
-          console.log('Preview email queued successfully');
-          previewSent = true;
-        } else {
-          const errorText = await previewResponse.text();
-          console.error('Failed to send preview email:', errorText);
-          previewError = errorText;
-          previewStatus = previewResponse.status;
-        }
-      } catch (previewErr) {
-        console.error('Preview email error:', previewErr);
-        previewError = previewErr instanceof Error ? previewErr.message : 'Unknown error';
-      }
-    }
-
     return new Response(
       JSON.stringify({
         success: true,
         templateId,
         campaignId,
         campaignUrl,
-        previewSent,
-        previewError,
-        previewStatus,
         message: 'Campaign created successfully with template',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

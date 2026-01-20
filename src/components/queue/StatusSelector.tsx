@@ -9,7 +9,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
-import { useAuthContext } from '@/contexts/AuthContext';
 
 // Normalize segment IDs - handle both object format {id, name} and plain string IDs
 function normalizeSegmentIds(segments: unknown): string[] {
@@ -29,7 +28,6 @@ interface StatusSelectorProps {
 }
 
 export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
-  const { user } = useAuthContext();
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -165,8 +163,7 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
             mode: 'campaign',
             includedSegments,
             excludedSegments,
-            listId: includedSegments[0], // Fallback for legacy support
-            sendPreviewTo: user?.email,
+            listId: includedSegments[0] // Fallback for legacy support
           }
         });
 
@@ -196,14 +193,7 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
               })
               .eq('id', item.id);
 
-            // Show appropriate toast based on preview result
-            if (data.previewSent && user?.email) {
-              toast.success(`Built in Klaviyo! Preview sent to ${user.email}`);
-            } else if (user?.email && !data.previewSent) {
-              toast.warning(`Built in Klaviyo, but preview email failed${data.previewStatus ? ` (${data.previewStatus})` : ''}`);
-            } else {
-              toast.success('Built in Klaviyo!');
-            }
+            toast.success('Built in Klaviyo');
           }
         }
       } catch (err) {
