@@ -500,6 +500,8 @@ serve(async (req) => {
 
     // Send preview email if requested
     let previewSent = false;
+    let previewError: string | null = null;
+    let previewStatus: number | null = null;
     if (sendPreviewTo && campaignMessageId) {
       console.log(`Sending preview email to: ${sendPreviewTo}`);
       
@@ -510,7 +512,7 @@ serve(async (req) => {
             'Authorization': `Klaviyo-API-Key ${resolvedKlaviyoApiKey}`,
             'Content-Type': 'application/vnd.api+json',
             'accept': 'application/vnd.api+json',
-            'revision': '2025-10-15'
+            'revision': '2025-01-15'
           },
           body: JSON.stringify({
             data: {
@@ -530,16 +532,20 @@ serve(async (req) => {
           })
         });
 
+        console.log(`Preview response status: ${previewResponse.status}`);
+        
         if (previewResponse.ok) {
           console.log('Preview email queued successfully');
           previewSent = true;
         } else {
-          const previewError = await previewResponse.text();
-          console.error('Failed to send preview email:', previewError);
-          // Don't fail the whole operation - just log the error
+          const errorText = await previewResponse.text();
+          console.error('Failed to send preview email:', errorText);
+          previewError = errorText;
+          previewStatus = previewResponse.status;
         }
       } catch (previewErr) {
         console.error('Preview email error:', previewErr);
+        previewError = previewErr instanceof Error ? previewErr.message : 'Unknown error';
       }
     }
 
@@ -550,6 +556,8 @@ serve(async (req) => {
         campaignId,
         campaignUrl,
         previewSent,
+        previewError,
+        previewStatus,
         message: 'Campaign created successfully with template',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
