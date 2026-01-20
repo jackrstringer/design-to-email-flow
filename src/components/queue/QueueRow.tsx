@@ -33,7 +33,7 @@ interface QueueRowProps {
   columnWidths: ColumnWidths;
   presets: SegmentPreset[];
   isSelected: boolean;
-  onSelect: (id: string, selected: boolean) => void;
+  onSelect: (id: string, selected: boolean, shiftKey?: boolean) => void;
 }
 
 export function QueueRow({ 
@@ -128,13 +128,16 @@ export function QueueRow({
       {/* Checkbox column - visible on hover or when selected */}
       <div 
         className="w-8 flex-shrink-0 px-2 flex items-center justify-center" 
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(item.id, !isSelected, e.shiftKey);
+        }}
       >
         <Checkbox
           checked={isSelected}
-          onCheckedChange={(checked) => onSelect(item.id, checked as boolean)}
+          onCheckedChange={(checked) => onSelect(item.id, checked as boolean, false)}
           className={cn(
-            "transition-opacity",
+            "transition-opacity pointer-events-none",
             isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
         />
