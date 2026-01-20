@@ -196,8 +196,14 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
               })
               .eq('id', item.id);
 
-            const previewMsg = data.previewSent && user?.email ? ` Preview sent to ${user.email}` : '';
-            toast.success(`Built in Klaviyo${previewMsg}`);
+            // Show appropriate toast based on preview result
+            if (data.previewSent && user?.email) {
+              toast.success(`Built in Klaviyo! Preview sent to ${user.email}`);
+            } else if (user?.email && !data.previewSent) {
+              toast.warning(`Built in Klaviyo, but preview email failed${data.previewStatus ? ` (${data.previewStatus})` : ''}`);
+            } else {
+              toast.success('Built in Klaviyo!');
+            }
           }
         }
       } catch (err) {
