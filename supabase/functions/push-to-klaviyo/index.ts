@@ -243,7 +243,7 @@ serve(async (req) => {
           
           return `<tr>
             <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
                 <tr>
                   ${columnCells}
                 </tr>

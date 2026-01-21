@@ -8,8 +8,9 @@ import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ExternalLink, Copy } from 'lucide-react';
+import { ExternalLink, Copy, Columns } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 
 interface ColumnWidths {
   status: number;
@@ -46,8 +47,11 @@ export function QueueRow({
   isSelected,
   onSelect
 }: QueueRowProps) {
-  const slices = (item.slices as Array<{ link?: string }>) || [];
+  const slices = (item.slices as Array<{ link?: string; totalColumns?: number }>) || [];
   const linkCount = slices.filter(s => s.link).length;
+
+  // Check for multi-column blocks
+  const hasMultiColumnBlocks = slices.some(s => (s.totalColumns ?? 1) > 1);
 
   // Get brand info from joined data
   const brandName = (item as any).brands?.name;
@@ -154,6 +158,12 @@ export function QueueRow({
       
       {/* Thumbnail */}
       <div className="px-2 flex-shrink-0" style={{ width: columnWidths.thumbnail }}>
+        {/* Multi-column badge */}
+        {hasMultiColumnBlocks && (
+          <Badge variant="outline" className="absolute -top-1 -right-1 bg-blue-50 text-blue-700 border-blue-200 text-[8px] px-1 py-0 h-4 z-10">
+            <Columns className="w-2.5 h-2.5" />
+          </Badge>
+        )}
         {item.image_url ? (
           <img
             src={item.image_url}

@@ -7,7 +7,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy, Columns } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -690,18 +690,37 @@ export function ExpandedRowPanel({
                 )}
 
                 {/* Render each slice group (row) */}
-                {sortedGroups.map((slicesInRow, groupIndex) => (
-                  <div key={groupIndex} className="relative flex items-stretch group/row hover:bg-muted/10 -mx-5 px-5">
+                {sortedGroups.map((slicesInRow, groupIndex) => {
+                  // Check if this is a multi-column row
+                  const isMultiColumnRow = slicesInRow.length > 1 || (slicesInRow[0]?.slice.totalColumns ?? 1) > 1;
+                  const columnCount = slicesInRow[0]?.slice.totalColumns || slicesInRow.length;
+                  
+                  return (
+                  <div 
+                    key={groupIndex} 
+                    className={cn(
+                      "relative flex items-stretch group/row -mx-5 px-5",
+                      isMultiColumnRow ? "border-l-4 border-blue-400 bg-blue-50/30 hover:bg-blue-50/50" : "hover:bg-muted/10"
+                    )}
+                  >
+                    {/* Multi-column indicator badge */}
+                    {isMultiColumnRow && (
+                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-blue-500 text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
+                        <Columns className="w-3 h-3" />
+                        {columnCount}-Column Block
+                      </div>
+                    )}
+                    
                     {/* Slice separator line */}
                     {groupIndex > 0 && (
                       <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
-                        <div className="h-px bg-border flex-1" />
+                        <div className={cn("h-px flex-1", isMultiColumnRow ? "bg-blue-300" : "bg-border")} />
                       </div>
                     )}
                     
                     {/* Left: Link Column - expands to fill available space */}
                     <div className="flex-1 min-w-[120px] flex flex-col justify-center py-1 pr-3 gap-1 items-end">
-                      {slicesInRow.map(({ slice, originalIndex }) => (
+                      {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
                             setEditingLinkIndex(originalIndex);
@@ -712,14 +731,34 @@ export function ExpandedRowPanel({
                         }}>
                           <PopoverTrigger asChild>
                             {slice.link ? (
-                              <button className="flex items-start gap-1 px-2 py-1 bg-primary/10 border border-primary/20 rounded text-[9px] hover:bg-primary/20 transition-colors text-left">
-                                <Link className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />
+                              <button className={cn(
+                                "flex items-start gap-1 px-2 py-1 rounded text-[9px] transition-colors text-left",
+                                isMultiColumnRow 
+                                  ? "bg-blue-100 border border-blue-300 hover:bg-blue-200" 
+                                  : "bg-primary/10 border border-primary/20 hover:bg-primary/20"
+                              )}>
+                                {isMultiColumnRow && (
+                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mr-1">
+                                    {colIdx + 1}
+                                  </span>
+                                )}
+                                <Link className={cn("w-3 h-3 flex-shrink-0 mt-0.5", isMultiColumnRow ? "text-blue-600" : "text-primary")} />
                                 <span className="text-foreground/80 break-all leading-tight">{slice.link}</span>
                               </button>
                             ) : (
-                              <button className="flex items-center gap-1 px-2 py-0.5 border border-dashed border-muted-foreground/20 rounded text-muted-foreground/40 hover:border-primary/40 transition-colors text-[10px] opacity-0 group-hover/row:opacity-100">
+                              <button className={cn(
+                                "flex items-center gap-1 px-2 py-0.5 border border-dashed rounded transition-colors text-[10px]",
+                                isMultiColumnRow 
+                                  ? "border-blue-300 text-blue-500 hover:border-blue-500 opacity-100" 
+                                  : "border-muted-foreground/20 text-muted-foreground/40 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
+                              )}>
+                                {isMultiColumnRow && (
+                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                    {colIdx + 1}
+                                  </span>
+                                )}
                                 <Link className="w-3 h-3 flex-shrink-0" />
-                                <span>Add link</span>
+                                <span>{isMultiColumnRow ? `Col ${colIdx + 1} link` : 'Add link'}</span>
                               </button>
                             )}
                           </PopoverTrigger>
@@ -778,13 +817,26 @@ export function ExpandedRowPanel({
                     
                     {/* Center: Image Column */}
                     <div className="flex flex-shrink-0" style={{ width: scaledWidth }}>
-                      {slicesInRow.map(({ slice, originalIndex }) => {
+                      {slicesInRow.map(({ slice, originalIndex }, colIdx) => {
                         const colWidth = slice.totalColumns 
                           ? scaledWidth / slice.totalColumns 
                           : scaledWidth / slicesInRow.length;
                         
                         return (
-                          <div key={originalIndex} style={{ width: colWidth }}>
+                          <div 
+                            key={originalIndex} 
+                            className={cn(
+                              "relative",
+                              isMultiColumnRow && colIdx > 0 && "border-l-2 border-blue-300"
+                            )}
+                            style={{ width: colWidth }}
+                          >
+                            {/* Column number badge on image */}
+                            {isMultiColumnRow && (
+                              <div className="absolute top-1 right-1 bg-blue-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-medium z-10 shadow-sm">
+                                {colIdx + 1}
+                              </div>
+                            )}
                             {slice.type === 'html' && slice.htmlContent ? (
                               <div 
                                 className="bg-white"
@@ -813,31 +865,39 @@ export function ExpandedRowPanel({
                     
                     {/* Right: Alt Text Column - expands to fill available space */}
                     <div className="flex-1 min-w-[120px] flex flex-col justify-center py-1 pl-3 gap-1">
-                      {slicesInRow.map(({ slice, originalIndex }) => (
-                        <div key={originalIndex}>
-                          {editingAltIndex === originalIndex ? (
-                            <textarea
-                              value={slice.altText || ''}
-                              onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
-                              placeholder="Alt..."
-                              className="w-full text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                              rows={3}
-                              autoFocus
-                              onBlur={() => setEditingAltIndex(null)}
-                            />
-                          ) : (
-                            <p 
-                              onClick={() => setEditingAltIndex(originalIndex)}
-                              className="text-[11px] text-foreground leading-tight cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5 break-words"
-                            >
-                              {slice.altText || <span className="text-muted-foreground italic">Add alt text...</span>}
-                            </p>
+                      {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
+                        <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1")}>
+                          {isMultiColumnRow && (
+                            <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                              {colIdx + 1}
+                            </span>
                           )}
+                          <div className="flex-1">
+                            {editingAltIndex === originalIndex ? (
+                              <textarea
+                                value={slice.altText || ''}
+                                onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
+                                placeholder="Alt..."
+                                className="w-full text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                rows={3}
+                                autoFocus
+                                onBlur={() => setEditingAltIndex(null)}
+                              />
+                            ) : (
+                              <p 
+                                onClick={() => setEditingAltIndex(originalIndex)}
+                                className="text-[11px] text-foreground leading-tight cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5 break-words"
+                              >
+                                {slice.altText || <span className="text-muted-foreground italic">Add alt text...</span>}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 {/* Footer Section - aligned with slices, scaled with CSS transform */}
                 {footerHtml && (

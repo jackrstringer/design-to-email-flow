@@ -927,39 +927,68 @@ Return ONLY a valid JSON object:
 
 ---
 
-## HORIZONTAL SPLIT DETECTION (RARE - USE SPARINGLY)
+## MULTI-COLUMN PRODUCT BLOCK DETECTION (RARE - USE SPARINGLY)
 
-Most rows are single-column. ONLY flag for horizontal split when ALL of these are true:
+Most sections are single-column. ONLY flag as a multi-column block when you see a **complete product comparison section**.
 
-### Required Criteria (ALL must be met):
-1. **Multiple DISTINCT product images** visible side-by-side (not one wide image)
-2. **Each product has its own identifying text** (name, price, or description)
-3. **Each product has its own CTA** or would logically link to a DIFFERENT page
-4. **Clear visual separation** (gutters/whitespace) between items
-5. **Items are roughly equal width** (not one large + one small)
+### What is a Multi-Column Product Block?
 
-### When NOT to Split Horizontally:
-- Single hero image (even if it shows multiple products in one photo)
-- Text-only rows or headlines
-- Navigation link rows (these share a conceptual destination)
-- Footer sections
+A section where 2-6 products are displayed SIDE-BY-SIDE, and each product has:
+- Its own product image
+- Its own title/description  
+- Its own CTA button
+
+**CRITICAL**: The ENTIRE section (from product images down to CTAs) is ONE block split into columns. Do NOT slice row-by-row (images in one slice, CTAs in another).
+
+### Visual Example:
+
+┌─────────────────────────────────────┐
+│ [Product A]     [Product B]         │ ← This entire
+│  Title A         Title B            │   section is
+│  Description...  Description...     │   ONE block
+│  [SHOP A]        [SHOP B]           │   with 2 columns
+└─────────────────────────────────────┘
+
+**WRONG approach** (row-by-row slicing):
+- Slice 1: Both product images → links to collection page  
+- Slice 2: Both CTAs → ???
+
+**CORRECT approach** (column slicing):
+- Block with \`horizontalSplit: { columns: 2 }\` spanning full height
+- Column 1: Product A image + title + CTA → links to Product A page
+- Column 2: Product B image + title + CTA → links to Product B page
+
+### Detection Criteria (ALL must be met):
+1. **2-6 products arranged horizontally** (not stacked vertically)
+2. **Each product is a complete unit** with image + text + CTA
+3. **Products are visually separated** by gutters/whitespace
+4. **Each product would link to a DIFFERENT destination**
+
+### Block Boundary Rules:
+- \`yTop\`: Top of the product images
+- \`yBottom\`: Bottom of the CTA buttons (include ALL content for the products)
+- The block should capture the COMPLETE product cards, not just one row
+
+### When NOT to Flag as Multi-Column:
+- Single product (even with multiple images of same product)
+- Products stacked vertically (these are separate single-column slices)
+- Hero images showing multiple items in one photo
+- Navigation links or footer sections
 - Badge/certification rows
 - Social media icon rows
 - Any row where items would logically share ONE link
 
-### If Horizontal Split IS Warranted:
-
-Add \`horizontalSplit\` to the section:
+### Output Format When Multi-Column Block is Detected:
 
 {
-  "name": "product_row",
+  "name": "multi_product_block",
   "yTop": 1200,
-  "yBottom": 1600,
+  "yBottom": 1800,
   "hasCTA": true,
-  "ctaText": "SHOP NOW",
+  "ctaText": "SHOP GOLDEN | SHOP MWENDO",
   "horizontalSplit": {
-    "columns": 3,
-    "gutterPositions": [33.33, 66.66]
+    "columns": 2,
+    "gutterPositions": [50]
   }
 }
 
@@ -974,8 +1003,9 @@ Add \`horizontalSplit\` to the section:
 - Look for multiple similar objects at the same Y-level in "Detected Objects"
 - Look for repeated price patterns (e.g., "$XX") at similar Y positions in OCR
 - Look for vertical whitespace gaps that span the full height of the section
+- Look for the CTA buttons - if there are 2+ CTAs side-by-side with different text (e.g., "SHOP GOLDEN" and "SHOP MWENDO"), this is a strong signal
 
-IMPORTANT: When in doubt, DO NOT split. False positives are worse than false negatives.
+IMPORTANT: When in doubt, DO NOT split. False positives are worse than false negatives. The user can always manually configure in the UI.
 
 ---
 
