@@ -219,37 +219,41 @@ serve(async (req) => {
           
           const columnCells = rowSlices.map((slice) => {
             if (slice.type === 'html' && slice.htmlContent) {
-              return `<td width="${columnPercent}%" valign="top" style="padding: 0;">
-                <div class="klaviyo-block klaviyo-text-block">
-                  ${slice.htmlContent}
-                </div>
-              </td>`;
+              return `<td width="${columnPercent}%" valign="top" style="padding: 0;" data-klaviyo-region="true" data-klaviyo-region-width-pixels="${columnWidth}">
+      <div class="klaviyo-block klaviyo-text-block">
+        ${slice.htmlContent}
+      </div>
+    </td>`;
             }
             
             const imgTag = `<img src="${slice.imageUrl}" width="${columnWidth}" style="display: block; width: 100%; height: auto;" alt="${slice.altText || 'Email image'}" />`;
             
             if (slice.link) {
-              return `<td width="${columnPercent}%" valign="top" style="padding: 0;">
-                <a href="${slice.link}" target="_blank" style="text-decoration: none;">
-                  ${imgTag}
-                </a>
-              </td>`;
+              return `<td width="${columnPercent}%" valign="top" style="padding: 0;" data-klaviyo-region="true" data-klaviyo-region-width-pixels="${columnWidth}">
+      <div class="klaviyo-block klaviyo-image-block">
+        <a href="${slice.link}" target="_blank" style="text-decoration: none;">
+          ${imgTag}
+        </a>
+      </div>
+    </td>`;
             }
             
-            return `<td width="${columnPercent}%" valign="top" style="padding: 0;">
-              ${imgTag}
-            </td>`;
+            return `<td width="${columnPercent}%" valign="top" style="padding: 0;" data-klaviyo-region="true" data-klaviyo-region-width-pixels="${columnWidth}">
+      <div class="klaviyo-block klaviyo-image-block">
+        ${imgTag}
+      </div>
+    </td>`;
           }).join('\n              ');
           
           return `<tr>
-            <td data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
-                <tr>
-                  ${columnCells}
-                </tr>
-              </table>
-            </td>
-          </tr>`;
+  <td align="center" style="padding: 0;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+      <tr>
+        ${columnCells}
+      </tr>
+    </table>
+  </td>
+</tr>`;
         }
       }).join('\n');
     } else {
