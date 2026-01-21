@@ -66,6 +66,11 @@ export interface AutoSliceV2Response {
     name: string;
     hasCTA: boolean;
     ctaText: string | null;
+    // Horizontal split detection (rare - for side-by-side products)
+    horizontalSplit?: {
+      columns: 2 | 3 | 4 | 5 | 6;
+      gutterPositions: number[];
+    };
   }[];
   imageHeight: number;
   imageWidth: number;

@@ -246,7 +246,7 @@ async function autoSliceImage(
   }
 }
 
-// Step 3.5: Crop and upload each slice individually (matches CampaignCreator.processSlices)
+// Step 3.5: Crop and upload each slice individually (with horizontal split support)
 // OPTIMIZED: Parallel uploads to Cloudinary
 async function cropAndUploadSlices(
   imageBase64: string,
@@ -254,7 +254,7 @@ async function cropAndUploadSlices(
   imageWidth: number,
   imageHeight: number
 ): Promise<any[]> {
-  console.log('[process] Step 3.5: Cropping and uploading slices (parallel)...');
+  console.log('[process] Step 3.5: Cropping and uploading slices (parallel, with horizontal split support)...');
 
   try {
     // Decode the full image
@@ -269,32 +269,97 @@ async function cropAndUploadSlices(
     console.log(`[process] Actual image dimensions: ${actualWidth}x${actualHeight} (passed: ${imageWidth}x${imageHeight})`);
 
     // Phase 1: Crop all slices (CPU-bound, fast, sequential is fine)
-    const croppedSlices: { slice: any; sliceDataUrl: string; height: number; yTop: number; yBottom: number }[] = [];
+    const croppedSlices: { 
+      slice: any; 
+      sliceDataUrl: string; 
+      height: number; 
+      width: number;
+      yTop: number; 
+      yBottom: number;
+      column: number;
+      totalColumns: number;
+      rowIndex: number;
+    }[] = [];
+    
+    let globalRowIndex = 0;
     
     for (let i = 0; i < sliceBoundaries.length; i++) {
       const slice = sliceBoundaries[i];
       const yTop = slice.yTop;
       const yBottom = slice.yBottom;
-      const height = yBottom - yTop;
+      const sliceHeight = yBottom - yTop;
       
-      console.log(`[process] Cropping slice ${i + 1}/${sliceBoundaries.length}: y=${yTop}-${yBottom}, h=${height}, w=${actualWidth}`);
+      // Check for horizontal split
+      if (slice.horizontalSplit && slice.horizontalSplit.columns > 1) {
+        const { columns, gutterPositions } = slice.horizontalSplit;
+        
+        console.log(`[process] Slice ${i + 1}: Horizontal split into ${columns} columns`);
+        
+        // Calculate column boundaries in pixels
+        // gutterPositions are percentages, e.g., [33.33, 66.66] for 3 columns
+        const xBoundaries = [
+          0,
+          ...(gutterPositions || []).map((p: number) => Math.round(actualWidth * p / 100)),
+          actualWidth
+        ];
 
-      // Clone and crop the slice region - use ACTUAL width from decoded image
-      const sliceImage = fullImage.clone().crop(0, yTop, actualWidth, height);
+        // Crop each column
+        for (let col = 0; col < columns; col++) {
+          const xLeft = xBoundaries[col];
+          const xRight = xBoundaries[col + 1];
+          const colWidth = xRight - xLeft;
+
+          console.log(`[process] Column ${col + 1}/${columns}: x=${xLeft}-${xRight}, w=${colWidth}, h=${sliceHeight}`);
+
+          const columnImage = fullImage.clone().crop(xLeft, yTop, colWidth, sliceHeight);
+          const columnBytes = await columnImage.encodeJPEG(90);
+          const columnBase64 = bytesToBase64(columnBytes);
+          const columnDataUrl = `data:image/jpeg;base64,${columnBase64}`;
+
+          croppedSlices.push({
+            slice,
+            sliceDataUrl: columnDataUrl,
+            height: sliceHeight,
+            width: colWidth,
+            yTop,
+            yBottom,
+            column: col,
+            totalColumns: columns,
+            rowIndex: globalRowIndex,
+          });
+        }
+      } else {
+        // Single column (existing behavior)
+        console.log(`[process] Slice ${i + 1}: Single column, y=${yTop}-${yBottom}, h=${sliceHeight}, w=${actualWidth}`);
+
+        const sliceImage = fullImage.clone().crop(0, yTop, actualWidth, sliceHeight);
+        const sliceBytes = await sliceImage.encodeJPEG(90);
+        const sliceBase64 = bytesToBase64(sliceBytes);
+        const sliceDataUrl = `data:image/jpeg;base64,${sliceBase64}`;
+        
+        croppedSlices.push({
+          slice,
+          sliceDataUrl,
+          height: sliceHeight,
+          width: actualWidth,
+          yTop,
+          yBottom,
+          column: 0,
+          totalColumns: 1,
+          rowIndex: globalRowIndex,
+        });
+      }
       
-      // Encode as JPEG (matches client-side sliceImage which uses JPEG)
-      const sliceBytes = await sliceImage.encodeJPEG(90);
-      const sliceBase64 = bytesToBase64(sliceBytes);
-      const sliceDataUrl = `data:image/jpeg;base64,${sliceBase64}`;
-      
-      croppedSlices.push({ slice, sliceDataUrl, height, yTop, yBottom });
+      globalRowIndex++;
     }
 
     // Phase 2: Upload all slices in PARALLEL (I/O-bound, big speed win)
     console.log(`[process] Uploading ${croppedSlices.length} slices in parallel...`);
     const uploadUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/upload-to-cloudinary';
     
-    const uploadPromises = croppedSlices.map(async ({ slice, sliceDataUrl, height, yTop, yBottom }, i) => {
+    const uploadPromises = croppedSlices.map(async (cropData, i) => {
+      const { slice, sliceDataUrl, height, width, yTop, yBottom, column, totalColumns, rowIndex } = cropData;
+      
       try {
         const uploadResponse = await fetch(uploadUrl, {
           method: 'POST',
@@ -317,11 +382,15 @@ async function cropAndUploadSlices(
           ...slice,
           imageUrl: uploadResult?.url || null,
           dataUrl: sliceDataUrl,
-          width: actualWidth,
+          width: width,
           height: height,
           startPercent: (yTop / actualHeight) * 100,
           endPercent: (yBottom / actualHeight) * 100,
-          type: slice.hasCta ? 'cta' : 'image',
+          type: slice.hasCTA ? 'cta' : 'image',
+          // Multi-column properties
+          column,
+          totalColumns,
+          rowIndex,
         };
       } catch (err) {
         console.error(`[process] Error uploading slice ${i + 1}:`, err);
@@ -329,11 +398,14 @@ async function cropAndUploadSlices(
           ...slice,
           imageUrl: null,
           dataUrl: sliceDataUrl,
-          width: actualWidth,
+          width: width,
           height: height,
           startPercent: (yTop / actualHeight) * 100,
           endPercent: (yBottom / actualHeight) * 100,
-          type: slice.hasCta ? 'cta' : 'image',
+          type: slice.hasCTA ? 'cta' : 'image',
+          column,
+          totalColumns,
+          rowIndex,
         };
       }
     });

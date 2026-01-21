@@ -8,6 +8,10 @@ const corsHeaders = {
 interface SliceInput {
   dataUrl: string;
   index: number;
+  // Multi-column properties (optional)
+  column?: number;
+  totalColumns?: number;
+  rowIndex?: number;
 }
 
 interface SliceAnalysis {
@@ -101,6 +105,15 @@ Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't 
 - Use web search: "site:${domain} [product name]" or "site:${domain} collections" or "site:${domain} all products"
 - Homepage is LAST RESORT (except for header logos where it's correct)
 
+**MULTI-COLUMN SLICES** (when column/totalColumns metadata is present):
+When a slice has metadata like (column: 0, totalColumns: 3):
+- This is ONE cell of a multi-column product row
+- Each column needs its OWN unique link (they are separate products/categories)
+- Alt text should identify WHICH product/item this column contains
+- The link should go to THAT SPECIFIC product, not a collection page
+- Search for the specific product name visible in this column image
+- Example: If you see "Blue Dress - $89" in one column, search for that exact product
+
 For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
 Return JSON with exactly ${slices.length} slices:
@@ -139,10 +152,17 @@ Return JSON with exactly ${slices.length} slices:
     // Add each slice image with EXPLICIT labeling
     for (let i = 0; i < slices.length; i++) {
       const slice = slices[i];
+      
+      // Build context string for multi-column slices
+      let columnContext = '';
+      if (slice.totalColumns && slice.totalColumns > 1) {
+        columnContext = ` | COLUMN ${(slice.column ?? 0) + 1} of ${slice.totalColumns} (row ${slice.rowIndex ?? 0})`;
+      }
+      
       // Add explicit text label BEFORE each slice image
       content.push({
         type: 'text',
-        text: `=== SLICE ${i + 1} (index: ${i}) ===`
+        text: `=== SLICE ${i + 1} (index: ${i})${columnContext} ===`
       });
       
       const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
