@@ -51,6 +51,11 @@ interface SliceOutput {
   name: string;
   hasCTA: boolean;
   ctaText: string | null;
+  // Horizontal split detection (rare - for side-by-side products)
+  horizontalSplit?: {
+    columns: 2 | 3 | 4 | 5 | 6;
+    gutterPositions: number[]; // X percentages where columns divide
+  };
 }
 
 // Raw data from Vision APIs - no decisions, just facts
@@ -72,6 +77,11 @@ interface ClaudeDecision {
     yBottom: number;
     hasCTA: boolean;
     ctaText: string | null;
+    // Horizontal split detection
+    horizontalSplit?: {
+      columns: 2 | 3 | 4 | 5 | 6;
+      gutterPositions: number[];
+    };
   }[];
 }
 
@@ -569,7 +579,9 @@ function scaleClaudeDecision(decision: ClaudeDecision, scaleFactor: number): Cla
       yTop: s.yTop * inverseScale,
       yBottom: s.yBottom * inverseScale,
       hasCTA: s.hasCTA,
-      ctaText: s.ctaText
+      ctaText: s.ctaText,
+      // Pass through horizontal split (gutterPositions are percentages, no scaling needed)
+      horizontalSplit: s.horizontalSplit
     }))
   };
 }
@@ -884,7 +896,8 @@ Return ONLY a valid JSON object:
       "yTop": <number>,
       "yBottom": <number>,
       "hasCTA": <boolean - true if this slice contains a button>,
-      "ctaText": "<button text if hasCTA is true, otherwise null>"
+      "ctaText": "<button text if hasCTA is true, otherwise null>",
+      "horizontalSplit": null or { "columns": 2-6, "gutterPositions": [percentages] }
     }
   ]
 }
@@ -903,15 +916,66 @@ Return ONLY a valid JSON object:
 {
   "footerStartY": 2450,
   "sections": [
-    { "name": "header_hero", "yTop": 0, "yBottom": 580, "hasCTA": true, "ctaText": "SHOP NOW" },
-    { "name": "value_prop", "yTop": 580, "yBottom": 920, "hasCTA": false, "ctaText": null },
-    { "name": "product_1_cta", "yTop": 920, "yBottom": 1180, "hasCTA": true, "ctaText": "SHOP HYDROGLYPH" },
-    { "name": "product_2_cta", "yTop": 1180, "yBottom": 1440, "hasCTA": true, "ctaText": "SHOP PLANTA" },
-    { "name": "testimonial", "yTop": 1440, "yBottom": 1720, "hasCTA": false, "ctaText": null },
-    { "name": "final_cta", "yTop": 1720, "yBottom": 2100, "hasCTA": true, "ctaText": "GET STARTED" },
-    { "name": "pre_footer", "yTop": 2100, "yBottom": 2450, "hasCTA": false, "ctaText": null }
+    { "name": "header_hero", "yTop": 0, "yBottom": 580, "hasCTA": true, "ctaText": "SHOP NOW", "horizontalSplit": null },
+    { "name": "value_prop", "yTop": 580, "yBottom": 920, "hasCTA": false, "ctaText": null, "horizontalSplit": null },
+    { "name": "product_row", "yTop": 920, "yBottom": 1180, "hasCTA": true, "ctaText": "SHOP NOW", "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] } },
+    { "name": "testimonial", "yTop": 1180, "yBottom": 1460, "hasCTA": false, "ctaText": null, "horizontalSplit": null },
+    { "name": "final_cta", "yTop": 1460, "yBottom": 1840, "hasCTA": true, "ctaText": "GET STARTED", "horizontalSplit": null },
+    { "name": "pre_footer", "yTop": 1840, "yBottom": 2450, "hasCTA": false, "ctaText": null, "horizontalSplit": null }
   ]
 }
+
+---
+
+## HORIZONTAL SPLIT DETECTION (RARE - USE SPARINGLY)
+
+Most rows are single-column. ONLY flag for horizontal split when ALL of these are true:
+
+### Required Criteria (ALL must be met):
+1. **Multiple DISTINCT product images** visible side-by-side (not one wide image)
+2. **Each product has its own identifying text** (name, price, or description)
+3. **Each product has its own CTA** or would logically link to a DIFFERENT page
+4. **Clear visual separation** (gutters/whitespace) between items
+5. **Items are roughly equal width** (not one large + one small)
+
+### When NOT to Split Horizontally:
+- Single hero image (even if it shows multiple products in one photo)
+- Text-only rows or headlines
+- Navigation link rows (these share a conceptual destination)
+- Footer sections
+- Badge/certification rows
+- Social media icon rows
+- Any row where items would logically share ONE link
+
+### If Horizontal Split IS Warranted:
+
+Add \`horizontalSplit\` to the section:
+
+{
+  "name": "product_row",
+  "yTop": 1200,
+  "yBottom": 1600,
+  "hasCTA": true,
+  "ctaText": "SHOP NOW",
+  "horizontalSplit": {
+    "columns": 3,
+    "gutterPositions": [33.33, 66.66]
+  }
+}
+
+### Column Gutter Position Rules (ALWAYS EVEN SPLITS):
+- 2 columns: "gutterPositions": [50]
+- 3 columns: "gutterPositions": [33.33, 66.66]
+- 4 columns: "gutterPositions": [25, 50, 75]
+- 5 columns: "gutterPositions": [20, 40, 60, 80]
+- 6 columns: "gutterPositions": [16.67, 33.33, 50, 66.67, 83.33]
+
+### Detection Hints from Data:
+- Look for multiple similar objects at the same Y-level in "Detected Objects"
+- Look for repeated price patterns (e.g., "$XX") at similar Y positions in OCR
+- Look for vertical whitespace gaps that span the full height of the section
+
+IMPORTANT: When in doubt, DO NOT split. False positives are worse than false negatives.
 
 ---
 
@@ -929,7 +993,9 @@ Before returning your response, verify:
 ☐ No overlapping sections
 ☐ Cuts are in visual gaps, not through content
 ☐ Slice boundaries have 30+ px padding from nearest text block
-☐ Cuts are in the CENTER of whitespace gaps, not at edges of content`;
+☐ Cuts are in the CENTER of whitespace gaps, not at edges of content
+☐ Horizontal splits only used when products have DIFFERENT link destinations
+☐ Horizontal split columns are always even (2-6, never 1)`;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -995,7 +1061,12 @@ Before returning your response, verify:
         yTop: s.yTop,
         yBottom: s.yBottom,
         hasCTA: s.hasCTA ?? false,
-        ctaText: s.ctaText ?? null
+        ctaText: s.ctaText ?? null,
+        // Parse horizontal split if present
+        horizontalSplit: s.horizontalSplit ? {
+          columns: s.horizontalSplit.columns,
+          gutterPositions: s.horizontalSplit.gutterPositions || []
+        } : undefined
       }))
     };
     
@@ -1158,7 +1229,9 @@ serve(async (req) => {
       yBottom: Math.round(section.yBottom),
       name: section.name,
       hasCTA: section.hasCTA,
-      ctaText: section.ctaText
+      ctaText: section.ctaText,
+      // Pass through horizontal split info
+      horizontalSplit: section.horizontalSplit
     }));
 
     const processingTimeMs = Date.now() - startTime;
