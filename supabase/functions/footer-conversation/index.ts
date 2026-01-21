@@ -39,6 +39,9 @@ interface FooterConversationRequest {
   socialIcons?: Array<{ platform: string; url: string }>;
   styles?: StyleTokens;
   links?: LinkMapping[]; // User-approved links for all clickable elements
+  // Brand context for isolation
+  brandName?: string;
+  brandDomain?: string;
 }
 
 serve(async (req) => {
@@ -58,7 +61,9 @@ serve(async (req) => {
       assets = {},
       socialIcons = [],
       styles,
-      links = []
+      links = [],
+      brandName,
+      brandDomain
     } = request;
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -108,9 +113,21 @@ serve(async (req) => {
     }
 
     // System prompt - consistent across all actions
+    const brandContext = brandName ? `You are creating a footer for **${brandName}**${brandDomain ? ` (${brandDomain})` : ''}.` : '';
+    
     const systemPrompt = `You are an expert email HTML developer. You create pixel-perfect email footers using table-based layouts for maximum email client compatibility.
 
-CRITICAL RULES:
+${brandContext ? `## BRAND IDENTITY
+${brandContext}
+
+⚠️ CRITICAL - BRAND ISOLATION:
+- You are working ONLY on "${brandName}"
+- The logo URL(s) provided below are the ONLY logos you may use
+- Do NOT substitute, invent, or guess logo URLs from other brands you may know
+- If you see "eskiin", "Pura Vida", or any other brand name in your training data, IGNORE IT
+- Use ONLY the asset URLs explicitly provided below
+
+` : ''}CRITICAL RULES:
 - **FOOTER WIDTH MUST BE EXACTLY 600px** - use width="600" attribute AND style="width: 600px; max-width: 600px;" on inner table
 - Table-based layout only (no flexbox, no grid)
 - The outer wrapper is 100% width, the inner content table is EXACTLY 600px
@@ -157,10 +174,10 @@ MANDATORY STRUCTURE:
 </table>
 \`\`\`
 
-${assetsList ? `AVAILABLE ASSETS (USE THESE EXACT URLs - DO NOT INVENT URLs):
+${assetsList ? `AVAILABLE ASSETS FOR ${brandName?.toUpperCase() || 'THIS BRAND'} (USE THESE EXACT URLs - NO SUBSTITUTIONS):
 ${assetsList}
 
-CRITICAL: If a "logo", "brand_logo", or "brand_logo_light" asset URL is provided above, you MUST use it exactly as the src for the logo <img> tag. Never make up or guess logo URLs. The light/white version of the logo is typically used on dark footer backgrounds.` : ''}
+CRITICAL: The logo URL(s) above are for ${brandName || 'this brand'} ONLY. Copy them EXACTLY into your <img src="..."> tag. Never use a different brand's logo. If you don't see a logo URL listed, leave the logo area empty or use a text placeholder.` : ''}
 ${stylesSection ? `STYLE TOKENS:\n${stylesSection}` : ''}
 ${linksSection ? `\n${linksSection}` : ''}
 

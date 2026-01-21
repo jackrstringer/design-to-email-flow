@@ -792,6 +792,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       console.log('Final assets for generation:', assetsWithBrandLogos);
       
       // Use the unified footer-conversation function
+      // Extract clean brand domain for context
+      const cleanBrandDomain = brand.websiteUrl?.replace(/^https?:\/\//, '').replace(/\/$/, '') || brand.domain;
+      
       const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
           action: 'generate',
@@ -800,7 +803,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           styles: extractedStyles,
           socialIcons: socialIconsForGeneration,
           links: linksForGeneration,
-          conversationHistory: [] // Fresh conversation
+          conversationHistory: [], // Fresh conversation
+          // Brand context for isolation - prevents Claude from substituting other brands' logos
+          brandName: brand.name,
+          brandDomain: cleanBrandDomain
         }
       });
 
