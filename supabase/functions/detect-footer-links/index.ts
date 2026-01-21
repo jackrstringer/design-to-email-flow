@@ -261,8 +261,14 @@ function bestInternalUrlFromMap(mapUrls: string[], brandDomain: string, linkText
       if (path.includes(tok)) score += 1;
     }
 
-    if (path.startsWith("/pages/") || path.startsWith("/collections/") || path.startsWith("/products/")) {
-      score += 1;
+    // Evergreen pages get bonus, product pages are PENALIZED (they're ephemeral)
+    if (path.startsWith("/pages/") || path.startsWith("/policies/")) {
+      score += 5; // Strong preference for utility pages
+    } else if (path.startsWith("/collections/")) {
+      score += 3; // Good for category links
+    } else if (path.startsWith("/products/")) {
+      score -= 15; // HEAVILY penalize product pages - they're ephemeral and shouldn't be in footers
+      continue; // Skip product URLs entirely for footer navigation
     }
 
     if (!best || score > best.score) best = { url, score };
@@ -319,7 +325,40 @@ async function webSearchMissingLinks(
       messages: [
         {
           role: "user",
-          content: `Find the best real URLs for each footer link below for the brand "${brandName}" (${brandDomain}).\n\nLinks:\n${list}\n\nRules:\n- Prefer URLs on the brand domain (${brandDomain}) for navigation/button links.\n- For social links, return the official profile URL on the platform domain.\n- Return ONLY JSON in this exact shape:\n{\n  "results": [\n    { "id": "...", "url": "https://..." }\n  ]\n}\n\nIf you cannot find a confident URL for an item, set url to "".`,
+          content: `Find EVERGREEN URLs for these email footer navigation links for "${brandName}" (${brandDomain}).
+
+CRITICAL CONTEXT:
+These links will be embedded in marketing emails sent to thousands of subscribers.
+The emails will be sent over weeks/months, so links MUST be EVERGREEN (stable over time).
+
+✅ GOOD (evergreen):
+- /collections/new, /collections/sale, /collections/best-sellers → category pages
+- /pages/about, /pages/contact, /pages/faq → utility pages  
+- /policies/privacy, /policies/shipping → legal pages
+- Social profile URLs (instagram.com/brand, etc.)
+
+❌ BAD (ephemeral - NEVER USE):
+- /products/specific-item-name → products come and go, links will break
+- /blogs/specific-post → blog posts are dated content
+- URLs with dates, campaign IDs, or SKUs
+
+Links to find:
+${list}
+
+Rules:
+- For "NEW" or "New Arrivals" → /collections/new or /collections/new-arrivals
+- For "SALE" → /collections/sale or /pages/sale
+- For generic "SHOP" → /collections/all or homepage
+- For social links → full profile URL on the platform
+
+Return ONLY JSON:
+{
+  "results": [
+    { "id": "...", "url": "https://..." }
+  ]
+}
+
+If you can't find a confident EVERGREEN URL, return url as "" (we'll ask the user manually).`,
         },
       ],
     }),
@@ -385,11 +424,49 @@ serve(async (req) => {
       )
       .join("\n");
 
-    const prompt = `You are helping find real URLs for clickable elements in an email footer for the brand "${brandName}" (domain: ${brandDomain}).\n\nHere are the clickable elements detected in the footer (IMPORTANT: keep id AND category EXACTLY as provided):\n${elementsDescription}\n\nFor each element, determine the most likely URL.\n\nRULES:\n- Navigation/button links should be on https://${brandDomain} and follow common patterns like /pages/... or /collections/...\n- Social links should be full profile URLs on the correct social domain\n- Email actions must use placeholders exactly:\n  - Unsubscribe: {{ unsubscribe_url }}\n  - Manage Preferences: {{ manage_preferences_url }}\n  - View in Browser: {{ view_in_browser_url }}\n  - Forward: {{ forward_to_a_friend_url }}\n\nReturn ONLY a valid JSON array with the exact fields:\n[\n  {\n    "id": "<exact id from input>",\n    "text": "<exact text from input>",\n    "category": "<exact category from input>",\n    "searchedUrl": "https://... or placeholder/mailto",
+    const prompt = `You are finding URLs for navigation links in an email footer for "${brandName}" (${brandDomain}).
+
+CRITICAL CONTEXT - WHY THIS MATTERS:
+These links will be embedded in marketing emails sent to thousands of subscribers.
+The emails will be sent for weeks/months, so links MUST be EVERGREEN (stable over time).
+
+EVERGREEN URLs (USE THESE):
+- /pages/about, /pages/contact, /pages/faq → stable utility pages
+- /collections/new, /collections/sale, /collections/best-sellers → category pages
+- /policies/privacy, /policies/shipping → legal pages
+- Social profile URLs (instagram.com/brand, tiktok.com/@brand, etc.)
+
+EPHEMERAL URLs (NEVER USE - THESE WILL BREAK):
+- /products/specific-item-name → products come and go, links will break
+- /blogs/specific-post-title → blog posts are dated content
+- Any URL with dates, campaign IDs, SKUs, or specific product names
+
+Here are the clickable elements detected (keep id AND category EXACTLY as provided):
+${elementsDescription}
+
+RULES:
+- For "NEW" or "New Arrivals" → use /collections/new or /collections/new-arrivals
+- For "SALE" → use /collections/sale or /pages/sale  
+- For generic CTAs like "SHOP" → use /collections/all or homepage
+- For social links → use the full profile URL on the platform (e.g., https://instagram.com/${brandName.toLowerCase().replace(/[^a-z0-9]/g, '')})
+- Email actions must use ESP placeholders exactly:
+  - Unsubscribe: {{ unsubscribe_url }}
+  - Manage Preferences: {{ manage_preferences_url }}
+  - View in Browser: {{ view_in_browser_url }}
+  - Forward: {{ forward_to_a_friend_url }}
+
+Return ONLY a valid JSON array:
+[
+  {
+    "id": "<exact id from input>",
+    "text": "<exact text from input>",
+    "category": "<exact category from input>",
+    "searchedUrl": "https://... (MUST be evergreen, NEVER a product page)",
     "verified": false,
     "needsManualUrl": false,
     "placeholder": null
-  }\n]`;
+  }
+]`;
 
     const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
