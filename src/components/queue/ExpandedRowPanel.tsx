@@ -653,7 +653,7 @@ export function ExpandedRowPanel({
     <div className="bg-muted/20 border-t animate-in slide-in-from-top-2 duration-200">
       <div className="flex items-start">
         {/* LEFT SIDE - Campaign Preview - fills available space, scrollable */}
-        <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto">
+        <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto overflow-x-visible">
           {/* Inbox Preview - full width */}
           <div className="mb-3">
             <div className="bg-white rounded-lg border shadow-sm">
@@ -895,11 +895,11 @@ export function ExpandedRowPanel({
                               }}>
                                 <PopoverTrigger asChild>
                                   <button 
-                                    className="absolute left-2 top-2 z-30 bg-background/95 border border-border rounded-md shadow-md px-2 py-1 flex items-center gap-1.5 hover:bg-muted transition-colors animate-in fade-in-0 duration-100"
+                                    className="absolute left-2 top-2 z-50 bg-background/95 border border-border rounded-md shadow-lg px-2 py-1 flex items-center gap-1.5 hover:bg-muted transition-colors animate-in fade-in-0 duration-100 whitespace-nowrap"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <Link className="w-3 h-3 text-primary flex-shrink-0" />
-                                    <span className="text-[10px] text-foreground">
+                                    <span className="text-[10px] text-foreground whitespace-nowrap">
                                       {slice.link}
                                     </span>
                                   </button>
