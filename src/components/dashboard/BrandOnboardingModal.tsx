@@ -722,7 +722,7 @@ export function BrandOnboardingModal({
           brand={createdBrand}
           onFooterSaved={handleFooterSaved}
           onGenerationStateChange={setIsFooterGenerating}
-          onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData, conversationHistory) => {
+          onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData, conversationHistory, sessionId) => {
             onOpenChange(false);
             setShowFooterBuilder(false);
             navigate(`/footer-editor/${createdBrand.id}`, {
@@ -732,6 +732,7 @@ export function BrandOnboardingModal({
                 footerName: 'New Footer',
                 figmaDesignData,
                 conversationHistory,
+                sessionId, // DB session for persistence
               }
             });
           }}

@@ -1744,7 +1744,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           fetchFooters();
           onBrandChange();
         }}
-        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData, conversationHistory) => {
+        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData, conversationHistory, sessionId) => {
           navigate(`/footer-editor/${brand.id}`, {
             state: {
               referenceImageUrl,
@@ -1752,6 +1752,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
               footerName: 'New Footer',
               figmaDesignData,
               conversationHistory,
+              sessionId, // DB session for persistence
             }
           });
         }}

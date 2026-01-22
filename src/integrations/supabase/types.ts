@@ -389,6 +389,56 @@ export type Database = {
           },
         ]
       }
+      footer_editor_sessions: {
+        Row: {
+          brand_id: string
+          conversation_history: Json
+          created_at: string
+          current_html: string
+          figma_design_data: Json | null
+          footer_name: string | null
+          id: string
+          reference_image_url: string
+          updated_at: string
+          user_id: string
+          vision_data: Json | null
+        }
+        Insert: {
+          brand_id: string
+          conversation_history?: Json
+          created_at?: string
+          current_html: string
+          figma_design_data?: Json | null
+          footer_name?: string | null
+          id?: string
+          reference_image_url: string
+          updated_at?: string
+          user_id: string
+          vision_data?: Json | null
+        }
+        Update: {
+          brand_id?: string
+          conversation_history?: Json
+          created_at?: string
+          current_html?: string
+          figma_design_data?: Json | null
+          footer_name?: string | null
+          id?: string
+          reference_image_url?: string
+          updated_at?: string
+          user_id?: string
+          vision_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "footer_editor_sessions_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plugin_tokens: {
         Row: {
           created_at: string | null

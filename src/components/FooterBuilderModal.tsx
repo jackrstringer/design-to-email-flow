@@ -29,7 +29,7 @@ interface FooterBuilderModalProps {
   onOpenChange: (open: boolean) => void;
   brand: Brand;
   onFooterSaved: () => void;
-  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any, conversationHistory?: ConversationMessage[]) => void;
+  onOpenStudio?: (referenceImageUrl: string, footerHtml: string, figmaDesignData?: any, conversationHistory?: ConversationMessage[], sessionId?: string | null) => void;
   initialCampaignImageUrl?: string;
   onGenerationStateChange?: (isGenerating: boolean) => void;
   renderDuringGeneration?: React.ReactNode;
@@ -819,14 +819,42 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       console.log('Footer generated, HTML length:', data.html.length);
       console.log('Conversation history length:', data.conversationHistory?.length || 0);
 
-      // Hand off to studio for refinement with conversation history
+      // Create a session in the database for conversation continuity
+      let sessionId: string | null = null;
+      try {
+        const { data: session, error: sessionError } = await supabase
+          .from('footer_editor_sessions')
+          .insert({
+            brand_id: brand.id,
+            user_id: (await supabase.auth.getUser()).data.user?.id,
+            reference_image_url: referenceImageUrl,
+            current_html: data.html,
+            conversation_history: data.conversationHistory || [],
+            footer_name: 'New Footer',
+            figma_design_data: figmaData ? { design: figmaData.design, designData: figmaData.designData } : null,
+          })
+          .select('id')
+          .single();
+
+        if (sessionError) {
+          console.warn('Failed to create session:', sessionError);
+        } else {
+          sessionId = session.id;
+          console.log('Created footer session:', sessionId);
+        }
+      } catch (err) {
+        console.warn('Session creation failed:', err);
+      }
+
+      // Hand off to studio for refinement with session ID
       if (onOpenStudio && referenceImageUrl) {
         onOpenChange(false);
         onOpenStudio(
           referenceImageUrl, 
           data.html, 
           figmaData ? { design: figmaData.design, designData: figmaData.designData } : undefined,
-          data.conversationHistory || []
+          data.conversationHistory || [],
+          sessionId // Pass session ID for DB persistence
         );
       } else {
         toast.success('Footer generated!');

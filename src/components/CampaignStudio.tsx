@@ -106,6 +106,37 @@ interface CampaignStudioProps {
   isLoadingLists?: boolean;
   // Conversation history from initial generation
   initialConversationHistory?: ConversationMessage[];
+  // Session ID for DB persistence
+  sessionId?: string | null;
+}
+
+// HTML validator to prevent broken renders
+function validateFooterHtml(html: string, previousHtml: string | undefined): { valid: boolean; reason?: string } {
+  if (!html || html.length < 100) {
+    return { valid: false, reason: 'HTML too short' };
+  }
+  
+  // Must contain a 600px width table
+  if (!/width=["']600["']/.test(html) && !/width:\s*600px/.test(html)) {
+    return { valid: false, reason: 'Missing 600px width constraint' };
+  }
+  
+  // Must not contain <div> (email rule)
+  if (/<div[\s>]/i.test(html)) {
+    return { valid: false, reason: 'Contains <div> elements (not email compatible)' };
+  }
+  
+  // Must preserve Klaviyo tags if they existed in previous HTML
+  if (previousHtml) {
+    const klaviyoTags = ['{% unsubscribe_url %}', '{% manage_preferences_url %}', '{{ organization.address }}'];
+    for (const tag of klaviyoTags) {
+      if (previousHtml.includes(tag) && !html.includes(tag)) {
+        return { valid: false, reason: `Missing Klaviyo tag: ${tag}` };
+      }
+    }
+  }
+  
+  return { valid: true };
 }
 
 interface SliceDimensions {
@@ -141,6 +172,7 @@ export function CampaignStudio({
   onSelectList,
   isLoadingLists = false,
   initialConversationHistory = [],
+  sessionId = null,
 }: CampaignStudioProps) {
   const isFooterMode = mode === 'footer';
   
@@ -559,17 +591,33 @@ export function CampaignStudio({
       if (error) throw new Error(error.message);
       if (!data.success) throw new Error(data.error || 'Refinement failed');
 
+      // Validate the returned HTML before applying
+      if (data.html) {
+        const validation = validateFooterHtml(data.html, localFooterHtml);
+        if (!validation.valid) {
+          console.warn('Refined HTML failed validation:', validation.reason);
+          setChatMessages([...newMessages, { 
+            role: 'assistant', 
+            content: `⚠️ Refinement rejected: ${validation.reason}. Keeping previous HTML.` 
+          }]);
+          toast.warning(`Refinement invalid: ${validation.reason}`);
+          return;
+        }
+
+        setLocalFooterHtml(data.html);
+        toast.success('Footer refined based on your screen');
+        
+        // Persist to session if we have one
+        if (sessionId) {
+          persistSession(data.html, data.conversationHistory);
+        }
+      }
+
       setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Compared your screen and fixed differences.' }]);
       
       // Update conversation history
       if (data.conversationHistory) {
         setClaudeConversationHistory(data.conversationHistory);
-      }
-
-      // Apply updated HTML
-      if (data.html) {
-        setLocalFooterHtml(data.html);
-        toast.success('Footer refined based on your screen');
       }
     } catch (err) {
       setChatMessages([...newMessages, { 
@@ -579,6 +627,24 @@ export function CampaignStudio({
       toast.error('Auto-refine failed');
     } finally {
       setIsAutoRefining(false);
+    }
+  };
+
+  // Persist session to DB
+  const persistSession = async (html: string, history: ConversationMessage[]) => {
+    if (!sessionId) return;
+    
+    try {
+      await supabase
+        .from('footer_editor_sessions')
+        .update({
+          current_html: html,
+          conversation_history: history as any,
+        })
+        .eq('id', sessionId);
+      console.log('Session persisted:', sessionId);
+    } catch (err) {
+      console.warn('Failed to persist session:', err);
     }
   };
 
