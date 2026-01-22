@@ -672,21 +672,42 @@ Each edge represents a Y coordinate where a significant horizontal color change 
 
 ## SLICING RULES
 
-### RULE 1: EVERY BUTTON = SEPARATE SLICE
+### RULE 0: SIDE-BY-SIDE CTAs = MANDATORY HORIZONTAL SPLIT (HIGHEST PRIORITY)
 
-This is the most important rule. Each distinct CTA button MUST be its own slice.
+**This rule overrides all others. Missing a split = BROKEN EMAIL (users can only click one button).**
+
+If you see TWO OR MORE buttons arranged HORIZONTALLY (side-by-side) with DIFFERENT text:
+→ This section MUST have horizontalSplit enabled
+
+**CRITICAL EXAMPLES requiring horizontal split:**
+- [THE BLARE] [ON SALE NOW] → 2 columns, gutterPositions: [50]
+- [SHOP MEN] [SHOP WOMEN] → 2 columns, gutterPositions: [50]
+- [LEARN MORE] [BUY NOW] → 2 columns, gutterPositions: [50]
+- [SHOP GOLDEN] [SHOP MWENDO] → 2 columns, gutterPositions: [50]
+- Three products side-by-side with individual CTAs → 3 columns, gutterPositions: [33.33, 66.66]
+
+**Detection:** Look for 2+ rectangular button shapes at the same Y-level with different text labels.
+**Action:** Set horizontalSplit.columns = (number of buttons), gutterPositions at visual gaps between them.
+
+**NEVER output a slice containing two distinct CTA buttons without a horizontal split.**
+
+When in doubt about multiple side-by-side CTAs → USE horizontalSplit. It's better to over-split than under-split.
+A false negative (missing a split) means users CANNOT CLICK one of the buttons - this breaks the email.
+
+### RULE 1: EVERY BUTTON = SEPARATE SLICE (for vertically stacked buttons)
+
+Each distinct CTA button MUST be its own slice when stacked vertically.
 
 WRONG (broken - can't click both):
-- One slice containing "SHOP HYDROGLYPH" and "SHOP PLANTA" buttons
+- One slice containing "SHOP HYDROGLYPH" and "SHOP PLANTA" buttons stacked vertically
 
 CORRECT:
 - Slice 1: Content + "SHOP HYDROGLYPH" button
 - Slice 2: "SHOP PLANTA" button (with minimal context above/below)
 
 If you see vertically stacked buttons like:
-
-[SHOP NOW] [LEARN MORE]
-
+[SHOP NOW]
+[LEARN MORE]
 These are TWO slices, not one.
 
 ### RULE 2: What Stays TOGETHER in One Slice
@@ -703,7 +724,7 @@ Keep these as single units (as long as there's only ONE button):
 Split these into multiple slices:
 - Two or more buttons stacked vertically → each button = new slice
 - Product grid where each product has its own CTA → one slice per product
-- Side-by-side buttons → separate slices (cut horizontally between them if possible, or treat the row as needing special handling)
+- Side-by-side buttons → ALWAYS use horizontalSplit (Rule 0)
 - Any section with multiple click destinations
 
 ### RULE 4: Slice Boundaries
@@ -1005,7 +1026,7 @@ A section where 2-6 products are displayed SIDE-BY-SIDE, and each product has:
 - Look for vertical whitespace gaps that span the full height of the section
 - Look for the CTA buttons - if there are 2+ CTAs side-by-side with different text (e.g., "SHOP GOLDEN" and "SHOP MWENDO"), this is a strong signal
 
-IMPORTANT: When in doubt, DO NOT split. False positives are worse than false negatives. The user can always manually configure in the UI.
+CRITICAL: For side-by-side CTAs, you MUST use horizontal split. Missing a split = broken email where users can only click ONE button. When in doubt about multiple CTAs → SPLIT. Over-splitting is recoverable; under-splitting breaks functionality.
 
 ---
 
@@ -1013,9 +1034,10 @@ IMPORTANT: When in doubt, DO NOT split. False positives are worse than false neg
 
 Before returning your response, verify:
 
+☐ **CRITICAL: No slice contains two or more clickable buttons without horizontalSplit**
+☐ If side-by-side CTAs exist → horizontalSplit is set with correct column count
 ☐ If a logo exists in top 200px with a gap below it → it's sliced separately as "header_logo"
-☐ Every visible button has its own slice
-☐ No slice contains two or more buttons
+☐ Every visible button has its own slice or column
 ☐ footerStartY is at the START of utility content (not the bottom of the email)
 ☐ First section starts at yTop: 0
 ☐ Last section ends at footerStartY
@@ -1024,7 +1046,6 @@ Before returning your response, verify:
 ☐ Cuts are in visual gaps, not through content
 ☐ Slice boundaries have 30+ px padding from nearest text block
 ☐ Cuts are in the CENTER of whitespace gaps, not at edges of content
-☐ Horizontal splits only used when products have DIFFERENT link destinations
 ☐ Horizontal split columns are always even (2-6, never 1)`;
 
   try {
