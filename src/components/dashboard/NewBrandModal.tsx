@@ -657,8 +657,8 @@ export function NewBrandModal({
         brand={createdBrand}
         onFooterSaved={handleFooterSaved}
         initialCampaignImageUrl={pendingCampaignImageUrl}
-        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData) => {
-          // Close the modal and navigate to footer editor
+        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData, conversationHistory) => {
+          // Close the modal and navigate to footer editor with full AI context
           onOpenChange(false);
           navigate(`/footer-editor/${createdBrand.id}`, {
             state: {
@@ -666,6 +666,7 @@ export function NewBrandModal({
               footerHtml,
               footerName: 'New Footer',
               figmaDesignData,
+              conversationHistory,
             }
           });
         }}
