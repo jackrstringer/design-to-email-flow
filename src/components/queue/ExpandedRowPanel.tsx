@@ -1185,7 +1185,7 @@ export function ExpandedRowPanel({
               {/* Compact link list */}
               {slicesWithLinks.length > 0 && (
                 <div className="space-y-1 pt-2 border-t">
-                  {slicesWithLinks.slice(0, 6).map((slice, i) => {
+                  {slicesWithLinks.map((slice, i) => {
                     const isExternal = slice.link && brandDomain && !slice.link.includes(brandDomain);
                     return (
                       <div 
@@ -1200,11 +1200,6 @@ export function ExpandedRowPanel({
                       </div>
                     );
                   })}
-                  {slicesWithLinks.length > 6 && (
-                    <span className="text-[11px] text-muted-foreground">
-                      +{slicesWithLinks.length - 6} more
-                    </span>
-                  )}
                 </div>
               )}
             </div>
