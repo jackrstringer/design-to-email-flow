@@ -883,18 +883,77 @@ export function ExpandedRowPanel({
                               </div>
                             )}
                             
-                            {/* Hover link tooltip in 'none' mode - modern floating card */}
+                            {/* Hover link tooltip in 'none' mode - compact clickable pill */}
                             {displayMode === 'none' && hoveredSliceIndex === originalIndex && slice.link && (
-                              <div className="absolute left-1/2 -translate-x-1/2 top-3 z-30 pointer-events-none animate-in fade-in-0 zoom-in-95 duration-150">
-                                <div className="bg-background border border-border rounded-lg shadow-xl px-3 py-2 flex items-center gap-2.5">
-                                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                    <Link className="w-3.5 h-3.5 text-primary" />
-                                  </div>
-                                  <span className="text-xs text-foreground font-medium max-w-[300px] truncate">
-                                    {slice.link}
-                                  </span>
-                                </div>
-                              </div>
+                              <Popover open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
+                                if (open) {
+                                  setEditingLinkIndex(originalIndex);
+                                  setLinkSearchValue('');
+                                } else {
+                                  setEditingLinkIndex(null);
+                                }
+                              }}>
+                                <PopoverTrigger asChild>
+                                  <button 
+                                    className="absolute left-2 top-2 z-30 bg-background/95 border border-border rounded-md shadow-md px-2 py-1 flex items-center gap-1.5 hover:bg-muted transition-colors animate-in fade-in-0 duration-100"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Link className="w-3 h-3 text-primary flex-shrink-0" />
+                                    <span className="text-[10px] text-foreground max-w-[200px] truncate">
+                                      {slice.link}
+                                    </span>
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-96 p-0" align="start" side="bottom">
+                                  <Command>
+                                    <CommandInput 
+                                      placeholder="Search or enter URL..." 
+                                      value={linkSearchValue}
+                                      onValueChange={setLinkSearchValue}
+                                    />
+                                    <CommandList>
+                                      <CommandEmpty>
+                                        {linkSearchValue && (
+                                          <button
+                                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                                            onClick={() => setSliceLink(originalIndex, linkSearchValue)}
+                                          >
+                                            Use "{linkSearchValue}"
+                                          </button>
+                                        )}
+                                      </CommandEmpty>
+                                      {filteredLinks.length > 0 && (
+                                        <CommandGroup heading="Brand Links">
+                                          {filteredLinks.slice(0, 10).map((link) => (
+                                            <CommandItem
+                                              key={link}
+                                              value={link}
+                                              onSelect={() => setSliceLink(originalIndex, link)}
+                                              className="text-xs"
+                                            >
+                                              <span className="break-all">{link}</span>
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      )}
+                                      {slice.link && (
+                                        <CommandGroup>
+                                          <CommandItem
+                                            onSelect={() => {
+                                              removeLink(originalIndex);
+                                              setEditingLinkIndex(null);
+                                            }}
+                                            className="text-xs text-destructive"
+                                          >
+                                            <X className="w-3 h-3 mr-2" />
+                                            Remove link
+                                          </CommandItem>
+                                        </CommandGroup>
+                                      )}
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
                             )}
                             
                             {slice.type === 'html' && slice.htmlContent ? (
