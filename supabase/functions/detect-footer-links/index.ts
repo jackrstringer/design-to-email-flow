@@ -425,50 +425,56 @@ serve(async (req) => {
       )
       .join("\n");
 
-    const prompt = `You are finding URLs for navigation links in an email footer for "${brandName}" (${brandDomain}).
+    const prompt = `You are finding URLs for navigation links in an email footer for "${brandName}" (https://${brandDomain}).
 
-CRITICAL CONTEXT - WHY THIS MATTERS:
+**CRITICAL: USE WEB SEARCH**
+You MUST use web_search to visit https://${brandDomain} and find the actual URLs.
+DO NOT guess URLs from your training data - the website structure may have changed.
+
+STEP-BY-STEP PROCESS:
+1. First, search for "${brandName} official website" or visit https://${brandDomain} directly
+2. Look at the website's main navigation and footer to find the actual link URLs
+3. For each element below, find the REAL URL as it exists on the website TODAY
+
+IMPORTANT CONTEXT:
 These links will be embedded in marketing emails sent to thousands of subscribers.
 The emails will be sent for weeks/months, so links MUST be EVERGREEN (stable over time).
-
-EVERGREEN URLs (USE THESE):
-- /pages/about, /pages/contact, /pages/faq → stable utility pages
-- /collections/new, /collections/sale, /collections/best-sellers → category pages
-- /policies/privacy, /policies/shipping → legal pages
-- Social profile URLs (instagram.com/brand, tiktok.com/@brand, etc.)
-
-EPHEMERAL URLs (NEVER USE - THESE WILL BREAK):
-- /products/specific-item-name → products come and go, links will break
-- /blogs/specific-post-title → blog posts are dated content
-- Any URL with dates, campaign IDs, SKUs, or specific product names
 
 Here are the clickable elements detected (keep id AND category EXACTLY as provided):
 ${elementsDescription}
 
-RULES:
-- For "NEW" or "New Arrivals" → use /collections/new or /collections/new-arrivals
-- For "SALE" → use /collections/sale or /pages/sale  
-- For generic CTAs like "SHOP" → use /collections/all or homepage
-- For social links → use the full profile URL on the platform (e.g., https://instagram.com/${brandName.toLowerCase().replace(/[^a-z0-9]/g, '')})
-- Email actions must use ESP placeholders exactly:
-  - Unsubscribe: {{ unsubscribe_url }}
-  - Manage Preferences: {{ manage_preferences_url }}
-  - View in Browser: {{ view_in_browser_url }}
-  - Forward: {{ forward_to_a_friend_url }}
+EVERGREEN URL PATTERNS (prefer these):
+- /collections/... → category/collection pages (e.g., /collections/most-wanted, /collections/new)
+- /pages/... → static utility pages (e.g., /pages/about, /pages/contact)
+- /policies/... → legal pages
+- Full social profile URLs (e.g., https://instagram.com/iamloving)
 
-Return ONLY a valid JSON array:
+EPHEMERAL PATTERNS (NEVER use):
+- /products/... → individual products change frequently
+- /blogs/... with specific post names → dated content
+- URLs with campaign IDs or dates
+
+EMAIL ACTION PLACEHOLDERS (use exactly as shown):
+- Unsubscribe: {{ unsubscribe_url }}
+- Manage Preferences: {{ manage_preferences_url }}
+- View in Browser: {{ view_in_browser_url }}
+- Forward: {{ forward_to_a_friend_url }}
+
+After searching the website, return ONLY a valid JSON array with the ACTUAL URLs you found:
 [
   {
     "id": "<exact id from input>",
     "text": "<exact text from input>",
     "category": "<exact category from input>",
-    "searchedUrl": "https://... (MUST be evergreen, NEVER a product page)",
+    "searchedUrl": "https://... (the REAL URL you found via web search)",
     "verified": false,
     "needsManualUrl": false,
     "placeholder": null
   }
 ]`;
 
+    console.log("🔍 Calling Claude Sonnet 4.5 with web_search for accurate link detection...");
+    
     const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -477,8 +483,19 @@ Return ONLY a valid JSON array:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-1-20250805",
-        max_tokens: 2500,
+        model: "claude-sonnet-4-5-20250514",
+        max_tokens: 16000,
+        thinking: {
+          type: "enabled",
+          budget_tokens: 10000,
+        },
+        tools: [
+          {
+            type: "web_search_20250305",
+            name: "web_search",
+            max_uses: 15,
+          },
+        ],
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -490,11 +507,20 @@ Return ONLY a valid JSON array:
     }
 
     const aiData = await aiResp.json();
-    const responseText = aiData.content?.[0]?.text || "";
+    
+    // Collect text from all content blocks (web search + thinking returns multiple blocks)
+    let responseText = "";
+    for (const block of aiData.content || []) {
+      if (block.type === "text") {
+        responseText += block.text;
+      }
+    }
+    
+    console.log("📝 Claude response length:", responseText.length, "characters");
 
     const jsonMatch = responseText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.error("No JSON array found in response:", responseText);
+      console.error("No JSON array found in response:", responseText.substring(0, 500));
       throw new Error("Failed to extract JSON from AI response");
     }
 
