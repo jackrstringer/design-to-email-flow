@@ -8,7 +8,7 @@ import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ExternalLink, Copy, Columns } from 'lucide-react';
+import { ExternalLink, Copy, Columns, AlertTriangle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 
@@ -47,11 +47,14 @@ export function QueueRow({
   isSelected,
   onSelect
 }: QueueRowProps) {
-  const slices = (item.slices as Array<{ link?: string; totalColumns?: number }>) || [];
+  const slices = (item.slices as Array<{ link?: string; totalColumns?: number; multiCtaWarning?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
 
   // Check for multi-column blocks
   const hasMultiColumnBlocks = slices.some(s => (s.totalColumns ?? 1) > 1);
+  
+  // Check for multi-CTA warnings (slices that may need splitting)
+  const hasMultiCtaWarning = slices.some(s => s.multiCtaWarning);
 
   // Get brand info from joined data
   const brandName = (item as any).brands?.name;
@@ -157,9 +160,19 @@ export function QueueRow({
       </div>
       
       {/* Thumbnail */}
-      <div className="px-2 flex-shrink-0" style={{ width: columnWidths.thumbnail }}>
-        {/* Multi-column badge */}
-        {hasMultiColumnBlocks && (
+      <div className="px-2 flex-shrink-0 relative" style={{ width: columnWidths.thumbnail }}>
+        {/* Multi-CTA warning badge - takes priority */}
+        {hasMultiCtaWarning && (
+          <Badge 
+            variant="outline" 
+            className="absolute -top-1 -right-1 bg-orange-50 text-orange-700 border-orange-200 text-[8px] px-1 py-0 h-4 z-10"
+            title="This campaign may have slices with multiple CTAs that need splitting"
+          >
+            <AlertTriangle className="w-2.5 h-2.5" />
+          </Badge>
+        )}
+        {/* Multi-column badge - only show if no warning */}
+        {!hasMultiCtaWarning && hasMultiColumnBlocks && (
           <Badge variant="outline" className="absolute -top-1 -right-1 bg-blue-50 text-blue-700 border-blue-200 text-[8px] px-1 py-0 h-4 z-10">
             <Columns className="w-2.5 h-2.5" />
           </Badge>

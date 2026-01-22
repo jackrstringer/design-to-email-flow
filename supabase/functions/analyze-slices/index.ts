@@ -21,6 +21,7 @@ interface SliceAnalysis {
   isClickable: boolean;
   linkVerified: boolean;
   linkWarning?: string;
+  multiCtaWarning?: string;
 }
 
 serve(async (req) => {
@@ -337,12 +338,29 @@ Return JSON with exactly ${slices.length} slices:
             }
           }
           
+          // Detect multi-CTA patterns in alt text that suggest this slice should have been split
+          let multiCtaWarning: string | undefined = undefined;
+          const altTextLower = (a.altText || '').toLowerCase();
+          
+          // Check for "X or Y" patterns suggesting multiple CTAs
+          const orPattern = /\b(shop|buy|get|order|click to)\s+.{2,30}\s+or\s+.{2,30}/i;
+          // Check for multiple distinct CTA phrases
+          const multipleShopPattern = /(shop\s+\w+.*shop\s+\w+)|(buy\s+\w+.*buy\s+\w+)/i;
+          // Check for side-by-side button indicators
+          const sideBySidePattern = /\|\s*(shop|buy|order|get)/i;
+          
+          if (orPattern.test(altTextLower) || multipleShopPattern.test(altTextLower) || sideBySidePattern.test(altTextLower)) {
+            multiCtaWarning = "This slice may contain multiple CTAs that should be split into separate columns";
+            console.warn(`Slice ${idx} has multi-CTA pattern in alt text: "${a.altText?.substring(0, 100)}"`);
+          }
+          
           analysisByIndex.set(idx, {
             ...a,
             index: idx,
             suggestedLink: link,
             linkVerified,
-            linkWarning
+            linkWarning,
+            multiCtaWarning
           });
         }
       }
