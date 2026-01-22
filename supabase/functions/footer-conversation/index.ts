@@ -145,37 +145,34 @@ serve(async (req) => {
       }
     }
 
-    // Build vision data section for precise measurements
+    // Build COMPACT vision data section (minimal, actionable info only)
     let visionSection = '';
     if (visionData) {
+      // Only include layout-critical info, not verbose dumps
+      const logoInfo = visionData.logos.length > 0 
+        ? `Logo: ${visionData.logos[0].width}x${visionData.logos[0].height}px at y=${visionData.logos[0].bounds.yTop}px`
+        : 'Logo: Use provided asset URL';
+      
+      // Only include major text elements (nav items, headings)
+      const keyTextBlocks = visionData.textBlocks
+        .filter(t => t.estimatedFontSize >= 10)
+        .slice(0, 6)
+        .map(t => `"${t.text.substring(0, 20)}" at y=${t.bounds.yTop}px, ~${t.estimatedFontSize}px`)
+        .join(', ');
+      
+      // Section boundaries (max 4)
+      const sections = visionData.horizontalEdges
+        .slice(0, 4)
+        .map(e => `y=${e.y}px`)
+        .join(', ');
+      
       visionSection = `
-## PRECISE MEASUREMENTS FROM REFERENCE IMAGE (use these exact values!)
-
-**Reference Image Dimensions:** ${visionData.dimensions.width}x${visionData.dimensions.height}px
-
-### Text Blocks with Exact Positions
-${visionData.textBlocks.map(t => 
-  `- "${t.text.substring(0, 40)}${t.text.length > 40 ? '...' : ''}"
-   Position: (${t.bounds.xLeft}, ${t.bounds.yTop}) → (${t.bounds.xRight}, ${t.bounds.yBottom})
-   Size: ${t.width}x${t.height}px, Est. Font: ~${t.estimatedFontSize}px`
-).join('\n')}
-
-### Logo Measurements
-${visionData.logos.length > 0 ? visionData.logos.map(l => 
-  `- ${l.name}: ${l.width}x${l.height}px at position (${l.bounds.xLeft}, ${l.bounds.yTop})`
-).join('\n') : '(No logos detected by Vision API - use provided asset URLs)'}
-
-### Section Boundaries (color transitions)
-${visionData.horizontalEdges.map(e =>
-  `- Y=${e.y}px: ${e.colorAbove} → ${e.colorBelow}`
-).join('\n')}
-
-### Detected Color Palette
-- Background: ${visionData.colorPalette.background}
-- Text: ${visionData.colorPalette.text}
-- Accent: ${visionData.colorPalette.accent}
-
-⚠️ CRITICAL: Use these EXACT measurements. If the reference shows a logo at 140x45px, make it exactly 140x45px. If nav text is at Y=98px from top, position it there.
+## REFERENCE LAYOUT (600px normalized)
+- Dimensions: ${visionData.dimensions.width}x${visionData.dimensions.height}px
+- ${logoInfo}
+- Colors: bg=${visionData.colorPalette.background}, text=${visionData.colorPalette.text}
+- Key text: ${keyTextBlocks || 'N/A'}
+- Section boundaries: ${sections || 'N/A'}
 `;
     }
 
@@ -285,16 +282,19 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         ? `\n\nAvailable logo URLs (use exactly as provided):\n${Object.entries(assets).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\nFor dark backgrounds, use the "logo" or "brand_logo_light" URL.`
         : '';
 
-      // Include vision measurements in refinement prompt
-      const measurementHint = visionData ? `
+      // Surgical refinement instructions - minimal changes only
+      const surgicalRules = `
+⚠️ SURGICAL REFINEMENT RULES (CRITICAL):
+1. Make MINIMAL changes - fix only what's visually different
+2. PRESERVE all existing structure - do not rewrite the entire footer
+3. PRESERVE all Klaviyo tags exactly: {% unsubscribe_url %}, {% manage_preferences_url %}, {{ organization.address }}, {{ organization.name }}
+4. PRESERVE all href URLs exactly as they are
+5. Only adjust: padding, font-size, color values, spacing between elements
+6. If RIGHT looks correct, return the SAME HTML unchanged
+7. NEVER reduce element sizes - only increase if needed
+8. Width MUST remain 600px
 
-CRITICAL DIMENSION RULES (from vision analysis):
-- Footer width: EXACTLY 600px (non-negotiable)
-- Reference image height: ${visionData.dimensions.height}px - match this total height
-${visionData.logos.length > 0 ? `- Logo size: ${visionData.logos[0].width}x${visionData.logos[0].height}px at position (${visionData.logos[0].bounds.xLeft}, ${visionData.logos[0].bounds.yTop})` : ''}
-- Text colors: ${visionData.colorPalette.text}, Background: ${visionData.colorPalette.background}
-
-If the current HTML renders SMALLER than the reference, INCREASE sizes. Never shrink elements.` : '';
+${visionData ? `Reference dimensions: ${visionData.dimensions.width}x${visionData.dimensions.height}px, bg=${visionData.colorPalette.background}` : ''}`;
 
       newUserContent = [
         {
@@ -303,27 +303,30 @@ If the current HTML renders SMALLER than the reference, INCREASE sizes. Never sh
         },
         {
           type: 'text',
-          text: `Side-by-side comparison screenshot at 600px scale.
+          text: `Compare LEFT (reference) vs RIGHT (current render).
 
-LEFT = Reference design (target)
-RIGHT = Current HTML render
+${surgicalRules}
 
-Make RIGHT look identical to LEFT.${measurementHint}
+Look for these specific differences:
+- Color mismatches (background, text)
+- Spacing/padding differences
+- Font size differences
+- Alignment issues
 
-Check carefully:
-- Fonts (serif vs sans-serif) - use Georgia for serif, system-ui for sans-serif
-- Spacing (padding, margins, line-height) - MAINTAIN or INCREASE, never reduce
-- Separator characters between nav items (• or |)
-- Element sizes and positioning - if smaller on RIGHT, INCREASE to match LEFT
-- Overall height - if shorter on RIGHT, add padding/spacing
-- Logo size and placement${assetHint}
+DO NOT:
+- Rewrite the entire structure
+- Change logo URLs
+- Remove or modify Klaviyo merge tags
+- Reduce any sizes
+
+${assetHint}
 
 Current HTML:
 \`\`\`html
 ${currentHtml}
 \`\`\`
 
-Return ONLY the corrected HTML.`
+Return the HTML with MINIMAL surgical fixes, or return it unchanged if it already matches.`
         }
       ];
 

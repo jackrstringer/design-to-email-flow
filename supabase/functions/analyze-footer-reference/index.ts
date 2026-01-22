@@ -292,8 +292,10 @@ async function detectLogos(
 // ============================================================================
 
 function rgbToHex(r: number, g: number, b: number): string {
+  // Clamp values to 0-255 to prevent invalid hex codes like "100" 
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
   return '#' + [r, g, b].map(x => {
-    const hex = Math.round(x).toString(16);
+    const hex = clamp(x).toString(16);
     return hex.length === 1 ? '0' + hex : hex;
   }).join('');
 }
@@ -397,10 +399,11 @@ async function extractColorPalette(imageBase64: string): Promise<ColorPalette> {
         const g = (pixel >> 16) & 0xFF;
         const b = (pixel >> 8) & 0xFF;
         
-        // Quantize to reduce unique colors
-        const qr = Math.round(r / 16) * 16;
-        const qg = Math.round(g / 16) * 16;
-        const qb = Math.round(b / 16) * 16;
+        // Quantize to reduce unique colors - clamp to prevent overflow
+        // Use floor then clamp to ensure we never exceed 240
+        const qr = Math.min(240, Math.floor(r / 16) * 16);
+        const qg = Math.min(240, Math.floor(g / 16) * 16);
+        const qb = Math.min(240, Math.floor(b / 16) * 16);
         
         const hex = rgbToHex(qr, qg, qb);
         colorCounts.set(hex, (colorCounts.get(hex) || 0) + 1);
@@ -413,14 +416,34 @@ async function extractColorPalette(imageBase64: string): Promise<ColorPalette> {
     // Background is usually the most common color
     const background = sorted[0]?.[0] || '#ffffff';
     
-    // Text is usually a dark color that's common
-    const darkColors = sorted.filter(([hex]) => {
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return (r + g + b) / 3 < 100; // Dark colors
-    });
-    const text = darkColors[0]?.[0] || '#000000';
+    // Determine if background is dark or light
+    const bgR = parseInt(background.slice(1, 3), 16);
+    const bgG = parseInt(background.slice(3, 5), 16);
+    const bgB = parseInt(background.slice(5, 7), 16);
+    const bgLuminance = (bgR + bgG + bgB) / 3;
+    const isDarkBackground = bgLuminance < 128;
+    
+    // Text should contrast with background
+    let text: string;
+    if (isDarkBackground) {
+      // For dark backgrounds, find a light color
+      const lightColors = sorted.filter(([hex]) => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return (r + g + b) / 3 > 180; // Light colors
+      });
+      text = lightColors[0]?.[0] || '#ffffff';
+    } else {
+      // For light backgrounds, find a dark color
+      const darkColors = sorted.filter(([hex]) => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return (r + g + b) / 3 < 80; // Dark colors
+      });
+      text = darkColors[0]?.[0] || '#000000';
+    }
     
     // Accent is a saturated color that's not the background
     const accentColors = sorted.filter(([hex]) => {
@@ -556,19 +579,23 @@ serve(async (req) => {
     
     console.log(`  → Normalizing from ${dimensions.width}px to ${targetWidth}px (scale: ${scaleFactor.toFixed(2)})`);
 
-    // Normalize text blocks
-    const textBlocks = rawTextBlocks.map(t => ({
-      ...t,
-      bounds: {
-        xLeft: Math.round(t.bounds.xLeft * scaleFactor),
-        xRight: Math.round(t.bounds.xRight * scaleFactor),
-        yTop: Math.round(t.bounds.yTop * scaleFactor),
-        yBottom: Math.round(t.bounds.yBottom * scaleFactor),
-      },
-      width: Math.round(t.width * scaleFactor),
-      height: Math.round(t.height * scaleFactor),
-      estimatedFontSize: Math.round(t.estimatedFontSize * scaleFactor),
-    }));
+    // Normalize text blocks and filter out extremely long ones (fine print noise)
+    const textBlocks = rawTextBlocks
+      .filter(t => t.text.length <= 80) // Exclude very long text blocks (fine print)
+      .map(t => ({
+        ...t,
+        text: t.text.substring(0, 60), // Truncate for prompt efficiency
+        bounds: {
+          xLeft: Math.round(t.bounds.xLeft * scaleFactor),
+          xRight: Math.round(t.bounds.xRight * scaleFactor),
+          yTop: Math.round(t.bounds.yTop * scaleFactor),
+          yBottom: Math.round(t.bounds.yBottom * scaleFactor),
+        },
+        width: Math.round(t.width * scaleFactor),
+        height: Math.round(t.height * scaleFactor),
+        estimatedFontSize: Math.round(t.estimatedFontSize * scaleFactor),
+      }))
+      .slice(0, 15); // Keep max 15 text blocks for prompt efficiency
 
     // Normalize logos
     const logos = rawLogos.map(l => ({
@@ -594,13 +621,34 @@ serve(async (req) => {
       },
     }));
 
-    // Normalize horizontal edges and filter to most significant
-    const horizontalEdges = rawHorizontalEdges
-      .map(e => ({
-        ...e,
-        y: Math.round(e.y * scaleFactor),
-      }))
-      .slice(0, 5); // Only keep top 5 significant edges
+    // Normalize horizontal edges, merge nearby, and keep only significant ones
+    const normalizedEdges = rawHorizontalEdges.map(e => ({
+      ...e,
+      y: Math.round(e.y * scaleFactor),
+    }));
+    
+    // Merge edges within 8px of each other (dedupe jitter)
+    const mergedEdges: HorizontalEdge[] = [];
+    for (const edge of normalizedEdges) {
+      const existing = mergedEdges.find(e => Math.abs(e.y - edge.y) < 8);
+      if (existing) {
+        // Keep the stronger edge
+        if (edge.strength > existing.strength) {
+          existing.y = edge.y;
+          existing.colorAbove = edge.colorAbove;
+          existing.colorBelow = edge.colorBelow;
+          existing.strength = edge.strength;
+        }
+      } else {
+        mergedEdges.push({ ...edge });
+      }
+    }
+    
+    // Sort by strength and keep top 6
+    const horizontalEdges = mergedEdges
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, 6)
+      .sort((a, b) => a.y - b.y); // Re-sort by y position
 
     const processingTimeMs = Date.now() - startTime;
     console.log(`Footer analysis complete in ${processingTimeMs}ms`);

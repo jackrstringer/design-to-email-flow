@@ -18,6 +18,7 @@ interface LocationState {
   footerName?: string;
   figmaDesignData?: any;
   conversationHistory?: ConversationMessage[];
+  sessionId?: string | null;
 }
 
 export default function FooterEditor() {
@@ -30,9 +31,10 @@ export default function FooterEditor() {
   const [isLoading, setIsLoading] = useState(true);
   const [footerHtml, setFooterHtml] = useState(state?.footerHtml || '');
   const [footerName, setFooterName] = useState(state?.footerName || 'New Footer');
-  const [referenceImageUrl] = useState(state?.referenceImageUrl || '');
-  const [figmaDesignData] = useState(state?.figmaDesignData || null);
-  const [conversationHistory] = useState<ConversationMessage[]>(state?.conversationHistory || []);
+  const [referenceImageUrl, setReferenceImageUrl] = useState(state?.referenceImageUrl || '');
+  const [figmaDesignData, setFigmaDesignData] = useState(state?.figmaDesignData || null);
+  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>(state?.conversationHistory || []);
+  const [sessionId, setSessionId] = useState<string | null>(state?.sessionId || null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -41,14 +43,44 @@ export default function FooterEditor() {
       return;
     }
 
-    if (!state?.referenceImageUrl || !state?.footerHtml) {
+    // If we have a sessionId but no state (e.g., page refresh), load from DB
+    if (sessionId && (!state?.footerHtml || !state?.referenceImageUrl)) {
+      loadSessionFromDb(sessionId);
+    } else if (!state?.referenceImageUrl || !state?.footerHtml) {
       toast.error('Missing footer data');
       navigate(`/brands/${brandId}`);
       return;
     }
 
     fetchBrand();
-  }, [brandId, state]);
+  }, [brandId]);
+
+  const loadSessionFromDb = async (sid: string) => {
+    try {
+      const { data: session, error } = await supabase
+        .from('footer_editor_sessions')
+        .select('*')
+        .eq('id', sid)
+        .single();
+
+      if (error || !session) {
+        console.error('Failed to load session:', error);
+        toast.error('Session not found');
+        navigate(`/brands/${brandId}`);
+        return;
+      }
+
+      setReferenceImageUrl(session.reference_image_url);
+      setFooterHtml(session.current_html);
+      setFooterName(session.footer_name || 'New Footer');
+      setFigmaDesignData(session.figma_design_data);
+      setConversationHistory((session.conversation_history as unknown as ConversationMessage[]) || []);
+      console.log('Loaded session from DB:', sid, 'History length:', (session.conversation_history as any[])?.length || 0);
+    } catch (err) {
+      console.error('Session load error:', err);
+      navigate(`/brands/${brandId}`);
+    }
+  };
 
   const fetchBrand = async () => {
     if (!brandId) return;
@@ -174,6 +206,7 @@ export default function FooterEditor() {
       figmaDesignData={figmaDesignData}
       initialFooterHtml={footerHtml}
       initialConversationHistory={conversationHistory}
+      sessionId={sessionId}
       onSaveFooter={handleSaveFooter}
       onBack={handleBack}
       onCreateTemplate={() => {}}
