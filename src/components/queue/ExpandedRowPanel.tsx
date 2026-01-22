@@ -673,7 +673,7 @@ export function ExpandedRowPanel({
               <input
                 type="range"
                 min={25}
-                max={65}
+                max={100}
                 value={zoomLevel}
                 onChange={(e) => handleZoomChange(Number(e.target.value))}
                 className="w-24 h-1 accent-primary"
