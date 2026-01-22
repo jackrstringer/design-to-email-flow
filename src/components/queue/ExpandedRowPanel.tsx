@@ -651,9 +651,9 @@ export function ExpandedRowPanel({
 
   return (
     <div className="bg-muted/20 border-t animate-in slide-in-from-top-2 duration-200">
-      <div className="flex">
-        {/* LEFT SIDE - Campaign Preview - fills available space */}
-        <div className="flex-1 p-4 border-r min-w-0">
+      <div className="flex items-start">
+        {/* LEFT SIDE - Campaign Preview - fills available space, scrollable */}
+        <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto">
           {/* Inbox Preview - full width */}
           <div className="mb-3">
             <div className="bg-white rounded-lg border shadow-sm">
@@ -1055,8 +1055,8 @@ export function ExpandedRowPanel({
           </div>
         </div>
 
-        {/* RIGHT SIDE - Fixed width - Controls & QA */}
-        <div className="w-[560px] flex-shrink-0 p-4 space-y-4">
+        {/* RIGHT SIDE - Fixed width - Controls & QA - Sticky */}
+        <div className="w-[560px] flex-shrink-0 p-4 space-y-4 sticky top-0 self-start max-h-[80vh] overflow-y-auto">
           {/* Audience Section */}
           <div className="space-y-2">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Audience</h4>
