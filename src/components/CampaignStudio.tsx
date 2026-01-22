@@ -49,6 +49,30 @@ interface ConversationMessage {
   content: any;
 }
 
+// Vision data from analyze-footer-reference edge function
+interface FooterVisionData {
+  dimensions: { width: number; height: number };
+  textBlocks: Array<{
+    text: string;
+    bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
+    width: number;
+    height: number;
+    estimatedFontSize: number;
+  }>;
+  logos: Array<{
+    name: string;
+    bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
+    width: number;
+    height: number;
+  }>;
+  horizontalEdges: Array<{
+    y: number;
+    colorAbove: string;
+    colorBelow: string;
+  }>;
+  colorPalette: { background: string; text: string; accent: string };
+}
+
 interface CampaignStudioProps {
   mode?: 'campaign' | 'footer';
   slices: ProcessedSlice[];
@@ -158,6 +182,10 @@ export function CampaignStudio({
   // Track if auto-refine has been triggered after initial load
   const [hasAutoRefined, setHasAutoRefined] = useState(false);
 
+  // Vision data from analyze-footer-reference - provides precise measurements
+  const [footerVisionData, setFooterVisionData] = useState<FooterVisionData | null>(null);
+  const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
+
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
     setLocalFooterHtml(initialFooterHtml);
@@ -168,7 +196,43 @@ export function CampaignStudio({
     setSelectedFooterId(initialFooterId);
   }, [initialFooterId]);
 
-  // Check if footer has been modified from original
+  // Analyze reference image with Google Vision on mount (footer mode only)
+  useEffect(() => {
+    if (!isFooterMode || !originalImageUrl || footerVisionData) return;
+    
+    const analyzeReference = async () => {
+      setIsAnalyzingReference(true);
+      console.log('Analyzing footer reference image with Vision APIs...');
+      
+      try {
+        const { data, error } = await supabase.functions.invoke('analyze-footer-reference', {
+          body: { imageUrl: originalImageUrl }
+        });
+
+        if (error) {
+          console.error('Vision analysis error:', error);
+          return;
+        }
+
+        if (data.success) {
+          console.log('Vision analysis complete:', {
+            textBlocks: data.textBlocks?.length,
+            logos: data.logos?.length,
+            processingTime: data.processingTimeMs
+          });
+          setFooterVisionData(data);
+          toast.success(`Reference analyzed: ${data.textBlocks?.length || 0} text blocks detected`);
+        }
+      } catch (err) {
+        console.error('Vision analysis failed:', err);
+      } finally {
+        setIsAnalyzingReference(false);
+      }
+    };
+
+    analyzeReference();
+  }, [isFooterMode, originalImageUrl]);
+
   const isFooterModified = localFooterHtml !== originalFooterHtml;
 
   const hasHtmlSlices = slices.some(s => s.type === 'html');
@@ -467,7 +531,7 @@ export function CampaignStudio({
         throw new Error('Failed to capture comparison panels');
       }
 
-      // Call footer-conversation with refine action - include brand assets for logo context
+      // Call footer-conversation with refine action - include brand assets and vision data
       const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
           action: 'refine',
@@ -485,6 +549,10 @@ export function CampaignStudio({
               brand_logo_dark: brandContext.darkLogoUrl 
             } : {}),
           },
+          // Pass vision data for precise measurements
+          visionData: footerVisionData,
+          brandName: brandContext?.name,
+          brandDomain: brandContext?.domain,
         }
       });
 

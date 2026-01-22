@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.get-clickup-hierarchy]
 verify_jwt = false
+
+[functions.analyze-footer-reference]
+verify_jwt = false
