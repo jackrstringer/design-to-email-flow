@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface ConversationMessage {
   role: 'user' | 'assistant';
-  content: any; // Can be string or array with image blocks
+  content: any;
 }
 
 interface AssetManifest {
@@ -28,20 +28,51 @@ interface LinkMapping {
   url: string;
 }
 
+// Vision data from analyze-footer-reference
+interface TextBlock {
+  text: string;
+  bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
+  width: number;
+  height: number;
+  estimatedFontSize: number;
+}
+
+interface DetectedLogo {
+  name: string;
+  bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
+  width: number;
+  height: number;
+}
+
+interface HorizontalEdge {
+  y: number;
+  colorAbove: string;
+  colorBelow: string;
+}
+
+interface FooterVisionData {
+  dimensions: { width: number; height: number };
+  textBlocks: TextBlock[];
+  logos: DetectedLogo[];
+  horizontalEdges: HorizontalEdge[];
+  colorPalette: { background: string; text: string; accent: string };
+}
+
 interface FooterConversationRequest {
   action: 'generate' | 'refine' | 'chat';
   referenceImageUrl: string;
-  sideBySideScreenshotUrl?: string; // For refine: single screenshot showing reference + preview
+  sideBySideScreenshotUrl?: string;
   currentHtml?: string;
   userMessage?: string;
   conversationHistory?: ConversationMessage[];
   assets?: AssetManifest;
   socialIcons?: Array<{ platform: string; url: string }>;
   styles?: StyleTokens;
-  links?: LinkMapping[]; // User-approved links for all clickable elements
-  // Brand context for isolation
+  links?: LinkMapping[];
   brandName?: string;
   brandDomain?: string;
+  // NEW: Vision analysis data for precise refinement
+  visionData?: FooterVisionData;
 }
 
 serve(async (req) => {
@@ -63,7 +94,8 @@ serve(async (req) => {
       styles,
       links = [],
       brandName,
-      brandDomain
+      brandDomain,
+      visionData
     } = request;
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -76,6 +108,7 @@ serve(async (req) => {
       hasReference: !!referenceImageUrl,
       hasSideBySide: !!sideBySideScreenshotUrl,
       hasCurrentHtml: !!currentHtml,
+      hasVisionData: !!visionData,
       historyLength: conversationHistory.length,
       assetCount: Object.keys(assets).length
     });
@@ -112,7 +145,41 @@ serve(async (req) => {
       }
     }
 
-    // System prompt - consistent across all actions
+    // Build vision data section for precise measurements
+    let visionSection = '';
+    if (visionData) {
+      visionSection = `
+## PRECISE MEASUREMENTS FROM REFERENCE IMAGE (use these exact values!)
+
+**Reference Image Dimensions:** ${visionData.dimensions.width}x${visionData.dimensions.height}px
+
+### Text Blocks with Exact Positions
+${visionData.textBlocks.map(t => 
+  `- "${t.text.substring(0, 40)}${t.text.length > 40 ? '...' : ''}"
+   Position: (${t.bounds.xLeft}, ${t.bounds.yTop}) → (${t.bounds.xRight}, ${t.bounds.yBottom})
+   Size: ${t.width}x${t.height}px, Est. Font: ~${t.estimatedFontSize}px`
+).join('\n')}
+
+### Logo Measurements
+${visionData.logos.length > 0 ? visionData.logos.map(l => 
+  `- ${l.name}: ${l.width}x${l.height}px at position (${l.bounds.xLeft}, ${l.bounds.yTop})`
+).join('\n') : '(No logos detected by Vision API - use provided asset URLs)'}
+
+### Section Boundaries (color transitions)
+${visionData.horizontalEdges.map(e =>
+  `- Y=${e.y}px: ${e.colorAbove} → ${e.colorBelow}`
+).join('\n')}
+
+### Detected Color Palette
+- Background: ${visionData.colorPalette.background}
+- Text: ${visionData.colorPalette.text}
+- Accent: ${visionData.colorPalette.accent}
+
+⚠️ CRITICAL: Use these EXACT measurements. If the reference shows a logo at 140x45px, make it exactly 140x45px. If nav text is at Y=98px from top, position it there.
+`;
+    }
+
+    // System prompt
     const brandContext = brandName ? `You are creating a footer for **${brandName}**${brandDomain ? ` (${brandDomain})` : ''}.` : '';
     
     const systemPrompt = `You are an expert email HTML developer. You create pixel-perfect email footers using table-based layouts for maximum email client compatibility.
@@ -127,7 +194,9 @@ ${brandContext}
 - If you see "eskiin", "Pura Vida", or any other brand name in your training data, IGNORE IT
 - Use ONLY the asset URLs explicitly provided below
 
-` : ''}CRITICAL RULES:
+` : ''}${visionSection}
+
+CRITICAL RULES:
 - **FOOTER WIDTH MUST BE EXACTLY 600px** - use width="600" attribute AND style="width: 600px; max-width: 600px;" on inner table
 - Table-based layout only (no flexbox, no grid)
 - The outer wrapper is 100% width, the inner content table is EXACTLY 600px
@@ -137,6 +206,7 @@ ${brandContext}
 - VML fallbacks for Outlook backgrounds if needed
 - Mobile responsive where possible using max-width
 - EVERY clickable element MUST have the correct href from the link mappings
+- **NEVER reduce element sizes between iterations** - if something looks smaller, INCREASE it
 
 ## KLAVIYO MERGE TAGS (REQUIRED FOR FINE PRINT)
 Every footer MUST include a fine print section with these Klaviyo dynamic tags:
@@ -187,7 +257,6 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
     let newUserContent: any;
 
     if (action === 'generate') {
-      // Initial generation - send reference image and ask for HTML
       if (!referenceImageUrl) {
         throw new Error('Reference image URL is required for generation');
       }
@@ -199,12 +268,11 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         },
         {
           type: 'text',
-          text: 'Convert this email footer design into pixel-perfect HTML. Match EVERY visual detail exactly - background colors, spacing, typography, icon sizes, element alignment. Return only the HTML code.'
+          text: `Convert this email footer design into pixel-perfect HTML. Match EVERY visual detail exactly - background colors, spacing, typography, icon sizes, element alignment.${visionData ? '\n\nUse the PRECISE MEASUREMENTS from the vision analysis in my system prompt to ensure exact sizing.' : ''} Return only the HTML code.`
         }
       ];
 
     } else if (action === 'refine') {
-      // Refinement - send side-by-side screenshot for comparison
       if (!sideBySideScreenshotUrl) {
         throw new Error('Side-by-side screenshot URL is required for refinement');
       }
@@ -217,6 +285,17 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         ? `\n\nAvailable logo URLs (use exactly as provided):\n${Object.entries(assets).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\nFor dark backgrounds, use the "logo" or "brand_logo_light" URL.`
         : '';
 
+      // Include vision measurements in refinement prompt
+      const measurementHint = visionData ? `
+
+CRITICAL DIMENSION RULES (from vision analysis):
+- Footer width: EXACTLY 600px (non-negotiable)
+- Reference image height: ${visionData.dimensions.height}px - match this total height
+${visionData.logos.length > 0 ? `- Logo size: ${visionData.logos[0].width}x${visionData.logos[0].height}px at position (${visionData.logos[0].bounds.xLeft}, ${visionData.logos[0].bounds.yTop})` : ''}
+- Text colors: ${visionData.colorPalette.text}, Background: ${visionData.colorPalette.background}
+
+If the current HTML renders SMALLER than the reference, INCREASE sizes. Never shrink elements.` : '';
+
       newUserContent = [
         {
           type: 'image',
@@ -224,19 +303,19 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         },
         {
           type: 'text',
-          text: `Side-by-side comparison screenshot.
+          text: `Side-by-side comparison screenshot at 600px scale.
 
 LEFT = Reference design (target)
 RIGHT = Current HTML render
 
-Make RIGHT look identical to LEFT.
+Make RIGHT look identical to LEFT.${measurementHint}
 
 Check carefully:
 - Fonts (serif vs sans-serif) - use Georgia for serif, system-ui for sans-serif
-- Spacing (padding, margins, line-height)
+- Spacing (padding, margins, line-height) - MAINTAIN or INCREASE, never reduce
 - Separator characters between nav items (• or |)
-- Element sizes and positioning
-- Overall height and compactness
+- Element sizes and positioning - if smaller on RIGHT, INCREASE to match LEFT
+- Overall height - if shorter on RIGHT, add padding/spacing
 - Logo size and placement${assetHint}
 
 Current HTML:
@@ -249,12 +328,10 @@ Return ONLY the corrected HTML.`
       ];
 
     } else if (action === 'chat') {
-      // User chat message - continue conversation
       if (!userMessage) {
         throw new Error('User message is required for chat');
       }
 
-      // If we have current HTML, include it for context
       if (currentHtml) {
         newUserContent = [
           {
@@ -278,13 +355,12 @@ Return ONLY the corrected HTML.`
       });
     }
 
-    // Add new user message
     messages.push({
       role: 'user',
       content: newUserContent
     });
 
-    console.log('Calling Claude with', messages.length, 'messages, action:', action);
+    console.log('Calling Claude Opus 4 with', messages.length, 'messages, action:', action);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -294,7 +370,7 @@ Return ONLY the corrected HTML.`
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-1-20250805',
         max_tokens: 8000,
         system: systemPrompt,
         messages
@@ -324,8 +400,8 @@ Return ONLY the corrected HTML.`
       }
     }
 
-    // Update conversation history for next call
-    // Store a simplified version (text only) to keep context manageable
+    // Update conversation history with iteration marker
+    const iterationNum = conversationHistory.filter(m => m.role === 'user').length + 1;
     const updatedHistory: ConversationMessage[] = [
       ...conversationHistory,
       { 
@@ -333,9 +409,9 @@ Return ONLY the corrected HTML.`
         content: typeof newUserContent === 'string' 
           ? newUserContent 
           : action === 'generate' 
-            ? '[Sent reference image for initial generation]'
+            ? `[Iteration ${iterationNum}] Initial footer generation from reference image`
             : action === 'refine'
-              ? '[Sent side-by-side comparison screenshot for refinement]'
+              ? `[Iteration ${iterationNum}] Refinement with vision data: ${visionData ? 'YES' : 'NO'}. HTML length: ${currentHtml?.length} chars.`
               : newUserContent
       },
       { 
@@ -344,14 +420,14 @@ Return ONLY the corrected HTML.`
       }
     ];
 
-    // Determine response message based on action
     let message: string;
     if (action === 'generate') {
-      message = 'Footer HTML generated. Auto-refinement will run next.';
+      message = 'Footer HTML generated with vision-guided measurements.';
     } else if (action === 'refine') {
-      message = 'Compared side-by-side and applied fixes.';
+      message = visionData 
+        ? 'Compared with precise vision measurements and applied fixes.' 
+        : 'Compared side-by-side and applied fixes.';
     } else {
-      // For chat, extract any non-code text as the message
       const nonCodeText = assistantContent.replace(/```[\s\S]*?```/g, '').trim();
       message = nonCodeText || 'Changes applied.';
     }
