@@ -694,6 +694,61 @@ If you see TWO OR MORE buttons arranged HORIZONTALLY (side-by-side) with DIFFERE
 When in doubt about multiple side-by-side CTAs → USE horizontalSplit. It's better to over-split than under-split.
 A false negative (missing a split) means users CANNOT CLICK one of the buttons - this breaks the email.
 
+### RULE 0.5: TEXT NAVIGATION LINKS = CLICKABLE ELEMENTS (REQUIRE HORIZONTAL SPLIT)
+
+Text-based navigation menus are clickable even WITHOUT button styling. These ALWAYS need horizontal splits.
+
+**Common navigation patterns (REQUIRE horizontal split):**
+- "ON SALE" | "NEW ARRIVALS" | "THE BLARE" → 3 columns
+- "Shop" | "About" | "Contact" | "FAQ" → 4 columns
+- "Men" | "Women" | "Kids" | "Sale" → 4 columns
+- "Shop All" | "Best Sellers" | "New In" → 3 columns
+- Category links at top of email → N columns (one per link)
+
+**Detection:**
+- Look for 2+ SHORT text blocks (typically 1-3 words each, < 20 characters)
+- Arranged horizontally at the SAME Y level (yTop within 15px of each other)
+- Usually in the top 200px of the email (header navigation) or footer zone
+- May or may not have visible separators ("|", "•", or just spacing)
+- Text is typically in ALL CAPS or Title Case (navigation style)
+
+**OCR Pattern Example:**
+If you see OCR data like:
+  { text: "ON SALE", xLeft: 80, xRight: 180, yTop: 120, yBottom: 150 }
+  { text: "NEW ARRIVALS", xLeft: 200, xRight: 350, yTop: 122, yBottom: 152 }
+  { text: "THE BLARE", xLeft: 370, xRight: 480, yTop: 121, yBottom: 151 }
+
+These are 3 nav items at nearly the same Y level → horizontalSplit: { columns: 3, gutterPositions: [33.33, 66.66] }
+
+**Action:**
+- Create a slice for that navigation row
+- Set horizontalSplit.columns = (number of nav items)
+- Set gutterPositions to evenly divide between items
+- hasCTA: true
+- ctaText: list all nav items
+
+**NEVER output a navigation row as a single-column slice. Each nav link needs its own clickable column.**
+
+### RULE 0.6: What Counts as a "CTA" (Clickable Element)
+
+A CTA is ANY element the user would expect to click:
+
+**Obvious CTAs (button-style):**
+- Text with colored background: "SHOP NOW", "GET 20% OFF"
+- Underlined text buttons
+- Bordered button shapes
+
+**Subtle CTAs (text-style) - EQUALLY IMPORTANT:**
+- Navigation menu items: "Shop", "About", "Contact"
+- Category links: "ON SALE", "NEW ARRIVALS", "WOMEN", "MEN"
+- Product links: "View Product", "Learn More"
+- Social platform names: "Instagram", "Facebook"
+- Any short text that looks like a link in a row of similar texts
+
+If it looks like something you'd click in an email → it's a CTA
+If there are multiple items you'd click arranged horizontally → they need horizontal split
+If there are multiple items you'd click arranged vertically → they need separate slices
+
 ### RULE 1: EVERY BUTTON = SEPARATE SLICE (for vertically stacked buttons)
 
 Each distinct CTA button MUST be its own slice when stacked vertically.
@@ -725,6 +780,7 @@ Split these into multiple slices:
 - Two or more buttons stacked vertically → each button = new slice
 - Product grid where each product has its own CTA → one slice per product
 - Side-by-side buttons → ALWAYS use horizontalSplit (Rule 0)
+- Navigation text links arranged horizontally → ALWAYS use horizontalSplit (Rule 0.5)
 - Any section with multiple click destinations
 
 ### RULE 4: Slice Boundaries
@@ -735,7 +791,7 @@ Split these into multiple slices:
 - Use horizontal edge data to find clean color transitions in the middle of gaps
 - If no clear gap exists, prefer cutting ABOVE a section (more padding on top)
 - Each slice should make sense as a standalone visual unit
-- Typical email: 6-15 slices (more if there are many buttons)
+- Typical email: 6-15 slices (more if there are many buttons or nav items)
 
 ### RULE 5: Text Padding/Safety Margins
 
