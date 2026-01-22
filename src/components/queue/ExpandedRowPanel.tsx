@@ -761,7 +761,7 @@ export function ExpandedRowPanel({
                     
                     {/* Left: Link Column - only show if displayMode !== 'none' */}
                     {displayMode !== 'none' && (
-                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0">
+                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-[280px]">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -774,7 +774,7 @@ export function ExpandedRowPanel({
                           <PopoverTrigger asChild>
                             {slice.link ? (
                               <button className={cn(
-                                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left whitespace-nowrap",
+                                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
                                 isMultiColumnRow 
                                   ? "bg-blue-50 border border-blue-200 hover:bg-blue-100" 
                                   : "bg-muted/50 border border-border/50 hover:bg-muted"
@@ -785,7 +785,7 @@ export function ExpandedRowPanel({
                                   </span>
                                 )}
                                 <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-blue-500" : "text-muted-foreground")} />
-                                <span className="text-muted-foreground">{slice.link}</span>
+                                <span className="text-muted-foreground truncate">{slice.link}</span>
                               </button>
                             ) : (
                               <button className={cn(
@@ -883,12 +883,16 @@ export function ExpandedRowPanel({
                               </div>
                             )}
                             
-                            {/* Hover link tooltip in 'none' mode - compact, full URL */}
+                            {/* Hover link tooltip in 'none' mode - modern floating card */}
                             {displayMode === 'none' && hoveredSliceIndex === originalIndex && slice.link && (
-                              <div className="absolute left-0 top-0 bg-black/85 text-white text-[10px] px-2 py-1.5 z-20 pointer-events-none whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                  <Link className="w-3 h-3 flex-shrink-0" />
-                                  <span>{slice.link}</span>
+                              <div className="absolute left-1/2 -translate-x-1/2 top-3 z-30 pointer-events-none animate-in fade-in-0 zoom-in-95 duration-150">
+                                <div className="bg-background border border-border rounded-lg shadow-xl px-3 py-2 flex items-center gap-2.5">
+                                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    <Link className="w-3.5 h-3.5 text-primary" />
+                                  </div>
+                                  <span className="text-xs text-foreground font-medium max-w-[300px] truncate">
+                                    {slice.link}
+                                  </span>
                                 </div>
                               </div>
                             )}
@@ -921,7 +925,7 @@ export function ExpandedRowPanel({
                     
                     {/* Right: Alt Text Column - only show if displayMode === 'all' */}
                     {displayMode === 'all' && (
-                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 max-w-[200px]">
+                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 w-[280px]">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
                           {isMultiColumnRow && (
