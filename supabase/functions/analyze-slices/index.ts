@@ -106,6 +106,32 @@ Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't 
 - Use web search: "site:${domain} [product name]" or "site:${domain} collections" or "site:${domain} all products"
 - Homepage is LAST RESORT (except for header logos where it's correct)
 
+**LINK SELECTION PRIORITY - Evergreen URLs First:**
+When web search returns multiple URL options, ALWAYS prefer stable "evergreen" paths:
+
+✅ PREFER these patterns (EVERGREEN - stable, permanent):
+- /collections/new-arrivals
+- /collections/sale
+- /collections/[category-name]
+- /products/[product-name]
+- /pages/[page-name]
+- Short, clean paths with 2-3 segments
+
+❌ REJECT these patterns (EPHEMERAL - will break/change):
+- URLs containing promotional text: "10-off", "20-percent", "flash-sale", "extra-"
+- URLs with campaign/promo codes: "welcome10", "holiday-special"
+- URLs with exclusion terms: "ex-", "excluding-", "except-"
+- URLs mentioning discounts in path: "shop-a-further-", "save-"
+- Very long paths with 4+ segments
+
+EXAMPLE for "NEW ARRIVALS" navigation:
+Web search returns:
+  1. /collections/new-arrivals ← USE THIS (evergreen)
+  2. /collections/shop-a-further-10-off-ex-new-arrivals-luxe ← NEVER USE (promo)
+  
+ALWAYS pick the SHORTEST, CLEANEST path that matches the navigation text.
+If only promo URLs exist, search again with "site:${domain} collections [term]" to find the base collection.
+
 **MULTI-COLUMN SLICES** (when column/totalColumns metadata is present):
 When a slice has metadata like (column: 0, totalColumns: 3):
 - This is ONE cell of a multi-column product row

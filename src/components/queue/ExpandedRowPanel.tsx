@@ -124,6 +124,11 @@ export function ExpandedRowPanel({
   const [brandLinks, setBrandLinks] = useState<string[]>(preloadedBrandData?.allLinks || []);
   const [brandDomain, setBrandDomain] = useState<string | null>(preloadedBrandData?.domain || null);
 
+  // Display mode for slice info: 'all' | 'links' | 'none'
+  type DisplayMode = 'all' | 'links' | 'none';
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
+  const [hoveredSliceIndex, setHoveredSliceIndex] = useState<number | null>(null);
+
   // Container sizing - zoom level passed in, no async fetch needed
   const footerIframeRef = useRef<HTMLIFrameElement>(null);
   const [zoomLevel, setZoomLevel] = useState(initialZoomLevel);
@@ -661,18 +666,54 @@ export function ExpandedRowPanel({
             </div>
           </div>
 
-          {/* Zoom Control */}
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-[10px] text-muted-foreground">Zoom</span>
-            <input
-              type="range"
-              min={25}
-              max={65}
-              value={zoomLevel}
-              onChange={(e) => handleZoomChange(Number(e.target.value))}
-              className="w-24 h-1 accent-primary"
-            />
-            <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
+          {/* Zoom Control + Display Mode Toggle */}
+          <div className="flex items-center gap-4 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">Zoom</span>
+              <input
+                type="range"
+                min={25}
+                max={65}
+                value={zoomLevel}
+                onChange={(e) => handleZoomChange(Number(e.target.value))}
+                className="w-24 h-1 accent-primary"
+              />
+              <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
+            </div>
+            
+            {/* Display Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">Show</span>
+              <div className="flex bg-muted rounded-md p-0.5">
+                <button 
+                  onClick={() => setDisplayMode('all')}
+                  className={cn(
+                    "px-2 py-0.5 text-[10px] rounded transition-colors",
+                    displayMode === 'all' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  All
+                </button>
+                <button 
+                  onClick={() => setDisplayMode('links')}
+                  className={cn(
+                    "px-2 py-0.5 text-[10px] rounded transition-colors",
+                    displayMode === 'links' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Links
+                </button>
+                <button 
+                  onClick={() => setDisplayMode('none')}
+                  className={cn(
+                    "px-2 py-0.5 text-[10px] rounded transition-colors",
+                    displayMode === 'none' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  None
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Email Preview - slices stacked - no scroll, show full content */}
@@ -718,7 +759,8 @@ export function ExpandedRowPanel({
                       </div>
                     )}
                     
-                    {/* Left: Link Column - expands to fill available space */}
+                    {/* Left: Link Column - only show if displayMode !== 'none' */}
+                    {displayMode !== 'none' && (
                     <div className="flex-1 min-w-[120px] flex flex-col justify-center py-1 pr-3 gap-1 items-end">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
@@ -814,6 +856,7 @@ export function ExpandedRowPanel({
                         </Popover>
                       ))}
                     </div>
+                    )}
                     
                     {/* Center: Image Column */}
                     <div className="flex flex-shrink-0" style={{ width: scaledWidth }}>
@@ -830,6 +873,8 @@ export function ExpandedRowPanel({
                               isMultiColumnRow && colIdx > 0 && "border-l-2 border-blue-300"
                             )}
                             style={{ width: colWidth }}
+                            onMouseEnter={() => displayMode === 'none' && setHoveredSliceIndex(originalIndex)}
+                            onMouseLeave={() => displayMode === 'none' && setHoveredSliceIndex(null)}
                           >
                             {/* Column number badge on image */}
                             {isMultiColumnRow && (
@@ -837,6 +882,17 @@ export function ExpandedRowPanel({
                                 {colIdx + 1}
                               </div>
                             )}
+                            
+                            {/* Hover link tooltip in 'none' mode */}
+                            {displayMode === 'none' && hoveredSliceIndex === originalIndex && slice.link && (
+                              <div className="absolute inset-x-0 top-0 bg-black/85 text-white text-[10px] px-2 py-1.5 z-20 truncate pointer-events-none">
+                                <div className="flex items-center gap-1.5">
+                                  <Link className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">{slice.link}</span>
+                                </div>
+                              </div>
+                            )}
+                            
                             {slice.type === 'html' && slice.htmlContent ? (
                               <div 
                                 className="bg-white"
@@ -863,7 +919,8 @@ export function ExpandedRowPanel({
                       })}
                     </div>
                     
-                    {/* Right: Alt Text Column - expands to fill available space */}
+                    {/* Right: Alt Text Column - only show if displayMode === 'all' */}
+                    {displayMode === 'all' && (
                     <div className="flex-1 min-w-[120px] flex flex-col justify-center py-1 pl-3 gap-1">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1")}>
@@ -895,6 +952,7 @@ export function ExpandedRowPanel({
                         </div>
                       ))}
                     </div>
+                    )}
                   </div>
                   );
                 })}
@@ -902,8 +960,8 @@ export function ExpandedRowPanel({
                 {/* Footer Section - aligned with slices, scaled with CSS transform */}
                 {footerHtml && (
                   <div className="flex items-stretch">
-                    {/* Empty link column space - matches flex layout */}
-                    <div className="flex-1 min-w-[120px]" />
+                    {/* Empty link column space - matches flex layout (only show if displayMode !== 'none') */}
+                    {displayMode !== 'none' && <div className="flex-1 min-w-[120px]" />}
                     {/* Footer iframe container - clips the scaled content */}
                     <div 
                       className="flex-shrink-0 overflow-hidden" 
@@ -929,8 +987,8 @@ export function ExpandedRowPanel({
                         title="Footer Preview"
                       />
                     </div>
-                    {/* Empty alt text column space - matches flex layout */}
-                    <div className="flex-1 min-w-[120px]" />
+                    {/* Empty alt text column space - matches flex layout (only show if displayMode === 'all') */}
+                    {displayMode === 'all' && <div className="flex-1 min-w-[120px]" />}
                   </div>
                 )}
               </div>
