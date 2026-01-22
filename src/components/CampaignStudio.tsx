@@ -160,7 +160,7 @@ export function CampaignStudio({
   const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
   const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
   const [linkSearchValue, setLinkSearchValue] = useState('');
-  const [zoomLevel, setZoomLevel] = useState(65);
+  const [zoomLevel, setZoomLevel] = useState(85);
   const [chatExpanded, setChatExpanded] = useState(true);
   const [sliceDimensions, setSliceDimensions] = useState<SliceDimensions[]>([]);
   const [showAltText, setShowAltText] = useState(true);

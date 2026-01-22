@@ -1744,13 +1744,14 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           fetchFooters();
           onBrandChange();
         }}
-        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData) => {
+        onOpenStudio={(referenceImageUrl, footerHtml, figmaDesignData, conversationHistory) => {
           navigate(`/footer-editor/${brand.id}`, {
             state: {
               referenceImageUrl,
               footerHtml,
               footerName: 'New Footer',
               figmaDesignData,
+              conversationHistory,
             }
           });
         }}

@@ -63,7 +63,13 @@ interface ColorPalette {
 
 export interface FooterAnalysisResult {
   success: boolean;
-  dimensions: { width: number; height: number };
+  dimensions: { 
+    width: number; 
+    height: number;
+    originalWidth?: number;
+    originalHeight?: number;
+    scaleFactor?: number;
+  };
   textBlocks: TextBlock[];
   logos: DetectedLogo[];
   objects: DetectedObject[];
@@ -535,7 +541,7 @@ serve(async (req) => {
     console.log(`  → Image dimensions: ${dimensions.width}x${dimensions.height}`);
 
     // Run all Vision API calls in parallel
-    const [textBlocks, objects, logos, horizontalEdges, colorPalette] = await Promise.all([
+    const [rawTextBlocks, rawObjects, rawLogos, rawHorizontalEdges, colorPalette] = await Promise.all([
       extractTextGeometry(imageBase64),
       detectObjects(imageBase64, dimensions.height, dimensions.width),
       detectLogos(imageBase64, dimensions.height, dimensions.width),
@@ -543,12 +549,71 @@ serve(async (req) => {
       extractColorPalette(imageBase64)
     ]);
 
+    // Normalize coordinates to 600px email width standard
+    const targetWidth = 600;
+    const scaleFactor = targetWidth / dimensions.width;
+    const normalizedHeight = Math.round(dimensions.height * scaleFactor);
+    
+    console.log(`  → Normalizing from ${dimensions.width}px to ${targetWidth}px (scale: ${scaleFactor.toFixed(2)})`);
+
+    // Normalize text blocks
+    const textBlocks = rawTextBlocks.map(t => ({
+      ...t,
+      bounds: {
+        xLeft: Math.round(t.bounds.xLeft * scaleFactor),
+        xRight: Math.round(t.bounds.xRight * scaleFactor),
+        yTop: Math.round(t.bounds.yTop * scaleFactor),
+        yBottom: Math.round(t.bounds.yBottom * scaleFactor),
+      },
+      width: Math.round(t.width * scaleFactor),
+      height: Math.round(t.height * scaleFactor),
+      estimatedFontSize: Math.round(t.estimatedFontSize * scaleFactor),
+    }));
+
+    // Normalize logos
+    const logos = rawLogos.map(l => ({
+      ...l,
+      bounds: {
+        xLeft: Math.round(l.bounds.xLeft * scaleFactor),
+        xRight: Math.round(l.bounds.xRight * scaleFactor),
+        yTop: Math.round(l.bounds.yTop * scaleFactor),
+        yBottom: Math.round(l.bounds.yBottom * scaleFactor),
+      },
+      width: Math.round(l.width * scaleFactor),
+      height: Math.round(l.height * scaleFactor),
+    }));
+
+    // Normalize objects
+    const objects = rawObjects.map(o => ({
+      ...o,
+      bounds: {
+        xLeft: Math.round(o.bounds.xLeft * scaleFactor),
+        xRight: Math.round(o.bounds.xRight * scaleFactor),
+        yTop: Math.round(o.bounds.yTop * scaleFactor),
+        yBottom: Math.round(o.bounds.yBottom * scaleFactor),
+      },
+    }));
+
+    // Normalize horizontal edges and filter to most significant
+    const horizontalEdges = rawHorizontalEdges
+      .map(e => ({
+        ...e,
+        y: Math.round(e.y * scaleFactor),
+      }))
+      .slice(0, 5); // Only keep top 5 significant edges
+
     const processingTimeMs = Date.now() - startTime;
     console.log(`Footer analysis complete in ${processingTimeMs}ms`);
 
     const result: FooterAnalysisResult = {
       success: true,
-      dimensions,
+      dimensions: {
+        width: targetWidth,
+        height: normalizedHeight,
+        originalWidth: dimensions.width,
+        originalHeight: dimensions.height,
+        scaleFactor,
+      },
       textBlocks,
       logos,
       objects,

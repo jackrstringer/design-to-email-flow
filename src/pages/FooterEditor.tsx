@@ -7,11 +7,17 @@ import { CampaignStudio } from '@/components/CampaignStudio';
 import type { Brand } from '@/types/brand-assets';
 import type { ProcessedSlice } from '@/types/slice';
 
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface LocationState {
   referenceImageUrl: string;
   footerHtml: string;
   footerName?: string;
   figmaDesignData?: any;
+  conversationHistory?: ConversationMessage[];
 }
 
 export default function FooterEditor() {
@@ -26,6 +32,7 @@ export default function FooterEditor() {
   const [footerName, setFooterName] = useState(state?.footerName || 'New Footer');
   const [referenceImageUrl] = useState(state?.referenceImageUrl || '');
   const [figmaDesignData] = useState(state?.figmaDesignData || null);
+  const [conversationHistory] = useState<ConversationMessage[]>(state?.conversationHistory || []);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -166,6 +173,7 @@ export default function FooterEditor() {
       }}
       figmaDesignData={figmaDesignData}
       initialFooterHtml={footerHtml}
+      initialConversationHistory={conversationHistory}
       onSaveFooter={handleSaveFooter}
       onBack={handleBack}
       onCreateTemplate={() => {}}
