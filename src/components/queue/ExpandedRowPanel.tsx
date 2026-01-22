@@ -885,7 +885,7 @@ export function ExpandedRowPanel({
                             
                             {/* Hover link tooltip in 'none' mode - compact, full URL */}
                             {displayMode === 'none' && hoveredSliceIndex === originalIndex && slice.link && (
-                              <div className="absolute inset-x-0 top-0 bg-black/85 text-white text-[10px] px-2 py-1.5 z-20 pointer-events-none whitespace-nowrap overflow-x-auto">
+                              <div className="absolute left-0 top-0 bg-black/85 text-white text-[10px] px-2 py-1.5 z-20 pointer-events-none whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
                                   <Link className="w-3 h-3 flex-shrink-0" />
                                   <span>{slice.link}</span>
