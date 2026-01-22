@@ -899,7 +899,7 @@ export function ExpandedRowPanel({
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <Link className="w-3 h-3 text-primary flex-shrink-0" />
-                                    <span className="text-[10px] text-foreground max-w-[200px] truncate">
+                                    <span className="text-[10px] text-foreground">
                                       {slice.link}
                                     </span>
                                   </button>
