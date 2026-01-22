@@ -274,7 +274,8 @@ function bestInternalUrlFromMap(mapUrls: string[], brandDomain: string, linkText
     if (!best || score > best.score) best = { url, score };
   }
 
-  if (best && best.score >= 5) return best.url;
+  // Require a strong signal (slug match = 12 points) to prevent garbage matches
+  if (best && best.score >= 10) return best.url;
   return null;
 }
 
@@ -476,7 +477,7 @@ Return ONLY a valid JSON array:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-1-20250805",
         max_tokens: 2500,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -509,10 +510,10 @@ Return ONLY a valid JSON array:
       ...SOCIAL_DOMAINS.map((d) => d.replace(/^www\./, "")),
     ];
 
-    // First pass: enhance with map + verify
+    // First pass: verify Claude's guesses FIRST, then fall back to sitemap
     const enhanced: DetectedLink[] = [];
     for (const link of links) {
-      // placeholders/mailto
+      // placeholders/mailto - always trust these
       if (link.searchedUrl?.startsWith("{{") || link.searchedUrl?.startsWith("mailto:")) {
         link.verified = true;
         link.needsManualUrl = false;
@@ -521,42 +522,19 @@ Return ONLY a valid JSON array:
       }
 
       const isSocial = link.category === "social";
-      const normalizedText = normalizeLinkText(link.text);
 
-      let candidate: string | null = null;
-
-      if (mappedUrls.length > 0) {
-        if (isSocial) {
-          // Try any social domain found on the site
-          for (const sd of SOCIAL_DOMAINS) {
-            const u = bestSocialUrlFromMap(mappedUrls, sd);
-            if (u) {
-              candidate = u;
-              break;
-            }
-          }
-        } else {
-          candidate = bestInternalUrlFromMap(mappedUrls, brandDomain, normalizedText || link.text);
-        }
-      }
-
-      if (candidate) {
-        const ok = await verifyUrl(candidate, trustedHosts);
-        if (ok) {
-          link.searchedUrl = candidate;
-          link.verified = true;
-          link.needsManualUrl = false;
-          enhanced.push(link);
-          continue;
-        }
-      }
-
-      // Fallback: verify Claude guess if present
-      if (link.searchedUrl) {
+      // PRIORITY 1: Trust Claude's guess if it's a valid evergreen URL
+      // Claude uses intelligent reasoning about URL structures - don't overwrite with fuzzy sitemap matching
+      if (link.searchedUrl && !isSocial) {
         const guess = cleanUrl(link.searchedUrl);
-        if (!isHomepage(guess) || !shouldRejectHomepage(link.text)) {
+        
+        // Accept if it's not a homepage (for contextual links) and not a product page (ephemeral)
+        const isEvergreenPath = !isHomepage(guess) && !guess.includes('/products/') && !guess.includes('/blogs/');
+        
+        if (isEvergreenPath || !shouldRejectHomepage(link.text)) {
           const ok = await verifyUrl(guess, trustedHosts);
           if (ok) {
+            console.log(`✅ Trusting Claude's guess for "${link.text}": ${guess}`);
             link.searchedUrl = guess;
             link.verified = true;
             link.needsManualUrl = false;
@@ -566,6 +544,44 @@ Return ONLY a valid JSON array:
         }
       }
 
+      // PRIORITY 2: For social links, try to find from sitemap
+      if (isSocial && mappedUrls.length > 0) {
+        for (const sd of SOCIAL_DOMAINS) {
+          const u = bestSocialUrlFromMap(mappedUrls, sd);
+          if (u) {
+            const ok = await verifyUrl(u, trustedHosts);
+            if (ok) {
+              link.searchedUrl = u;
+              link.verified = true;
+              link.needsManualUrl = false;
+              enhanced.push(link);
+              break;
+            }
+          }
+        }
+        if (link.verified) continue;
+      }
+
+      // PRIORITY 3: Only use sitemap matching if Claude's guess failed verification
+      // This is a fallback, not the primary source
+      if (mappedUrls.length > 0 && !isSocial) {
+        const normalizedText = normalizeLinkText(link.text);
+        const candidate = bestInternalUrlFromMap(mappedUrls, brandDomain, normalizedText || link.text);
+        
+        if (candidate) {
+          const ok = await verifyUrl(candidate, trustedHosts);
+          if (ok) {
+            console.log(`⚠️ Using sitemap fallback for "${link.text}": ${candidate}`);
+            link.searchedUrl = candidate;
+            link.verified = true;
+            link.needsManualUrl = false;
+            enhanced.push(link);
+            continue;
+          }
+        }
+      }
+
+      // No valid URL found - mark for manual entry
       link.searchedUrl = "";
       link.verified = false;
       link.needsManualUrl = true;
