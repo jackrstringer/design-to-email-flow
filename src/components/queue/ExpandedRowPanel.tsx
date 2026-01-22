@@ -740,7 +740,7 @@ export function ExpandedRowPanel({
                   <div 
                     key={groupIndex} 
                     className={cn(
-                      "relative flex items-stretch group/row -mx-5 px-5",
+                      "relative flex justify-center items-stretch group/row",
                       isMultiColumnRow ? "border-l-4 border-blue-400 bg-blue-50/30 hover:bg-blue-50/50" : "hover:bg-muted/10"
                     )}
                   >
@@ -761,7 +761,7 @@ export function ExpandedRowPanel({
                     
                     {/* Left: Link Column - only show if displayMode !== 'none' */}
                     {displayMode !== 'none' && (
-                    <div className="flex-1 min-w-[200px] flex flex-col justify-center py-2 pr-4 gap-2 items-end">
+                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -774,33 +774,33 @@ export function ExpandedRowPanel({
                           <PopoverTrigger asChild>
                             {slice.link ? (
                               <button className={cn(
-                                "flex items-start gap-2 px-3 py-2 rounded text-xs transition-colors text-left max-w-full",
+                                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left whitespace-nowrap",
                                 isMultiColumnRow 
-                                  ? "bg-blue-100 border border-blue-300 hover:bg-blue-200" 
-                                  : "bg-primary/10 border border-primary/20 hover:bg-primary/20"
+                                  ? "bg-blue-50 border border-blue-200 hover:bg-blue-100" 
+                                  : "bg-muted/50 border border-border/50 hover:bg-muted"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-blue-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
-                                <Link className={cn("w-3.5 h-3.5 flex-shrink-0 mt-0.5", isMultiColumnRow ? "text-blue-600" : "text-primary")} />
-                                <span className="text-foreground break-all leading-snug">{slice.link}</span>
+                                <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-blue-500" : "text-muted-foreground")} />
+                                <span className="text-muted-foreground">{slice.link}</span>
                               </button>
                             ) : (
                               <button className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 border border-dashed rounded transition-colors text-xs",
+                                "flex items-center gap-1.5 px-2 py-0.5 border border-dashed rounded transition-colors text-[9px] whitespace-nowrap",
                                 isMultiColumnRow 
                                   ? "border-blue-300 text-blue-500 hover:border-blue-500 opacity-100" 
-                                  : "border-muted-foreground/30 text-muted-foreground/60 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
+                                  : "border-muted-foreground/30 text-muted-foreground/50 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-blue-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
-                                <Link className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span>{isMultiColumnRow ? `Col ${colIdx + 1} link` : 'Add link'}</span>
+                                <Link className="w-3 h-3 flex-shrink-0" />
+                                <span>{isMultiColumnRow ? `Col ${colIdx + 1}` : 'Add link'}</span>
                               </button>
                             )}
                           </PopoverTrigger>
@@ -883,12 +883,12 @@ export function ExpandedRowPanel({
                               </div>
                             )}
                             
-                            {/* Hover link tooltip in 'none' mode - prominent and readable */}
+                            {/* Hover link tooltip in 'none' mode - compact, full URL */}
                             {displayMode === 'none' && hoveredSliceIndex === originalIndex && slice.link && (
-                              <div className="absolute inset-x-0 top-0 bg-black/90 text-white text-sm px-4 py-3 z-20 pointer-events-none shadow-lg">
-                                <div className="flex items-start gap-2">
-                                  <Link className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                                  <span className="break-all leading-snug">{slice.link}</span>
+                              <div className="absolute inset-x-0 top-0 bg-black/85 text-white text-[10px] px-2 py-1.5 z-20 pointer-events-none whitespace-nowrap overflow-x-auto">
+                                <div className="flex items-center gap-1.5">
+                                  <Link className="w-3 h-3 flex-shrink-0" />
+                                  <span>{slice.link}</span>
                                 </div>
                               </div>
                             )}
@@ -921,31 +921,31 @@ export function ExpandedRowPanel({
                     
                     {/* Right: Alt Text Column - only show if displayMode === 'all' */}
                     {displayMode === 'all' && (
-                    <div className="flex-1 min-w-[200px] flex flex-col justify-center py-2 pl-4 gap-2">
+                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 max-w-[200px]">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
-                        <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-2")}>
+                        <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
                           {isMultiColumnRow && (
-                            <span className="bg-blue-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                               {colIdx + 1}
                             </span>
                           )}
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             {editingAltIndex === originalIndex ? (
                               <textarea
                                 value={slice.altText || ''}
                                 onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
                                 placeholder="Alt..."
-                                className="w-full text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1.5 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                                rows={3}
+                                className="w-full text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                rows={2}
                                 autoFocus
                                 onBlur={() => setEditingAltIndex(null)}
                               />
                             ) : (
                               <p 
                                 onClick={() => setEditingAltIndex(originalIndex)}
-                                className="text-xs text-foreground leading-snug cursor-pointer hover:bg-muted/50 rounded px-2 py-1 break-words"
+                                className="text-[9px] text-muted-foreground leading-snug cursor-pointer hover:bg-muted/50 rounded px-1.5 py-0.5 line-clamp-2"
                               >
-                                {slice.altText || <span className="text-muted-foreground italic">Add alt text...</span>}
+                                {slice.altText || <span className="italic opacity-60">Alt...</span>}
                               </p>
                             )}
                           </div>
@@ -957,11 +957,9 @@ export function ExpandedRowPanel({
                   );
                 })}
 
-                {/* Footer Section - aligned with slices, scaled with CSS transform */}
+                {/* Footer Section - centered to match slices */}
                 {footerHtml && (
-                  <div className="flex items-stretch">
-                    {/* Empty link column space - matches flex layout (only show if displayMode !== 'none') */}
-                    {displayMode !== 'none' && <div className="flex-1 min-w-[200px]" />}
+                  <div className="flex justify-center">
                     {/* Footer iframe container - clips the scaled content */}
                     <div 
                       className="flex-shrink-0 overflow-hidden" 
@@ -987,8 +985,6 @@ export function ExpandedRowPanel({
                         title="Footer Preview"
                       />
                     </div>
-                    {/* Empty alt text column space - matches flex layout (only show if displayMode === 'all') */}
-                    {displayMode === 'all' && <div className="flex-1 min-w-[200px]" />}
                   </div>
                 )}
               </div>
