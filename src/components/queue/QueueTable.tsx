@@ -444,6 +444,7 @@ export function QueueTable({
               />
               {expandedId === item.id && (
                 <ExpandedRowPanel
+                  key={item.id}
                   item={item}
                   onUpdate={onUpdate}
                   onClose={() => onToggleExpand(item.id)}
