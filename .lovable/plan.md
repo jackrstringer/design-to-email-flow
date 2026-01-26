@@ -1,209 +1,78 @@
 
+## What the logs show (why links are missing)
+- The **analyze-slices** backend function is failing with a 400 error:
 
-# Implementation Plan: Processing Timer + Fix Links/Alt Text Bug
+  `Image does not match the provided media type image/jpeg`
 
-## Part 1: Fix Links and Alt Text Failure
+- When that happens, **analyze-slices returns the fallback “default analysis”** (no links, no alt text), so the queue item ends up with empty link assignments.
 
-### Root Cause
-The edge function `process-campaign-queue` still has **three places** using `h_7900` instead of `h_5000`:
+### Root cause
+In `process-campaign-queue`, we generate slice `dataUrl`s like this:
 
-| Location | Line | Current | Should Be |
-|----------|------|---------|-----------|
-| `startEarlyGeneration` | 128 | `getResizedCloudinaryUrl(imageUrl, 600, 7900)` | `600, 5000` |
-| `fetchSliceDataUrlsForAnalysis` | 369 | `const aiMaxHeight = 7900` | `5000` |
-| `analyzeSlices` | 422 | `getResizedCloudinaryUrl(fullImageUrl, 600, 7900)` | `600, 5000` |
+- We fetch a crop from Cloudinary (which is often still **PNG** if the original is PNG).
+- But we **hardcode the data URL prefix as** `data:image/jpeg;base64,...`
 
-The recent fix only updated line 87 but missed these three locations. When the full campaign image or slice dataUrls are fetched at the 7900px size, tall images aren't being re-encoded by Cloudinary, resulting in large PNGs that exceed Claude's 5MB base64 limit.
+So Claude is told “this is JPEG”, but the bytes are actually PNG → request rejected → link/alt assignment fails.
 
-### Fix
-Update all three locations in `supabase/functions/process-campaign-queue/index.ts`:
-
-1. **Line 128**: Change `7900` to `5000`
-2. **Line 369**: Change `7900` to `5000`  
-3. **Line 422**: Change `7900` to `5000`
+### Secondary issue found (important)
+The queue item in the DB currently contains `slices[].dataUrl` with huge base64 blobs. That means we are accidentally **persisting “analysis-only” base64 images into `campaign_queue.slices`**, which is not needed and can bloat the DB / slow UI.
 
 ---
 
-## Part 2: Processing Timer Feature
+## Implementation approach (minimal + robust)
+### A) Fix slice media type mismatch (main fix)
+**File:** `supabase/functions/process-campaign-queue/index.ts`
 
-### Design
-Add a small, unintrusive timer to the left of the status badge that:
-- Starts counting when the campaign enters the queue (`created_at`)
-- Stops and displays final time when status becomes `ready_for_review`
-- Shows elapsed time in `Xm Xs` format (e.g., "1m 23s")
-- Can be hidden by clicking on it (toggles visibility for all timers)
-- Hidden state persists via localStorage for dev convenience
+In `fetchSliceDataUrlsForAnalysis()`:
+1. After `fetch(cropUrl)`, read the actual content type:
+   - `const contentType = response.headers.get('content-type') ?? 'image/png'`
+   - normalize it to just the mime (strip `; charset=...`)
+2. Build the data URL using that mime:
+   - `data:${mime};base64,${base64}`  
+   instead of hardcoding `data:image/jpeg;base64,...`
 
-### UI Placement
+This guarantees the declared media type always matches the bytes Cloudinary returns.
 
-```
-[checkbox] [TIMER] [STATUS BADGE] [thumbnail] [name] ...
-              ↑
-         "1m 23s" in muted gray text, small font
-```
+### B) Fix full-campaign “reference image” media type too (consistency)
+**File:** `supabase/functions/process-campaign-queue/index.ts`
 
-### Components to Create/Modify
+In `analyzeSlices()` when creating `fullCampaignImage`:
+- currently it hardcodes `data:image/png;base64,...`
+- update to use `imageResponse.headers.get('content-type')` just like slices
 
-**1. New Component: `src/components/queue/ProcessingTimer.tsx`**
+This avoids future mismatches if Cloudinary returns JPEG/webp/etc.
 
-```tsx
-interface ProcessingTimerProps {
-  createdAt: string;
-  status: CampaignQueueItem['status'];
-  isHidden: boolean;
-  onToggleVisibility: () => void;
-}
-```
+### C) Stop saving base64 `dataUrl` into the database (prevents bloat + confusion)
+**File:** `supabase/functions/process-campaign-queue/index.ts`
 
-Features:
-- Uses `useState` with `setInterval` to update every second while status is `processing`
-- Calculates elapsed time from `created_at` to now (or to `updated_at` when complete)
-- Displays in compact format: `1m 23s` or `45s`
-- Clickable area toggles global visibility state
+After analysis is done, before calling `updateQueueItem(... { slices: ... })`:
+- strip analysis-only fields from each slice object (at minimum `dataUrl`)
+- save only persistent fields (imageUrl, altText, link, etc.)
 
-**2. Modify: `src/components/queue/QueueRow.tsx`**
+Example behavior:
+- Use `dataUrl` only to call **analyze-slices**
+- Do **not** store `dataUrl` in `campaign_queue.slices`
 
-- Import `ProcessingTimer` component
-- Add state management for timer visibility (lifted from localStorage)
-- Add timer between checkbox and status columns
-- Pass visibility toggle handler to timer
+### D) Minor clean-up: remove leftover `h_7900` in `smallCropUrl` generation
+**File:** `supabase/functions/process-campaign-queue/index.ts`
 
-**3. Modify: `src/components/queue/QueueTable.tsx`**
-
-- Add shared state for timer visibility: `const [showTimers, setShowTimers] = useState()`
-- Initialize from localStorage on mount: `localStorage.getItem('queue-show-timers')`
-- Pass `showTimers` and toggle function down to `QueueRow`
-
-### Timer Logic
-
-```typescript
-// Calculate elapsed time
-const startTime = new Date(createdAt).getTime();
-const endTime = status === 'processing' 
-  ? Date.now() 
-  : new Date(updatedAt).getTime(); // Freeze at completion time
-
-const elapsedSeconds = Math.floor((endTime - startTime) / 1000);
-const minutes = Math.floor(elapsedSeconds / 60);
-const seconds = elapsedSeconds % 60;
-
-// Format: "1m 23s" or "45s"
-const display = minutes > 0 
-  ? `${minutes}m ${seconds}s` 
-  : `${seconds}s`;
-```
-
-### Styling
-- Font: `text-[10px]` muted gray
-- Non-intrusive: only visible on hover or when processing
-- Clickable cursor to indicate toggle functionality
+In `cropSlicesViaCloudinary()` there’s still a `getResizedCloudinaryUrl(originalImageUrl, 600, 7900)` used for `smallCropUrl`. Even if it’s not currently driving analysis, we should align it to `5000` to avoid future regressions.
 
 ---
 
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/process-campaign-queue/index.ts` | Fix 3 instances of `7900` → `5000` |
-| `src/components/queue/ProcessingTimer.tsx` | **New file** - Timer component |
-| `src/components/queue/QueueRow.tsx` | Add timer between checkbox and status |
-| `src/components/queue/QueueTable.tsx` | Add shared timer visibility state |
+## How we’ll verify the fix
+1. Trigger processing again (use the existing “retry” action on a failed/processed queue item).
+2. Confirm in **analyze-slices logs** we no longer see the media-type mismatch 400.
+3. Confirm `campaign_queue.slices` now contains:
+   - `altText` populated
+   - `link` populated where clickable
+   - **no** giant `dataUrl` base64 fields
+4. Confirm UI shows links (e.g. LinksTooltip/ExternalLinksIndicator counts change).
 
 ---
 
-## Technical Details
-
-### Timer Component Implementation
-
-```typescript
-// ProcessingTimer.tsx
-import { useState, useEffect } from 'react';
-import { cn } from '@/lib/utils';
-
-interface ProcessingTimerProps {
-  createdAt: string;
-  updatedAt: string;
-  status: 'processing' | 'ready_for_review' | 'approved' | 'sent_to_klaviyo' | 'failed' | 'closed';
-  isVisible: boolean;
-  onToggle: () => void;
-}
-
-export function ProcessingTimer({ createdAt, updatedAt, status, isVisible, onToggle }: ProcessingTimerProps) {
-  const [elapsed, setElapsed] = useState(0);
-  
-  useEffect(() => {
-    const startTime = new Date(createdAt).getTime();
-    
-    // If still processing, update every second
-    if (status === 'processing') {
-      const interval = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTime) / 1000));
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-    
-    // If complete, show final time (frozen)
-    const endTime = new Date(updatedAt).getTime();
-    setElapsed(Math.floor((endTime - startTime) / 1000));
-  }, [createdAt, updatedAt, status]);
-  
-  if (!isVisible) {
-    return (
-      <div 
-        className="w-12 flex-shrink-0 cursor-pointer" 
-        onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      />
-    );
-  }
-  
-  const minutes = Math.floor(elapsed / 60);
-  const seconds = elapsed % 60;
-  const display = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  
-  return (
-    <div 
-      className="w-12 flex-shrink-0 px-1 cursor-pointer"
-      onClick={(e) => { e.stopPropagation(); onToggle(); }}
-    >
-      <span className={cn(
-        "text-[10px] tabular-nums",
-        status === 'processing' ? "text-blue-500" : "text-gray-400"
-      )}>
-        {display}
-      </span>
-    </div>
-  );
-}
-```
-
-### QueueRow Integration
-
-Add between checkbox and status columns:
-
-```tsx
-<ProcessingTimer
-  createdAt={item.created_at}
-  updatedAt={item.updated_at}
-  status={item.status}
-  isVisible={showTimers}
-  onToggle={onToggleTimers}
-/>
-```
-
-### QueueTable State Management
-
-```tsx
-const [showTimers, setShowTimers] = useState(() => {
-  const stored = localStorage.getItem('queue-show-timers');
-  return stored !== 'false'; // Default to visible
-});
-
-const handleToggleTimers = useCallback(() => {
-  setShowTimers(prev => {
-    const newValue = !prev;
-    localStorage.setItem('queue-show-timers', String(newValue));
-    return newValue;
-  });
-}, []);
-```
+## Expected outcome
+- Link + alt text assignment works again (because analyze-slices no longer errors).
+- Queue items stay lightweight (no base64 blobs in DB).
+- Future Cloudinary output changes won’t break analysis (we trust the response content-type rather than guessing).
 
