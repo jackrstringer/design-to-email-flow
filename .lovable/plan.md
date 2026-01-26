@@ -1,128 +1,230 @@
 
-# Fix: Support Variable Export Scale from Figma Plugin
+# Fix: Memory-Efficient Image Processing Pipeline
 
-## Summary
+## Problem Summary
 
-The Figma plugin now sends an `exportScale` property (1 or 2) indicating whether the frame was exported at 1x or 2x resolution. The backend needs to:
-1. Accept and store this value
-2. Calculate and store the **actual exported image dimensions** (`width * exportScale`)
-3. Pass correct dimensions to downstream functions
+The `process-campaign-queue` function crashes with "Memory limit exceeded" when processing 1x-scaled large images. The crash happens during the **dual-fetch step** where both AI-sized and full-resolution images are loaded into memory simultaneously.
 
-## Current Behavior (Problem)
+| Metric | Value |
+|--------|-------|
+| Image dimensions | 600 x 6610 px |
+| File size | ~3.8 MB |
+| Memory usage (dual-fetch) | ~23 MB+ peak |
+| Edge function limit | ~150-256 MB |
+| Crash point | Line 86-113 (parallel fetch + base64 conversion) |
 
-| Field | What's Stored Now | What Should Be Stored |
-|-------|-------------------|----------------------|
-| `image_width` | Figma frame width (1x) | Actual exported width (width × exportScale) |
-| `image_height` | Figma frame height (1x) | Actual exported height (height × exportScale) |
-| `source_metadata.exportScale` | Not stored | 1 or 2 (from plugin) |
+## Root Cause
 
-**Why This Matters:**
-- `autoSliceImage()` in `process-campaign-queue` passes `item.image_width` and `item.image_height` to `auto-slice-v2`
-- While `auto-slice-v2` correctly extracts dimensions from the image header, having incorrect metadata can cause confusion and logging issues
-- Future functions might rely on `image_width`/`image_height` being accurate
+The current `fetchAndUploadImage` function (lines 67-132):
 
-## Solution
+1. Fetches **both** AI-sized and full-res images in parallel
+2. Holds **both** in memory as `Uint8Array`
+3. Converts **both** to base64 using inefficient string concatenation
+4. Returns both base64 strings, keeping them in memory throughout processing
 
-### File 1: `supabase/functions/figma-ingest/index.ts`
-
-**Change 1: Update `FrameData` interface to include `exportScale`**
-
-Add the `exportScale` property:
+The string concatenation pattern is particularly memory-hungry:
 ```typescript
-interface FrameData {
-  name: string;
-  width: number;        // Figma frame width (1x)
-  height: number;       // Figma frame height (1x)
-  exportScale?: number; // Export scale (1 or 2), defaults to 2
-  imageBase64: string;
-  figmaUrl?: string;
+let binary = '';
+for (let i = 0; i < uint8Array.length; i++) {
+  binary += String.fromCharCode(uint8Array[i]);  // Creates new string each iteration
 }
 ```
 
-**Change 2: Calculate actual dimensions when creating campaign**
+## Solution
 
-Update the insert to use actual exported dimensions:
-```typescript
-// Calculate actual exported dimensions
-const exportScale = frame.exportScale || 2; // Default to 2 for backwards compatibility
-const actualWidth = Math.round(frame.width * exportScale);
-const actualHeight = Math.round(frame.height * exportScale);
+Eliminate the dual-fetch pattern entirely. Instead:
 
-const { data: campaign, error: campaignError } = await supabase
-  .from('campaign_queue')
-  .insert({
-    user_id: userId,
-    brand_id: validBrandId,
-    source: 'figma',
-    source_url: frame.figmaUrl || null,
-    source_metadata: {
-      frameName: frame.name,
-      figmaWidth: frame.width,      // Original Figma dimensions
-      figmaHeight: frame.height,
-      exportScale: exportScale       // Store for reference
-    },
-    name: frame.name,
-    image_url: imageUrl,
-    image_width: actualWidth,       // ACTUAL exported width
-    image_height: actualHeight,     // ACTUAL exported height
-    provided_subject_line: subjectLine || null,
-    provided_preview_text: previewText || null,
-    status: 'processing',
-    processing_step: 'queued',
-    processing_percent: 0
-  })
-```
+1. **Fetch only AI-sized image** for initial processing (slicing, brand detection)
+2. **Use Cloudinary server-side cropping** for slice generation instead of client-side ImageScript cropping
+3. This means we never need the full-res image in edge function memory
 
-**Why this approach:**
-- **Backwards compatible**: If `exportScale` is not sent (older plugin versions), defaults to 2
-- **Accurate metadata**: `image_width` and `image_height` now reflect actual image dimensions
-- **Debugging support**: Original Figma dimensions and scale factor preserved in `source_metadata`
-
-### No Changes Needed to Other Files
-
-The good news is that the core processing functions are already robust:
-
-1. **`auto-slice-v2/index.ts`** - Extracts dimensions from image header (`getImageDimensions`), doesn't rely on passed dimensions
-2. **`cropAndUploadSlices`** - Uses `Image.decode()` to get actual dimensions, explicitly ignores passed parameters
-3. **`process-campaign-queue/index.ts`** - While it passes `item.image_width` and `item.image_height` to `autoSliceImage`, that function ignores these values
-
-## Data Flow After Fix
+### Architecture Change
 
 ```text
-Plugin exports frame at {exportScale}x
-         ↓
-Frame: {width: 600, height: 4500, exportScale: 1}
-         ↓
-figma-ingest calculates: actualWidth = 600 × 1 = 600
-                         actualHeight = 4500 × 1 = 4500
-         ↓
-campaign_queue stores:
-  - image_width: 600 (actual)
-  - image_height: 4500 (actual)
-  - source_metadata: {figmaWidth: 600, figmaHeight: 4500, exportScale: 1}
-         ↓
-auto-slice-v2 reads image header → confirms 600×4500 ✓
-         ↓
-cropAndUploadSlices decodes image → confirms 600×4500 ✓
+BEFORE (broken):
+fetchAndUploadImage → [AI-sized base64 + Full-res base64] → autoSliceImage → cropAndUploadSlices
+                                                                                    ↓
+                                                               Decode full-res with ImageScript
+                                                                    ↓
+                                                               Crop each slice in memory
+
+AFTER (fixed):
+fetchAndUploadImage → [AI-sized base64 only] → autoSliceImage → cropSlicesViaCloudinary
+                                                                        ↓
+                                                    Use Cloudinary URL transformations
+                                                    (c_crop,x_0,y_100,w_600,h_500)
+                                                                        ↓
+                                                    Cloudinary does the cropping server-side
+                                                    (zero memory in edge function)
+```
+
+## Technical Changes
+
+### File: `supabase/functions/process-campaign-queue/index.ts`
+
+**Change 1: Simplify `fetchAndUploadImage` (lines 67-132)**
+
+Remove dual-fetch, return only AI-sized version:
+
+```typescript
+async function fetchAndUploadImage(
+  supabase: any,
+  item: any
+): Promise<{ imageUrl: string; imageBase64ForAI: string } | null> {
+  console.log('[process] Step 1: Fetching AI-sized image only...');
+
+  if (item.image_url) {
+    try {
+      // For AI processing: resize to 7900px max
+      const aiResizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 7900);
+      console.log('[process] AI-sized URL:', aiResizedUrl.substring(0, 80) + '...');
+      
+      const response = await fetch(aiResizedUrl);
+      if (!response.ok) throw new Error('Failed to fetch AI-sized image');
+      
+      const buffer = await response.arrayBuffer();
+      
+      // Use chunked base64 conversion (memory efficient)
+      const base64 = chunkedArrayBufferToBase64(buffer);
+      
+      console.log('[process] Fetched AI-sized:', Math.round(buffer.byteLength / 1024), 'KB');
+      
+      return { imageUrl: item.image_url, imageBase64ForAI: base64 };
+    } catch (err) {
+      console.error('[process] Failed to fetch image:', err);
+      return null;
+    }
+  }
+  return null;
+}
+```
+
+**Change 2: Add memory-efficient base64 conversion**
+
+```typescript
+// Chunked base64 conversion to avoid stack overflow on large images
+function chunkedArrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 32768; // 32KB chunks
+  let result = '';
+  
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    result += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  
+  return btoa(result);
+}
+```
+
+**Change 3: Replace `cropAndUploadSlices` with Cloudinary-based cropping**
+
+Instead of downloading full-res, decoding with ImageScript, cropping, and re-uploading:
+
+```typescript
+async function cropSlicesViaCloudinary(
+  originalImageUrl: string,
+  sliceBoundaries: any[],
+  imageWidth: number,
+  imageHeight: number
+): Promise<any[]> {
+  console.log('[process] Step 3.5: Generating slice URLs via Cloudinary transformations...');
+
+  const uploadedSlices = [];
+
+  for (let i = 0; i < sliceBoundaries.length; i++) {
+    const slice = sliceBoundaries[i];
+    const yTop = slice.yTop;
+    const yBottom = slice.yBottom;
+    const sliceHeight = yBottom - yTop;
+
+    // Use Cloudinary's server-side cropping
+    // Format: /c_crop,x_0,y_{yTop},w_{width},h_{height}/
+    const croppedUrl = getCloudinaryCropUrl(originalImageUrl, 0, yTop, imageWidth, sliceHeight);
+    
+    uploadedSlices.push({
+      ...slice,
+      imageUrl: croppedUrl,  // Direct Cloudinary URL, no upload needed
+      width: imageWidth,
+      height: sliceHeight,
+      // ... other properties
+    });
+  }
+
+  return uploadedSlices;
+}
+
+function getCloudinaryCropUrl(url: string, x: number, y: number, w: number, h: number): string {
+  const uploadIndex = url.indexOf('/upload/');
+  if (uploadIndex === -1) return url;
+  
+  const before = url.substring(0, uploadIndex + 8);
+  const after = url.substring(uploadIndex + 8);
+  
+  return `${before}c_crop,x_${x},y_${y},w_${w},h_${h}/${after}`;
+}
+```
+
+**Change 4: Update main processing flow**
+
+Remove `imageBase64FullRes` from the flow, pass only `imageBase64ForAI`:
+
+```typescript
+// Step 1: Fetch image (AI-sized only)
+const imageResult = await fetchAndUploadImage(supabase, item);
+// imageResult now only has: { imageUrl, imageBase64ForAI }
+
+// Step 3: Auto-slice (uses AI-sized base64)
+const sliceResult = await autoSliceImage(imageResult.imageBase64ForAI, ...);
+
+// Step 3.5: Generate slice URLs (uses Cloudinary server-side cropping)
+const uploadedSlices = await cropSlicesViaCloudinary(
+  imageResult.imageUrl,  // Original Cloudinary URL
+  sliceResult.slices,
+  item.image_width,
+  item.image_height
+);
+```
+
+## Why This Works
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Full-res in memory | Yes (~3.8MB+) | Never |
+| AI-sized in memory | Yes (~2MB) | Yes (~2MB) |
+| ImageScript decode | Full image | None |
+| Slice cropping | Client-side | Cloudinary server-side |
+| Total memory peak | ~23MB+ | ~5MB |
+
+## Alternative Considered
+
+Could use streaming/lazy fetching for full-res, but:
+- Still requires ImageScript decode (memory heavy)
+- More complex implementation
+- Cloudinary cropping is zero-cost and faster
+
+## Horizontal Split Handling
+
+For slices with `horizontalSplit`, we'll generate multiple Cloudinary URLs with different x/y/w/h parameters:
+
+```typescript
+// For a 3-column split at positions [33.33, 66.66]:
+// Column 0: c_crop,x_0,y_{yTop},w_200,h_{height}
+// Column 1: c_crop,x_200,y_{yTop},w_200,h_{height}
+// Column 2: c_crop,x_400,y_{yTop},w_200,h_{height}
 ```
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/figma-ingest/index.ts` | Add `exportScale` to FrameData interface; calculate and store actual dimensions |
+| `supabase/functions/process-campaign-queue/index.ts` | Remove dual-fetch, add chunked base64, replace ImageScript cropping with Cloudinary URL transformations |
 
 ## Testing Verification
 
-After deployment:
-1. Export a frame >3500px tall from Figma (should use 1x scale)
-2. Check `campaign_queue` record:
-   - `image_width` = Figma width × 1
-   - `image_height` = Figma height × 1
-   - `source_metadata.exportScale` = 1
-3. Export a frame <3500px tall (should use 2x scale)
-4. Check `campaign_queue` record:
-   - `image_width` = Figma width × 2
-   - `image_height` = Figma height × 2
-   - `source_metadata.exportScale` = 2
-5. Verify slices are generated correctly for both cases
+After implementation:
+1. Upload a tall frame (>3500px) from Figma at 1x scale
+2. Verify campaign enters queue and progresses past 5%
+3. Verify slices are generated correctly
+4. Verify slice URLs point to Cloudinary crop transformations
+5. Verify final email renders correctly in Klaviyo preview
