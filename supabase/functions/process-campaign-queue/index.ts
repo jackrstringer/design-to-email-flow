@@ -43,6 +43,41 @@ function getCloudinaryCropUrl(url: string, x: number, y: number, w: number, h: n
   return `${before}c_crop,x_${rx},y_${ry},w_${rw},h_${rh}/${after}`;
 }
 
+// Get actual dimensions of a Cloudinary image via fl_getinfo (most reliable method)
+async function getActualCloudinaryDimensions(cloudinaryUrl: string): Promise<{ width: number; height: number } | null> {
+  try {
+    // Use fl_getinfo transformation to get image metadata from Cloudinary
+    const uploadIndex = cloudinaryUrl.indexOf('/upload/');
+    if (uploadIndex === -1) return null;
+    
+    const before = cloudinaryUrl.substring(0, uploadIndex + 8);
+    const after = cloudinaryUrl.substring(uploadIndex + 8);
+    const infoUrl = `${before}fl_getinfo/${after}`;
+    
+    console.log('[process] Fetching Cloudinary dimensions via fl_getinfo...');
+    const response = await fetch(infoUrl);
+    if (!response.ok) {
+      console.error('[process] fl_getinfo request failed:', response.status);
+      return null;
+    }
+    
+    const info = await response.json();
+    const width = info.input?.width || info.width;
+    const height = info.input?.height || info.height;
+    
+    if (!width || !height) {
+      console.error('[process] fl_getinfo response missing dimensions:', JSON.stringify(info).substring(0, 200));
+      return null;
+    }
+    
+    console.log('[process] fl_getinfo returned:', width, 'x', height);
+    return { width, height };
+  } catch (err) {
+    console.error('[process] Failed to get Cloudinary dimensions:', err);
+    return null;
+  }
+}
+
 // Helper to update campaign queue status
 async function updateQueueItem(
   supabase: any,
@@ -111,9 +146,9 @@ function getImageDimensions(base64: string): { width: number; height: number } |
   return null;
 }
 
-// Step 1: Fetch image from URL - returns ACTUAL dimensions from image headers
+// Step 1: Fetch image from URL - returns ACTUAL dimensions from Cloudinary fl_getinfo
 // Returns: imageBase64ForAI (resized for Claude) + imageUrl (original for Cloudinary cropping)
-// CRITICAL: Parses actual dimensions from image headers to fix coordinate scaling bugs
+// CRITICAL: Uses Cloudinary fl_getinfo API to get TRUE dimensions, fixing coordinate scaling bugs
 async function fetchAndUploadImage(
   supabase: any,
   item: any
@@ -125,28 +160,38 @@ async function fetchAndUploadImage(
   actualAIWidth: number;
   actualAIHeight: number;
 } | null> {
-  console.log('[process] Step 1: Fetching images and parsing actual dimensions...');
+  console.log('[process] Step 1: Fetching images and getting actual dimensions from Cloudinary...');
 
   if (item.image_url) {
     try {
-      // 1. Fetch ORIGINAL image header to get actual dimensions (first ~50KB via Range request)
-      const originalResponse = await fetch(item.image_url, {
-        headers: { 'Range': 'bytes=0-50000' }
-      });
-      if (!originalResponse.ok) throw new Error('Failed to fetch original image header');
-      const originalBuffer = await originalResponse.arrayBuffer();
-      const originalBase64 = chunkedArrayBufferToBase64(originalBuffer);
-      let originalDims = getImageDimensions(originalBase64);
+      // 1. Get ACTUAL original dimensions via Cloudinary fl_getinfo (most reliable)
+      let actualDims = await getActualCloudinaryDimensions(item.image_url);
       
-      if (!originalDims) {
-        console.error('[process] Could not parse original image dimensions, using DB values');
-        originalDims = { width: item.image_width || 600, height: item.image_height || 2000 };
+      if (!actualDims) {
+        console.error('[process] Could not get actual dimensions from Cloudinary fl_getinfo');
+        // Fallback to base64 header parsing
+        const originalResponse = await fetch(item.image_url, {
+          headers: { 'Range': 'bytes=0-50000' }
+        });
+        if (!originalResponse.ok) throw new Error('Failed to fetch original image header');
+        const originalBuffer = await originalResponse.arrayBuffer();
+        const originalBase64 = chunkedArrayBufferToBase64(originalBuffer);
+        const parsedDims = getImageDimensions(originalBase64);
+        
+        if (!parsedDims) {
+          console.error('[process] Both fl_getinfo and header parsing failed, using DB values as last resort');
+          actualDims = { width: item.image_width || 600, height: item.image_height || 2000 };
+        } else {
+          actualDims = parsedDims;
+          console.log('[process] Fallback to header parsing succeeded:', actualDims.width, 'x', actualDims.height);
+        }
       }
       
-      console.log('[process] ACTUAL original dimensions:', originalDims.width, 'x', originalDims.height);
+      console.log('[process] ACTUAL original dimensions:', actualDims.width, 'x', actualDims.height);
       console.log('[process] DB dimensions:', item.image_width, 'x', item.image_height);
-      if (originalDims.width !== item.image_width || originalDims.height !== item.image_height) {
-        console.warn('[process] ⚠️ DIMENSION MISMATCH! Using actual dimensions from image header.');
+      if (actualDims.width !== item.image_width || actualDims.height !== item.image_height) {
+        console.warn('[process] ⚠️ DIMENSION MISMATCH DETECTED! DB has wrong values (likely Figma 2x export issue).');
+        console.warn('[process] Using ACTUAL dimensions from Cloudinary for correct coordinate scaling.');
       }
 
       // 2. Fetch AI-sized image
@@ -158,18 +203,23 @@ async function fetchAndUploadImage(
       const aiBuffer = await aiResponse.arrayBuffer();
       const aiBase64 = chunkedArrayBufferToBase64(aiBuffer);
       
-      // 3. Parse ACTUAL AI dimensions from the fetched image header
-      const aiDims = getImageDimensions(aiBase64);
-      if (!aiDims) throw new Error('Could not parse AI image dimensions');
+      // 3. Get ACTUAL AI dimensions via Cloudinary fl_getinfo (or parse from header)
+      let aiDims = await getActualCloudinaryDimensions(aiResizedUrl);
+      if (!aiDims) {
+        // Fallback to parsing from base64 header
+        aiDims = getImageDimensions(aiBase64);
+        if (!aiDims) throw new Error('Could not get AI image dimensions');
+      }
       
       console.log('[process] Actual AI dimensions:', aiDims.width, 'x', aiDims.height);
       console.log('[process] Fetched AI-sized:', Math.round(aiBuffer.byteLength / 1024), 'KB');
+      console.log('[process] Scale factor for coordinate conversion: Y =', actualDims.height / aiDims.height);
       
       return { 
         imageUrl: item.image_url,
         imageBase64ForAI: aiBase64,
-        actualOriginalWidth: originalDims.width,
-        actualOriginalHeight: originalDims.height,
+        actualOriginalWidth: actualDims.width,
+        actualOriginalHeight: actualDims.height,
         actualAIWidth: aiDims.width,
         actualAIHeight: aiDims.height
       };
