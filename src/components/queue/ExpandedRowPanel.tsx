@@ -761,7 +761,7 @@ export function ExpandedRowPanel({
                     
                     {/* Left: Link Column - only show if displayMode !== 'none' */}
                     {displayMode !== 'none' && (
-                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-[280px]">
+                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 min-w-[120px]">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -774,7 +774,7 @@ export function ExpandedRowPanel({
                           <PopoverTrigger asChild>
                             {slice.link ? (
                               <button className={cn(
-                                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
+                                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left",
                                 isMultiColumnRow 
                                   ? "bg-blue-50 border border-blue-200 hover:bg-blue-100" 
                                   : "bg-muted/50 border border-border/50 hover:bg-muted"
@@ -785,7 +785,7 @@ export function ExpandedRowPanel({
                                   </span>
                                 )}
                                 <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-blue-500" : "text-muted-foreground")} />
-                                <span className="text-muted-foreground truncate">{slice.link}</span>
+                                <span className="text-muted-foreground whitespace-nowrap">{slice.link}</span>
                               </button>
                             ) : (
                               <button className={cn(
