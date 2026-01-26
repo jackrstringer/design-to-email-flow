@@ -1,38 +1,77 @@
 
-# Fix: Slice Y-Positioning Mismatch - IMPLEMENTED
+# Fix: Allow Link Buttons to Extend Full Width Without Clipping
 
-## Root Cause (Fixed)
+## Problem
+The link buttons in the expanded row panel's left column are being truncated with ellipsis ("https://iamgia.com/products/blare-hoodie-black-psy...") even though there is plenty of horizontal space available to the left.
 
-The slicing coordinates were misaligned because of a dimension mismatch between:
-1. **What Claude analyzes**: The resized image (e.g., 454×5000) after `c_limit,w_600,h_5000`
-2. **What `cropSlicesViaCloudinary` was using for cropping**: Original image dimensions (e.g., 600×6610)
+## Root Cause
+The link column has several constraints causing the truncation:
 
-Without scaling, Y coordinates from the AI (in analyzed-image-space) were applied directly to the original image, causing slices to appear too high.
+1. **Fixed column width**: `w-[280px]` (line 764)
+2. **Button constrained to column**: `max-w-full overflow-hidden` (line 777)
+3. **Text truncation**: `truncate` class on the link span (line 788)
 
-## Solution Implemented
+Since the column is right-aligned (`items-end`) and the buttons are constrained to `max-w-full` of the 280px parent, they cannot extend leftward even when space is available.
 
-### Changes Made to `supabase/functions/process-campaign-queue/index.ts`:
+## Solution
+Remove the fixed width constraint and allow the link column to be flexible, letting links grow to their natural width. The column should use auto-sizing rather than a fixed 280px width.
 
-1. **`autoSliceImage()` now returns analyzed dimensions**
-   - Returns `{ slices, footerStartPercent, analyzedWidth, analyzedHeight }`
-   - `analyzedWidth`/`analyzedHeight` are the actual dimensions Claude analyzed
+### Changes to `src/components/queue/ExpandedRowPanel.tsx`
 
-2. **`cropSlicesViaCloudinary()` accepts both dimension sets and scales coordinates**
-   - New signature: `(originalImageUrl, sliceBoundaries, originalWidth, originalHeight, analyzedWidth, analyzedHeight)`
-   - Calculates scale factors: `scaleX = originalWidth / analyzedWidth`, `scaleY = originalHeight / analyzedHeight`
-   - Scales all Y coordinates (`yTop`, `yBottom`) and X coordinates (for multi-column slices)
-   - Stored slice coordinates are now in original-image-space
+**1. Update left link column container (line 764)**
 
-3. **`fetchSliceDataUrlsForAnalysis()` updated for consistency**
-   - Now correctly handles slices with original-image-space coordinates
-   - Scales back to AI-analysis-space when generating crop URLs for the resized image
+Current:
+```tsx
+<div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-[280px]">
+```
 
-4. **Call site updated**
-   - Passes `sliceResult.analyzedWidth` and `sliceResult.analyzedHeight` to `cropSlicesViaCloudinary`
+Change to:
+```tsx
+<div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 min-w-[120px]">
+```
+
+This removes the fixed 280px width and adds a minimum width of 120px for empty/short link states. The column will now grow based on content.
+
+**2. Update button styling for links (line 776-777)**
+
+Current:
+```tsx
+<button className={cn(
+  "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
+```
+
+Change to:
+```tsx
+<button className={cn(
+  "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left",
+```
+
+Remove `max-w-full overflow-hidden` so the button can grow to fit its content.
+
+**3. Update link text span (line 788)**
+
+Current:
+```tsx
+<span className="text-muted-foreground truncate">{slice.link}</span>
+```
+
+Change to:
+```tsx
+<span className="text-muted-foreground whitespace-nowrap">{slice.link}</span>
+```
+
+Replace `truncate` with `whitespace-nowrap` so the link displays fully without wrapping or clipping.
+
+## Summary of Changes
+
+| Line | Current | Updated |
+|------|---------|---------|
+| 764 | `w-[280px]` | `min-w-[120px]` |
+| 777 | `max-w-full overflow-hidden` | (removed) |
+| 788 | `truncate` | `whitespace-nowrap` |
 
 ## Expected Result
-
-- Claude says "5-column block at y=3361" (in 5000px-tall analyzed image)
-- System scales to y = 3361 × (6610/5000) = 4443px for original 600×6610 image
-- Cloudinary crops at the correct position
-- Slices display correctly in UI
+- Link buttons will grow to fit the full URL text
+- Links remain right-aligned (buttons extend leftward into available space)
+- Minimum width ensures consistent layout when links are short/empty
+- No ellipsis truncation on link URLs
