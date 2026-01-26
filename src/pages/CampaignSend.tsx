@@ -26,6 +26,7 @@ interface LocationState {
   klaviyoLists?: Array<{ id: string; name: string }>;
   selectedListId?: string;
   earlyGenerationSessionKey?: string; // Session key for early SL/PT lookup
+  originalImageUrl?: string; // Used to verify early copy matches this campaign
 }
 
 interface CopyItem {
@@ -140,17 +141,37 @@ export default function CampaignSend() {
   };
 
   // Check for EARLY generated copy (from immediate upload trigger)
-  const checkEarlyGeneratedCopy = async (sessionKey: string): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
+  // Now also verifies that the early copy was generated for the SAME image
+  const checkEarlyGeneratedCopy = async (sessionKey: string, currentImageUrl?: string): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
     console.log('[EARLY] Checking for early generated copy, session:', sessionKey);
     const { data, error } = await supabase
       .from('early_generated_copy')
-      .select('subject_lines, preview_texts, spelling_errors')
+      .select('subject_lines, preview_texts, spelling_errors, image_url')
       .eq('session_key', sessionKey)
       .single();
     
     if (error) {
       console.log('[EARLY] No early copy found:', error.message);
       return null;
+    }
+    
+    // CRITICAL: Verify the early copy was generated for THIS campaign's image
+    // This prevents stale session keys from applying old copy to new campaigns
+    if (currentImageUrl && data?.image_url) {
+      const earlyImageUrl = data.image_url as string;
+      // Compare Cloudinary public IDs (the unique part after /upload/)
+      const getPublicId = (url: string) => {
+        const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+        return match?.[1] || url;
+      };
+      const earlyId = getPublicId(earlyImageUrl);
+      const currentId = getPublicId(currentImageUrl);
+      
+      if (earlyId !== currentId) {
+        console.warn(`[EARLY] Image mismatch! Early copy is for different campaign. Early: ${earlyId.substring(0, 30)}... Current: ${currentId.substring(0, 30)}...`);
+        return null; // Do NOT apply copy from a different campaign
+      }
+      console.log('[EARLY] Image verified - early copy matches current campaign');
     }
     
     const subjectLines = data?.subject_lines as string[] | null;
@@ -165,9 +186,9 @@ export default function CampaignSend() {
   };
 
   // Poll for early copy with retries (it may still be generating)
-  const pollForEarlyCopy = async (sessionKey: string, maxAttempts = 8): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
+  const pollForEarlyCopy = async (sessionKey: string, currentImageUrl?: string, maxAttempts = 8): Promise<{ subjectLines: string[]; previewTexts: string[]; spellingErrors: string[] } | null> => {
     for (let i = 0; i < maxAttempts; i++) {
-      const earlyCopy = await checkEarlyGeneratedCopy(sessionKey);
+      const earlyCopy = await checkEarlyGeneratedCopy(sessionKey, currentImageUrl);
       if (earlyCopy?.subjectLines?.length > 0) {
         return earlyCopy;
       }
@@ -216,9 +237,10 @@ export default function CampaignSend() {
         // First priority: Check early generation (started immediately on image drop)
         if (earlySessionKey) {
           console.log('[EARLY] Checking early copy first, session:', earlySessionKey);
+          const currentImageUrl = state.originalImageUrl;
           
-          // Immediate check
-          const earlyCopy = await checkEarlyGeneratedCopy(earlySessionKey);
+          // Immediate check - pass currentImageUrl to verify it matches
+          const earlyCopy = await checkEarlyGeneratedCopy(earlySessionKey, currentImageUrl);
           if (earlyCopy && earlyCopy.subjectLines.length > 0) {
             console.log('[EARLY] Using early-generated copy (immediate)');
             applyPreGeneratedCopy(earlyCopy);
@@ -228,7 +250,7 @@ export default function CampaignSend() {
           // Poll for a bit - it may still be generating
           setIsGenerating(true);
           console.log('[EARLY] Polling for early-generated copy...');
-          const polledEarlyCopy = await pollForEarlyCopy(earlySessionKey);
+          const polledEarlyCopy = await pollForEarlyCopy(earlySessionKey, currentImageUrl);
           
           if (polledEarlyCopy && polledEarlyCopy.subjectLines.length > 0) {
             console.log('[EARLY] Using early-generated copy (polled)');
