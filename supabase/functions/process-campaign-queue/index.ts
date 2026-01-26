@@ -73,41 +73,112 @@ function chunkedArrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(result);
 }
 
-// Step 1: Fetch image from URL - ONLY AI-sized version (memory efficient)
+// Helper to parse actual image dimensions from base64 header (PNG or JPEG)
+function getImageDimensions(base64: string): { width: number; height: number } | null {
+  const bytesToDecode = Math.min(base64.length, 50000);
+  const binaryStr = atob(base64.substring(0, bytesToDecode));
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+  
+  // PNG: Check magic bytes and read IHDR chunk
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+    const width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+    const height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+    return { width, height };
+  }
+  
+  // JPEG: Find SOF0 or SOF2 marker to get dimensions
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+    let offset = 2;
+    while (offset < bytes.length - 10) {
+      if (bytes[offset] !== 0xFF) { offset++; continue; }
+      const marker = bytes[offset + 1];
+      if (marker === 0xC0 || marker === 0xC2) {
+        const height = (bytes[offset + 5] << 8) | bytes[offset + 6];
+        const width = (bytes[offset + 7] << 8) | bytes[offset + 8];
+        return { width, height };
+      }
+      if (marker >= 0xC0 && marker <= 0xFE && marker !== 0xD8 && marker !== 0xD9 && !(marker >= 0xD0 && marker <= 0xD7)) {
+        const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+        offset += 2 + length;
+      } else {
+        offset++;
+      }
+    }
+  }
+  return null;
+}
+
+// Step 1: Fetch image from URL - returns ACTUAL dimensions from image headers
 // Returns: imageBase64ForAI (resized for Claude) + imageUrl (original for Cloudinary cropping)
+// CRITICAL: Parses actual dimensions from image headers to fix coordinate scaling bugs
 async function fetchAndUploadImage(
   supabase: any,
   item: any
-): Promise<{ imageUrl: string; imageBase64ForAI: string } | null> {
-  console.log('[process] Step 1: Fetching AI-sized image only (memory efficient)...');
+): Promise<{ 
+  imageUrl: string; 
+  imageBase64ForAI: string;
+  actualOriginalWidth: number;
+  actualOriginalHeight: number;
+  actualAIWidth: number;
+  actualAIHeight: number;
+} | null> {
+  console.log('[process] Step 1: Fetching images and parsing actual dimensions...');
 
   if (item.image_url) {
     try {
-      // For AI processing: resize to 5000px max to force Cloudinary re-encoding (keeps under Claude's 5MB base64 limit)
+      // 1. Fetch ORIGINAL image header to get actual dimensions (first ~50KB via Range request)
+      const originalResponse = await fetch(item.image_url, {
+        headers: { 'Range': 'bytes=0-50000' }
+      });
+      if (!originalResponse.ok) throw new Error('Failed to fetch original image header');
+      const originalBuffer = await originalResponse.arrayBuffer();
+      const originalBase64 = chunkedArrayBufferToBase64(originalBuffer);
+      let originalDims = getImageDimensions(originalBase64);
+      
+      if (!originalDims) {
+        console.error('[process] Could not parse original image dimensions, using DB values');
+        originalDims = { width: item.image_width || 600, height: item.image_height || 2000 };
+      }
+      
+      console.log('[process] ACTUAL original dimensions:', originalDims.width, 'x', originalDims.height);
+      console.log('[process] DB dimensions:', item.image_width, 'x', item.image_height);
+      if (originalDims.width !== item.image_width || originalDims.height !== item.image_height) {
+        console.warn('[process] ⚠️ DIMENSION MISMATCH! Using actual dimensions from image header.');
+      }
+
+      // 2. Fetch AI-sized image
       const aiResizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 5000);
       console.log('[process] AI-sized URL:', aiResizedUrl.substring(0, 80) + '...');
       
-      const response = await fetch(aiResizedUrl);
-      if (!response.ok) throw new Error('Failed to fetch AI-sized image');
+      const aiResponse = await fetch(aiResizedUrl);
+      if (!aiResponse.ok) throw new Error('Failed to fetch AI-sized image');
+      const aiBuffer = await aiResponse.arrayBuffer();
+      const aiBase64 = chunkedArrayBufferToBase64(aiBuffer);
       
-      const buffer = await response.arrayBuffer();
+      // 3. Parse ACTUAL AI dimensions from the fetched image header
+      const aiDims = getImageDimensions(aiBase64);
+      if (!aiDims) throw new Error('Could not parse AI image dimensions');
       
-      // Use chunked base64 conversion (memory efficient)
-      const base64 = chunkedArrayBufferToBase64(buffer);
-      
-      console.log('[process] Fetched AI-sized:', Math.round(buffer.byteLength / 1024), 'KB');
+      console.log('[process] Actual AI dimensions:', aiDims.width, 'x', aiDims.height);
+      console.log('[process] Fetched AI-sized:', Math.round(aiBuffer.byteLength / 1024), 'KB');
       
       return { 
-        imageUrl: item.image_url,  // Original URL for Cloudinary server-side cropping
-        imageBase64ForAI: base64 
+        imageUrl: item.image_url,
+        imageBase64ForAI: aiBase64,
+        actualOriginalWidth: originalDims.width,
+        actualOriginalHeight: originalDims.height,
+        actualAIWidth: aiDims.width,
+        actualAIHeight: aiDims.height
       };
     } catch (err) {
-      console.error('[process] Failed to fetch image from URL:', err);
+      console.error('[process] Failed to fetch image:', err);
       return null;
     }
   }
 
-  // Legacy: For items without pre-uploaded images (shouldn't happen with new flow)
   console.error('[process] No image_url found on queue item');
   return null;
 }
@@ -716,10 +787,22 @@ serve(async (req) => {
       );
     }
 
-    await updateQueueItem(supabase, campaignQueueId, {
+    // Update image_url and fix dimensions if they were wrong in the database
+    const dimensionUpdates: Record<string, unknown> = {
       image_url: imageResult.imageUrl,
       processing_percent: 10
-    });
+    };
+    
+    // Self-healing: Update DB if dimensions were wrong (prevents future misalignment)
+    if (imageResult.actualOriginalWidth !== item.image_width || 
+        imageResult.actualOriginalHeight !== item.image_height) {
+      console.log('[process] Updating DB with correct dimensions:', 
+        imageResult.actualOriginalWidth, 'x', imageResult.actualOriginalHeight);
+      dimensionUpdates.image_width = imageResult.actualOriginalWidth;
+      dimensionUpdates.image_height = imageResult.actualOriginalHeight;
+    }
+    
+    await updateQueueItem(supabase, campaignQueueId, dimensionUpdates);
 
     // === STEP 1.5: Start early SL/PT generation immediately (matches manual flow) ===
     let brandId = item.brand_id;
@@ -827,10 +910,11 @@ serve(async (req) => {
       ? detectBrand(supabase, imageResult.imageBase64ForAI)
       : Promise.resolve(brandId);
     
+    // CRITICAL: Pass actual AI dimensions (from parsed header), not DB values
     const slicePromise = autoSliceImage(
       imageResult.imageBase64ForAI,
-      item.image_width || 600,
-      item.image_height || 2000
+      imageResult.actualAIWidth,
+      imageResult.actualAIHeight
     );
 
     console.log('[process] Running brand detection + auto-slice in parallel...');
@@ -888,12 +972,13 @@ serve(async (req) => {
 
     // Use Cloudinary URL transformations for slice cropping (zero memory usage)
     // CRITICAL: Pass both original dimensions AND analyzed dimensions for coordinate scaling
+    // CRITICAL: Use ACTUAL dimensions from image headers, not DB values
     const uploadedSlices = await cropSlicesViaCloudinary(
       imageResult.imageUrl,
       sliceResult.slices,
-      item.image_width || 600,        // Original dimensions (for cropping)
-      item.image_height || 2000,
-      sliceResult.analyzedWidth,      // Analyzed dimensions (what Claude saw)
+      imageResult.actualOriginalWidth,   // Actual original dimensions from image header
+      imageResult.actualOriginalHeight,
+      sliceResult.analyzedWidth,         // Analyzed dimensions (what Claude saw)
       sliceResult.analyzedHeight
     );
 
@@ -920,12 +1005,13 @@ serve(async (req) => {
       processing_percent: 50
     });
 
+    // CRITICAL: Use ACTUAL dimensions from image headers, not DB values
     const enrichedSlices = await analyzeSlices(
       uploadedSlices,
       imageResult.imageUrl, // Pass Cloudinary URL, analyzeSlices will resize for AI
       brandContext?.domain || null,
-      item.image_width || 600,
-      item.image_height || 2000
+      imageResult.actualOriginalWidth,
+      imageResult.actualOriginalHeight
     );
 
     let currentSlices = enrichedSlices || uploadedSlices;
