@@ -83,8 +83,8 @@ async function fetchAndUploadImage(
 
   if (item.image_url) {
     try {
-      // For AI processing: resize to 7900px max (within Claude's 8000px limit)
-      const aiResizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 7900);
+      // For AI processing: resize to 5000px max to force Cloudinary re-encoding (keeps under Claude's 5MB base64 limit)
+      const aiResizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 5000);
       console.log('[process] AI-sized URL:', aiResizedUrl.substring(0, 80) + '...');
       
       const response = await fetch(aiResizedUrl);
