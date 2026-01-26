@@ -4,6 +4,7 @@ import { InlineDropdownSelector } from './InlineDropdownSelector';
 import { ExternalLinksIndicator } from './ExternalLinksIndicator';
 import { SpellingIndicator } from './SpellingIndicator';
 import { SegmentSetSelector, SegmentPreset } from './SegmentSetSelector';
+import { ProcessingTimer } from './ProcessingTimer';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -35,6 +36,8 @@ interface QueueRowProps {
   presets: SegmentPreset[];
   isSelected: boolean;
   onSelect: (id: string, selected: boolean, shiftKey?: boolean) => void;
+  showTimers: boolean;
+  onToggleTimers: () => void;
 }
 
 export function QueueRow({ 
@@ -45,7 +48,9 @@ export function QueueRow({
   columnWidths, 
   presets,
   isSelected,
-  onSelect
+  onSelect,
+  showTimers,
+  onToggleTimers
 }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string; totalColumns?: number; multiCtaWarning?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
@@ -149,6 +154,15 @@ export function QueueRow({
           )}
         />
       </div>
+
+      {/* Processing Timer */}
+      <ProcessingTimer
+        createdAt={item.created_at || new Date().toISOString()}
+        updatedAt={item.updated_at || new Date().toISOString()}
+        status={item.status || 'processing'}
+        isVisible={showTimers}
+        onToggle={onToggleTimers}
+      />
       
       {/* Status */}
       <div 

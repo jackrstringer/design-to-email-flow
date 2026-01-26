@@ -6,6 +6,7 @@ import { ExpandedRowPanel } from './ExpandedRowPanel';
 import { CampaignQueueItem, SegmentPreset, KlaviyoList, BrandData } from '@/hooks/useCampaignQueue';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { Clock } from 'lucide-react';
 
 interface QueueTableProps {
   items: CampaignQueueItem[];
@@ -82,6 +83,20 @@ export function QueueTable({
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const [widthsLoaded, setWidthsLoaded] = useState(false);
   const [resizing, setResizing] = useState<keyof ColumnWidths | null>(null);
+  
+  // Timer visibility state - persisted to localStorage
+  const [showTimers, setShowTimers] = useState(() => {
+    const stored = localStorage.getItem('queue-show-timers');
+    return stored !== 'false'; // Default to visible
+  });
+
+  const handleToggleTimers = useCallback(() => {
+    setShowTimers(prev => {
+      const newValue = !prev;
+      localStorage.setItem('queue-show-timers', String(newValue));
+      return newValue;
+    });
+  }, []);
 
   // Load saved column widths on mount
   useEffect(() => {
@@ -228,6 +243,15 @@ export function QueueTable({
               someSelected || allSelected ? "opacity-100" : "opacity-0 hover:opacity-100"
             )}
           />
+        </div>
+
+        {/* Timer column header */}
+        <div 
+          className="w-14 flex-shrink-0 px-1 flex items-center justify-center cursor-pointer"
+          onClick={handleToggleTimers}
+          title={showTimers ? "Click to hide timers" : "Click to show timers"}
+        >
+          <Clock className={cn("h-3 w-3", showTimers ? "text-gray-400" : "text-gray-300")} />
         </div>
 
         {/* Status */}
@@ -441,6 +465,8 @@ export function QueueTable({
                 presets={presets}
                 isSelected={selectedIds.has(item.id)}
                 onSelect={onSelectItem}
+                showTimers={showTimers}
+                onToggleTimers={handleToggleTimers}
               />
               {expandedId === item.id && (
                 <ExpandedRowPanel
