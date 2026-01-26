@@ -740,7 +740,7 @@ export function ExpandedRowPanel({
                   <div 
                     key={groupIndex} 
                     className={cn(
-                      "relative flex justify-center items-stretch group/row",
+                      "relative flex items-stretch group/row",
                       isMultiColumnRow ? "border-l-4 border-blue-400 bg-blue-50/30 hover:bg-blue-50/50" : "hover:bg-muted/10"
                     )}
                   >
@@ -761,7 +761,7 @@ export function ExpandedRowPanel({
                     
                     {/* Left: Link Column - only show if displayMode !== 'none' */}
                     {displayMode !== 'none' && (
-                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 min-w-[120px]">
+                    <div className="flex-1 flex flex-col justify-center py-1 pr-3 gap-1 items-end min-w-[120px]">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -856,6 +856,11 @@ export function ExpandedRowPanel({
                         </Popover>
                       ))}
                     </div>
+                    )}
+                    
+                    {/* Left spacer when link column is hidden */}
+                    {displayMode === 'none' && (
+                      <div className="flex-1" />
                     )}
                     
                     {/* Center: Image Column */}
@@ -982,9 +987,14 @@ export function ExpandedRowPanel({
                       })}
                     </div>
                     
+                    {/* Right spacer when alt text column is hidden */}
+                    {displayMode !== 'all' && (
+                      <div className="flex-1" />
+                    )}
+                    
                     {/* Right: Alt Text Column - only show if displayMode === 'all' */}
                     {displayMode === 'all' && (
-                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 w-[280px]">
+                    <div className="flex-1 flex flex-col justify-center py-1 pl-3 gap-1 min-w-[120px] max-w-[280px]">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
                           {isMultiColumnRow && (
