@@ -1,117 +1,128 @@
 
-## What's actually failing (definitive, with evidence)
+# Fix: Support Variable Export Scale from Figma Plugin
 
-This is **not a 4000px slicing/AI-limit bug anymore**, and it's **not the plugin "breaking" the pipeline logic**.
+## Summary
 
-The failure is happening **before** `process-campaign-queue` ever runs:
+The Figma plugin now sends an `exportScale` property (1 or 2) indicating whether the frame was exported at 1x or 2x resolution. The backend needs to:
+1. Accept and store this value
+2. Calculate and store the **actual exported image dimensions** (`width * exportScale`)
+3. Pass correct dimensions to downstream functions
 
-- `figma-ingest` uploads the frame to `upload-to-cloudinary`
-- `upload-to-cloudinary` returns an error from Cloudinary:
+## Current Behavior (Problem)
 
-**Edge logs show:**
-- `Cloudinary upload failed: File size too large. Got 11049918. Maximum is 10485760`
+| Field | What's Stored Now | What Should Be Stored |
+|-------|-------------------|----------------------|
+| `image_width` | Figma frame width (1x) | Actual exported width (width × exportScale) |
+| `image_height` | Figma frame height (1x) | Actual exported height (height × exportScale) |
+| `source_metadata.exportScale` | Not stored | 1 or 2 (from plugin) |
 
-So the real failure is **Cloudinary's 10MB upload limit**, not the 4000px height cap.  
-Tall images often exceed 10MB (especially PNG exports), which is why it correlates with ">4000px".
+**Why This Matters:**
+- `autoSliceImage()` in `process-campaign-queue` passes `item.image_width` and `item.image_height` to `auto-slice-v2`
+- While `auto-slice-v2` correctly extracts dimensions from the image header, having incorrect metadata can cause confusion and logging issues
+- Future functions might rely on `image_width`/`image_height` being accurate
 
-Because the upload fails, `figma-ingest` **does not create a campaign_queue record**, and therefore `process-campaign-queue` never triggers (which matches the absence of `process-campaign-queue` logs).
+## Solution
 
-## Why the "4000px fix" didn't help
+### File 1: `supabase/functions/figma-ingest/index.ts`
 
-The "dual-fetch AI (7900px) vs full-res slicing" fix lives in:
-- `supabase/functions/process-campaign-queue/index.ts`
+**Change 1: Update `FrameData` interface to include `exportScale`**
 
-That code only runs **after** an image URL exists.  
-Right now the image never successfully uploads (file-size limit), so we never reach that stage.
+Add the `exportScale` property:
+```typescript
+interface FrameData {
+  name: string;
+  width: number;        // Figma frame width (1x)
+  height: number;       // Figma frame height (1x)
+  exportScale?: number; // Export scale (1 or 2), defaults to 2
+  imageBase64: string;
+  figmaUrl?: string;
+}
+```
 
-## Definitive solution: make uploads robust against Cloudinary's 10MB limit (without sacrificing slice resolution)
+**Change 2: Calculate actual dimensions when creating campaign**
 
-### Goal
-Keep the current design intent:
-- **AI** gets a resized version (<= ~7900px height).
-- **Slices** use the highest-resolution version we can store and reliably process.
+Update the insert to use actual exported dimensions:
+```typescript
+// Calculate actual exported dimensions
+const exportScale = frame.exportScale || 2; // Default to 2 for backwards compatibility
+const actualWidth = Math.round(frame.width * exportScale);
+const actualHeight = Math.round(frame.height * exportScale);
 
-### Approach (recommended, minimal behavioral change)
-Implement **automatic server-side compression** inside `upload-to-cloudinary` so *all* callers benefit:
-- Figma plugin ingestion (`figma-ingest`)
-- Manual uploads / tests (`CampaignCreator`, `TestUploadModal`)
-- Any other uploads (slices already small, but fine)
+const { data: campaign, error: campaignError } = await supabase
+  .from('campaign_queue')
+  .insert({
+    user_id: userId,
+    brand_id: validBrandId,
+    source: 'figma',
+    source_url: frame.figmaUrl || null,
+    source_metadata: {
+      frameName: frame.name,
+      figmaWidth: frame.width,      // Original Figma dimensions
+      figmaHeight: frame.height,
+      exportScale: exportScale       // Store for reference
+    },
+    name: frame.name,
+    image_url: imageUrl,
+    image_width: actualWidth,       // ACTUAL exported width
+    image_height: actualHeight,     // ACTUAL exported height
+    provided_subject_line: subjectLine || null,
+    provided_preview_text: previewText || null,
+    status: 'processing',
+    processing_step: 'queued',
+    processing_percent: 0
+  })
+```
 
-### Step 1 — Update `upload-to-cloudinary` to auto-compress when too large
-File:
-- `supabase/functions/upload-to-cloudinary/index.ts`
+**Why this approach:**
+- **Backwards compatible**: If `exportScale` is not sent (older plugin versions), defaults to 2
+- **Accurate metadata**: `image_width` and `image_height` now reflect actual image dimensions
+- **Debugging support**: Original Figma dimensions and scale factor preserved in `source_metadata`
 
-Changes:
-1. Detect incoming payload size (approx decoded bytes from base64 length, or decode to bytes and measure).
-2. If under limit: upload as-is.
-3. If over ~9.5MB threshold:
-   - Decode the image using ImageScript
-   - Re-encode as **JPEG** (keeping pixel dimensions) at a high quality (e.g. 90)
-   - If still too large, step quality down (e.g. 85 → 80 → 75)
-   - If still too large at quality floor, apply a **minimal downscale** (e.g. cap width to 1200 or compute scale factor) while preserving aspect ratio
-4. Upload the compressed data URL to Cloudinary
-5. Return extra metadata (non-breaking) so we can debug:
-   - `wasCompressed`, `originalBytes`, `finalBytes`, `finalFormat`, `originalWidth/height`, `finalWidth/height`
+### No Changes Needed to Other Files
 
-Why this is "correct" for your requirement:
-- We preserve **full resolution in pixels** whenever possible.
-- Compression changes file size, not layout geometry; slices remain "HD".
-- If a file is so huge it cannot fit under the provider's hard cap, we downscale only as a last resort.
+The good news is that the core processing functions are already robust:
 
-### Step 2 — Improve error reporting in `figma-ingest` so the plugin can show the true reason
-File:
-- `supabase/functions/figma-ingest/index.ts`
+1. **`auto-slice-v2/index.ts`** - Extracts dimensions from image header (`getImageDimensions`), doesn't rely on passed dimensions
+2. **`cropAndUploadSlices`** - Uses `Image.decode()` to get actual dimensions, explicitly ignores passed parameters
+3. **`process-campaign-queue/index.ts`** - While it passes `item.image_width` and `item.image_height` to `autoSliceImage`, that function ignores these values
 
-Changes:
-- When `upload-to-cloudinary` fails, inspect `errText` and include a more specific message in the response `errors[]`, e.g.:
-  - "Image too large (>10MB). Try exporting at 1x scale or JPG."
-  - If our auto-compression runs but still can't fit: "Still too large after compression."
+## Data Flow After Fix
 
-This stops the "mystery failure" feeling and makes it obvious whether we're hitting a hard provider cap.
+```text
+Plugin exports frame at {exportScale}x
+         ↓
+Frame: {width: 600, height: 4500, exportScale: 1}
+         ↓
+figma-ingest calculates: actualWidth = 600 × 1 = 600
+                         actualHeight = 4500 × 1 = 4500
+         ↓
+campaign_queue stores:
+  - image_width: 600 (actual)
+  - image_height: 4500 (actual)
+  - source_metadata: {figmaWidth: 600, figmaHeight: 4500, exportScale: 1}
+         ↓
+auto-slice-v2 reads image header → confirms 600×4500 ✓
+         ↓
+cropAndUploadSlices decodes image → confirms 600×4500 ✓
+```
 
-### Step 3 — Ensure the "AI vs full-res slicing" logic stays intact
-File:
-- `supabase/functions/process-campaign-queue/index.ts` (already updated)
+## Files to Modify
 
-We keep the existing dual-fetch behavior:
-- AI: `getResizedCloudinaryUrl(..., h_7900)`
-- Slices: full-res URL (whatever was actually uploaded)
+| File | Changes |
+|------|---------|
+| `supabase/functions/figma-ingest/index.ts` | Add `exportScale` to FrameData interface; calculate and store actual dimensions |
 
-No changes needed here unless we find another unrelated cap.
+## Testing Verification
 
-### Step 4 — Verification checklist (how we'll prove it's fixed)
-1. Upload a frame that previously failed (>4000px tall).
-2. Confirm in logs:
-   - `upload-to-cloudinary` logs show `originalBytes` > 10MB, then `finalBytes` < 10MB, then success
-3. Confirm `figma-ingest` creates a `campaign_queue` record.
-4. Confirm `process-campaign-queue` runs and generates slices.
-5. Confirm slice images in Klaviyo look sharp (same pixel dimensions if compression-only path succeeded).
-
-## Why this isn't the plugin's fault
-The plugin is sending a large PNG (common for tall frames).  
-The backend currently passes it directly to Cloudinary, which enforces a 10MB cap.  
-So the "plugin correlation" is real, but the failure mechanism is the upload provider limit.
-
-## Scope of code changes (expected)
-- Edit: `supabase/functions/upload-to-cloudinary/index.ts` (core fix)
-- Edit: `supabase/functions/figma-ingest/index.ts` (better errors)
-- (Optional) Edit: UI places that show generic "Failed to upload" to include returned details (e.g., `TestUploadModal.tsx`) so the web UI also tells the truth.
-
-## Notes / Tradeoffs
-- If the frame is extremely large (pixel count), decoding and recompressing may be heavy. We'll add guardrails (downscale cap only when needed).
-- If you later upgrade the Cloudinary plan, the compression path remains useful but will run less often.
-
-## IMPLEMENTED ✅
-
-### Changes Made:
-
-1. **`upload-to-cloudinary/index.ts`** - Added auto-compression:
-   - Detects images >9.5MB before upload
-   - Uses ImageScript to decode and re-encode as JPEG
-   - Progressively lowers quality (92 → 85 → 78 → 70) until under limit
-   - Falls back to downscaling only if quality reduction isn't enough
-   - Returns compression metadata for debugging
-
-2. **`figma-ingest/index.ts`** - Better error messages:
-   - Parses Cloudinary errors and extracts hints
-   - Shows "Image too large (>10MB). Try exporting at 1x scale or as JPG." instead of generic failure
+After deployment:
+1. Export a frame >3500px tall from Figma (should use 1x scale)
+2. Check `campaign_queue` record:
+   - `image_width` = Figma width × 1
+   - `image_height` = Figma height × 1
+   - `source_metadata.exportScale` = 1
+3. Export a frame <3500px tall (should use 2x scale)
+4. Check `campaign_queue` record:
+   - `image_width` = Figma width × 2
+   - `image_height` = Figma height × 2
+   - `source_metadata.exportScale` = 2
+5. Verify slices are generated correctly for both cases
