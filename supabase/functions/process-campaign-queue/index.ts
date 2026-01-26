@@ -306,11 +306,11 @@ async function cropSlicesViaCloudinary(
         // Also generate a data URL placeholder that will be fetched on-demand for analysis
         // For now, we'll fetch small versions for the dataUrl needed by analyze-slices
         const smallCropUrl = getCloudinaryCropUrl(
-          getResizedCloudinaryUrl(originalImageUrl, 600, 7900),
+          getResizedCloudinaryUrl(originalImageUrl, 600, 5000),
           Math.round(xLeft * 600 / imageWidth),
-          Math.round(yTop * 7900 / imageHeight),
+          Math.round(yTop * 5000 / imageHeight),
           Math.round(colWidth * 600 / imageWidth),
-          Math.round(sliceHeight * 7900 / imageHeight)
+          Math.round(sliceHeight * 5000 / imageHeight)
         );
 
         uploadedSlices.push({
@@ -391,9 +391,13 @@ async function fetchSliceDataUrlsForAnalysis(
         return { ...slice, dataUrl: null };
       }
       
+      // Use actual content-type from Cloudinary response (fixes JPEG/PNG mismatch)
+      const contentType = response.headers.get('content-type') ?? 'image/png';
+      const mime = contentType.split(';')[0]; // Strip charset if present
+      
       const buffer = await response.arrayBuffer();
       const base64 = chunkedArrayBufferToBase64(buffer);
-      const dataUrl = `data:image/jpeg;base64,${base64}`;
+      const dataUrl = `data:${mime};base64,${base64}`;
       
       return { ...slice, dataUrl };
     } catch (err) {
@@ -428,9 +432,14 @@ async function analyzeSlices(
       console.error('[process] Failed to fetch resized image for analysis');
       return null;
     }
+    
+    // Use actual content-type from Cloudinary response (fixes JPEG/PNG mismatch)
+    const contentType = imageResponse.headers.get('content-type') ?? 'image/png';
+    const mime = contentType.split(';')[0]; // Strip charset if present
+    
     const imageBuffer = await imageResponse.arrayBuffer();
     const imageBase64 = chunkedArrayBufferToBase64(imageBuffer);
-    const fullImageDataUrl = `data:image/png;base64,${imageBase64}`;
+    const fullImageDataUrl = `data:${mime};base64,${imageBase64}`;
     
     // Fetch small dataUrls for each slice (for individual slice analysis)
     const slicesWithDataUrls = await fetchSliceDataUrlsForAnalysis(
@@ -479,11 +488,13 @@ async function analyzeSlices(
       analysisByIndex.set(a.index, a);
     }
     
-    // Merge analysis into slices (use slicesWithDataUrls which has the dataUrls)
+    // Merge analysis into slices, stripping dataUrl to prevent DB bloat
     return slicesWithDataUrls.map((slice, i) => {
       const analysis = analysisByIndex.get(i);
+      // Destructure to remove dataUrl and smallCropUrl (analysis-only fields)
+      const { dataUrl, smallCropUrl, ...sliceWithoutAnalysisFields } = slice;
       return {
-        ...slice,
+        ...sliceWithoutAnalysisFields,
         altText: analysis?.altText !== undefined && analysis?.altText !== null ? analysis.altText : `Email section ${i + 1}`,
         link: analysis?.suggestedLink || slice.link || null,
         isClickable: analysis?.isClickable ?? true,
