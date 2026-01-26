@@ -210,11 +210,12 @@ async function detectBrand(
 }
 
 // Step 3: Auto-slice the image
+// Returns analyzed dimensions (what Claude actually saw) for coordinate scaling
 async function autoSliceImage(
   imageBase64: string,
   imageWidth: number,
   imageHeight: number
-): Promise<{ slices: any[]; footerStartPercent: number } | null> {
+): Promise<{ slices: any[]; footerStartPercent: number; analyzedWidth: number; analyzedHeight: number } | null> {
   console.log('[process] Step 3: Auto-slicing image...');
 
   try {
@@ -246,12 +247,19 @@ async function autoSliceImage(
 
     const footerStartPercent = result.footerStartY / result.imageHeight * 100;
     
+    // CRITICAL: Capture the actual dimensions Claude analyzed (e.g., 454x5000 after c_limit resize)
+    const analyzedWidth = result.imageWidth;
+    const analyzedHeight = result.imageHeight;
+    
     console.log('[process] Found', result.slices?.length || 0, 'slices');
-    console.log('[process] Actual image dimensions from AI:', result.imageWidth, 'x', result.imageHeight);
+    console.log('[process] Analyzed dimensions (Claude saw):', analyzedWidth, 'x', analyzedHeight);
+    console.log('[process] Original dimensions (for cropping):', imageWidth, 'x', imageHeight);
     
     return {
       slices: result.slices || [],
-      footerStartPercent
+      footerStartPercent,
+      analyzedWidth,
+      analyzedHeight
     };
 
   } catch (err) {
@@ -262,22 +270,33 @@ async function autoSliceImage(
 
 // Step 3.5: Generate slice URLs via Cloudinary server-side cropping (ZERO memory usage)
 // Uses Cloudinary URL transformations instead of downloading/decoding/re-uploading
+// CRITICAL: Scales coordinates from analyzed-image-space to original-image-space
 async function cropSlicesViaCloudinary(
   originalImageUrl: string,
   sliceBoundaries: any[],
-  imageWidth: number,
-  imageHeight: number
+  originalWidth: number,
+  originalHeight: number,
+  analyzedWidth: number,
+  analyzedHeight: number
 ): Promise<any[]> {
   console.log('[process] Step 3.5: Generating slice URLs via Cloudinary transformations (zero memory)...');
-  console.log('[process] Image dimensions for cropping:', imageWidth, 'x', imageHeight);
+  console.log('[process] Original dimensions (for cropping):', originalWidth, 'x', originalHeight);
+  console.log('[process] Analyzed dimensions (from AI):', analyzedWidth, 'x', analyzedHeight);
+
+  // Calculate scale factors to map AI coordinates to original image
+  const scaleX = originalWidth / analyzedWidth;
+  const scaleY = originalHeight / analyzedHeight;
+  console.log('[process] Scale factors: X=', scaleX.toFixed(3), 'Y=', scaleY.toFixed(3));
 
   const uploadedSlices: any[] = [];
   let globalRowIndex = 0;
 
   for (let i = 0; i < sliceBoundaries.length; i++) {
     const slice = sliceBoundaries[i];
-    const yTop = slice.yTop;
-    const yBottom = slice.yBottom;
+    
+    // CRITICAL: Scale Y coordinates from analyzed-image-space to original-image-space
+    const yTop = Math.round(slice.yTop * scaleY);
+    const yBottom = Math.round(slice.yBottom * scaleY);
     const sliceHeight = yBottom - yTop;
 
     // Check for horizontal split
@@ -286,42 +305,35 @@ async function cropSlicesViaCloudinary(
       
       console.log(`[process] Slice ${i + 1}: Horizontal split into ${columns} columns`);
       
-      // Calculate column boundaries in pixels
-      const xBoundaries = [
+      // Calculate column boundaries in analyzed-image-space pixels, then scale to original
+      const analyzedXBoundaries = [
         0,
-        ...(gutterPositions || []).map((p: number) => Math.round(imageWidth * p / 100)),
-        imageWidth
+        ...(gutterPositions || []).map((p: number) => Math.round(analyzedWidth * p / 100)),
+        analyzedWidth
       ];
 
       // Generate Cloudinary crop URL for each column
       for (let col = 0; col < columns; col++) {
-        const xLeft = xBoundaries[col];
-        const xRight = xBoundaries[col + 1];
+        // Scale X coordinates from analyzed-image-space to original-image-space
+        const xLeft = Math.round(analyzedXBoundaries[col] * scaleX);
+        const xRight = Math.round(analyzedXBoundaries[col + 1] * scaleX);
         const colWidth = xRight - xLeft;
 
-        console.log(`[process] Column ${col + 1}/${columns}: x=${xLeft}, y=${yTop}, w=${colWidth}, h=${sliceHeight}`);
+        console.log(`[process] Column ${col + 1}/${columns}: x=${xLeft}, y=${yTop}, w=${colWidth}, h=${sliceHeight} (scaled from analyzed y=${slice.yTop})`);
 
         const croppedUrl = getCloudinaryCropUrl(originalImageUrl, xLeft, yTop, colWidth, sliceHeight);
-        
-        // Also generate a data URL placeholder that will be fetched on-demand for analysis
-        // For now, we'll fetch small versions for the dataUrl needed by analyze-slices
-        const smallCropUrl = getCloudinaryCropUrl(
-          getResizedCloudinaryUrl(originalImageUrl, 600, 5000),
-          Math.round(xLeft * 600 / imageWidth),
-          Math.round(yTop * 5000 / imageHeight),
-          Math.round(colWidth * 600 / imageWidth),
-          Math.round(sliceHeight * 5000 / imageHeight)
-        );
 
         uploadedSlices.push({
           ...slice,
           imageUrl: croppedUrl,
           dataUrl: null, // Will be populated on-demand for analysis
-          smallCropUrl, // For fetching small version if needed
           width: colWidth,
           height: sliceHeight,
-          startPercent: (yTop / imageHeight) * 100,
-          endPercent: (yBottom / imageHeight) * 100,
+          // Store ORIGINAL coordinates for future reference
+          yTop: yTop,
+          yBottom: yBottom,
+          startPercent: (yTop / originalHeight) * 100,
+          endPercent: (yBottom / originalHeight) * 100,
           type: slice.hasCTA ? 'cta' : 'image',
           column: col,
           totalColumns: columns,
@@ -330,18 +342,21 @@ async function cropSlicesViaCloudinary(
       }
     } else {
       // Single column (existing behavior)
-      console.log(`[process] Slice ${i + 1}: Single column, y=${yTop}, h=${sliceHeight}, w=${imageWidth}`);
+      console.log(`[process] Slice ${i + 1}: Single column, y=${yTop}, h=${sliceHeight}, w=${originalWidth} (scaled from analyzed y=${slice.yTop})`);
 
-      const croppedUrl = getCloudinaryCropUrl(originalImageUrl, 0, yTop, imageWidth, sliceHeight);
+      const croppedUrl = getCloudinaryCropUrl(originalImageUrl, 0, yTop, originalWidth, sliceHeight);
       
       uploadedSlices.push({
         ...slice,
         imageUrl: croppedUrl,
         dataUrl: null, // Will be populated on-demand for analysis
-        width: imageWidth,
+        width: originalWidth,
         height: sliceHeight,
-        startPercent: (yTop / imageHeight) * 100,
-        endPercent: (yBottom / imageHeight) * 100,
+        // Store ORIGINAL coordinates for future reference
+        yTop: yTop,
+        yBottom: yBottom,
+        startPercent: (yTop / originalHeight) * 100,
+        endPercent: (yBottom / originalHeight) * 100,
         type: slice.hasCTA ? 'cta' : 'image',
         column: 0,
         totalColumns: 1,
@@ -357,37 +372,53 @@ async function cropSlicesViaCloudinary(
 }
 
 // Fetch slice data URLs for analysis (small versions, on-demand)
+// NOTE: Slices now have coordinates in original-image-space (already scaled by cropSlicesViaCloudinary)
 async function fetchSliceDataUrlsForAnalysis(
   slices: any[],
   originalImageUrl: string,
-  imageWidth: number,
-  imageHeight: number
+  originalWidth: number,
+  originalHeight: number
 ): Promise<any[]> {
   console.log('[process] Fetching slice dataUrls for analysis...');
+  console.log('[process] Original image dimensions:', originalWidth, 'x', originalHeight);
   
-  // Calculate the scale factor between original and AI-sized image (5000px to stay under 5MB base64)
+  // Calculate the scale factor to resize for AI analysis (5000px max to stay under 5MB base64)
   const aiMaxHeight = 5000;
-  const scale = imageHeight > aiMaxHeight ? aiMaxHeight / imageHeight : 1;
-  const scaledWidth = Math.round(imageWidth * scale);
-  const scaledHeight = Math.round(imageHeight * scale);
+  const scale = originalHeight > aiMaxHeight ? aiMaxHeight / originalHeight : 1;
+  const aiWidth = Math.round(originalWidth * scale);
+  const aiHeight = Math.round(originalHeight * scale);
   
-  console.log(`[process] Scale factor: ${scale}, scaled dimensions: ${scaledWidth}x${scaledHeight}`);
+  console.log(`[process] AI analysis scale factor: ${scale.toFixed(3)}, AI dimensions: ${aiWidth}x${aiHeight}`);
   
   const fetchPromises = slices.map(async (slice, i) => {
     try {
-      // Calculate scaled crop coordinates
+      // Slice coordinates are already in original-image-space
+      // Scale them to AI-analysis-space for the resized image crop
       const scaledY = Math.round(slice.yTop * scale);
       const scaledH = Math.round((slice.yBottom - slice.yTop) * scale);
-      const scaledX = slice.column > 0 ? Math.round((slice.width * slice.column) * scale) : 0;
       const scaledW = Math.round(slice.width * scale);
       
+      // For multi-column slices, calculate X position based on column index and width
+      // The slice.width is already in original-image-space
+      let originalX = 0;
+      if (slice.totalColumns > 1 && slice.column > 0) {
+        // Parse X from the imageUrl crop parameters, or calculate from column position
+        // Since we don't have explicit xLeft stored, derive from startPercent of previous columns
+        // Actually, we can extract from the imageUrl's crop params
+        const cropMatch = slice.imageUrl?.match(/c_crop,x_(\d+),y_(\d+)/);
+        if (cropMatch) {
+          originalX = parseInt(cropMatch[1], 10);
+        }
+      }
+      const scaledX = Math.round(originalX * scale);
+      
       // Get resized image URL first, then apply crop
-      const resizedUrl = getResizedCloudinaryUrl(originalImageUrl, scaledWidth, scaledHeight);
+      const resizedUrl = getResizedCloudinaryUrl(originalImageUrl, aiWidth, aiHeight);
       const cropUrl = getCloudinaryCropUrl(resizedUrl, scaledX, scaledY, scaledW, scaledH);
       
       const response = await fetch(cropUrl);
       if (!response.ok) {
-        console.error(`[process] Failed to fetch slice ${i} dataUrl`);
+        console.error(`[process] Failed to fetch slice ${i} dataUrl, status: ${response.status}`);
         return { ...slice, dataUrl: null };
       }
       
@@ -856,11 +887,14 @@ serve(async (req) => {
     });
 
     // Use Cloudinary URL transformations for slice cropping (zero memory usage)
+    // CRITICAL: Pass both original dimensions AND analyzed dimensions for coordinate scaling
     const uploadedSlices = await cropSlicesViaCloudinary(
       imageResult.imageUrl,
       sliceResult.slices,
-      item.image_width || 600,
-      item.image_height || 2000
+      item.image_width || 600,        // Original dimensions (for cropping)
+      item.image_height || 2000,
+      sliceResult.analyzedWidth,      // Analyzed dimensions (what Claude saw)
+      sliceResult.analyzedHeight
     );
 
     if (uploadedSlices.length === 0) {
