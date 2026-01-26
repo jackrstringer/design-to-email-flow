@@ -331,6 +331,7 @@ export default function CampaignPage() {
         klaviyoLists,
         selectedListId,
         earlyGenerationSessionKey, // Pass for early SL/PT lookup
+        originalImageUrl, // Pass for early copy verification
       }
     });
   };

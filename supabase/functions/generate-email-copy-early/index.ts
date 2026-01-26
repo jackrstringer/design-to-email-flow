@@ -373,7 +373,17 @@ Respond in JSON:
           throw new Error(`Failed to fetch image: ${imageResponse.status}`);
         }
         const imageBuffer = await imageResponse.arrayBuffer();
-        const base64Data = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        
+        // Use chunked base64 conversion to avoid stack overflow on large images
+        const uint8Array = new Uint8Array(imageBuffer);
+        const CHUNK_SIZE = 32768; // Process 32KB at a time
+        let base64Data = '';
+        for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+          const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+          base64Data += String.fromCharCode(...chunk);
+        }
+        base64Data = btoa(base64Data);
+        
         const contentType = imageResponse.headers.get('content-type') || 'image/png';
         
         console.log('[EARLY] Image fetched successfully, size:', imageBuffer.byteLength, 'bytes');

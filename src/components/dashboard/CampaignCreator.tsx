@@ -114,7 +114,10 @@ export function CampaignCreator({
   }, [pendingCampaign, selectedBrand, viewState]);
 
   // Fire-and-forget: Upload image and start early SL/PT generation immediately
-  const startEarlyGeneration = async (dataUrl: string, brand: Brand) => {
+  // Returns the session key for guaranteed handoff (don't rely on stale state)
+  const startEarlyGeneration = async (dataUrl: string, brand: Brand): Promise<string> => {
+    // CRITICAL: Always generate a fresh session key for each new upload
+    // This prevents stale keys from previous uploads from being used
     const sessionKey = crypto.randomUUID();
     setEarlyGenerationSessionKey(sessionKey);
     console.log('[EARLY] Starting immediate SL/PT generation, session:', sessionKey);
@@ -154,6 +157,8 @@ export function CampaignCreator({
     } catch (err) {
       console.error('[EARLY] Error starting early generation:', err);
     }
+    
+    return sessionKey; // Return for deterministic handoff
   };
 
   const processSlices = async (slicePositions: number[], sliceTypes: SliceType[], columnConfigs: ColumnConfig[]) => {
