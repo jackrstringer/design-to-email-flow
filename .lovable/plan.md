@@ -1,7 +1,7 @@
 
-## What’s actually failing (definitive, with evidence)
+## What's actually failing (definitive, with evidence)
 
-This is **not a 4000px slicing/AI-limit bug anymore**, and it’s **not the plugin “breaking” the pipeline logic**.
+This is **not a 4000px slicing/AI-limit bug anymore**, and it's **not the plugin "breaking" the pipeline logic**.
 
 The failure is happening **before** `process-campaign-queue` ever runs:
 
@@ -11,20 +11,20 @@ The failure is happening **before** `process-campaign-queue` ever runs:
 **Edge logs show:**
 - `Cloudinary upload failed: File size too large. Got 11049918. Maximum is 10485760`
 
-So the real failure is **Cloudinary’s 10MB upload limit**, not the 4000px height cap.  
-Tall images often exceed 10MB (especially PNG exports), which is why it correlates with “>4000px”.
+So the real failure is **Cloudinary's 10MB upload limit**, not the 4000px height cap.  
+Tall images often exceed 10MB (especially PNG exports), which is why it correlates with ">4000px".
 
 Because the upload fails, `figma-ingest` **does not create a campaign_queue record**, and therefore `process-campaign-queue` never triggers (which matches the absence of `process-campaign-queue` logs).
 
-## Why the “4000px fix” didn’t help
+## Why the "4000px fix" didn't help
 
-The “dual-fetch AI (7900px) vs full-res slicing” fix lives in:
+The "dual-fetch AI (7900px) vs full-res slicing" fix lives in:
 - `supabase/functions/process-campaign-queue/index.ts`
 
 That code only runs **after** an image URL exists.  
 Right now the image never successfully uploads (file-size limit), so we never reach that stage.
 
-## Definitive solution: make uploads robust against Cloudinary’s 10MB limit (without sacrificing slice resolution)
+## Definitive solution: make uploads robust against Cloudinary's 10MB limit (without sacrificing slice resolution)
 
 ### Goal
 Keep the current design intent:
@@ -53,10 +53,10 @@ Changes:
 5. Return extra metadata (non-breaking) so we can debug:
    - `wasCompressed`, `originalBytes`, `finalBytes`, `finalFormat`, `originalWidth/height`, `finalWidth/height`
 
-Why this is “correct” for your requirement:
+Why this is "correct" for your requirement:
 - We preserve **full resolution in pixels** whenever possible.
-- Compression changes file size, not layout geometry; slices remain “HD”.
-- If a file is so huge it cannot fit under the provider’s hard cap, we downscale only as a last resort.
+- Compression changes file size, not layout geometry; slices remain "HD".
+- If a file is so huge it cannot fit under the provider's hard cap, we downscale only as a last resort.
 
 ### Step 2 — Improve error reporting in `figma-ingest` so the plugin can show the true reason
 File:
@@ -64,12 +64,12 @@ File:
 
 Changes:
 - When `upload-to-cloudinary` fails, inspect `errText` and include a more specific message in the response `errors[]`, e.g.:
-  - “Image too large (>10MB). Try exporting at 1x scale or JPG.”
-  - If our auto-compression runs but still can’t fit: “Still too large after compression.”
+  - "Image too large (>10MB). Try exporting at 1x scale or JPG."
+  - If our auto-compression runs but still can't fit: "Still too large after compression."
 
-This stops the “mystery failure” feeling and makes it obvious whether we’re hitting a hard provider cap.
+This stops the "mystery failure" feeling and makes it obvious whether we're hitting a hard provider cap.
 
-### Step 3 — Ensure the “AI vs full-res slicing” logic stays intact
+### Step 3 — Ensure the "AI vs full-res slicing" logic stays intact
 File:
 - `supabase/functions/process-campaign-queue/index.ts` (already updated)
 
@@ -79,7 +79,7 @@ We keep the existing dual-fetch behavior:
 
 No changes needed here unless we find another unrelated cap.
 
-### Step 4 — Verification checklist (how we’ll prove it’s fixed)
+### Step 4 — Verification checklist (how we'll prove it's fixed)
 1. Upload a frame that previously failed (>4000px tall).
 2. Confirm in logs:
    - `upload-to-cloudinary` logs show `originalBytes` > 10MB, then `finalBytes` < 10MB, then success
@@ -87,16 +87,31 @@ No changes needed here unless we find another unrelated cap.
 4. Confirm `process-campaign-queue` runs and generates slices.
 5. Confirm slice images in Klaviyo look sharp (same pixel dimensions if compression-only path succeeded).
 
-## Why this isn’t the plugin’s fault
+## Why this isn't the plugin's fault
 The plugin is sending a large PNG (common for tall frames).  
 The backend currently passes it directly to Cloudinary, which enforces a 10MB cap.  
-So the “plugin correlation” is real, but the failure mechanism is the upload provider limit.
+So the "plugin correlation" is real, but the failure mechanism is the upload provider limit.
 
 ## Scope of code changes (expected)
 - Edit: `supabase/functions/upload-to-cloudinary/index.ts` (core fix)
 - Edit: `supabase/functions/figma-ingest/index.ts` (better errors)
-- (Optional) Edit: UI places that show generic “Failed to upload” to include returned details (e.g., `TestUploadModal.tsx`) so the web UI also tells the truth.
+- (Optional) Edit: UI places that show generic "Failed to upload" to include returned details (e.g., `TestUploadModal.tsx`) so the web UI also tells the truth.
 
 ## Notes / Tradeoffs
-- If the frame is extremely large (pixel count), decoding and recompressing may be heavy. We’ll add guardrails (downscale cap only when needed).
+- If the frame is extremely large (pixel count), decoding and recompressing may be heavy. We'll add guardrails (downscale cap only when needed).
 - If you later upgrade the Cloudinary plan, the compression path remains useful but will run less often.
+
+## IMPLEMENTED ✅
+
+### Changes Made:
+
+1. **`upload-to-cloudinary/index.ts`** - Added auto-compression:
+   - Detects images >9.5MB before upload
+   - Uses ImageScript to decode and re-encode as JPEG
+   - Progressively lowers quality (92 → 85 → 78 → 70) until under limit
+   - Falls back to downscaling only if quality reduction isn't enough
+   - Returns compression metadata for debugging
+
+2. **`figma-ingest/index.ts`** - Better error messages:
+   - Parses Cloudinary errors and extracts hints
+   - Shows "Image too large (>10MB). Try exporting at 1x scale or as JPG." instead of generic failure

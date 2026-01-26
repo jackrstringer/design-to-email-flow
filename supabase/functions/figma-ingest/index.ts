@@ -132,7 +132,25 @@ serve(async (req) => {
         if (!uploadResponse.ok) {
           const errText = await uploadResponse.text();
           console.error('[figma-ingest] Cloudinary upload failed:', errText);
-          errors.push({ frame: frame.name, error: 'Failed to upload image' });
+          
+          // Parse error for better messaging
+          let errorMessage = 'Failed to upload image';
+          try {
+            const errJson = JSON.parse(errText);
+            if (errJson.hint) {
+              errorMessage = errJson.hint;
+            } else if (errText.includes('File size too large') || errText.includes('too large')) {
+              errorMessage = 'Image too large (>10MB). Try exporting at 1x scale or as JPG.';
+            } else if (errJson.error) {
+              errorMessage = errJson.error;
+            }
+          } catch {
+            if (errText.includes('File size too large') || errText.includes('too large')) {
+              errorMessage = 'Image too large (>10MB). Try exporting at 1x scale or as JPG.';
+            }
+          }
+          
+          errors.push({ frame: frame.name, error: errorMessage });
           continue;
         }
 
