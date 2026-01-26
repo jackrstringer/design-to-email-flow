@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,6 +24,25 @@ function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: numbe
   return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
 }
 
+// Generate Cloudinary crop URL (server-side cropping, zero memory)
+function getCloudinaryCropUrl(url: string, x: number, y: number, w: number, h: number): string {
+  if (!url || !url.includes('cloudinary.com/')) return url;
+  
+  const uploadIndex = url.indexOf('/upload/');
+  if (uploadIndex === -1) return url;
+  
+  const before = url.substring(0, uploadIndex + 8); // includes '/upload/'
+  const after = url.substring(uploadIndex + 8);
+  
+  // Round all values to integers for Cloudinary
+  const rx = Math.round(x);
+  const ry = Math.round(y);
+  const rw = Math.round(w);
+  const rh = Math.round(h);
+  
+  return `${before}c_crop,x_${rx},y_${ry},w_${rw},h_${rh}/${after}`;
+}
+
 // Helper to update campaign queue status
 async function updateQueueItem(
   supabase: any,
@@ -41,84 +59,47 @@ async function updateQueueItem(
   }
 }
 
-// Helper to convert base64 to Uint8Array
-function base64ToBytes(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+// Memory-efficient chunked base64 conversion (avoids stack overflow on large images)
+function chunkedArrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 32768; // 32KB chunks
+  let result = '';
+  
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    result += String.fromCharCode.apply(null, Array.from(chunk));
   }
-  return bytes;
+  
+  return btoa(result);
 }
 
-// Helper to convert Uint8Array to base64
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-// Step 1: Fetch image from URL or use existing uploaded image
-// Returns TWO base64 versions:
-// - imageBase64ForAI: Resized to 7900px max (for AI processing within Claude's 8000px limit)
-// - imageBase64FullRes: Original full resolution (for high-quality Klaviyo slice cropping)
+// Step 1: Fetch image from URL - ONLY AI-sized version (memory efficient)
+// Returns: imageBase64ForAI (resized for Claude) + imageUrl (original for Cloudinary cropping)
 async function fetchAndUploadImage(
   supabase: any,
   item: any
-): Promise<{ imageUrl: string; imageBase64ForAI: string; imageBase64FullRes: string } | null> {
-  console.log('[process] Step 1: Fetching image (dual-fetch for AI + full-res)...');
+): Promise<{ imageUrl: string; imageBase64ForAI: string } | null> {
+  console.log('[process] Step 1: Fetching AI-sized image only (memory efficient)...');
 
-  // If image_url already exists (from figma plugin or upload), fetch both versions
   if (item.image_url) {
-    console.log('[process] Image already uploaded, fetching both AI-sized and full-res...');
     try {
       // For AI processing: resize to 7900px max (within Claude's 8000px limit)
       const aiResizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 7900);
       console.log('[process] AI-sized URL:', aiResizedUrl.substring(0, 80) + '...');
       
-      // For slice cropping: use original full resolution
-      const fullResUrl = item.image_url;
-      console.log('[process] Full-res URL:', fullResUrl.substring(0, 80) + '...');
+      const response = await fetch(aiResizedUrl);
+      if (!response.ok) throw new Error('Failed to fetch AI-sized image');
       
-      // Fetch both in parallel for efficiency
-      const [aiResponse, fullResResponse] = await Promise.all([
-        fetch(aiResizedUrl),
-        fetch(fullResUrl)
-      ]);
+      const buffer = await response.arrayBuffer();
       
-      if (!aiResponse.ok) throw new Error('Failed to fetch AI-sized image');
-      if (!fullResResponse.ok) throw new Error('Failed to fetch full-res image');
+      // Use chunked base64 conversion (memory efficient)
+      const base64 = chunkedArrayBufferToBase64(buffer);
       
-      const [aiBuffer, fullResBuffer] = await Promise.all([
-        aiResponse.arrayBuffer(),
-        fullResResponse.arrayBuffer()
-      ]);
-      
-      // Convert AI-sized to base64
-      const aiUint8Array = new Uint8Array(aiBuffer);
-      let aiBinary = '';
-      for (let i = 0; i < aiUint8Array.length; i++) {
-        aiBinary += String.fromCharCode(aiUint8Array[i]);
-      }
-      const aiBase64 = btoa(aiBinary);
-      
-      // Convert full-res to base64
-      const fullResUint8Array = new Uint8Array(fullResBuffer);
-      let fullResBinary = '';
-      for (let i = 0; i < fullResUint8Array.length; i++) {
-        fullResBinary += String.fromCharCode(fullResUint8Array[i]);
-      }
-      const fullResBase64 = btoa(fullResBinary);
-      
-      console.log('[process] Fetched AI-sized:', Math.round(aiBuffer.byteLength / 1024), 'KB');
-      console.log('[process] Fetched full-res:', Math.round(fullResBuffer.byteLength / 1024), 'KB');
+      console.log('[process] Fetched AI-sized:', Math.round(buffer.byteLength / 1024), 'KB');
       
       return { 
-        imageUrl: item.image_url, 
-        imageBase64ForAI: aiBase64,
-        imageBase64FullRes: fullResBase64
+        imageUrl: item.image_url,  // Original URL for Cloudinary server-side cropping
+        imageBase64ForAI: base64 
       };
     } catch (err) {
       console.error('[process] Failed to fetch image from URL:', err);
@@ -266,6 +247,7 @@ async function autoSliceImage(
     const footerStartPercent = result.footerStartY / result.imageHeight * 100;
     
     console.log('[process] Found', result.slices?.length || 0, 'slices');
+    console.log('[process] Actual image dimensions from AI:', result.imageWidth, 'x', result.imageHeight);
     
     return {
       slices: result.slices || [],
@@ -278,185 +260,158 @@ async function autoSliceImage(
   }
 }
 
-// Step 3.5: Crop and upload each slice individually (with horizontal split support)
-// OPTIMIZED: Parallel uploads to Cloudinary
-async function cropAndUploadSlices(
-  imageBase64: string,
+// Step 3.5: Generate slice URLs via Cloudinary server-side cropping (ZERO memory usage)
+// Uses Cloudinary URL transformations instead of downloading/decoding/re-uploading
+async function cropSlicesViaCloudinary(
+  originalImageUrl: string,
   sliceBoundaries: any[],
   imageWidth: number,
   imageHeight: number
 ): Promise<any[]> {
-  console.log('[process] Step 3.5: Cropping and uploading slices (parallel, with horizontal split support)...');
+  console.log('[process] Step 3.5: Generating slice URLs via Cloudinary transformations (zero memory)...');
+  console.log('[process] Image dimensions for cropping:', imageWidth, 'x', imageHeight);
 
-  try {
-    // Decode the full image
-    const imageBytes = base64ToBytes(imageBase64);
-    const fullImage = await Image.decode(imageBytes);
+  const uploadedSlices: any[] = [];
+  let globalRowIndex = 0;
 
-    // CRITICAL FIX: Use actual decoded image dimensions, NOT the passed parameters
-    // The passed imageWidth/imageHeight may be wrong (1x vs 2x retina mismatch)
-    const actualWidth = fullImage.width;
-    const actualHeight = fullImage.height;
-    
-    console.log(`[process] Actual image dimensions: ${actualWidth}x${actualHeight} (passed: ${imageWidth}x${imageHeight})`);
+  for (let i = 0; i < sliceBoundaries.length; i++) {
+    const slice = sliceBoundaries[i];
+    const yTop = slice.yTop;
+    const yBottom = slice.yBottom;
+    const sliceHeight = yBottom - yTop;
 
-    // Phase 1: Crop all slices (CPU-bound, fast, sequential is fine)
-    const croppedSlices: { 
-      slice: any; 
-      sliceDataUrl: string; 
-      height: number; 
-      width: number;
-      yTop: number; 
-      yBottom: number;
-      column: number;
-      totalColumns: number;
-      rowIndex: number;
-    }[] = [];
-    
-    let globalRowIndex = 0;
-    
-    for (let i = 0; i < sliceBoundaries.length; i++) {
-      const slice = sliceBoundaries[i];
-      const yTop = slice.yTop;
-      const yBottom = slice.yBottom;
-      const sliceHeight = yBottom - yTop;
+    // Check for horizontal split
+    if (slice.horizontalSplit && slice.horizontalSplit.columns > 1) {
+      const { columns, gutterPositions } = slice.horizontalSplit;
       
-      // Check for horizontal split
-      if (slice.horizontalSplit && slice.horizontalSplit.columns > 1) {
-        const { columns, gutterPositions } = slice.horizontalSplit;
+      console.log(`[process] Slice ${i + 1}: Horizontal split into ${columns} columns`);
+      
+      // Calculate column boundaries in pixels
+      const xBoundaries = [
+        0,
+        ...(gutterPositions || []).map((p: number) => Math.round(imageWidth * p / 100)),
+        imageWidth
+      ];
+
+      // Generate Cloudinary crop URL for each column
+      for (let col = 0; col < columns; col++) {
+        const xLeft = xBoundaries[col];
+        const xRight = xBoundaries[col + 1];
+        const colWidth = xRight - xLeft;
+
+        console.log(`[process] Column ${col + 1}/${columns}: x=${xLeft}, y=${yTop}, w=${colWidth}, h=${sliceHeight}`);
+
+        const croppedUrl = getCloudinaryCropUrl(originalImageUrl, xLeft, yTop, colWidth, sliceHeight);
         
-        console.log(`[process] Slice ${i + 1}: Horizontal split into ${columns} columns`);
-        
-        // Calculate column boundaries in pixels
-        // gutterPositions are percentages, e.g., [33.33, 66.66] for 3 columns
-        const xBoundaries = [
-          0,
-          ...(gutterPositions || []).map((p: number) => Math.round(actualWidth * p / 100)),
-          actualWidth
-        ];
+        // Also generate a data URL placeholder that will be fetched on-demand for analysis
+        // For now, we'll fetch small versions for the dataUrl needed by analyze-slices
+        const smallCropUrl = getCloudinaryCropUrl(
+          getResizedCloudinaryUrl(originalImageUrl, 600, 7900),
+          Math.round(xLeft * 600 / imageWidth),
+          Math.round(yTop * 7900 / imageHeight),
+          Math.round(colWidth * 600 / imageWidth),
+          Math.round(sliceHeight * 7900 / imageHeight)
+        );
 
-        // Crop each column
-        for (let col = 0; col < columns; col++) {
-          const xLeft = xBoundaries[col];
-          const xRight = xBoundaries[col + 1];
-          const colWidth = xRight - xLeft;
-
-          console.log(`[process] Column ${col + 1}/${columns}: x=${xLeft}-${xRight}, w=${colWidth}, h=${sliceHeight}`);
-
-          const columnImage = fullImage.clone().crop(xLeft, yTop, colWidth, sliceHeight);
-          const columnBytes = await columnImage.encodeJPEG(90);
-          const columnBase64 = bytesToBase64(columnBytes);
-          const columnDataUrl = `data:image/jpeg;base64,${columnBase64}`;
-
-          croppedSlices.push({
-            slice,
-            sliceDataUrl: columnDataUrl,
-            height: sliceHeight,
-            width: colWidth,
-            yTop,
-            yBottom,
-            column: col,
-            totalColumns: columns,
-            rowIndex: globalRowIndex,
-          });
-        }
-      } else {
-        // Single column (existing behavior)
-        console.log(`[process] Slice ${i + 1}: Single column, y=${yTop}-${yBottom}, h=${sliceHeight}, w=${actualWidth}`);
-
-        const sliceImage = fullImage.clone().crop(0, yTop, actualWidth, sliceHeight);
-        const sliceBytes = await sliceImage.encodeJPEG(90);
-        const sliceBase64 = bytesToBase64(sliceBytes);
-        const sliceDataUrl = `data:image/jpeg;base64,${sliceBase64}`;
-        
-        croppedSlices.push({
-          slice,
-          sliceDataUrl,
+        uploadedSlices.push({
+          ...slice,
+          imageUrl: croppedUrl,
+          dataUrl: null, // Will be populated on-demand for analysis
+          smallCropUrl, // For fetching small version if needed
+          width: colWidth,
           height: sliceHeight,
-          width: actualWidth,
-          yTop,
-          yBottom,
-          column: 0,
-          totalColumns: 1,
+          startPercent: (yTop / imageHeight) * 100,
+          endPercent: (yBottom / imageHeight) * 100,
+          type: slice.hasCTA ? 'cta' : 'image',
+          column: col,
+          totalColumns: columns,
           rowIndex: globalRowIndex,
         });
       }
+    } else {
+      // Single column (existing behavior)
+      console.log(`[process] Slice ${i + 1}: Single column, y=${yTop}, h=${sliceHeight}, w=${imageWidth}`);
+
+      const croppedUrl = getCloudinaryCropUrl(originalImageUrl, 0, yTop, imageWidth, sliceHeight);
       
-      globalRowIndex++;
+      uploadedSlices.push({
+        ...slice,
+        imageUrl: croppedUrl,
+        dataUrl: null, // Will be populated on-demand for analysis
+        width: imageWidth,
+        height: sliceHeight,
+        startPercent: (yTop / imageHeight) * 100,
+        endPercent: (yBottom / imageHeight) * 100,
+        type: slice.hasCTA ? 'cta' : 'image',
+        column: 0,
+        totalColumns: 1,
+        rowIndex: globalRowIndex,
+      });
     }
-
-    // Phase 2: Upload all slices in PARALLEL (I/O-bound, big speed win)
-    console.log(`[process] Uploading ${croppedSlices.length} slices in parallel...`);
-    const uploadUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/upload-to-cloudinary';
     
-    const uploadPromises = croppedSlices.map(async (cropData, i) => {
-      const { slice, sliceDataUrl, height, width, yTop, yBottom, column, totalColumns, rowIndex } = cropData;
-      
-      try {
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-          },
-          body: JSON.stringify({ imageData: sliceDataUrl })
-        });
-
-        let uploadResult = null;
-        if (uploadResponse.ok) {
-          uploadResult = await uploadResponse.json();
-          console.log(`[process] Slice ${i + 1} uploaded:`, uploadResult?.url?.substring(0, 50));
-        } else {
-          console.error(`[process] Failed to upload slice ${i + 1}:`, await uploadResponse.text());
-        }
-
-        return {
-          ...slice,
-          imageUrl: uploadResult?.url || null,
-          dataUrl: sliceDataUrl,
-          width: width,
-          height: height,
-          startPercent: (yTop / actualHeight) * 100,
-          endPercent: (yBottom / actualHeight) * 100,
-          type: slice.hasCTA ? 'cta' : 'image',
-          // Multi-column properties
-          column,
-          totalColumns,
-          rowIndex,
-        };
-      } catch (err) {
-        console.error(`[process] Error uploading slice ${i + 1}:`, err);
-        return {
-          ...slice,
-          imageUrl: null,
-          dataUrl: sliceDataUrl,
-          width: width,
-          height: height,
-          startPercent: (yTop / actualHeight) * 100,
-          endPercent: (yBottom / actualHeight) * 100,
-          type: slice.hasCTA ? 'cta' : 'image',
-          column,
-          totalColumns,
-          rowIndex,
-        };
-      }
-    });
-
-    const uploadedSlices = await Promise.all(uploadPromises);
-    console.log('[process] Uploaded', uploadedSlices.length, 'slices in parallel');
-    return uploadedSlices;
-
-  } catch (err) {
-    console.error('[process] Slice cropping error:', err);
-    return [];
+    globalRowIndex++;
   }
+
+  console.log('[process] Generated', uploadedSlices.length, 'slice URLs via Cloudinary');
+  return uploadedSlices;
+}
+
+// Fetch slice data URLs for analysis (small versions, on-demand)
+async function fetchSliceDataUrlsForAnalysis(
+  slices: any[],
+  originalImageUrl: string,
+  imageWidth: number,
+  imageHeight: number
+): Promise<any[]> {
+  console.log('[process] Fetching slice dataUrls for analysis...');
+  
+  // Calculate the scale factor between original and AI-sized image
+  const aiMaxHeight = 7900;
+  const scale = imageHeight > aiMaxHeight ? aiMaxHeight / imageHeight : 1;
+  const scaledWidth = Math.round(imageWidth * scale);
+  const scaledHeight = Math.round(imageHeight * scale);
+  
+  console.log(`[process] Scale factor: ${scale}, scaled dimensions: ${scaledWidth}x${scaledHeight}`);
+  
+  const fetchPromises = slices.map(async (slice, i) => {
+    try {
+      // Calculate scaled crop coordinates
+      const scaledY = Math.round(slice.yTop * scale);
+      const scaledH = Math.round((slice.yBottom - slice.yTop) * scale);
+      const scaledX = slice.column > 0 ? Math.round((slice.width * slice.column) * scale) : 0;
+      const scaledW = Math.round(slice.width * scale);
+      
+      // Get resized image URL first, then apply crop
+      const resizedUrl = getResizedCloudinaryUrl(originalImageUrl, scaledWidth, scaledHeight);
+      const cropUrl = getCloudinaryCropUrl(resizedUrl, scaledX, scaledY, scaledW, scaledH);
+      
+      const response = await fetch(cropUrl);
+      if (!response.ok) {
+        console.error(`[process] Failed to fetch slice ${i} dataUrl`);
+        return { ...slice, dataUrl: null };
+      }
+      
+      const buffer = await response.arrayBuffer();
+      const base64 = chunkedArrayBufferToBase64(buffer);
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+      
+      return { ...slice, dataUrl };
+    } catch (err) {
+      console.error(`[process] Error fetching slice ${i} dataUrl:`, err);
+      return { ...slice, dataUrl: null };
+    }
+  });
+  
+  return Promise.all(fetchPromises);
 }
 
 // Step 4: Analyze slices for alt text and links (uses cropped slice dataUrls)
 async function analyzeSlices(
   slices: any[],
   fullImageUrl: string, // Cloudinary URL (will be resized for AI)
-  brandDomain: string | null
+  brandDomain: string | null,
+  imageWidth: number,
+  imageHeight: number
 ): Promise<any[] | null> {
   console.log('[process] Step 4: Analyzing slices for alt text and links...');
 
@@ -474,12 +429,20 @@ async function analyzeSlices(
       return null;
     }
     const imageBuffer = await imageResponse.arrayBuffer();
-    const imageBase64 = bytesToBase64(new Uint8Array(imageBuffer));
+    const imageBase64 = chunkedArrayBufferToBase64(imageBuffer);
     const fullImageDataUrl = `data:image/png;base64,${imageBase64}`;
     
+    // Fetch small dataUrls for each slice (for individual slice analysis)
+    const slicesWithDataUrls = await fetchSliceDataUrlsForAnalysis(
+      slices, 
+      fullImageUrl, 
+      imageWidth, 
+      imageHeight
+    );
+    
     // CRITICAL: Pass the actual cropped slice dataUrls (matches CampaignCreator line 208)
-    const sliceInputs = slices.map((slice, index) => ({
-      dataUrl: slice.dataUrl, // Use the cropped slice's dataUrl, NOT the full image
+    const sliceInputs = slicesWithDataUrls.map((slice, index) => ({
+      dataUrl: slice.dataUrl, // Use the cropped slice's dataUrl
       index
     }));
     
@@ -516,8 +479,8 @@ async function analyzeSlices(
       analysisByIndex.set(a.index, a);
     }
     
-    // Merge analysis into slices
-    return slices.map((slice, i) => {
+    // Merge analysis into slices (use slicesWithDataUrls which has the dataUrls)
+    return slicesWithDataUrls.map((slice, i) => {
       const analysis = analysisByIndex.get(i);
       return {
         ...slice,
@@ -691,7 +654,7 @@ serve(async (req) => {
       );
     }
 
-    // === STEP 1: Fetch and upload image (10%) ===
+    // === STEP 1: Fetch image - AI-sized only (10%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'fetching_image',
       processing_percent: 5
@@ -874,15 +837,16 @@ serve(async (req) => {
       processing_percent: 35
     });
 
-    // === STEP 3.5: Crop and upload each slice individually (45%) ===
+    // === STEP 3.5: Generate slice URLs via Cloudinary (45%) ===
+    // MEMORY OPTIMIZATION: Use Cloudinary server-side cropping instead of ImageScript
     await updateQueueItem(supabase, campaignQueueId, {
-      processing_step: 'uploading_slices',
+      processing_step: 'generating_slice_urls',
       processing_percent: 40
     });
 
-    // IMPORTANT: Use FULL-RES image for slice cropping to ensure high-quality Klaviyo output
-    const uploadedSlices = await cropAndUploadSlices(
-      imageResult.imageBase64FullRes,
+    // Use Cloudinary URL transformations for slice cropping (zero memory usage)
+    const uploadedSlices = await cropSlicesViaCloudinary(
+      imageResult.imageUrl,
       sliceResult.slices,
       item.image_width || 600,
       item.image_height || 2000
@@ -891,11 +855,11 @@ serve(async (req) => {
     if (uploadedSlices.length === 0) {
       await updateQueueItem(supabase, campaignQueueId, {
         status: 'failed',
-        processing_step: 'uploading_slices',
-        error_message: 'Failed to crop and upload slices'
+        processing_step: 'generating_slice_urls',
+        error_message: 'Failed to generate slice URLs'
       });
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to upload slices' }),
+        JSON.stringify({ success: false, error: 'Failed to generate slice URLs' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -914,7 +878,9 @@ serve(async (req) => {
     const enrichedSlices = await analyzeSlices(
       uploadedSlices,
       imageResult.imageUrl, // Pass Cloudinary URL, analyzeSlices will resize for AI
-      brandContext?.domain || null
+      brandContext?.domain || null,
+      item.image_width || 600,
+      item.image_height || 2000
     );
 
     let currentSlices = enrichedSlices || uploadedSlices;
