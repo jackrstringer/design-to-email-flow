@@ -1,77 +1,147 @@
 
-# Fix: Allow Link Buttons to Extend Full Width Without Clipping
 
-## Problem
-The link buttons in the expanded row panel's left column are being truncated with ellipsis ("https://iamgia.com/products/blare-hoodie-black-psy...") even though there is plenty of horizontal space available to the left.
+# Fix: Link Column Expands Leftward Without Compressing Image
 
-## Root Cause
-The link column has several constraints causing the truncation:
+## Problem Analysis
 
-1. **Fixed column width**: `w-[280px]` (line 764)
-2. **Button constrained to column**: `max-w-full overflow-hidden` (line 777)
-3. **Text truncation**: `truncate` class on the link span (line 788)
+Looking at the screenshots, the issue is clear:
+- Link buttons are truncated (e.g., "https://iamgia.com/products/blare-hoodie-black-psy...")
+- The image column appears compressed
+- There's plenty of whitespace on the left that isn't being utilized
 
-Since the column is right-aligned (`items-end`) and the buttons are constrained to `max-w-full` of the 280px parent, they cannot extend leftward even when space is available.
+### Root Cause
 
-## Solution
-Remove the fixed width constraint and allow the link column to be flexible, letting links grow to their natural width. The column should use auto-sizing rather than a fixed 280px width.
+The row container uses `flex justify-center items-stretch`, which centers the combined width of:
+- Link Column (left) - `flex-shrink-0 min-w-[120px]`
+- Image Column (center) - `flex-shrink-0 style={{ width: scaledWidth }}`
+- Alt Text Column (right) - `flex-shrink-0 w-[280px]`
 
-### Changes to `src/components/queue/ExpandedRowPanel.tsx`
+With `justify-center`, all three columns are centered as a unit. Even though the link column has `min-w-[120px]` (not fixed), the entire row structure prevents it from growing leftward because:
+1. All columns use `flex-shrink-0`
+2. The centering behavior treats them as a single block
+3. The link buttons inherit the column's constrained width
 
-**1. Update left link column container (line 764)**
+### Solution: Anchor the Image in the Center
 
-Current:
-```tsx
-<div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-[280px]">
+Change the layout so the image column is anchored at the center, while the side columns fill available space on either side. This allows the link column to expand leftward naturally.
+
+**New Layout Model:**
+```
+[  Link Column (flex-1, right-aligned content)  ] [Image (fixed)] [  Alt Column (flex-1)  ]
 ```
 
-Change to:
+## Changes to `src/components/queue/ExpandedRowPanel.tsx`
+
+### 1. Update Row Container (line 743)
+
+**Current:**
+```tsx
+"relative flex justify-center items-stretch group/row"
+```
+
+**Change to:**
+```tsx
+"relative flex items-stretch group/row"
+```
+
+Remove `justify-center` since we'll use `flex-1` on the side columns to distribute space instead.
+
+### 2. Update Link Column (line 764)
+
+**Current:**
 ```tsx
 <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 min-w-[120px]">
 ```
 
-This removes the fixed 280px width and adds a minimum width of 120px for empty/short link states. The column will now grow based on content.
-
-**2. Update button styling for links (line 776-777)**
-
-Current:
+**Change to:**
 ```tsx
-<button className={cn(
-  "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
+<div className="flex-1 flex flex-col justify-center py-1 pr-3 gap-1 items-end min-w-[120px]">
 ```
 
-Change to:
+- Add `flex-1` so the column expands to fill available left space
+- Remove `flex-shrink-0` since we want it to grow
+- Keep `items-end` so buttons remain right-aligned (grow leftward)
+- Keep `min-w-[120px]` as a safety minimum
+
+### 3. Update Alt Text Column (line 987)
+
+**Current:**
 ```tsx
-<button className={cn(
-  "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left",
+<div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 w-[280px]">
 ```
 
-Remove `max-w-full overflow-hidden` so the button can grow to fit its content.
-
-**3. Update link text span (line 788)**
-
-Current:
+**Change to:**
 ```tsx
-<span className="text-muted-foreground truncate">{slice.link}</span>
+<div className="flex-1 flex flex-col justify-center py-1 pl-3 gap-1 min-w-[120px] max-w-[280px]">
 ```
 
-Change to:
+- Add `flex-1` for symmetric layout
+- Remove `flex-shrink-0` and fixed `w-[280px]`
+- Use `min-w-[120px]` and `max-w-[280px]` to constrain the alt text area
+
+### 4. Add Spacer When displayMode is 'none' (after line 858)
+
+When the link column is hidden (`displayMode === 'none'`), we need a spacer to maintain the centered image position:
+
+**After line 858 (closing of link column), add:**
 ```tsx
-<span className="text-muted-foreground whitespace-nowrap">{slice.link}</span>
+{displayMode === 'none' && (
+  <div className="flex-1" />
+)}
 ```
 
-Replace `truncate` with `whitespace-nowrap` so the link displays fully without wrapping or clipping.
+### 5. Add Spacer When displayMode is 'links' (after line 983)
+
+When the alt text column is hidden (`displayMode !== 'all'`), add a matching right spacer:
+
+**After line 983 (closing of image column), before the alt text column:**
+```tsx
+{displayMode !== 'all' && (
+  <div className="flex-1" />
+)}
+```
+
+### 6. Update Footer Section for Consistency (line 1025)
+
+The footer section should also adapt to use the same centered layout pattern:
+
+**Current:**
+```tsx
+<div className="flex justify-center">
+```
+
+This can remain as-is since the footer doesn't have side columns.
 
 ## Summary of Changes
 
-| Line | Current | Updated |
-|------|---------|---------|
-| 764 | `w-[280px]` | `min-w-[120px]` |
-| 777 | `max-w-full overflow-hidden` | (removed) |
-| 788 | `truncate` | `whitespace-nowrap` |
+| Location | Current | Updated |
+|----------|---------|---------|
+| Line 743 (row container) | `flex justify-center items-stretch` | `flex items-stretch` |
+| Line 764 (link column) | `flex-shrink-0 min-w-[120px]` | `flex-1 min-w-[120px]` |
+| After line 858 | - | Add left spacer when `displayMode === 'none'` |
+| After line 983 | - | Add right spacer when `displayMode !== 'all'` |
+| Line 987 (alt column) | `flex-shrink-0 w-[280px]` | `flex-1 min-w-[120px] max-w-[280px]` |
 
 ## Expected Result
-- Link buttons will grow to fit the full URL text
-- Links remain right-aligned (buttons extend leftward into available space)
-- Minimum width ensures consistent layout when links are short/empty
-- No ellipsis truncation on link URLs
+
+- The image column remains fixed-width and stays centered in the available space
+- The link column expands leftward to fit full URLs without truncation
+- Right-aligned link buttons grow into available left space naturally
+- Alt text column has bounded growth (max 280px) for consistency
+- All three display modes (All/Links/None) maintain proper centering via flex spacers
+- No more compressed images or truncated links
+
+## Visual Before/After
+
+**Before:**
+```
+                    [link(truncated)] [Image] [Alt Text]
+                    (everything centered as unit, link clipped)
+```
+
+**After:**
+```
+[      full link text right-aligned] [Image] [Alt Text   ]
+(image centered, side columns fill space)
+```
+
