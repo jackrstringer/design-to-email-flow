@@ -8,10 +8,11 @@ const corsHeaders = {
 
 interface FrameData {
   name: string;
-  width: number;
-  height: number;
-  imageBase64: string; // Raw base64 or data URL
-  figmaUrl?: string; // Figma URL for ClickUp integration
+  width: number;        // Figma frame width (1x)
+  height: number;       // Figma frame height (1x)
+  exportScale?: number; // Export scale (1 or 2), defaults to 2
+  imageBase64: string;  // Raw base64 or data URL
+  figmaUrl?: string;    // Figma URL for ClickUp integration
 }
 
 interface IngestPayload {
@@ -164,23 +165,31 @@ serve(async (req) => {
 
         console.log('[figma-ingest] Image uploaded:', imageUrl);
 
+        // Calculate actual exported dimensions based on plugin's scale
+        const exportScale = frame.exportScale || 2; // Default to 2 for backwards compatibility
+        const actualWidth = Math.round(frame.width * exportScale);
+        const actualHeight = Math.round(frame.height * exportScale);
+
+        console.log(`[figma-ingest] Frame "${frame.name}": Figma ${frame.width}x${frame.height}, exportScale=${exportScale}, actual=${actualWidth}x${actualHeight}`);
+
         // Create campaign queue entry
         const { data: campaign, error: campaignError } = await supabase
           .from('campaign_queue')
           .insert({
             user_id: userId,
-            brand_id: validBrandId, // Use plugin-provided brand, skip auto-detect if set
+            brand_id: validBrandId,
             source: 'figma',
-            source_url: frame.figmaUrl || null, // Store Figma URL for ClickUp integration
+            source_url: frame.figmaUrl || null,
             source_metadata: {
               frameName: frame.name,
-              width: frame.width,
-              height: frame.height
+              figmaWidth: frame.width,    // Original Figma dimensions
+              figmaHeight: frame.height,
+              exportScale: exportScale     // Store for reference
             },
             name: frame.name,
             image_url: imageUrl,
-            image_width: frame.width,
-            image_height: frame.height,
+            image_width: actualWidth,      // ACTUAL exported width
+            image_height: actualHeight,    // ACTUAL exported height
             provided_subject_line: subjectLine || null,
             provided_preview_text: previewText || null,
             status: 'processing',
