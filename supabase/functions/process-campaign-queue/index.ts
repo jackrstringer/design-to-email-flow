@@ -61,33 +61,65 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 // Step 1: Fetch image from URL or use existing uploaded image
-// Uses Cloudinary URL transformation to resize large images BEFORE fetching
+// Returns TWO base64 versions:
+// - imageBase64ForAI: Resized to 7900px max (for AI processing within Claude's 8000px limit)
+// - imageBase64FullRes: Original full resolution (for high-quality Klaviyo slice cropping)
 async function fetchAndUploadImage(
   supabase: any,
   item: any
-): Promise<{ imageUrl: string; imageBase64: string } | null> {
-  console.log('[process] Step 1: Fetching image...');
+): Promise<{ imageUrl: string; imageBase64ForAI: string; imageBase64FullRes: string } | null> {
+  console.log('[process] Step 1: Fetching image (dual-fetch for AI + full-res)...');
 
-  // If image_url already exists (from figma plugin or upload), just fetch it as base64
+  // If image_url already exists (from figma plugin or upload), fetch both versions
   if (item.image_url) {
-    console.log('[process] Image already uploaded, fetching as base64...');
+    console.log('[process] Image already uploaded, fetching both AI-sized and full-res...');
     try {
-      // CRITICAL: Resize via Cloudinary URL transformation BEFORE fetching
-      // This prevents memory issues with large images (e.g., 1200x8000)
-      // Max 600px wide (email standard), max 4000px tall (leaves room for processing)
-      const resizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 4000);
-      console.log('[process] Using resized URL:', resizedUrl.substring(0, 80) + '...');
+      // For AI processing: resize to 7900px max (within Claude's 8000px limit)
+      const aiResizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 7900);
+      console.log('[process] AI-sized URL:', aiResizedUrl.substring(0, 80) + '...');
       
-      const response = await fetch(resizedUrl);
-      if (!response.ok) throw new Error('Failed to fetch image');
-      const buffer = await response.arrayBuffer();
-      const uint8Array = new Uint8Array(buffer);
-      let binary = '';
-      for (let i = 0; i < uint8Array.length; i++) {
-        binary += String.fromCharCode(uint8Array[i]);
+      // For slice cropping: use original full resolution
+      const fullResUrl = item.image_url;
+      console.log('[process] Full-res URL:', fullResUrl.substring(0, 80) + '...');
+      
+      // Fetch both in parallel for efficiency
+      const [aiResponse, fullResResponse] = await Promise.all([
+        fetch(aiResizedUrl),
+        fetch(fullResUrl)
+      ]);
+      
+      if (!aiResponse.ok) throw new Error('Failed to fetch AI-sized image');
+      if (!fullResResponse.ok) throw new Error('Failed to fetch full-res image');
+      
+      const [aiBuffer, fullResBuffer] = await Promise.all([
+        aiResponse.arrayBuffer(),
+        fullResResponse.arrayBuffer()
+      ]);
+      
+      // Convert AI-sized to base64
+      const aiUint8Array = new Uint8Array(aiBuffer);
+      let aiBinary = '';
+      for (let i = 0; i < aiUint8Array.length; i++) {
+        aiBinary += String.fromCharCode(aiUint8Array[i]);
       }
-      const base64 = btoa(binary);
-      return { imageUrl: item.image_url, imageBase64: base64 };
+      const aiBase64 = btoa(aiBinary);
+      
+      // Convert full-res to base64
+      const fullResUint8Array = new Uint8Array(fullResBuffer);
+      let fullResBinary = '';
+      for (let i = 0; i < fullResUint8Array.length; i++) {
+        fullResBinary += String.fromCharCode(fullResUint8Array[i]);
+      }
+      const fullResBase64 = btoa(fullResBinary);
+      
+      console.log('[process] Fetched AI-sized:', Math.round(aiBuffer.byteLength / 1024), 'KB');
+      console.log('[process] Fetched full-res:', Math.round(fullResBuffer.byteLength / 1024), 'KB');
+      
+      return { 
+        imageUrl: item.image_url, 
+        imageBase64ForAI: aiBase64,
+        imageBase64FullRes: fullResBase64
+      };
     } catch (err) {
       console.error('[process] Failed to fetch image from URL:', err);
       return null;
@@ -785,12 +817,13 @@ serve(async (req) => {
     });
 
     // Start both operations in parallel
+    // IMPORTANT: Use AI-sized image for brand detection and auto-slicing (within Claude's 8000px limit)
     const brandDetectionPromise = !brandId 
-      ? detectBrand(supabase, imageResult.imageBase64)
+      ? detectBrand(supabase, imageResult.imageBase64ForAI)
       : Promise.resolve(brandId);
     
     const slicePromise = autoSliceImage(
-      imageResult.imageBase64,
+      imageResult.imageBase64ForAI,
       item.image_width || 600,
       item.image_height || 2000
     );
@@ -847,8 +880,9 @@ serve(async (req) => {
       processing_percent: 40
     });
 
+    // IMPORTANT: Use FULL-RES image for slice cropping to ensure high-quality Klaviyo output
     const uploadedSlices = await cropAndUploadSlices(
-      imageResult.imageBase64,
+      imageResult.imageBase64FullRes,
       sliceResult.slices,
       item.image_width || 600,
       item.image_height || 2000
@@ -951,7 +985,8 @@ serve(async (req) => {
       processing_percent: 85
     });
 
-    const qaResult = await qaSpellingCheck(imageResult.imageBase64);
+    // Use AI-sized image for QA spelling check (don't need full-res for text detection)
+    const qaResult = await qaSpellingCheck(imageResult.imageBase64ForAI);
 
     await updateQueueItem(supabase, campaignQueueId, {
       spelling_errors: qaResult.errors,
