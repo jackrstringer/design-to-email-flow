@@ -124,8 +124,8 @@ async function startEarlyGeneration(
   console.log('[process] Step 1.5: Starting early SL/PT generation, session:', sessionKey);
 
   try {
-    // CRITICAL: Resize image URL for Anthropic (max 600x7900 to stay under 8000px limit)
-    const resizedImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
+    // CRITICAL: Resize image URL for Anthropic (max 600x5000 to stay under 5MB base64 limit)
+    const resizedImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 5000);
     console.log('[process] Early gen using resized URL:', resizedImageUrl.substring(0, 80) + '...');
     
     // Fire and forget - matches manual flow exactly
@@ -365,8 +365,8 @@ async function fetchSliceDataUrlsForAnalysis(
 ): Promise<any[]> {
   console.log('[process] Fetching slice dataUrls for analysis...');
   
-  // Calculate the scale factor between original and AI-sized image
-  const aiMaxHeight = 7900;
+  // Calculate the scale factor between original and AI-sized image (5000px to stay under 5MB base64)
+  const aiMaxHeight = 5000;
   const scale = imageHeight > aiMaxHeight ? aiMaxHeight / imageHeight : 1;
   const scaledWidth = Math.round(imageWidth * scale);
   const scaledHeight = Math.round(imageHeight * scale);
@@ -418,8 +418,8 @@ async function analyzeSlices(
   try {
     const analyzeUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/analyze-slices';
     
-    // Resize the full image URL for AI processing (keep under 8000px height limit)
-    const resizedFullImageUrl = getResizedCloudinaryUrl(fullImageUrl, 600, 7900);
+    // Resize the full image URL for AI processing (keep under 5MB base64 limit)
+    const resizedFullImageUrl = getResizedCloudinaryUrl(fullImageUrl, 600, 5000);
     console.log('[process] Using resized URL for analysis:', resizedFullImageUrl.substring(0, 80) + '...');
     
     // Fetch the resized image and convert to base64 for the analyze-slices function
