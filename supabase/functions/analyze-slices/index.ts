@@ -102,7 +102,10 @@ Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't 
 
 **LINKS** - Find the real page for what's shown:
 - Header logos -> brand homepage: https://${domain}/
-- Single product visible -> find that product's actual page (use web search)
+- Single product visible (name like "JESSA PANT", "ISELA TOP") -> search for that product's actual page
+  - Search: site:${domain} products [product name]
+  - The URL should contain /products/ for individual items, NOT /collections/
+  - Keep searching until you find the product page - don't settle for a collection
 - Multiple products or general CTA -> find the appropriate collection
 - Verify links exist with web search
 
@@ -110,10 +113,10 @@ Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't 
 When web search returns multiple URL options, ALWAYS prefer stable "evergreen" paths:
 
 ✅ PREFER these patterns (EVERGREEN - stable, permanent):
+- /products/[product-name] (BEST for single products)
 - /collections/new-arrivals
 - /collections/sale
 - /collections/[category-name]
-- /products/[product-name]
 - /pages/[page-name]
 - Short, clean paths with 2-3 segments
 
@@ -124,24 +127,12 @@ When web search returns multiple URL options, ALWAYS prefer stable "evergreen" p
 - URLs mentioning discounts in path: "shop-a-further-", "save-"
 - Very long paths with 4+ segments
 
-EXAMPLE for "NEW ARRIVALS" navigation:
-Web search returns:
-  1. /collections/new-arrivals ← USE THIS (evergreen)
-  2. /collections/shop-a-further-10-off-ex-new-arrivals-luxe ← NEVER USE (promo)
-  
-ALWAYS pick the SHORTEST, CLEANEST path that matches the navigation text.
-If only promo URLs exist, search again with "site:${domain} collections [term]" to find the base collection.
+When multiple color/size variants exist for a product:
+- Look at the campaign image for context (what color is shown?)
+- Pick the variant that matches what's visible in the email
+- If unclear, pick the most common/default variant
 
-**MULTI-COLUMN SLICES** (when column/totalColumns metadata is present):
-When a slice has metadata like (column: 0, totalColumns: 3):
-- This is ONE cell of a multi-column product row
-- Each column needs its OWN unique link (they are separate products/categories)
-- Alt text should identify WHICH product/item this column contains
-- The link should go to THAT SPECIFIC product, not a collection page
-- Search for the specific product name visible in this column image
-- Example: If you see "Blue Dress - $89" in one column, search for that exact product
-
-For links: search "site:${domain} [topic]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
+For links: search "site:${domain} products [product name]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
 
 Return JSON with exactly ${slices.length} slices:
 {

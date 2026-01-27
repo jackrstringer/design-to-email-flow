@@ -201,7 +201,7 @@ async function autoSliceImage(
   imageBase64: string,
   imageWidth: number,
   imageHeight: number
-): Promise<{ slices: any[]; footerStartPercent: number } | null> {
+): Promise<{ slices: any[]; footerStartPercent: number; footerStartY: number; imageHeight: number } | null> {
   console.log('[process] Step 3: Auto-slicing image...');
 
   try {
@@ -231,13 +231,21 @@ async function autoSliceImage(
       return null;
     }
 
-    const footerStartPercent = result.footerStartY / result.imageHeight * 100;
+    const footerStartY = result.footerStartY;
+    const footerStartPercent = footerStartY / result.imageHeight * 100;
     
-    console.log('[process] Found', result.slices?.length || 0, 'slices');
+    // CRITICAL: Filter out slices that are at or below the footer boundary
+    // Only keep slices that END before the footer starts (yBottom <= footerStartY)
+    const allSlices = result.slices || [];
+    const contentSlices = allSlices.filter((slice: any) => slice.yBottom <= footerStartY);
+    
+    console.log(`[process] Filtered ${allSlices.length} -> ${contentSlices.length} slices (excluding footer at ${footerStartY}px)`);
     
     return {
-      slices: result.slices || [],
-      footerStartPercent
+      slices: contentSlices,
+      footerStartPercent,
+      footerStartY,
+      imageHeight: result.imageHeight
     };
 
   } catch (err) {
