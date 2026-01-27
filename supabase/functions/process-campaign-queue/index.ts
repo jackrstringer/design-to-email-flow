@@ -429,10 +429,13 @@ async function cropAndUploadSlices(
 }
 
 // Step 4: Analyze slices for alt text and links (uses cropped slice dataUrls)
+// Now also accepts known product URLs and returns discovered URLs for learning
 async function analyzeSlices(
+  supabase: any,
   slices: any[],
   fullImageUrl: string, // Cloudinary URL (will be resized for AI)
-  brandDomain: string | null
+  brandDomain: string | null,
+  brandId: string | null
 ): Promise<any[] | null> {
   console.log('[process] Step 4: Analyzing slices for alt text and links...');
 
@@ -459,6 +462,27 @@ async function analyzeSlices(
       index
     }));
     
+    // Fetch known product URLs from brand for learning system
+    let knownProductUrls: Array<{ name: string; url: string }> = [];
+    if (brandId) {
+      try {
+        const { data: brand } = await supabase
+          .from('brands')
+          .select('all_links')
+          .eq('id', brandId)
+          .single();
+        
+        const productUrls = brand?.all_links?.productUrls || {};
+        knownProductUrls = Object.entries(productUrls).map(([name, url]) => ({ 
+          name, 
+          url: url as string 
+        }));
+        console.log(`[process] Passing ${knownProductUrls.length} known product URLs to analyzer`);
+      } catch (err) {
+        console.log('[process] Could not fetch known URLs:', err);
+      }
+    }
+    
     const response = await fetch(analyzeUrl, {
       method: 'POST',
       headers: {
@@ -468,7 +492,8 @@ async function analyzeSlices(
       body: JSON.stringify({
         slices: sliceInputs,
         brandDomain,
-        fullCampaignImage: fullImageDataUrl
+        fullCampaignImage: fullImageDataUrl,
+        knownProductUrls
       })
     });
 
@@ -485,6 +510,42 @@ async function analyzeSlices(
     }
 
     console.log('[process] Analyzed', result.analyses.length, 'slices');
+    
+    // Save discovered URLs back to brand for future campaigns (learning system)
+    if (result.discoveredUrls && Array.isArray(result.discoveredUrls) && result.discoveredUrls.length > 0 && brandId) {
+      try {
+        const { data: brand } = await supabase
+          .from('brands')
+          .select('all_links')
+          .eq('id', brandId)
+          .single();
+        
+        const existingLinks = brand?.all_links || {};
+        const productUrls = existingLinks.productUrls || {};
+        
+        let newCount = 0;
+        for (const discovery of result.discoveredUrls) {
+          if (discovery.productName && discovery.url) {
+            const key = discovery.productName.toLowerCase().trim();
+            if (!productUrls[key]) {
+              productUrls[key] = discovery.url;
+              newCount++;
+            }
+          }
+        }
+        
+        if (newCount > 0) {
+          await supabase
+            .from('brands')
+            .update({ all_links: { ...existingLinks, productUrls } })
+            .eq('id', brandId);
+          
+          console.log(`[process] Saved ${newCount} new discovered URLs to brand ${brandId}`);
+        }
+      } catch (err) {
+        console.error('[process] Failed to save discovered URLs:', err);
+      }
+    }
     
     // Build a Map keyed by index for reliable lookup (matches CampaignCreator)
     const analysisByIndex = new Map<number, any>();
@@ -886,9 +947,11 @@ serve(async (req) => {
     });
 
     const enrichedSlices = await analyzeSlices(
+      supabase,
       uploadedSlices,
       imageResult.imageUrl, // Pass Cloudinary URL, analyzeSlices will resize for AI
-      brandContext?.domain || null
+      brandContext?.domain || null,
+      item.brand_id || null
     );
 
     let currentSlices = enrichedSlices || uploadedSlices;

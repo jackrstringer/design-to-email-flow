@@ -30,11 +30,12 @@ serve(async (req) => {
   }
 
   try {
-    const { slices, brandUrl, brandDomain, fullCampaignImage } = await req.json() as { 
+    const { slices, brandUrl, brandDomain, fullCampaignImage, knownProductUrls } = await req.json() as { 
       slices: SliceInput[]; 
       brandUrl?: string;
       brandDomain?: string;
       fullCampaignImage?: string;
+      knownProductUrls?: Array<{ name: string; url: string }>;
     };
 
     if (!slices || !Array.isArray(slices) || slices.length === 0) {
@@ -55,6 +56,14 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
+    // Build known URLs context for prompt
+    const knownUrlsContext = knownProductUrls && knownProductUrls.length > 0
+      ? `\n\nKNOWN PRODUCT URLs for this brand (use these FIRST before searching - they are verified correct):
+${knownProductUrls.map(u => `- "${u.name}" → ${u.url}`).join('\n')}
+
+If a product name matches one of these (case-insensitive), use the known URL directly without searching.`
+      : '';
+
     const prompt = `Analyze these email campaign slices.
 
 ${fullCampaignImage ? 'FIRST IMAGE: Full campaign overview (REFERENCE ONLY - DO NOT include in your output).' : ''}
@@ -63,7 +72,7 @@ IMPORTANT: Each slice to analyze is labeled "=== SLICE N (index: X) ===" before 
 You must ONLY analyze the labeled slices. Do NOT analyze the reference image.
 Your output MUST have exactly ${slices.length} entries, with indices 0 to ${slices.length - 1}.
 
-Brand: ${domain || 'Unknown'}
+Brand: ${domain || 'Unknown'}${knownUrlsContext}
 
 For each labeled slice:
 
@@ -102,12 +111,24 @@ Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't 
 
 **LINKS** - Find the real page for what's shown:
 - Header logos -> brand homepage: https://${domain}/
-- Single product visible (name like "JESSA PANT", "ISELA TOP") -> search for that product's actual page
-  - Search: site:${domain} products [product name]
-  - The URL should contain /products/ for individual items, NOT /collections/
-  - Keep searching until you find the product page - don't settle for a collection
+- Single product visible (name like "JESSA PANT") -> find the actual product page:
+  1. FIRST: Check if product name matches any KNOWN PRODUCT URLs above (case-insensitive) - use that URL directly
+  2. If not known: Search: site:${domain} [product name]
+  3. If search only returns collections, FETCH the most relevant collection page to find the /products/ URL
+  4. Extract the actual /products/[product-name] URL from the page content
+  5. The final link MUST contain /products/ for individual items, NOT /collections/
 - Multiple products or general CTA -> find the appropriate collection
-- Verify links exist with web search
+- Verify links exist with web search or fetch
+
+**CRITICAL LINK DISCOVERY PROCESS:**
+When you need to find a product URL and it's not in the known URLs:
+1. Search "site:${domain} [product name]" 
+2. If search results only show collection pages (like /collections/sweats):
+   - USE web_fetch TO FETCH the collection page
+   - Look through the page HTML for /products/[product-name] links
+   - Extract the correct product URL from the fetched content
+3. NEVER settle for a /collections/ URL when looking for a specific product
+4. If you successfully find a new /products/ URL, include it in discoveredUrls
 
 **LINK SELECTION PRIORITY - Evergreen URLs First:**
 When web search returns multiple URL options, ALWAYS prefer stable "evergreen" paths:
@@ -132,16 +153,19 @@ When multiple color/size variants exist for a product:
 - Pick the variant that matches what's visible in the email
 - If unclear, pick the most common/default variant
 
-For links: search "site:${domain} products [product name]" to find real pages. If you can't find one, use https://${domain}/ and set linkVerified: false.
-
-Return JSON with exactly ${slices.length} slices:
+Return JSON with exactly ${slices.length} slices AND any newly discovered product URLs:
 {
   "slices": [
     { "index": 0, "altText": "...", "isClickable": true/false, "suggestedLink": "https://..." or null, "linkVerified": true/false },
     { "index": 1, "altText": "...", ... },
     ...up to index ${slices.length - 1}
+  ],
+  "discoveredUrls": [
+    { "productName": "Jessa Pant", "url": "https://${domain}/products/jessa-pant-grey" }
   ]
-}`;
+}
+
+The discoveredUrls array should contain any NEW product URLs you found that weren't in the known URLs list. This helps us learn for future campaigns.`;
 
     // Build content array with text and all images for Claude
     const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [
@@ -196,23 +220,37 @@ Return JSON with exactly ${slices.length} slices:
       }
     }
 
+    // Build tools array - include web_fetch if we have a domain to restrict to
+    const tools: any[] = [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 50,
+      }
+    ];
+    
+    // Add web_fetch tool to allow Claude to fetch collection pages and extract product URLs
+    if (domain) {
+      tools.push({
+        type: 'web_fetch_20250305',
+        name: 'web_fetch',
+        max_uses: 10,
+        allowed_domains: [domain, `www.${domain}`],
+      });
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-fetch-2025-03-05',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 4000,
-        tools: [
-          {
-            type: 'web_search_20250305',
-            name: 'web_search',
-            max_uses: 50,
-          }
-        ],
+        max_tokens: 6000,
+        tools,
         messages: [
           { role: 'user', content }
         ]
@@ -405,8 +443,26 @@ Return JSON with exactly ${slices.length} slices:
     
     console.log(`Final analyses indices: [${analyses.map(a => a.index).join(', ')}]`);
 
+    // Extract discovered URLs from the parsed response
+    let discoveredUrls: Array<{ productName: string; url: string }> = [];
+    try {
+      // Re-parse to get discoveredUrls
+      const codeBlockMatch = allTextContent.match(/```json\s*([\s\S]*?)```/);
+      const rawJsonMatch = allTextContent.match(/\{\s*"slices"\s*:\s*\[[\s\S]*?\]\s*(?:,\s*"discoveredUrls"\s*:\s*\[[\s\S]*?\])?\s*\}/);
+      const jsonStr = codeBlockMatch?.[1] || rawJsonMatch?.[0];
+      if (jsonStr) {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.discoveredUrls && Array.isArray(parsed.discoveredUrls)) {
+          discoveredUrls = parsed.discoveredUrls.filter((d: any) => d.productName && d.url);
+          console.log(`Found ${discoveredUrls.length} discovered URLs`);
+        }
+      }
+    } catch {
+      // Ignore parsing errors for discovered URLs
+    }
+
     return new Response(
-      JSON.stringify({ analyses }),
+      JSON.stringify({ analyses, discoveredUrls }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
