@@ -68,21 +68,23 @@ Brand: ${domain || 'Unknown'}
 For each labeled slice:
 
 **ALT TEXT** (max 200 chars) - Capture the marketing message:
-- If there's a headline, offer text, body copy, or CTA visible → capture the key message
+- If there's a headline, offer text, body copy visible -> capture the key message
 - Include any visible text that communicates value (discounts, product benefits, urgency, etc.)
-- For CTAs, end with "Click to [action]"
-- ONLY return empty "" for slices that are PURELY decorative with ZERO text:
-  - Solid color spacer bars or dividers
-  - Footer bars with only icons (no readable text)
-- If you can see ANY marketing text in the slice, it needs alt text
+
+CTA TEXT RULES (CRITICAL):
+- ONLY include "Click to shop" / "Click to [action]" when there is a VISIBLE CTA BUTTON in the slice
+- A CTA button is a distinct rectangular/pill element with action text like "SHOP NOW", "BUY", "ORDER", "ADD TO CART"
+- Product name/price text alone (like "JESSA PANT - $99") is NOT a CTA - do not add "Click to shop"
+- If the slice just shows a product image with its name, describe the product without "Click to shop"
+- ONLY return empty "" for slices that are PURELY decorative with ZERO text (solid color dividers, icon-only bars)
 
 Examples:
-- "How are you showing up in 2026?" headline → "How are you showing up in 2026? New routines. New habits. New goals."
-- Body copy about products → "Our tonics are here to support you through the reset."
-- Hero with headline + CTA → "Sale ends tonight! Click to Shop Now"
-- CTA button visible → "Click to Shop Now"
-- Product grid with product names → "Deep Sleep, Focus, Calming tonic. Click to shop."
-- Solid color divider with NO text → "" (empty)
+- Product image showing "JESSA PANT" with no button -> "Jessa Pant."
+- Product with visible "SHOP NOW" button -> "Jessa Pant. Click to shop now."
+- Hero headline "New Arrivals" with no button -> "New Arrivals."
+- Hero with "SHOP THE COLLECTION" button -> "New Arrivals. Click to shop the collection."
+- Product grid with names but no buttons -> "Deep Sleep, Focus, Calming tonic."
+- Solid color divider -> "" (empty)
 
 **CLICKABLE** - Be selective, not aggressive:
 SHOULD be clickable (isClickable: true):
@@ -98,13 +100,20 @@ Should NOT be clickable (isClickable: false):
 
 Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't need its own link.
 
-**LINKS** - Find the best destination:
-- For header_logo slices or standalone brand logos → use brand homepage: https://${domain}/
-- For CTA like "Shop [Product]" → search for that specific product page
-- For general CTA like "Shop [Brand]" with multiple products mentioned → find "All Products", "Shop All", or category page
-- If multiple products shown, find a collection/category containing them
-- Use web search: "site:${domain} [product name]" or "site:${domain} collections" or "site:${domain} all products"
-- Homepage is LAST RESORT (except for header logos where it's correct)
+**LINKS** - Find the EXACT product page, not collections:
+- For header_logo slices or standalone brand logos -> use brand homepage: https://${domain}/
+- For slices showing a SPECIFIC PRODUCT (name visible like "JESSA PANT"):
+  - Search: "site:${domain}/products/ [product name]" to find the direct product page
+  - Product pages (/products/jessa-pant-grey) are ALWAYS preferred over collection pages
+  - NEVER link a single-product slice to a collection - find the actual product URL
+- For slices showing MULTIPLE products or general CTAs -> find the appropriate collection
+- Use web search to verify URLs exist - search as many times as needed
+- Homepage is LAST RESORT (except for header logos)
+
+PRODUCT LINK PRIORITY:
+1. /products/[exact-product-slug] - BEST (e.g., /products/jessa-pant-grey)
+2. /collections/[category] - Only for multi-product slices
+3. Homepage - Only if nothing else found
 
 **LINK SELECTION PRIORITY - Evergreen URLs First:**
 When web search returns multiple URL options, ALWAYS prefer stable "evergreen" paths:
@@ -219,7 +228,7 @@ Return JSON with exactly ${slices.length} slices:
           {
             type: 'web_search_20250305',
             name: 'web_search',
-            max_uses: 5,
+            max_uses: 50,
           }
         ],
         messages: [
