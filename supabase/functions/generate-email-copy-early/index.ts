@@ -361,10 +361,9 @@ Respond in JSON:
     if (imageUrl) {
       // Pre-fetch image as base64 to avoid Anthropic download timeout issues
       // Only resize if not already resized (avoid double transformation)
-      // Use 5000px max height to force Cloudinary re-encoding (keeps under Claude's 5MB base64 limit)
       let finalImageUrl = imageUrl;
       if (imageUrl.includes('cloudinary.com/') && !imageUrl.includes('/c_limit,')) {
-        finalImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 5000);
+        finalImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
       }
       console.log('[EARLY] Fetching image as base64:', finalImageUrl.substring(0, 80) + '...');
       
