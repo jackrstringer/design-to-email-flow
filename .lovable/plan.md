@@ -1,86 +1,129 @@
 
-# Fix Link Quality and Footer Detection
+# Fix Link Discovery - Enable Web Fetch + Learning System
 
-## Root Causes Identified
+## Root Cause Identified
 
-### Issue 1: Links Not Finding Actual Product Pages
-Looking at the logs and database:
-- **JESSA PANT** → `https://iamgia.com/collections/sweats` (wrong - should be `/products/jessa-pant-grey`)
-- **BLARE PANELLED SHORT** → `https://iamgia.com/collections/blare-set` (wrong)
+**We're only using `web_search`, but native Claude uses `web_search` + `web_fetch` together.**
 
-Claude IS searching (logs show multiple search attempts), but it's settling for collection pages instead of finding the actual product URLs. The logs show:
-```
-Let me search for the exact "Jessa Pant" product (not "Jessica"):
-Let me search for the actual product URLs:
-Based on my searches, I can see t...
-```
+Here's what native Claude did (from your screenshot):
+1. `web_search` returned collections and irrelevant results (same bad results we get)
+2. Claude **fetched the actual page** (`Fetched Sweats`) 
+3. Extracted `/products/jessa-pant-grey` from the page HTML
 
-Claude stopped trying and accepted the collection page. The prompt doesn't clearly tell Claude to keep searching until it finds a `/products/` URL when a single product is visible.
-
-### Issue 2: Footer Content is Being Included as Slices
-The database shows the campaign has 17 slices, but slices 7-16 are ALL footer content:
-- Slice 7-8: "Shop new arrivals", "Shop Instagram looks" (footer nav)
-- Slice 9-10: "Afterpay", "Size guide" (footer nav)
-- Slice 11-12: "Most wanted", "Blare collection" (footer nav)
-- Slice 13: Footer legal text
-- Slice 14-16: Social icons
-
-The `footer_start_percent` is 69%, which is correct - the issue is that the slices BELOW the footer boundary are still being processed, cropped, uploaded, and analyzed.
-
-The `auto-slice-v2` function correctly detects the footer at 932px, but `process-campaign-queue` is slicing and analyzing everything - including the footer content.
+Our system only has `web_search` enabled, so Claude can only work with search result snippets. It can never fetch the actual pages to find embedded product URLs.
 
 ---
 
 ## Technical Solution
 
-### Change 1: Exclude Footer Slices from Processing (process-campaign-queue)
-
-**File:** `supabase/functions/process-campaign-queue/index.ts`
-
-After auto-slicing, filter out any slices that fall within or below the footer boundary before cropping and uploading.
-
-```typescript
-// After autoSliceImage returns, filter slices to EXCLUDE footer content
-const contentSlices = sliceResult.slices.filter(slice => {
-  // Keep only slices that END at or before the footer start
-  // (slices that are entirely above the footer)
-  return slice.yBottom <= sliceResult.footerStartY;
-});
-
-console.log(`[process] Filtered ${sliceResult.slices.length} -> ${contentSlices.length} slices (excluding footer)`);
-
-// Use contentSlices for cropping and analysis
-```
-
-This ensures:
-- Footer nav rows are never uploaded
-- Footer social icons are never analyzed
-- Only marketing content is processed
-
-### Change 2: Improve Product Link Discovery (analyze-slices)
+### Change 1: Enable `web_fetch` Tool in analyze-slices
 
 **File:** `supabase/functions/analyze-slices/index.ts`
 
-Strengthen the link instructions to tell Claude that when a specific product name is visible, it MUST find that product's actual page (not a collection). Add campaign context guidance for variants.
+Add the `web_fetch` tool alongside `web_search`:
 
-Update the LINKS section (lines 103-107) to:
+```typescript
+tools: [
+  {
+    type: 'web_search_20250305',
+    name: 'web_search',
+    max_uses: 50,
+  },
+  {
+    type: 'web_fetch_20250910',
+    name: 'web_fetch',
+    max_uses: 10,
+    allowed_domains: [domain], // Only fetch from brand domain
+  }
+]
+```
 
+Also add the required beta header:
+```typescript
+headers: {
+  'Content-Type': 'application/json',
+  'x-api-key': ANTHROPIC_API_KEY,
+  'anthropic-version': '2023-06-01',
+  'anthropic-beta': 'web-fetch-2025-09-10',
+}
+```
+
+Update the prompt to guide Claude to fetch pages when needed:
 ```
 **LINKS** - Find the real page for what's shown:
 - Header logos -> brand homepage: https://${domain}/
-- Single product visible (name like "JESSA PANT", "ISELA TOP") -> search for that product's page, not a collection
-  - Search: site:${domain} products [product name]
-  - The URL should contain /products/ for individual items
+- Single product visible (name like "JESSA PANT") -> find the actual product page:
+  1. Search: site:${domain} [product name]
+  2. If search only returns collections, FETCH the most relevant collection page
+  3. Extract the actual /products/[product-name] URL from the page content
+  4. The final link MUST contain /products/ for individual items
 - Multiple products or general CTA -> find the appropriate collection
-- Verify links exist with web search
-
-When multiple color/size variants exist for a product:
-- Look at the campaign image for context (what color is shown?)
-- Pick the variant that matches what's visible in the email
-- If unclear, pick the most common/default variant
 ```
 
-This is natural language guidance, not mechanical rules - trusting Claude to understand the intent.
+### Change 2: Brand Learning System (URL Map)
+
+**File:** `supabase/functions/analyze-slices/index.ts`
+
+Accept brand's known URLs as input and save new discoveries.
+
+Input addition:
+```typescript
+const { slices, brandUrl, brandDomain, fullCampaignImage, knownProductUrls } = await req.json();
+```
+
+Prompt addition:
+```
+KNOWN PRODUCT URLs for this brand (use these first before searching):
+${knownProductUrls ? JSON.stringify(knownProductUrls, null, 2) : 'None available yet'}
+
+If you discover a new product URL that works, include it in your response so we can learn it.
+```
+
+Output addition - return discovered URLs:
+```typescript
+{
+  analyses: [...],
+  discoveredUrls: [
+    { productName: "Jessa Pant", url: "https://iamgia.com/products/jessa-pant-grey" },
+    { productName: "Blare Panelled Short", url: "https://iamgia.com/products/blare-panelled-short-red" }
+  ]
+}
+```
+
+**File:** `supabase/functions/process-campaign-queue/index.ts`
+
+After analyze-slices returns, save discovered URLs to the brand:
+
+```typescript
+// After analyzeSlices returns:
+if (result.discoveredUrls && result.discoveredUrls.length > 0 && brandId) {
+  const { data: brand } = await supabase
+    .from('brands')
+    .select('all_links')
+    .eq('id', brandId)
+    .single();
+  
+  const existingLinks = brand?.all_links || {};
+  const productUrls = existingLinks.productUrls || {};
+  
+  for (const discovery of result.discoveredUrls) {
+    productUrls[discovery.productName.toLowerCase()] = discovery.url;
+  }
+  
+  await supabase
+    .from('brands')
+    .update({ all_links: { ...existingLinks, productUrls } })
+    .eq('id', brandId);
+  
+  console.log(`[process] Saved ${result.discoveredUrls.length} discovered URLs to brand`);
+}
+```
+
+When calling analyze-slices, pass known URLs:
+```typescript
+const brandLinks = brand?.all_links?.productUrls || {};
+const knownProductUrls = Object.entries(brandLinks).map(([name, url]) => ({ name, url }));
+```
 
 ---
 
@@ -88,28 +131,31 @@ This is natural language guidance, not mechanical rules - trusting Claude to und
 
 | File | Change |
 |------|--------|
-| `supabase/functions/process-campaign-queue/index.ts` | Filter out slices that fall at or below `footerStartY` before cropping/uploading/analyzing |
-| `supabase/functions/analyze-slices/index.ts` | Update LINKS section to emphasize finding product pages and using campaign context for variants |
+| `supabase/functions/analyze-slices/index.ts` | Add `web_fetch` tool + beta header, accept/return product URL discoveries |
+| `supabase/functions/process-campaign-queue/index.ts` | Pass known URLs to analyze-slices, save discovered URLs to brands table |
+
+---
+
+## Why This Will Work
+
+1. **Web Fetch**: Claude can now do exactly what native Claude did - search, then fetch the actual page content to find the real product URLs buried in the HTML
+
+2. **Learning**: Over time, each brand builds a map of `product name -> URL`. Future campaigns skip the search/fetch entirely and use the cached URL
+
+3. **Domain Restriction**: `allowed_domains: [domain]` ensures Claude only fetches from the brand's site (security + relevance)
 
 ---
 
 ## Expected Results
 
-After these changes:
-- **Footer content excluded**: Only 6-7 slices for this I AM GIA campaign (the actual marketing content)
-- **Better product links**: Claude will search for `/products/jessa-pant-grey` instead of accepting `/collections/sweats`
-- **Variant matching**: When multiple colors exist, Claude uses the campaign image to pick the right one
+After this change, for the I.AM.GIA campaign:
+- Claude searches for "Jessa Pant site:iamgia.com"
+- Search returns collections (same as before)
+- Claude **fetches** the Sweats collection page
+- Extracts `/products/jessa-pant-grey` from the HTML
+- Returns correct link
 
----
-
-## Technical Details
-
-### Footer Exclusion Logic
-```typescript
-// In cropAndUploadSlices or before calling it:
-const footerStartY = sliceResult.footerStartY;
-const contentSlices = sliceResult.slices.filter(s => s.yBottom <= footerStartY);
-```
-
-### Campaign Context for Variants
-The `fullCampaignImage` is already passed to analyze-slices. Claude can see what color/style is being featured and use that context when multiple product variants exist.
+Next time "Jessa Pant" appears:
+- We pass `knownProductUrls: [{ name: "jessa pant", url: "https://iamgia.com/products/jessa-pant-grey" }]`
+- Claude uses the cached URL immediately
+- No search/fetch needed
