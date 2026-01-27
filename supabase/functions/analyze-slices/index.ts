@@ -232,7 +232,7 @@ The discoveredUrls array should contain any NEW product URLs you found that were
     // Add web_fetch tool to allow Claude to fetch collection pages and extract product URLs
     if (domain) {
       tools.push({
-        type: 'web_fetch_20250305',
+        type: 'web_fetch_20250910',
         name: 'web_fetch',
         max_uses: 10,
         allowed_domains: [domain, `www.${domain}`],
@@ -245,7 +245,7 @@ The discoveredUrls array should contain any NEW product URLs you found that were
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-fetch-2025-03-05',
+        'anthropic-beta': 'web-search-2025-03-05,web-fetch-2025-09-10',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
