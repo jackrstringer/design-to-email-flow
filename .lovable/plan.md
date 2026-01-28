@@ -1,48 +1,74 @@
 
-# Fix: Wrong Beta Header AND Tool Type for web_fetch
+# Add Processing Timer to Queue Rows
 
-## Problem
-The Claude API call is failing with a 400 error because both the beta header AND tool type for `web_fetch` are incorrect.
+## Overview
+Add a small, minimal timer to the left of each queue row's status badge. The timer shows elapsed processing time and can be toggled on/off by clicking.
 
-## Root Cause
-Web Search and Web Fetch have **different release dates**:
-- **Web Search**: March 5, 2025 → `web-search-2025-03-05`, `web_search_20250305`
-- **Web Fetch**: September 10, 2025 → `web-fetch-2025-09-10`, `web_fetch_20250910`
+## Behavior
+- **Start**: Timer starts counting from `created_at` timestamp when campaign enters queue
+- **Stop**: Timer freezes when status reaches `ready_for_review` (or later states)
+- **Format**: `Xm Xs` (e.g., "2m 34s")
+- **Toggle**: Clicking any timer area toggles ALL timers visibility globally
+- **Persistence**: Visibility preference stored in localStorage
 
-The code incorrectly used the March date for web_fetch, which doesn't exist.
+## Files to Create/Modify
 
-## Required Changes
+### 1. Create `src/components/queue/ProcessingTimer.tsx`
+New component that:
+- Accepts `createdAt` timestamp and `status`
+- Uses `useEffect` + `setInterval` to tick every second while processing
+- Calculates elapsed time from `createdAt`
+- Freezes the time display once `status !== 'processing'`
+- Renders a tiny, gray text display (e.g., "1m 23s")
 
-**File:** `supabase/functions/analyze-slices/index.ts`
+### 2. Modify `src/components/queue/QueueRow.tsx`
+- Import `ProcessingTimer`
+- Add a narrow clickable area (w-10) between checkbox and status columns
+- Pass `showTimers` and `onToggleTimers` from parent
+- When clicked, toggle global visibility
 
-### Change 1: Fix the web_fetch tool type (line 235)
+### 3. Modify `src/components/queue/QueueTable.tsx`
+- Add state: `const [showTimers, setShowTimers] = useState(() => localStorage.getItem('queueShowTimers') === 'true')`
+- Pass `showTimers` and `onToggleTimers` to each `QueueRow`
+- Save to localStorage on toggle
 
-```text
-Current:
-type: 'web_fetch_20250305',
+## Visual Design
+- Timer width: ~40px
+- Font: 10px, text-gray-400
+- When hidden: the area is still clickable but shows nothing (invisible toggle zone)
+- When visible: shows "2m 34s" style text
+- No borders, no backgrounds - completely minimal
 
-Fixed:
-type: 'web_fetch_20250910',
+## Technical Details
+
+```tsx
+// ProcessingTimer.tsx
+const ProcessingTimer = ({ createdAt, status, visible, onToggle }) => {
+  const [elapsed, setElapsed] = useState(0);
+  
+  useEffect(() => {
+    // Calculate initial elapsed
+    const start = new Date(createdAt).getTime();
+    const now = Date.now();
+    setElapsed(Math.floor((now - start) / 1000));
+    
+    // Only tick if still processing
+    if (status === 'processing') {
+      const interval = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - start) / 1000));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [createdAt, status]);
+  
+  const minutes = Math.floor(elapsed / 60);
+  const seconds = elapsed % 60;
+  const display = `${minutes}m ${seconds}s`;
+  
+  return (
+    <div onClick={(e) => { e.stopPropagation(); onToggle(); }} className="w-10 ...">
+      {visible && <span className="text-[10px] text-gray-400">{display}</span>}
+    </div>
+  );
+};
 ```
-
-### Change 2: Fix the beta header to include BOTH features (line 248)
-
-```text
-Current:
-'anthropic-beta': 'web-fetch-2025-03-05',
-
-Fixed:
-'anthropic-beta': 'web-search-2025-03-05,web-fetch-2025-09-10',
-```
-
-## Why Both Changes Are Needed
-- The tool type tells Claude which tool version to use internally
-- The beta header enables the feature on the API side
-- Since we're using both `web_search` and `web_fetch`, the beta header must list both comma-separated
-
-## Expected Result
-After this fix:
-- Claude API call succeeds (no more 400 errors)
-- Alt text is generated for all slices
-- Links are discovered using web_search + web_fetch together
-- Product URLs get resolved properly (e.g., Jessa Pant → `/products/jessa-pant-grey`)
