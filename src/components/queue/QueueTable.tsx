@@ -20,6 +20,8 @@ interface QueueTableProps {
   selectedIds: Set<string>;
   onSelectItem: (id: string, selected: boolean, shiftKey?: boolean) => void;
   onSelectAll: () => void;
+  showTimers: boolean;
+  onToggleTimers: () => void;
 }
 
 export interface ColumnWidths {
@@ -78,19 +80,12 @@ export function QueueTable({
   selectedIds,
   onSelectItem,
   onSelectAll,
+  showTimers,
+  onToggleTimers,
 }: QueueTableProps) {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const [widthsLoaded, setWidthsLoaded] = useState(false);
   const [resizing, setResizing] = useState<keyof ColumnWidths | null>(null);
-  const [showTimers, setShowTimers] = useState(() => localStorage.getItem('queueShowTimers') === 'true');
-
-  const handleToggleTimers = useCallback(() => {
-    setShowTimers(prev => {
-      const newValue = !prev;
-      localStorage.setItem('queueShowTimers', String(newValue));
-      return newValue;
-    });
-  }, []);
 
   // Load saved column widths on mount
   useEffect(() => {
@@ -451,7 +446,7 @@ export function QueueTable({
                 isSelected={selectedIds.has(item.id)}
                 onSelect={onSelectItem}
                 showTimers={showTimers}
-                onToggleTimers={handleToggleTimers}
+                onToggleTimers={onToggleTimers}
               />
               {expandedId === item.id && (
                 <ExpandedRowPanel
