@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Building, X, Trash2, Archive, Loader2 } from 'lucide-react';
+import { RefreshCw, Building, X, Trash2, Archive, Loader2, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -34,6 +34,15 @@ export default function CampaignQueue() {
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
+  const [showTimers, setShowTimers] = useState(() => localStorage.getItem('queueShowTimers') === 'true');
+  
+  const handleToggleTimers = () => {
+    setShowTimers(prev => {
+      const newValue = !prev;
+      localStorage.setItem('queueShowTimers', String(newValue));
+      return newValue;
+    });
+  };
   
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -369,16 +378,28 @@ export default function CampaignQueue() {
             
             {/* Right: Show Closed + Brand Filter + Refresh */}
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="show-closed"
-                  checked={showClosed}
-                  onCheckedChange={setShowClosed}
-                  className="scale-75"
-                />
-                <Label htmlFor="show-closed" className="text-[12px] text-muted-foreground cursor-pointer">
-                  Show Closed
-                </Label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleToggleTimers}
+                  className={`flex items-center gap-1.5 text-[12px] transition-colors ${
+                    showTimers ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Timer className="h-3.5 w-3.5" />
+                  <span>Timers</span>
+                </button>
+                
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="show-closed"
+                    checked={showClosed}
+                    onCheckedChange={setShowClosed}
+                    className="scale-75"
+                  />
+                  <Label htmlFor="show-closed" className="text-[12px] text-muted-foreground cursor-pointer">
+                    Show Closed
+                  </Label>
+                </div>
               </div>
               
               <Select value={brandFilter} onValueChange={setBrandFilter}>
@@ -485,6 +506,8 @@ export default function CampaignQueue() {
             selectedIds={selectedIds}
             onSelectItem={handleSelectItem}
             onSelectAll={handleSelectAll}
+            showTimers={showTimers}
+            onToggleTimers={handleToggleTimers}
           />
         </div>
       </main>
