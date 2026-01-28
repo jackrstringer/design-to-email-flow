@@ -4,6 +4,7 @@ import { InlineDropdownSelector } from './InlineDropdownSelector';
 import { ExternalLinksIndicator } from './ExternalLinksIndicator';
 import { SpellingIndicator } from './SpellingIndicator';
 import { SegmentSetSelector, SegmentPreset } from './SegmentSetSelector';
+import { ProcessingTimer } from './ProcessingTimer';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -11,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { ExternalLink, Copy, Columns, AlertTriangle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-
 interface ColumnWidths {
   status: number;
   thumbnail: number;
@@ -35,6 +35,8 @@ interface QueueRowProps {
   presets: SegmentPreset[];
   isSelected: boolean;
   onSelect: (id: string, selected: boolean, shiftKey?: boolean) => void;
+  showTimers: boolean;
+  onToggleTimers: () => void;
 }
 
 export function QueueRow({ 
@@ -45,7 +47,9 @@ export function QueueRow({
   columnWidths, 
   presets,
   isSelected,
-  onSelect
+  onSelect,
+  showTimers,
+  onToggleTimers
 }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string; totalColumns?: number; multiCtaWarning?: string }>) || [];
   const linkCount = slices.filter(s => s.link).length;
@@ -149,6 +153,14 @@ export function QueueRow({
           )}
         />
       </div>
+      
+      {/* Processing Timer */}
+      <ProcessingTimer
+        createdAt={item.created_at}
+        status={item.status}
+        visible={showTimers}
+        onToggle={onToggleTimers}
+      />
       
       {/* Status */}
       <div 
