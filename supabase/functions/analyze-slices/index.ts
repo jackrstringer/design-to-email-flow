@@ -6,7 +6,8 @@ const corsHeaders = {
 };
 
 interface SliceInput {
-  dataUrl: string;
+  dataUrl?: string;   // Legacy: base64 data URL
+  imageUrl?: string;  // NEW: Cloudinary crop URL
   index: number;
   // Multi-column properties (optional)
   column?: number;
@@ -34,7 +35,7 @@ serve(async (req) => {
       slices: SliceInput[]; 
       brandUrl?: string;
       brandDomain?: string;
-      fullCampaignImage?: string;
+      fullCampaignImage?: string; // Can be URL or dataUrl
       knownProductUrls?: Array<{ name: string; url: string }>;
     };
 
@@ -49,7 +50,7 @@ serve(async (req) => {
     const domain = brandDomain || (brandUrl ? new URL(brandUrl).hostname.replace('www.', '') : null);
 
     console.log(`Analyzing ${slices.length} slices for brand: ${brandUrl || 'unknown'}, domain: ${domain}`);
-    console.log(`Full campaign image provided: ${fullCampaignImage ? 'yes' : 'no'}`);
+    console.log(`Full campaign image provided: ${fullCampaignImage ? 'yes' : 'no'} (type: ${fullCampaignImage?.startsWith('http') ? 'URL' : 'dataUrl'})`);
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
@@ -168,30 +169,47 @@ Return JSON with exactly ${slices.length} slices AND any newly discovered produc
 The discoveredUrls array should contain any NEW product URLs you found that weren't in the known URLs list. This helps us learn for future campaigns.`;
 
     // Build content array with text and all images for Claude
-    const content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [
+    const content: Array<{ type: string; text?: string; source?: { type: string; media_type?: string; data?: string; url?: string } }> = [
       { type: 'text', text: prompt }
     ];
 
     // Add full campaign image FIRST for context (if provided)
+    // NEW: Support both URL and dataUrl formats
     if (fullCampaignImage) {
-      const fullMatches = fullCampaignImage.match(/^data:([^;]+);base64,(.+)$/);
-      if (fullMatches) {
-        content.push({
-          type: 'text',
-          text: '=== REFERENCE IMAGE (DO NOT ANALYZE - context only) ==='
-        });
+      content.push({
+        type: 'text',
+        text: '=== REFERENCE IMAGE (DO NOT ANALYZE - context only) ==='
+      });
+      
+      if (fullCampaignImage.startsWith('http')) {
+        // URL-based image (new optimized path)
         content.push({
           type: 'image',
           source: {
-            type: 'base64',
-            media_type: fullMatches[1],
-            data: fullMatches[2]
+            type: 'url',
+            url: fullCampaignImage
           }
         });
+        console.log('Using URL for full campaign image');
+      } else {
+        // Legacy dataUrl format (backwards compatible)
+        const fullMatches = fullCampaignImage.match(/^data:([^;]+);base64,(.+)$/);
+        if (fullMatches) {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: fullMatches[1],
+              data: fullMatches[2]
+            }
+          });
+          console.log('Using dataUrl for full campaign image');
+        }
       }
     }
 
     // Add each slice image with EXPLICIT labeling
+    // NEW: Support both URL and dataUrl formats for slices
     for (let i = 0; i < slices.length; i++) {
       const slice = slices[i];
       
@@ -207,16 +225,31 @@ The discoveredUrls array should contain any NEW product URLs you found that were
         text: `=== SLICE ${i + 1} (index: ${i})${columnContext} ===`
       });
       
-      const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (matches) {
+      // NEW: Support both URL and dataUrl formats
+      if (slice.imageUrl && !slice.dataUrl) {
+        // URL-based (new Cloudinary crop URLs)
         content.push({
           type: 'image',
           source: {
-            type: 'base64',
-            media_type: matches[1],
-            data: matches[2]
+            type: 'url',
+            url: slice.imageUrl
           }
         });
+      } else if (slice.dataUrl) {
+        // Legacy dataUrl format (backwards compatible)
+        const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: matches[1],
+              data: matches[2]
+            }
+          });
+        }
+      } else {
+        console.warn(`Slice ${i} has no imageUrl or dataUrl, skipping image`);
       }
     }
 
