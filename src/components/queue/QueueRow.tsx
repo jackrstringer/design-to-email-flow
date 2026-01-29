@@ -157,6 +157,7 @@ export function QueueRow({
       {/* Processing Timer */}
       <ProcessingTimer
         createdAt={item.created_at}
+        completedAt={item.updated_at}
         status={item.status}
         visible={showTimers}
         onToggle={onToggleTimers}
