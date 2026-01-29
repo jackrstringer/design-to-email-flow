@@ -138,15 +138,18 @@ serve(async (req) => {
 
         const uploadData = await uploadResponse.json();
         const imageUrl = uploadData.url || uploadData.secure_url;
+        const actualWidth = uploadData.width;
+        const actualHeight = uploadData.height;
+        const publicId = uploadData.publicId;
 
         if (!imageUrl) {
           errors.push({ frame: frame.name, error: 'No image URL returned from upload' });
           continue;
         }
 
-        console.log('[figma-ingest] Image uploaded:', imageUrl);
+        console.log('[figma-ingest] Image uploaded:', imageUrl, 'dimensions:', actualWidth, 'x', actualHeight);
 
-        // Create campaign queue entry
+        // Create campaign queue entry with Cloudinary dimensions
         const { data: campaign, error: campaignError } = await supabase
           .from('campaign_queue')
           .insert({
@@ -163,6 +166,9 @@ serve(async (req) => {
             image_url: imageUrl,
             image_width: frame.width,
             image_height: frame.height,
+            actual_image_width: actualWidth,
+            actual_image_height: actualHeight,
+            cloudinary_public_id: publicId,
             provided_subject_line: subjectLine || null,
             provided_preview_text: previewText || null,
             status: 'processing',

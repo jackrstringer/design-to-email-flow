@@ -162,9 +162,12 @@ export type Database = {
       }
       campaign_queue: {
         Row: {
+          actual_image_height: number | null
+          actual_image_width: number | null
           brand_id: string | null
           clickup_task_id: string | null
           clickup_task_url: string | null
+          cloudinary_public_id: string | null
           copy_source: string | null
           created_at: string | null
           error_message: string | null
@@ -200,9 +203,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          actual_image_height?: number | null
+          actual_image_width?: number | null
           brand_id?: string | null
           clickup_task_id?: string | null
           clickup_task_url?: string | null
+          cloudinary_public_id?: string | null
           copy_source?: string | null
           created_at?: string | null
           error_message?: string | null
@@ -238,9 +244,12 @@ export type Database = {
           user_id: string
         }
         Update: {
+          actual_image_height?: number | null
+          actual_image_width?: number | null
           brand_id?: string | null
           clickup_task_id?: string | null
           clickup_task_url?: string | null
+          cloudinary_public_id?: string | null
           copy_source?: string | null
           created_at?: string | null
           error_message?: string | null
