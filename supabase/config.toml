@@ -93,6 +93,9 @@ verify_jwt = false
 [functions.qa-spelling-check]
 verify_jwt = false
 
+[functions.qa-spelling-check-early]
+verify_jwt = false
+
 [functions.figma-ingest]
 verify_jwt = false
 

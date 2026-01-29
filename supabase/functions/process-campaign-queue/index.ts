@@ -140,61 +140,9 @@ async function startEarlyGeneration(
   return sessionKey;
 }
 
-// Step 2: Detect brand from image
-async function detectBrand(
-  supabase: any,
-  imageBase64: string
-): Promise<string | null> {
-  console.log('[process] Step 2: Detecting brand...');
-
-  try {
-    // Get existing brands for matching
-    const { data: brands } = await supabase
-      .from('brands')
-      .select('id, name, domain, primary_color');
-
-    const existingBrands = brands || [];
-
-    const detectUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/detect-brand-from-image';
-    const response = await fetch(detectUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-      },
-      body: JSON.stringify({
-        imageDataUrls: [`data:image/png;base64,${imageBase64}`],
-        existingBrands
-      })
-    });
-
-    if (!response.ok) {
-      console.error('[process] Brand detection failed:', await response.text());
-      return null;
-    }
-
-    const result = await response.json();
-    
-    // If matched existing brand
-    if (result.matchedBrandId) {
-      console.log('[process] Matched existing brand:', result.matchedBrandId);
-      return result.matchedBrandId;
-    }
-
-    // If new brand detected, could create it here
-    // For now, just log and return null
-    if (result.name) {
-      console.log('[process] New brand detected:', result.name, result.url);
-      // TODO: Auto-create brand or leave for manual setup
-    }
-
-    return null;
-
-  } catch (err) {
-    console.error('[process] Brand detection error:', err);
-    return null;
-  }
-}
+// Step 2: REMOVED - Brand detection removed from pipeline
+// Brand is now always manually selected via plugin dropdown
+// The detect-brand-from-image edge function is kept for potential future use
 
 // Step 3: Auto-slice the image
 async function autoSliceImage(
@@ -799,6 +747,25 @@ serve(async (req) => {
       copyExamples
     );
 
+    // === STEP 1.5c: Fire early spelling check (async, parallel with entire pipeline) ===
+    const spellingSessionKey = crypto.randomUUID();
+    const spellingCheckUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/qa-spelling-check-early';
+    const resizedSpellingImageUrl = getResizedCloudinaryUrl(imageResult.imageUrl, 600, 7900);
+    
+    fetch(spellingCheckUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({
+        sessionKey: spellingSessionKey,
+        imageUrl: resizedSpellingImageUrl
+      })
+    }).catch(err => console.log('[process] Early spelling check triggered:', err?.message || 'ok'));
+    
+    console.log('[process] Step 1.5c: Early spelling check fired for session:', spellingSessionKey);
+
     // === STEP 1.5b: Search ClickUp for copy ===
     let clickupCopy: { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null } = {
       subjectLine: null,
@@ -846,45 +813,25 @@ serve(async (req) => {
       }
     }
 
-    // === STEP 2+3: PARALLEL - Detect brand + Auto-slice image (35%) ===
-    // OPTIMIZATION: These are independent operations, run them in parallel
+    // === STEP 3: Auto-slice image (35%) ===
+    // Brand detection REMOVED - brand is always manually selected via plugin
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'analyzing_image',
       processing_percent: 15
     });
 
-    // Start both operations in parallel
-    const brandDetectionPromise = !brandId 
-      ? detectBrand(supabase, imageResult.imageBase64)
-      : Promise.resolve(brandId);
-    
-    const slicePromise = autoSliceImage(
+    console.log('[process] Running auto-slice (brand already set from plugin:', brandId || 'none', ')...');
+    const sliceResult = await autoSliceImage(
       imageResult.imageBase64,
       item.image_width || 600,
       item.image_height || 2000
     );
 
-    console.log('[process] Running brand detection + auto-slice in parallel...');
-    const [detectedBrandId, sliceResult] = await Promise.all([brandDetectionPromise, slicePromise]);
-
-    // Handle brand detection result
-    if (!brandId && detectedBrandId) {
-      brandId = detectedBrandId;
-      const { data: brand } = await supabase
-        .from('brands')
-        .select('*')
-        .eq('id', brandId)
-        .single();
-      
-      if (brand) {
-        brandContext = {
-          name: brand.name,
-          domain: brand.domain,
-        };
-        copyExamples = brand.copy_examples;
-      }
-    } else if (brandId) {
+    // Brand is already set from plugin (item.brand_id), no detection needed
+    if (brandId) {
       console.log('[process] Using brand from plugin:', brandId);
+    } else {
+      console.log('[process] No brand selected - campaign will need brand assignment');
     }
 
     await updateQueueItem(supabase, campaignQueueId, {
@@ -1016,13 +963,43 @@ serve(async (req) => {
       });
     }
 
-    // === STEP 6: QA spelling check (90%) ===
+    // === STEP 6: Poll for early spelling check results (90%) ===
     await updateQueueItem(supabase, campaignQueueId, {
       processing_step: 'qa_check',
       processing_percent: 85
     });
 
-    const qaResult = await qaSpellingCheck(imageResult.imageBase64);
+    console.log('[process] Step 6: Polling for early spelling check results (session:', spellingSessionKey, ')...');
+    
+    // Poll for early spelling check results (max 8 seconds, 2s intervals)
+    let qaResult: { hasErrors: boolean; errors: any[] } = { hasErrors: false, errors: [] };
+    const spellingPollStart = Date.now();
+    const maxSpellingWaitMs = 8000;
+    
+    while (Date.now() - spellingPollStart < maxSpellingWaitMs) {
+      const { data: earlySpellingData } = await supabase
+        .from('early_spelling_check')
+        .select('*')
+        .eq('session_key', spellingSessionKey)
+        .single();
+      
+      if (earlySpellingData) {
+        qaResult = {
+          hasErrors: earlySpellingData.has_errors || false,
+          errors: earlySpellingData.spelling_errors || []
+        };
+        console.log('[process] Early spelling check ready after', Date.now() - spellingPollStart, 'ms, found', qaResult.errors.length, 'errors');
+        break;
+      }
+      console.log('[process] Spelling check polling... no result yet');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    
+    // Fallback to sync if early check not ready
+    if (Date.now() - spellingPollStart >= maxSpellingWaitMs && qaResult.errors.length === 0) {
+      console.log('[process] Early spelling not ready after polling, falling back to sync...');
+      qaResult = await qaSpellingCheck(imageResult.imageBase64);
+    }
 
     await updateQueueItem(supabase, campaignQueueId, {
       spelling_errors: qaResult.errors,
@@ -1054,10 +1031,10 @@ serve(async (req) => {
         : (finalPreviewTexts.length > 0 ? finalPreviewTexts : earlyCopy.previewTexts);
     }
     
-    // Merge spelling errors from early copy
+    // Merge spelling errors from early copy (now includes early spelling check results)
     const allSpellingErrors = [...(qaResult.errors || []), ...(earlyCopy?.spellingErrors || [])];
     const uniqueSpellingErrors = allSpellingErrors.filter((e, i, arr) => 
-      arr.findIndex(x => x.word === e.word && x.location === e.location) === i
+      arr.findIndex(x => x.text === e.text && x.location === e.location) === i
     );
 
     // Determine copy source and final selected values

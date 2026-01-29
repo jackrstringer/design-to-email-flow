@@ -389,6 +389,36 @@ export type Database = {
           },
         ]
       }
+      early_spelling_check: {
+        Row: {
+          created_at: string | null
+          expires_at: string | null
+          has_errors: boolean | null
+          id: string
+          image_url: string | null
+          session_key: string
+          spelling_errors: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          has_errors?: boolean | null
+          id?: string
+          image_url?: string | null
+          session_key: string
+          spelling_errors?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          has_errors?: boolean | null
+          id?: string
+          image_url?: string | null
+          session_key?: string
+          spelling_errors?: Json | null
+        }
+        Relationships: []
+      }
       footer_editor_sessions: {
         Row: {
           brand_id: string
