@@ -4,7 +4,7 @@ import { useLinkPreferences } from '@/hooks/useLinkPreferences';
 import { SitemapImportCard } from './SitemapImportCard';
 import { BrandLinkTable } from './BrandLinkTable';
 import { AddLinkModal } from './AddLinkModal';
-import { LinkPreferencesCard } from './LinkPreferencesCard';
+import { LinkPreferencesEditor } from './LinkPreferencesEditor';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
 interface LinkIntelligenceSectionProps {
@@ -18,8 +18,8 @@ export function LinkIntelligenceSection({ brandId, domain }: LinkIntelligenceSec
 
   return (
     <div className="space-y-6">
-      {/* Link Preferences Card - Prominent */}
-      <LinkPreferencesCard brandId={brandId} />
+      {/* Link Preferences Editor - Inline */}
+      <LinkPreferencesEditor brandId={brandId} />
 
       {/* Link Index Card */}
       <Card>
