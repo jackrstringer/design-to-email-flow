@@ -1,476 +1,355 @@
 
-# Link Intelligence System - Chunk 1 Implementation Plan
+# Flexible Link Preferences with Conditional Rules
 
 ## Overview
-This plan covers the foundational infrastructure for a pre-indexed product URL system that enables instant link matching for email campaigns instead of slow per-campaign web searches.
+Replace the rigid radio-button-based CTA behavior with a flexible system that supports:
+- A default destination URL for generic CTAs
+- Unlimited conditional rules with keyword matching
+- First-match-wins rule evaluation at campaign processing time
 
 ---
 
-## Phase 1: Database Schema & Migrations
+## Phase 1: Update Type Definitions
 
-### 1.1 Enable pgvector Extension
-```sql
-CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
-```
+### File: `src/types/link-intelligence.ts`
 
-### 1.2 Create `brand_link_index` Table
-Stores indexed URLs with embeddings for semantic search.
-
-| Column | Type | Purpose |
-|--------|------|---------|
-| id | UUID | Primary key |
-| brand_id | UUID | Foreign key to brands |
-| url | TEXT | Full URL |
-| link_type | TEXT | 'homepage', 'collection', 'product', 'page' |
-| title | TEXT | Page title |
-| description | TEXT | Optional description |
-| embedding | VECTOR(1536) | OpenAI embedding for semantic search |
-| parent_collection_url | TEXT | Parent collection (if product) |
-| last_verified_at | TIMESTAMPTZ | Health check timestamp |
-| is_healthy | BOOLEAN | Link validity status |
-| verification_failures | INTEGER | Failed health check count |
-| last_used_at | TIMESTAMPTZ | Usage tracking |
-| use_count | INTEGER | Match count |
-| source | TEXT | 'sitemap', 'crawl', 'ai_discovered', 'user_added' |
-| user_confirmed | BOOLEAN | Manual confirmation flag |
-| created_at / updated_at | TIMESTAMPTZ | Timestamps |
-
-Indexes: `brand_id`, `(brand_id, is_healthy)`, `(brand_id, link_type)`
-Unique constraint: `(brand_id, url)`
-
-### 1.3 Create `sitemap_import_jobs` Table
-Tracks async sitemap import progress.
-
-| Column | Type | Purpose |
-|--------|------|---------|
-| id | UUID | Primary key |
-| brand_id | UUID | Foreign key to brands |
-| sitemap_url | TEXT | Import source |
-| status | TEXT | 'pending', 'parsing', 'fetching_titles', 'generating_embeddings', 'complete', 'failed' |
-| urls_found | INTEGER | Total URLs discovered |
-| urls_processed | INTEGER | Progress counter |
-| urls_failed | INTEGER | Error counter |
-| product_urls_count | INTEGER | Final product count |
-| collection_urls_count | INTEGER | Final collection count |
-| started_at / completed_at | TIMESTAMPTZ | Timing |
-| error_message | TEXT | Failure reason |
-
-### 1.4 Add `link_preferences` to `brands` Table
-```sql
-ALTER TABLE brands ADD COLUMN IF NOT EXISTS link_preferences JSONB DEFAULT '{}'::jsonb;
-```
-
-TypeScript interface:
-```typescript
-interface BrandLinkPreferences {
-  default_cta_behavior: 'homepage' | 'primary_collection' | 'campaign_context';
-  primary_collection_name?: string;
-  primary_collection_url?: string;
-  catalog_size: 'small' | 'medium' | 'large';
-  product_churn: 'low' | 'medium' | 'high';
-  sitemap_url?: string;
-  last_sitemap_import_at?: string;
-  onboarding_completed_at?: string;
-}
-```
-
-### 1.5 RLS Policies
-- Users can CRUD their own brand's link index entries
-- Users can view/manage their own import jobs
-- Service role access for edge functions
-
----
-
-## Phase 2: Add OpenAI API Key Secret
-
-**Important**: The project currently lacks an `OPENAI_API_KEY` secret. Before implementing embedding generation, this secret must be added via the secrets management tool.
-
----
-
-## Phase 3: Edge Functions
-
-### 3.1 `generate-embedding` Function
-Generates embeddings via OpenAI's text-embedding-3-small model.
+Replace the `BrandLinkPreferences` interface:
 
 ```typescript
-// Input
-{ texts: string[] }  // Up to 100 texts per call
-
-// Output
-{ embeddings: number[][] }  // Array of 1536-dimension vectors
-```
-
-Implementation:
-- Uses OpenAI SDK for Deno
-- Batches texts (max 100 per API call)
-- Returns embeddings in same order as input
-
-### 3.2 `trigger-sitemap-import` Function
-Initiates an async sitemap import.
-
-```typescript
-// Input
-{ brand_id: string; sitemap_url: string }
-
-// Output
-{ job: SitemapImportJob }  // Immediately returns job record for polling
-```
-
-Implementation:
-- Validates no existing running import for brand
-- Creates job record with status 'pending'
-- Updates brand.link_preferences.sitemap_url
-- Fires async call to `import-sitemap` (non-blocking)
-- Returns job immediately so UI can poll
-
-### 3.3 `import-sitemap` Function (Background Task)
-Parses sitemap and indexes URLs.
-
-Process flow:
-1. Update job status to 'parsing'
-2. Fetch sitemap XML, handle sitemap index (recursive)
-3. Extract URLs, categorize by pattern:
-   - `/products/` → product
-   - `/collections/` → collection
-   - Skip: /cart, /account, /policies, /pages/faq, etc.
-4. Update job: urls_found, status = 'fetching_titles'
-5. Batch fetch page titles (20 concurrent, with timeout)
-6. Update job: status = 'generating_embeddings'
-7. Generate embeddings in batches of 100
-8. Bulk upsert into brand_link_index
-9. Update job: status = 'complete', final counts
-
-Error handling:
-- Catch all errors, update job status to 'failed' with message
-- Continue on individual URL failures, track in urls_failed
-
-### 3.4 `add-brand-link` Function
-Manually add a single link.
-
-```typescript
-// Input
-{ brand_id: string; url: string; title: string; link_type: 'product' | 'collection' | 'page' }
-
-// Output
-{ link: BrandLinkIndexEntry }
-```
-
-Implementation:
-- Normalize URL (prepend domain if relative)
-- Generate embedding for title
-- Insert with source: 'user_added', user_confirmed: true
-
-### 3.5 `delete-brand-link` Function
-Remove a link from the index.
-
-```typescript
-// Input
-{ link_id: string }
-
-// Output
-{ success: boolean }
-```
-
-### 3.6 `get-brand-link-index` Function
-Paginated link retrieval with filters.
-
-```typescript
-// Input
-{ 
-  brand_id: string;
-  page?: number;
-  limit?: number;
-  filter?: 'all' | 'products' | 'collections' | 'unhealthy';
-  search?: string;
+// Conditional routing rule
+export interface LinkRoutingRule {
+  id: string;           // UUID for React keys and deletion
+  name: string;         // User's label: "Protein campaigns"
+  keywords: string[];   // Triggers: ["protein", "whey", "mass gainer"]
+  destination_url: string;
 }
 
-// Output
-{ 
-  links: BrandLinkIndexEntry[];
-  total: number;
-  page: number;
-  totalPages: number;
-}
-```
-
-### 3.7 `update-brand-link-preferences` Function
-Update the preferences JSON.
-
-```typescript
-// Input
-{ brand_id: string; preferences: Partial<BrandLinkPreferences> }
-
-// Output
-{ preferences: BrandLinkPreferences }
-```
-
----
-
-## Phase 4: Frontend - Brand Onboarding Flow
-
-Extend `BrandOnboardingModal.tsx` to add link preferences steps after the current ClickUp step.
-
-### 4.1 New Step: Link Preferences
-Insert between ClickUp and Footer steps.
-
-**Screen 1: Default Link Behavior**
-- Title: "Link Preferences"
-- Radio options:
-  - "Always to homepage"
-  - "To a primary collection" (shows collection name/URL inputs)
-  - "Depends on the campaign"
-
-**Screen 2: Catalog Information**
-- Catalog size: Small / Medium / Large
-- Product churn: Rarely / Sometimes / Frequently
-
-**Screen 3: Import Product Links**
-- Options:
-  - Import from URL (text input)
-  - Try default ({domain}/sitemap.xml)
-  - Skip for now
-- Note about background processing
-
-### 4.2 State Management
-Add new state variables:
-```typescript
-const [linkPreferences, setLinkPreferences] = useState<BrandLinkPreferences>({
-  default_cta_behavior: 'campaign_context',
-  catalog_size: 'medium',
-  product_churn: 'medium',
-});
-const [sitemapUrl, setSitemapUrl] = useState('');
-const [importChoice, setImportChoice] = useState<'url' | 'default' | 'skip'>('default');
-```
-
-### 4.3 On Complete
-- Save link_preferences to brand
-- If import selected, call trigger-sitemap-import
-
----
-
-## Phase 5: Frontend - Brand Detail Page Components
-
-### 5.1 New File: `src/components/brand/LinkIntelligenceSection.tsx`
-Main container for link index UI on brand detail page.
-
-Features:
-- Stats bar: Total links, Products, Collections, Healthy count
-- Import status card (shows when job running or recently completed)
-- Link table with pagination
-- Add Link button/modal
-- Filter dropdown and search
-
-### 5.2 New File: `src/components/brand/SitemapImportCard.tsx`
-Progress visualization during imports.
-
-Features:
-- Status message based on job.status
-- Progress bar: urls_processed / urls_found
-- Counts: products, collections found
-- Retry button on failure
-
-### 5.3 New File: `src/components/brand/BrandLinkTable.tsx`
-Paginated table of indexed links.
-
-Columns:
-- Title (truncated)
-- URL (truncated, external link icon)
-- Type (badge)
-- Health (icon)
-- Last Used (relative time)
-- Actions (delete button)
-
-### 5.4 New File: `src/components/brand/AddLinkModal.tsx`
-Modal for manually adding links.
-
-Fields:
-- Title (text input)
-- URL (text input with domain validation)
-- Type (dropdown: Product / Collection / Page)
-
-### 5.5 New File: `src/components/brand/LinkPreferencesCard.tsx`
-Displays and allows editing of link preferences.
-
-Shows:
-- Default CTA behavior
-- Primary collection (if applicable)
-- Catalog size & product churn
-- Edit button opens modal with same fields as onboarding
-
-### 5.6 Update `BrandSettings.tsx`
-Add new collapsible section "Link Intelligence" after existing sections.
-
-```typescript
-// Add to openSections state
-linkIntelligence: false,
-
-// Add collapsible section
-<Collapsible open={openSections.linkIntelligence} onOpenChange={() => toggleSection('linkIntelligence')}>
-  <CollapsibleTrigger>Link Intelligence</CollapsibleTrigger>
-  <CollapsibleContent>
-    <LinkIntelligenceSection brandId={brand.id} domain={brand.domain} />
-  </CollapsibleContent>
-</Collapsible>
-```
-
----
-
-## Phase 6: Hooks & Data Fetching
-
-### 6.1 New File: `src/hooks/useBrandLinkIndex.ts`
-React Query hook for link index operations.
-
-```typescript
-export function useBrandLinkIndex(brandId: string) {
-  // Query: fetch paginated links
-  // Mutations: add link, delete link
-  // Query: fetch import job status (polls while running)
-}
-```
-
-### 6.2 New File: `src/hooks/useSitemapImport.ts`
-Hook for import operations with polling.
-
-```typescript
-export function useSitemapImport(brandId: string) {
-  // Query: latest job status (refetch every 3s while running)
-  // Mutation: trigger new import
-}
-```
-
----
-
-## Phase 7: Type Definitions
-
-### 7.1 Update `src/types/brand-assets.ts`
-Add new interfaces:
-
-```typescript
+// Link preferences stored in brands.link_preferences JSONB
 export interface BrandLinkPreferences {
-  default_cta_behavior: 'homepage' | 'primary_collection' | 'campaign_context';
-  primary_collection_name?: string;
-  primary_collection_url?: string;
-  catalog_size: 'small' | 'medium' | 'large';
-  product_churn: 'low' | 'medium' | 'high';
+  // Default destination for generic CTAs when no rule matches
+  default_destination_url?: string;
+  default_destination_name?: string;  // Optional friendly label
+  
+  // Conditional rules - checked in order, first match wins
+  rules?: LinkRoutingRule[];
+  
+  // Catalog characteristics (keep these)
+  catalog_size?: 'small' | 'medium' | 'large';
+  product_churn?: 'low' | 'medium' | 'high';
+  
+  // Import tracking (keep these)
   sitemap_url?: string;
   last_sitemap_import_at?: string;
+  
+  // Legacy fields (for migration compatibility)
+  default_cta_behavior?: 'homepage' | 'primary_collection' | 'campaign_context';
+  primary_collection_name?: string;
+  primary_collection_url?: string;
   onboarding_completed_at?: string;
-}
-
-export interface BrandLinkIndexEntry {
-  id: string;
-  brandId: string;
-  url: string;
-  linkType: 'homepage' | 'collection' | 'product' | 'page';
-  title: string | null;
-  description: string | null;
-  parentCollectionUrl: string | null;
-  lastVerifiedAt: string | null;
-  isHealthy: boolean;
-  verificationFailures: number;
-  lastUsedAt: string | null;
-  useCount: number;
-  source: 'sitemap' | 'crawl' | 'ai_discovered' | 'user_added';
-  userConfirmed: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SitemapImportJob {
-  id: string;
-  brandId: string;
-  sitemapUrl: string;
-  status: 'pending' | 'parsing' | 'fetching_titles' | 'generating_embeddings' | 'complete' | 'failed';
-  urlsFound: number;
-  urlsProcessed: number;
-  urlsFailed: number;
-  productUrlsCount: number;
-  collectionUrlsCount: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 ```
 
-### 7.2 Update `Brand` interface
-Add `linkPreferences?: BrandLinkPreferences;`
+---
+
+## Phase 2: Update LinkPreferencesCard Component
+
+### File: `src/components/brand/LinkPreferencesCard.tsx`
+
+Complete rewrite with three sections:
+
+### Section 1: Default Destination
+- Name field (optional): Text input for friendly label
+- URL field (required): Full URL input
+
+### Section 2: Conditional Rules
+- List of rule cards showing: name, keywords (comma-separated), destination URL
+- Delete button on each rule
+- "+ Add Rule" button at the bottom
+- Empty state: "No rules configured"
+
+### Section 3: Catalog Information
+- Keep existing dropdowns for catalog_size and product_churn
+
+### Add Rule Modal
+New dialog for creating rules with:
+- Rule Name (required)
+- Keywords (required, comma-separated input)
+- Destination URL (required, URL validation)
+
+### Read-Only View Updates
+Display:
+- Default destination name + URL (or "Not configured")
+- Rules count with bullet list of rule names → shortened URLs
+- Catalog size + update frequency
+
+### Component State
+```typescript
+// Form state for editing
+const [defaultDestinationUrl, setDefaultDestinationUrl] = useState('');
+const [defaultDestinationName, setDefaultDestinationName] = useState('');
+const [rules, setRules] = useState<LinkRoutingRule[]>([]);
+const [catalogSize, setCatalogSize] = useState<'small' | 'medium' | 'large'>('medium');
+const [productChurn, setProductChurn] = useState<'low' | 'medium' | 'high'>('medium');
+
+// Add rule modal state
+const [addRuleOpen, setAddRuleOpen] = useState(false);
+const [newRuleName, setNewRuleName] = useState('');
+const [newRuleKeywords, setNewRuleKeywords] = useState('');
+const [newRuleUrl, setNewRuleUrl] = useState('');
+```
 
 ---
 
-## Files to Create
+## Phase 3: Migration Logic
 
-| File | Purpose |
-|------|---------|
-| `supabase/migrations/xxx_link_intelligence.sql` | Database schema |
-| `supabase/functions/generate-embedding/index.ts` | OpenAI embeddings |
-| `supabase/functions/trigger-sitemap-import/index.ts` | Start import job |
-| `supabase/functions/import-sitemap/index.ts` | Background import |
-| `supabase/functions/add-brand-link/index.ts` | Manual link add |
-| `supabase/functions/delete-brand-link/index.ts` | Remove link |
-| `supabase/functions/get-brand-link-index/index.ts` | Paginated retrieval |
-| `supabase/functions/update-brand-link-preferences/index.ts` | Update preferences |
-| `src/components/brand/LinkIntelligenceSection.tsx` | Main UI container |
-| `src/components/brand/SitemapImportCard.tsx` | Import progress |
-| `src/components/brand/BrandLinkTable.tsx` | Link table |
-| `src/components/brand/AddLinkModal.tsx` | Add link form |
-| `src/components/brand/LinkPreferencesCard.tsx` | Preferences display |
-| `src/hooks/useBrandLinkIndex.ts` | React Query hook |
-| `src/hooks/useSitemapImport.ts` | Import polling hook |
+### In `LinkPreferencesCard.tsx` - openEdit function
+
+When opening the edit modal, migrate old data structure:
+
+```typescript
+const openEdit = () => {
+  if (preferences) {
+    // Migrate legacy structure if present
+    if (preferences.default_cta_behavior && !preferences.default_destination_url) {
+      // Old structure detected - migrate
+      if (preferences.default_cta_behavior === 'primary_collection' && preferences.primary_collection_url) {
+        setDefaultDestinationUrl(preferences.primary_collection_url);
+        setDefaultDestinationName(preferences.primary_collection_name || '');
+      } else if (preferences.default_cta_behavior === 'homepage') {
+        // Will need brand domain - set empty, user can fill in
+        setDefaultDestinationUrl('');
+        setDefaultDestinationName('Homepage');
+      } else {
+        // campaign_context - leave empty
+        setDefaultDestinationUrl('');
+        setDefaultDestinationName('');
+      }
+    } else {
+      // New structure
+      setDefaultDestinationUrl(preferences.default_destination_url || '');
+      setDefaultDestinationName(preferences.default_destination_name || '');
+    }
+    
+    setRules(preferences.rules || []);
+    setCatalogSize(preferences.catalog_size || 'medium');
+    setProductChurn(preferences.product_churn || 'medium');
+  }
+  setEditOpen(true);
+};
+```
+
+---
+
+## Phase 4: Rule Management Functions
+
+### Add Rule
+```typescript
+const handleAddRule = () => {
+  // Validate
+  if (!newRuleName.trim()) {
+    toast.error('Rule name is required');
+    return;
+  }
+  const keywords = newRuleKeywords.split(',').map(k => k.trim()).filter(Boolean);
+  if (keywords.length === 0) {
+    toast.error('At least one keyword is required');
+    return;
+  }
+  if (!newRuleUrl.trim() || !isValidUrl(newRuleUrl)) {
+    toast.error('Valid URL is required');
+    return;
+  }
+  
+  const newRule: LinkRoutingRule = {
+    id: crypto.randomUUID(),
+    name: newRuleName.trim(),
+    keywords,
+    destination_url: newRuleUrl.trim(),
+  };
+  
+  setRules([...rules, newRule]);
+  setAddRuleOpen(false);
+  resetRuleForm();
+};
+```
+
+### Delete Rule
+```typescript
+const handleDeleteRule = (ruleId: string) => {
+  setRules(rules.filter(r => r.id !== ruleId));
+};
+```
+
+### URL Validation Helper
+```typescript
+const isValidUrl = (url: string) => {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
+```
+
+---
+
+## Phase 5: Save Handler Update
+
+```typescript
+const handleSave = async () => {
+  try {
+    await updatePreferences({
+      default_destination_url: defaultDestinationUrl || undefined,
+      default_destination_name: defaultDestinationName || undefined,
+      rules: rules.length > 0 ? rules : undefined,
+      catalog_size: catalogSize,
+      product_churn: productChurn,
+      // Clear legacy fields
+      default_cta_behavior: undefined,
+      primary_collection_name: undefined,
+      primary_collection_url: undefined,
+    });
+    toast.success('Link preferences updated');
+    setEditOpen(false);
+  } catch (error) {
+    toast.error('Failed to update preferences');
+  }
+};
+```
+
+---
+
+## Phase 6: Updated UI Layout
+
+### Edit Modal Structure
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Link Preferences                                      [X]   │
+│ Configure where generic CTAs should link                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ DEFAULT DESTINATION                                         │
+│ Where generic CTAs link when no rule matches                │
+│                                                             │
+│ Name (optional)                                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ Main Landing Page                                       │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ URL                                                         │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ https://eskiin.com/pages/main-lp                        │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ ─────────────────────────────────────────────────────────── │
+│                                                             │
+│ CONDITIONAL RULES (optional)                                │
+│ Route specific campaigns to dedicated pages                 │
+│                                                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ Protein Campaigns                              [Delete] │ │
+│ │ Keywords: protein, whey, mass gainer                    │ │
+│ │ → https://store.com/pages/protein-lp                    │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ Collagen Campaigns                             [Delete] │ │
+│ │ Keywords: collagen, beauty, skin                        │ │
+│ │ → https://store.com/pages/collagen-lp                   │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ [+ Add Rule]                                                │
+│                                                             │
+│ ─────────────────────────────────────────────────────────── │
+│                                                             │
+│ CATALOG INFORMATION                                         │
+│                                                             │
+│ Catalog Size        Product Updates                         │
+│ ┌─────────────────┐ ┌─────────────────┐                     │
+│ │ Medium       ▼  │ │ Sometimes    ▼  │                     │
+│ └─────────────────┘ └─────────────────┘                     │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│                               [Cancel]  [Save Preferences]  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Add Rule Dialog
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Add Routing Rule                                      [X]   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ Rule Name *                                                 │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ Protein Campaigns                                       │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ A label for your reference                                  │
+│                                                             │
+│ Keywords *                                                  │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ protein, whey, mass gainer                              │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ Comma-separated. If any keyword appears in the campaign,    │
+│ this rule triggers.                                         │
+│                                                             │
+│ Destination URL *                                           │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ https://store.com/pages/protein-lp                      │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ Where generic CTAs should link for matching campaigns       │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│                                    [Cancel]  [Add Rule]     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/config.toml` | Add new edge function configs |
-| `src/types/brand-assets.ts` | Add new type definitions |
-| `src/components/dashboard/BrandSettings.tsx` | Add Link Intelligence section |
-| `src/components/dashboard/BrandOnboardingModal.tsx` | Add link preferences steps |
-| `src/pages/BrandDetail.tsx` | Parse linkPreferences field |
-
----
-
-## Prerequisites & Dependencies
-
-1. **OPENAI_API_KEY Secret**: Must be added before implementing generate-embedding function
-2. **pgvector Extension**: Required for VECTOR column type
-
----
-
-## Implementation Order
-
-1. Database migration (creates tables, enables pgvector)
-2. Add OpenAI API key secret
-3. Edge functions (generate-embedding first, then import pipeline)
-4. Type definitions
-5. React Query hooks
-6. Brand detail page components
-7. Onboarding flow extension
-8. Integration testing
+| `src/types/link-intelligence.ts` | Add `LinkRoutingRule` interface, update `BrandLinkPreferences` |
+| `src/components/brand/LinkPreferencesCard.tsx` | Complete rewrite with new UI structure |
 
 ---
 
 ## Technical Notes
 
-### Embedding Strategy
-- Using OpenAI's `text-embedding-3-small` (1536 dimensions)
-- Batch processing up to 100 texts per API call
-- Embeddings stored as VECTOR type for efficient similarity search (future use)
+### Keyword Matching (Future Use)
+At campaign processing time, the rules array will be evaluated:
+```typescript
+function findDestinationUrl(
+  campaignContent: string, 
+  preferences: BrandLinkPreferences
+): string | null {
+  const contentLower = campaignContent.toLowerCase();
+  
+  // Check rules in order - first match wins
+  for (const rule of (preferences.rules || [])) {
+    const hasMatch = rule.keywords.some(keyword => 
+      contentLower.includes(keyword.toLowerCase())
+    );
+    if (hasMatch) {
+      return rule.destination_url;
+    }
+  }
+  
+  // Fall back to default destination
+  return preferences.default_destination_url || null;
+}
+```
 
-### Sitemap Parsing
-- Handle both single sitemaps and sitemap index files
-- Use regex patterns to categorize URL types:
-  - `/products/` → product
-  - `/collections/` → collection
-- Skip utility URLs: /cart, /account, /checkout, /policies
+### Backward Compatibility
+- Legacy fields (`default_cta_behavior`, `primary_collection_*`) kept in type for reading old data
+- Migration logic converts old structure when editing
+- On save, legacy fields are cleared and new structure is written
 
-### Health Tracking
-- `is_healthy` starts true
-- Future: periodic verification jobs mark unhealthy after N failures
-- Unhealthy links deprioritized in matching
-
-### Progress Polling
-- UI polls every 3 seconds while job status is not 'complete' or 'failed'
-- Alternative: Supabase Realtime subscription (more complex, not required for v1)
+### URL Validation
+- URLs must include protocol (https://)
+- Validation using `new URL()` constructor
+- Show error toast for invalid URLs
