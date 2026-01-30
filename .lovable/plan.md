@@ -1,246 +1,173 @@
 
-# Brand Page Reorganization + Wizard Improvements
+# Simplify Link Routing Rules
 
 ## Overview
-Fix the Link Preferences wizard to properly allow adding multiple rules, and completely reorganize the brand detail page for a cleaner, less cluttered layout with proper breathing room and visual hierarchy.
+Simplify the routing rules from a 3-field model (name + keywords + URL) to a 2-field model (product name + preferred URL). The product name itself becomes the matching keyword.
 
 ---
 
-## Part 1: Fix Wizard "Add Rules" Step
+## Current vs New Model
 
-### File: `src/components/brand/LinkPreferencesWizard.tsx`
+| Current | New |
+|---------|-----|
+| Name: "Protein campaigns" | Product Name: "Whey Protein" |
+| Keywords: "protein, whey, mass gainer" | *(dropped - name IS the keyword)* |
+| Destination URL: https://... | Preferred URL: https://... |
 
-**Current Problem:** The "+ Add another rule" button only appears when there's already content in the form fields, making it unclear how to add multiple rules.
-
-**Changes:**
-1. Always show the "Add another rule" button when the form is filled out (current behavior)
-2. Update the logic so when a rule is added successfully, the form clears and shows a clear "+ Add rule" action
-3. Make it obvious that users can continue after adding rules
-
-**Lines 475-484** - Update the add rule logic:
-
-```text
-Current:
-- Button only shows if any field has content
-- Confusing flow
-
-New:
-- After adding a rule, show summary above + clear form  
-- Button always visible: "+ Add rule" or "+ Add another rule" based on context
-- Clear "Continue" button to proceed when done adding
-```
-
-**Specific Changes:**
-- Change button text dynamically: "Add rule" when form is empty, "+ Add another rule" when editing
-- Always show the button (not conditionally based on form content)
-- Make button full-width and more prominent
+**New display format:** `Whey Protein → /pages/protein-lp`
 
 ---
 
-## Part 2: Reorganize Brand Detail Page
+## Files to Update
 
-### Current Structure (Cluttered)
-```text
-BrandDetail.tsx
-├── Header (name, domain, actions)
-├── BrandSettings.tsx (1779 lines!)
-│   ├── Colors (inline)
-│   ├── Logos (inline)
-│   ├── Typography (inline)
-│   ├── Collapsible: Scraped Links
-│   ├── Collapsible: Footers
-│   ├── Collapsible: ClickUp
-│   ├── Collapsible: Klaviyo API
-│   ├── Collapsible: Copy Examples
-│   ├── Collapsible: Sent Copy
-│   └── Collapsible: Link Intelligence
-├── Campaigns Section
+### 1. `src/types/link-intelligence.ts`
+
+**Update the `LinkRoutingRule` interface:**
+
+```typescript
+// Before
+export interface LinkRoutingRule {
+  id: string;
+  name: string;         // User's label
+  keywords: string[];   // Triggers
+  destination_url: string;
+}
+
+// After
+export interface LinkRoutingRule {
+  id: string;
+  name: string;           // Product/category name (also used for matching)
+  destination_url: string;
+  keywords?: string[];    // Keep optional for backwards compatibility
+}
 ```
 
-**Problems:**
-- Too many collapsible sections crammed together
-- No visual grouping or categorization
-- BrandSettings is 1779 lines - doing too much
-- Link Intelligence buried at the bottom
-- No breathing room between sections
+**Update the `findDestinationUrl` helper:**
 
-### New Structure (Clean Card-Based Layout)
-
-```text
-BrandDetail.tsx (redesigned)
-├── Header Strip (name, domain, primary color, actions)
-│
-├── Section: Brand Identity
-│   ├── Card: Colors (compact, always visible)
-│   └── Card: Logos (2x logos, compact)
-│
-├── Section: Link Intelligence ← Elevated to its own section
-│   ├── Card: Link Preferences (wizard trigger or summary)
-│   ├── Card: Sitemap Import Status
-│   └── Table: Link Index (collapsible)
-│
-├── Section: Email Components
-│   ├── Card: Footers (grid of footer cards)
-│   └── Optional: Typography info
-│
-├── Section: Integrations ← Grouped together
-│   ├── Card: Klaviyo (API key, copy sync)
-│   └── Card: ClickUp (list connection)
-│
-├── Separator
-│
-└── Section: Campaigns
-    └── Grid of campaign cards
+```typescript
+// Match against rule.name instead of keywords
+const hasMatch = campaignContent.toLowerCase().includes(rule.name.toLowerCase());
 ```
 
 ---
 
-## Part 3: Create New Section Components
+### 2. `src/components/brand/LinkPreferencesWizard.tsx`
 
-### New Files to Create:
+**Changes to add-rules step (lines 412-497):**
 
-**1. `src/components/brand/BrandIdentitySection.tsx`**
-- Colors display (compact row with swatches + edit button)
-- Logos display (2 logo cards side by side)
-- Re-analyze button
+- Remove `currentRuleKeywords` state variable
+- Remove keywords input field
+- Update labels:
+  - "What should I call this rule?" → "Product or category name"
+  - Remove keywords question entirely
+  - "Where should these campaigns link?" → "Preferred URL"
+- Update placeholder text:
+  - Name: "e.g., Whey Protein" (not "Protein campaigns")
+  - URL: "https://store.com/pages/whey-protein"
 
-**2. `src/components/brand/BrandIntegrationsSection.tsx`**
-- Klaviyo API key card
-- ClickUp connection card
-- Future integrations
+**Updated form:**
+```text
+Product or category name
+[Whey Protein                    ]
 
-**3. `src/components/brand/BrandEmailSection.tsx`**
-- Footers grid
-- Typography (if relevant)
-- Copy Examples / Sent Copy (collapsed by default)
+Preferred URL  
+[https://store.com/pages/whey    ]
+
+                    [+ Add another]
+```
+
+**Summary display:**
+```text
+✓ Whey Protein → /pages/whey-protein
+✓ Collagen → /pages/collagen
+```
 
 ---
 
-## Part 4: Updated BrandDetail.tsx Layout
+### 3. `src/components/brand/LinkPreferencesManageView.tsx`
 
-### New File Structure:
+**Remove all keyword-related code:**
+- Remove `newRuleKeywords` state (line 47)
+- Remove `editRuleKeywords` state (line 53)  
+- Remove keywords input from add form (lines 326-333)
+- Remove keywords input from edit form (lines 246-252)
+- Remove "Keywords:" display line (lines 294-296)
+- Update validation to only require name + URL
 
-```tsx
-export default function BrandDetail() {
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-5xl mx-auto px-8 py-10">
-        
-        {/* Header */}
-        <BrandHeader brand={brand} onDelete={...} onReanalyze={...} />
-        
-        {/* Brand Identity */}
-        <section className="mt-10">
-          <h2 className="section-heading">Brand Identity</h2>
-          <BrandIdentitySection brand={brand} onBrandChange={...} />
-        </section>
-        
-        {/* Link Intelligence - Prominent Section */}
-        <section className="mt-10">
-          <h2 className="section-heading">Link Intelligence</h2>
-          <LinkIntelligenceSection brandId={brand.id} domain={brand.domain} />
-        </section>
-        
-        {/* Email Components */}
-        <section className="mt-10">
-          <h2 className="section-heading">Email Components</h2>
-          <BrandEmailSection brand={brand} onBrandChange={...} />
-        </section>
-        
-        {/* Integrations */}
-        <section className="mt-10">
-          <h2 className="section-heading">Integrations</h2>
-          <BrandIntegrationsSection brand={brand} onBrandChange={...} />
-        </section>
-        
-        {/* Campaigns */}
-        <section className="mt-10 pt-10 border-t">
-          <h2 className="section-heading">Campaigns ({count})</h2>
-          <CampaignsGrid campaigns={campaigns} brand={brand} />
-        </section>
-        
-      </div>
-    </div>
-  );
+**Update labels:**
+- "Rule Name" → "Product/Category Name"
+- "Destination URL" → "Preferred URL"
+
+**Updated display for each rule:**
+```text
+┌─────────────────────────────────────────────┐
+│  Whey Protein                    [Edit] [×] │
+│  → /pages/whey-protein ↗                    │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## State Variable Cleanup
+
+### Wizard
+| Remove | Keep |
+|--------|------|
+| `currentRuleKeywords` | `currentRuleName` |
+| | `currentRuleUrl` |
+
+### ManageView
+| Remove | Keep |
+|--------|------|
+| `newRuleKeywords` | `newRuleName` |
+| `editRuleKeywords` | `newRuleUrl` |
+| | `editRuleName` |
+| | `editRuleUrl` |
+
+---
+
+## Validation Updates
+
+**Before:** Required name + at least 1 keyword + valid URL
+
+**After:** Required name + valid URL
+
+---
+
+## Backwards Compatibility
+
+The `keywords` field is made optional in the type. The matching logic checks if `keywords` exists:
+- If `keywords` array exists and has items → use keyword matching (legacy data)
+- Otherwise → use `name` for matching
+
+```typescript
+export function findDestinationUrl(
+  campaignContent: string, 
+  preferences: BrandLinkPreferences
+): string | null {
+  const contentLower = campaignContent.toLowerCase();
+  
+  for (const rule of (preferences.rules || [])) {
+    // Use keywords if available (legacy), otherwise match on name
+    const hasMatch = rule.keywords && rule.keywords.length > 0
+      ? rule.keywords.some(k => contentLower.includes(k.toLowerCase()))
+      : contentLower.includes(rule.name.toLowerCase());
+    
+    if (hasMatch) {
+      return rule.destination_url;
+    }
+  }
+  
+  return preferences.default_destination_url || null;
 }
 ```
 
 ---
 
-## Part 5: Link Intelligence Section Improvements
+## Summary of Changes
 
-### File: `src/components/brand/LinkIntelligenceSection.tsx`
-
-Current: Stats bar + Link Preferences Card + Sitemap Card + Link Table all stacked
-
-**New Layout:**
-
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                                                                         │
-│  Link Preferences                                          [Edit]       │
-│  ──────────────────────────────────────────────────────────────────     │
-│                                                                         │
-│  Default destination: Main Landing Page ↗                               │
-│  2 routing rules configured                                             │
-│  Catalog: Small • Updates rarely                                        │
-│                                                                         │
-│                                                                         │
-│  OR (if not configured)                                                 │
-│                                                                         │
-│  Set up link preferences so Lucy knows where to send traffic            │
-│                                          [Set up link preferences →]    │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Link Index                                              [Import ▼]     │
-│  ──────────────────────────────────────────────────────────────────     │
-│                                                                         │
-│  142 products  •  8 collections  •  All healthy ✓           [+ Add]    │
-│                                                                         │
-│  ┌───────────────────────────────────────────────────────────────┐     │
-│  │  Search links...                                         🔍  │     │
-│  └───────────────────────────────────────────────────────────────┘     │
-│                                                                         │
-│  [Products] [Collections] [All]                                         │
-│                                                                         │
-│  Table of links...                                                      │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Files Summary
-
-| File | Action |
-|------|--------|
-| `src/components/brand/LinkPreferencesWizard.tsx` | Fix add rules button visibility |
-| `src/pages/BrandDetail.tsx` | Complete redesign with sectioned layout |
-| `src/components/dashboard/BrandSettings.tsx` | Extract logic into smaller components (or deprecate) |
-| `src/components/brand/BrandIdentitySection.tsx` | NEW - Colors + Logos |
-| `src/components/brand/BrandIntegrationsSection.tsx` | NEW - Klaviyo + ClickUp |
-| `src/components/brand/BrandEmailSection.tsx` | NEW - Footers + Copy |
-| `src/components/brand/LinkIntelligenceSection.tsx` | Update layout for prominence |
-
----
-
-## Visual Design Principles
-
-1. **Generous spacing** - `mt-10` between major sections, `py-10` for page padding
-2. **Card-based layout** - Each distinct feature in its own card
-3. **Section headers** - Consistent uppercase small text for section labels
-4. **Breathing room** - No cramped collapsibles, everything feels open
-5. **Hierarchy** - Link Intelligence gets visual prominence as key feature
-6. **Progressive disclosure** - Complex tables collapsed by default, summaries visible
-
----
-
-## Implementation Order
-
-1. Fix wizard add rules button (quick win)
-2. Create new section components
-3. Redesign BrandDetail.tsx with new layout
-4. Extract functionality from BrandSettings.tsx into new components
-5. Clean up / deprecate old BrandSettings if fully replaced
+| File | Changes |
+|------|---------|
+| `src/types/link-intelligence.ts` | Make `keywords` optional, update matching logic |
+| `src/components/brand/LinkPreferencesWizard.tsx` | Remove keywords field, update labels/placeholders |
+| `src/components/brand/LinkPreferencesManageView.tsx` | Remove keywords from add/edit/display, update labels |
