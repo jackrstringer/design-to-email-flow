@@ -134,3 +134,6 @@ verify_jwt = false
 
 [functions.update-brand-link-preferences]
 verify_jwt = false
+
+[functions.match-slice-to-link]
+verify_jwt = false

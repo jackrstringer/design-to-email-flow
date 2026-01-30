@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,13 +7,27 @@ const corsHeaders = {
 };
 
 interface SliceInput {
-  dataUrl?: string;   // Legacy: base64 data URL
-  imageUrl?: string;  // NEW: Cloudinary crop URL
+  dataUrl?: string;
+  imageUrl?: string;
   index: number;
-  // Multi-column properties (optional)
   column?: number;
   totalColumns?: number;
   rowIndex?: number;
+}
+
+interface CampaignContext {
+  campaign_type: 'product_launch' | 'collection_highlight' | 'sale_promo' | 'brand_general';
+  primary_focus: string;
+  detected_products: string[];
+  detected_collections: string[];
+}
+
+interface SliceDescription {
+  index: number;
+  altText: string;
+  isClickable: boolean;
+  isGenericCta: boolean;
+  description: string;
 }
 
 interface SliceAnalysis {
@@ -21,8 +36,16 @@ interface SliceAnalysis {
   suggestedLink: string | null;
   isClickable: boolean;
   linkVerified: boolean;
+  linkSource?: string;
   linkWarning?: string;
   multiCtaWarning?: string;
+}
+
+interface MatchResult {
+  url: string | null;
+  source: string;
+  confidence: number;
+  link_id?: string;
 }
 
 serve(async (req) => {
@@ -31,11 +54,12 @@ serve(async (req) => {
   }
 
   try {
-    const { slices, brandUrl, brandDomain, fullCampaignImage, knownProductUrls } = await req.json() as { 
+    const { slices, brandUrl, brandDomain, brandId, fullCampaignImage, knownProductUrls } = await req.json() as { 
       slices: SliceInput[]; 
       brandUrl?: string;
       brandDomain?: string;
-      fullCampaignImage?: string; // Can be URL or dataUrl
+      brandId?: string;
+      fullCampaignImage?: string;
       knownProductUrls?: Array<{ name: string; url: string }>;
     };
 
@@ -46,453 +70,98 @@ serve(async (req) => {
       );
     }
 
-    // Extract domain from brandUrl if not provided
     const domain = brandDomain || (brandUrl ? new URL(brandUrl).hostname.replace('www.', '') : null);
 
-    console.log(`Analyzing ${slices.length} slices for brand: ${brandUrl || 'unknown'}, domain: ${domain}`);
-    console.log(`Full campaign image provided: ${fullCampaignImage ? 'yes' : 'no'} (type: ${fullCampaignImage?.startsWith('http') ? 'URL' : 'dataUrl'})`);
+    console.log(`Analyzing ${slices.length} slices for brand: ${brandUrl || 'unknown'}, domain: ${domain}, brandId: ${brandId || 'none'}`);
+    console.log(`Full campaign image: ${fullCampaignImage ? 'yes' : 'no'}`);
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
       throw new Error('ANTHROPIC_API_KEY is not configured');
     }
 
-    // Build known URLs context for prompt
-    const knownUrlsContext = knownProductUrls && knownProductUrls.length > 0
-      ? `\n\nKNOWN PRODUCT URLs for this brand (use these FIRST before searching - they are verified correct):
-${knownProductUrls.map(u => `- "${u.name}" → ${u.url}`).join('\n')}
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-If a product name matches one of these (case-insensitive), use the known URL directly without searching.`
-      : '';
-
-    const prompt = `Analyze these email campaign slices.
-
-${fullCampaignImage ? 'FIRST IMAGE: Full campaign overview (REFERENCE ONLY - DO NOT include in your output).' : ''}
-
-IMPORTANT: Each slice to analyze is labeled "=== SLICE N (index: X) ===" before its image.
-You must ONLY analyze the labeled slices. Do NOT analyze the reference image.
-Your output MUST have exactly ${slices.length} entries, with indices 0 to ${slices.length - 1}.
-
-Brand: ${domain || 'Unknown'}${knownUrlsContext}
-
-For each labeled slice:
-
-**ALT TEXT** (max 200 chars) - Capture the marketing message:
-- If there's a headline, offer text, body copy visible -> capture the key message
-- Include any visible text that communicates value (discounts, product benefits, urgency, etc.)
-
-CTA TEXT RULES (CRITICAL):
-- ONLY include "Click to shop" / "Click to [action]" when there is a VISIBLE CTA BUTTON in the slice
-- A CTA button is a distinct rectangular/pill element with action text like "SHOP NOW", "BUY", "ORDER", "ADD TO CART"
-- Product name/price text alone (like "JESSA PANT - $99") is NOT a CTA - do not add "Click to shop"
-- If the slice just shows a product image with its name, describe the product without "Click to shop"
-- ONLY return empty "" for slices that are PURELY decorative with ZERO text (solid color dividers, icon-only bars)
-
-Examples:
-- Product image showing "JESSA PANT" with no button -> "Jessa Pant."
-- Product with visible "SHOP NOW" button -> "Jessa Pant. Click to shop now."
-- Hero headline "New Arrivals" with no button -> "New Arrivals."
-- Hero with "SHOP THE COLLECTION" button -> "New Arrivals. Click to shop the collection."
-- Product grid with names but no buttons -> "Deep Sleep, Focus, Calming tonic."
-- Solid color divider -> "" (empty)
-
-**CLICKABLE** - Be selective, not aggressive:
-SHOULD be clickable (isClickable: true):
-- Header logo slices (named "header_logo" or standalone logo at the very top) → YES, always link to homepage
-- ANY slice with a CTA button or "Shop" / "Buy" / "Order" text → YES
-- Product images (with or without CTA) → YES
-- Hero sections that contain a CTA → YES
-
-Should NOT be clickable (isClickable: false):
-- Text-only sections WITHOUT a CTA button → NO (they set up products below)
-- Educational/informational copy leading into product sections → NO
-- Dividers, spacers, legal/footer text → NO
-
-Rule: If a slice is just "setting up" the products/CTAs that follow, it doesn't need its own link.
-
-**LINKS** - Find the real page for what's shown:
-- Header logos -> brand homepage: https://${domain}/
-- Single product visible (name like "JESSA PANT") -> find the actual product page:
-  1. FIRST: Check if product name matches any KNOWN PRODUCT URLs above (case-insensitive) - use that URL directly
-  2. If not known: Search: site:${domain} [product name]
-  3. If search only returns collections, FETCH the most relevant collection page to find the /products/ URL
-  4. Extract the actual /products/[product-name] URL from the page content
-  5. The final link MUST contain /products/ for individual items, NOT /collections/
-- Multiple products or general CTA -> find the appropriate collection
-- Verify links exist with web search or fetch
-
-**CRITICAL LINK DISCOVERY PROCESS:**
-When you need to find a product URL and it's not in the known URLs:
-1. Search "site:${domain} [product name]" 
-2. If search results only show collection pages (like /collections/sweats):
-   - USE web_fetch TO FETCH the collection page
-   - Look through the page HTML for /products/[product-name] links
-   - Extract the correct product URL from the fetched content
-3. NEVER settle for a /collections/ URL when looking for a specific product
-4. If you successfully find a new /products/ URL, include it in discoveredUrls
-
-**LINK SELECTION PRIORITY - Evergreen URLs First:**
-When web search returns multiple URL options, ALWAYS prefer stable "evergreen" paths:
-
-✅ PREFER these patterns (EVERGREEN - stable, permanent):
-- /products/[product-name] (BEST for single products)
-- /collections/new-arrivals
-- /collections/sale
-- /collections/[category-name]
-- /pages/[page-name]
-- Short, clean paths with 2-3 segments
-
-❌ REJECT these patterns (EPHEMERAL - will break/change):
-- URLs containing promotional text: "10-off", "20-percent", "flash-sale", "extra-"
-- URLs with campaign/promo codes: "welcome10", "holiday-special"
-- URLs with exclusion terms: "ex-", "excluding-", "except-"
-- URLs mentioning discounts in path: "shop-a-further-", "save-"
-- Very long paths with 4+ segments
-
-When multiple color/size variants exist for a product:
-- Look at the campaign image for context (what color is shown?)
-- Pick the variant that matches what's visible in the email
-- If unclear, pick the most common/default variant
-
-Return JSON with exactly ${slices.length} slices AND any newly discovered product URLs:
-{
-  "slices": [
-    { "index": 0, "altText": "...", "isClickable": true/false, "suggestedLink": "https://..." or null, "linkVerified": true/false },
-    { "index": 1, "altText": "...", ... },
-    ...up to index ${slices.length - 1}
-  ],
-  "discoveredUrls": [
-    { "productName": "Jessa Pant", "url": "https://${domain}/products/jessa-pant-grey" }
-  ]
-}
-
-The discoveredUrls array should contain any NEW product URLs you found that weren't in the known URLs list. This helps us learn for future campaigns.`;
-
-    // Build content array with text and all images for Claude
-    const content: Array<{ type: string; text?: string; source?: { type: string; media_type?: string; data?: string; url?: string } }> = [
-      { type: 'text', text: prompt }
-    ];
-
-    // Add full campaign image FIRST for context (if provided)
-    // NEW: Support both URL and dataUrl formats
-    if (fullCampaignImage) {
-      content.push({
-        type: 'text',
-        text: '=== REFERENCE IMAGE (DO NOT ANALYZE - context only) ==='
-      });
-      
-      if (fullCampaignImage.startsWith('http')) {
-        // URL-based image (new optimized path)
-        content.push({
-          type: 'image',
-          source: {
-            type: 'url',
-            url: fullCampaignImage
-          }
-        });
-        console.log('Using URL for full campaign image');
-      } else {
-        // Legacy dataUrl format (backwards compatible)
-        const fullMatches = fullCampaignImage.match(/^data:([^;]+);base64,(.+)$/);
-        if (fullMatches) {
-          content.push({
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: fullMatches[1],
-              data: fullMatches[2]
-            }
-          });
-          console.log('Using dataUrl for full campaign image');
-        }
-      }
-    }
-
-    // Add each slice image with EXPLICIT labeling
-    // NEW: Support both URL and dataUrl formats for slices
-    for (let i = 0; i < slices.length; i++) {
-      const slice = slices[i];
-      
-      // Build context string for multi-column slices
-      let columnContext = '';
-      if (slice.totalColumns && slice.totalColumns > 1) {
-        columnContext = ` | COLUMN ${(slice.column ?? 0) + 1} of ${slice.totalColumns} (row ${slice.rowIndex ?? 0})`;
-      }
-      
-      // Add explicit text label BEFORE each slice image
-      content.push({
-        type: 'text',
-        text: `=== SLICE ${i + 1} (index: ${i})${columnContext} ===`
-      });
-      
-      // NEW: Support both URL and dataUrl formats
-      if (slice.imageUrl && !slice.dataUrl) {
-        // URL-based (new Cloudinary crop URLs)
-        content.push({
-          type: 'image',
-          source: {
-            type: 'url',
-            url: slice.imageUrl
-          }
-        });
-      } else if (slice.dataUrl) {
-        // Legacy dataUrl format (backwards compatible)
-        const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-        if (matches) {
-          content.push({
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: matches[1],
-              data: matches[2]
-            }
-          });
-        }
-      } else {
-        console.warn(`Slice ${i} has no imageUrl or dataUrl, skipping image`);
-      }
-    }
-
-    // Build tools array - include web_fetch if we have a domain to restrict to
-    const tools: any[] = [
-      {
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 50,
-      }
-    ];
+    // Check if brand has indexed links
+    let hasLinkIndex = false;
+    let linkPreferences: { default_destination_url?: string; product_churn?: string; rules?: Array<{ name: string; destination_url: string }> } | null = null;
     
-    // Add web_fetch tool to allow Claude to fetch collection pages and extract product URLs
-    if (domain) {
-      tools.push({
-        type: 'web_fetch_20250910',
-        name: 'web_fetch',
-        max_uses: 10,
-        allowed_domains: [domain, `www.${domain}`],
-      });
+    if (brandId) {
+      const { data: brand } = await supabase
+        .from('brands')
+        .select('link_preferences')
+        .eq('id', brandId)
+        .single();
+      
+      linkPreferences = brand?.link_preferences || null;
+      
+      const { count } = await supabase
+        .from('brand_link_index')
+        .select('id', { count: 'exact', head: true })
+        .eq('brand_id', brandId)
+        .eq('is_healthy', true);
+      
+      hasLinkIndex = (count || 0) > 0;
+      console.log(`Brand has ${count || 0} healthy indexed links, using ${hasLinkIndex ? 'index-first' : 'web-search'} matching`);
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05,web-fetch-2025-09-10',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 6000,
-        tools,
-        messages: [
-          { role: 'user', content }
-        ]
-      }),
-    });
+    // PHASE 1: Campaign Context Analysis (if we have indexed links)
+    let campaignContext: CampaignContext | null = null;
+    
+    if (hasLinkIndex && fullCampaignImage) {
+      console.log('Phase 1: Analyzing campaign context...');
+      campaignContext = await analyzeCampaignContext(fullCampaignImage, ANTHROPIC_API_KEY);
+      console.log(`Campaign context: type=${campaignContext?.campaign_type}, focus="${campaignContext?.primary_focus}"`);
+    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI API error:', response.status, errorText);
-      
-      // Return default analysis if AI fails
-      const defaultAnalysis: SliceAnalysis[] = slices.map((_, i) => ({
-        index: i,
-        altText: '',
-        suggestedLink: null,
-        isClickable: false,
-        linkVerified: false
-      }));
-      
-      return new Response(
-        JSON.stringify({ analyses: defaultAnalysis, warning: 'AI analysis unavailable, using defaults' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // PHASE 2: Get slice descriptions from Claude
+    console.log('Phase 2: Getting slice descriptions...');
+    
+    // Build the prompt based on whether we're using index-first or web-search
+    const useIndexMatching = hasLinkIndex && Boolean(brandId);
+    const sliceDescriptions = await getSliceDescriptions(
+      slices, 
+      fullCampaignImage, 
+      campaignContext,
+      domain,
+      knownProductUrls,
+      useIndexMatching,
+      ANTHROPIC_API_KEY
+    );
+
+    // PHASE 3: Match slices to links
+    console.log('Phase 3: Matching slices to links...');
+    
+    let analyses: SliceAnalysis[];
+    
+    if (useIndexMatching) {
+      // Index-first matching
+      analyses = await matchSlicesViaIndex(
+        sliceDescriptions,
+        brandId!,
+        campaignContext,
+        linkPreferences,
+        domain,
+        supabaseUrl,
+        supabaseKey
+      );
+    } else {
+      // Legacy web-search matching (for brands without indexed links)
+      analyses = await matchSlicesViaWebSearch(
+        slices,
+        sliceDescriptions,
+        fullCampaignImage,
+        domain,
+        brandUrl,
+        knownProductUrls,
+        ANTHROPIC_API_KEY
       );
     }
 
-    const aiResponse = await response.json();
-    
-    // Claude with web search returns multiple content blocks - we need to search ALL text blocks
-    // for JSON as the response may come before/after tool use blocks
-    let allTextContent = '';
-    if (aiResponse.content && Array.isArray(aiResponse.content)) {
-      // Log all block types for debugging
-      const blockTypes = aiResponse.content.map((b: { type: string }) => b.type);
-      console.log('Claude response block types:', blockTypes);
-      
-      // Collect ALL text blocks and concatenate them
-      const textBlocks = aiResponse.content.filter((block: { type: string }) => block.type === 'text');
-      allTextContent = textBlocks.map((block: { text?: string }) => block.text || '').join('\n');
-      
-      console.log('Total text blocks:', textBlocks.length);
-      console.log('Combined text content length:', allTextContent.length);
-      console.log('Text content preview:', allTextContent.substring(0, 500));
-    } else {
-      console.error('Unexpected response format:', JSON.stringify(aiResponse).substring(0, 500));
-    }
-    
-    console.log('Claude response received');
-
-    // Parse JSON from AI response - search through ALL text content
-    // Build a Map keyed by index from AI response to avoid position-based misalignment
-    const analysisByIndex = new Map<number, SliceAnalysis>();
-    
-    try {
-      let jsonStr: string | null = null;
-      
-      // First try: look for markdown code block with json
-      const codeBlockMatch = allTextContent.match(/```json\s*([\s\S]*?)```/);
-      if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1];
-        console.log('Found JSON in markdown code block');
-      }
-      
-      // Second try: look for raw JSON object with "slices" key
-      if (!jsonStr) {
-        const rawJsonMatch = allTextContent.match(/\{\s*"slices"\s*:\s*\[[\s\S]*?\]\s*\}/);
-        if (rawJsonMatch) {
-          jsonStr = rawJsonMatch[0];
-          console.log('Found raw JSON with slices key');
-        }
-      }
-      
-      // Third try: find any JSON object
-      if (!jsonStr) {
-        const anyJsonMatch = allTextContent.match(/\{[\s\S]*\}/);
-        if (anyJsonMatch) {
-          jsonStr = anyJsonMatch[0];
-          console.log('Found generic JSON object');
-        }
-      }
-      
-      console.log('JSON string found:', jsonStr ? 'yes' : 'no');
-      if (jsonStr) {
-        console.log('JSON preview:', jsonStr.substring(0, 300));
-      }
-      
-      if (jsonStr) {
-        const parsed = JSON.parse(jsonStr);
-        const rawAnalyses: SliceAnalysis[] = parsed.slices || [];
-        
-        // Log AI-returned indices for debugging
-        const aiIndices = rawAnalyses.map(a => a.index);
-        console.log(`AI returned ${rawAnalyses.length} analyses with indices: [${aiIndices.slice(0, 10).join(', ')}${aiIndices.length > 10 ? '...' : ''}]`);
-        console.log(`Expected indices: 0 to ${slices.length - 1} (${slices.length} slices)`);
-        
-        // Build map using AI-provided index, validating each entry
-        for (const a of rawAnalyses) {
-          const idx = typeof a.index === 'number' ? a.index : parseInt(String(a.index), 10);
-          
-          // Skip invalid indices
-          if (isNaN(idx) || idx < 0 || idx >= slices.length) {
-            console.warn(`Skipping analysis with invalid index: ${a.index} (expected 0-${slices.length - 1})`);
-            continue;
-          }
-          
-          // Skip duplicates (keep first occurrence)
-          if (analysisByIndex.has(idx)) {
-            console.warn(`Duplicate index ${idx} in AI response, keeping first occurrence`);
-            continue;
-          }
-          
-          // Validate and fix links
-          let link = a.suggestedLink;
-          let linkVerified = a.linkVerified ?? false;
-          let linkWarning = a.linkWarning;
-          
-          if (a.isClickable && link) {
-            // Check if it's a full URL or just a path
-            if (!link.startsWith('http://') && !link.startsWith('https://')) {
-              // Convert path to full URL
-              const cleanBrandUrl = brandUrl?.replace(/\/$/, '') || `https://${domain}`;
-              const cleanPath = link.startsWith('/') ? link : `/${link}`;
-              link = `${cleanBrandUrl}${cleanPath}`;
-              linkVerified = false;
-              linkWarning = linkWarning || 'Path suggested without verification';
-            }
-            
-            // Check if link is external
-            if (domain && link) {
-              try {
-                const linkDomain = new URL(link).hostname.replace('www.', '');
-                if (linkDomain !== domain) {
-                  linkWarning = 'External link - verify this is correct';
-                  linkVerified = false;
-                }
-              } catch {
-                // Invalid URL
-                linkWarning = 'Invalid URL format';
-                linkVerified = false;
-              }
-            }
-          }
-          
-          // Detect multi-CTA patterns in alt text that suggest this slice should have been split
-          let multiCtaWarning: string | undefined = undefined;
-          const altTextLower = (a.altText || '').toLowerCase();
-          
-          // Check for "X or Y" patterns suggesting multiple CTAs
-          const orPattern = /\b(shop|buy|get|order|click to)\s+.{2,30}\s+or\s+.{2,30}/i;
-          // Check for multiple distinct CTA phrases
-          const multipleShopPattern = /(shop\s+\w+.*shop\s+\w+)|(buy\s+\w+.*buy\s+\w+)/i;
-          // Check for side-by-side button indicators
-          const sideBySidePattern = /\|\s*(shop|buy|order|get)/i;
-          
-          if (orPattern.test(altTextLower) || multipleShopPattern.test(altTextLower) || sideBySidePattern.test(altTextLower)) {
-            multiCtaWarning = "This slice may contain multiple CTAs that should be split into separate columns";
-            console.warn(`Slice ${idx} has multi-CTA pattern in alt text: "${a.altText?.substring(0, 100)}"`);
-          }
-          
-          analysisByIndex.set(idx, {
-            ...a,
-            index: idx,
-            suggestedLink: link,
-            linkVerified,
-            linkWarning,
-            multiCtaWarning
-          });
-        }
-      }
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError);
-    }
-
-    // Build final analyses array in strict index order 0..N-1
-    const analyses: SliceAnalysis[] = [];
-    for (let i = 0; i < slices.length; i++) {
-      const existing = analysisByIndex.get(i);
-      if (existing) {
-        analyses.push(existing);
-      } else {
-        console.warn(`Missing analysis for index ${i}, using default`);
-        analyses.push({
-          index: i,
-          altText: '',
-          suggestedLink: null,
-          isClickable: false,
-          linkVerified: false
-        });
-      }
-    }
-    
-    console.log(`Final analyses indices: [${analyses.map(a => a.index).join(', ')}]`);
-
-    // Extract discovered URLs from the parsed response
-    let discoveredUrls: Array<{ productName: string; url: string }> = [];
-    try {
-      // Re-parse to get discoveredUrls
-      const codeBlockMatch = allTextContent.match(/```json\s*([\s\S]*?)```/);
-      const rawJsonMatch = allTextContent.match(/\{\s*"slices"\s*:\s*\[[\s\S]*?\]\s*(?:,\s*"discoveredUrls"\s*:\s*\[[\s\S]*?\])?\s*\}/);
-      const jsonStr = codeBlockMatch?.[1] || rawJsonMatch?.[0];
-      if (jsonStr) {
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.discoveredUrls && Array.isArray(parsed.discoveredUrls)) {
-          discoveredUrls = parsed.discoveredUrls.filter((d: any) => d.productName && d.url);
-          console.log(`Found ${discoveredUrls.length} discovered URLs`);
-        }
-      }
-    } catch {
-      // Ignore parsing errors for discovered URLs
-    }
+    // Extract discovered URLs for reactive indexing
+    const discoveredUrls: Array<{ productName: string; url: string }> = [];
 
     return new Response(
       JSON.stringify({ analyses, discoveredUrls }),
@@ -508,3 +177,436 @@ The discoveredUrls array should contain any NEW product URLs you found that were
     );
   }
 });
+
+/**
+ * Phase 1: Analyze the full campaign image to understand context
+ */
+async function analyzeCampaignContext(
+  fullCampaignImage: string,
+  apiKey: string
+): Promise<CampaignContext> {
+  const prompt = `Analyze this email campaign image and tell me:
+
+1. What type of campaign is this?
+   - product_launch (featuring a specific new product)
+   - collection_highlight (featuring a collection or category)
+   - sale_promo (promotional/discount focused)
+   - brand_general (general brand awareness, no specific product focus)
+
+2. What is the primary focus? (e.g., "Summer Tote Collection", "New Protein Formula", "Holiday Sale")
+
+3. List any specific products or collections you can identify in the email.
+
+Respond ONLY in JSON:
+{
+  "campaign_type": "product_launch" | "collection_highlight" | "sale_promo" | "brand_general",
+  "primary_focus": "string describing main subject",
+  "detected_products": ["product 1", "product 2"],
+  "detected_collections": ["collection 1"]
+}`;
+
+  const content: Array<{ type: string; text?: string; source?: { type: string; media_type?: string; data?: string; url?: string } }> = [
+    { type: 'text', text: prompt }
+  ];
+
+  // Add the campaign image
+  if (fullCampaignImage.startsWith('http')) {
+    content.push({
+      type: 'image',
+      source: { type: 'url', url: fullCampaignImage }
+    });
+  } else {
+    const matches = fullCampaignImage.match(/^data:([^;]+);base64,(.+)$/);
+    if (matches) {
+      content.push({
+        type: 'image',
+        source: { type: 'base64', media_type: matches[1], data: matches[2] }
+      });
+    }
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20250929', // Fast model for context analysis
+        max_tokens: 500,
+        messages: [{ role: 'user', content }]
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Campaign context API error:', response.status);
+      return getDefaultCampaignContext();
+    }
+
+    const aiResponse = await response.json();
+    const textContent = aiResponse.content?.find((c: { type: string }) => c.type === 'text')?.text || '';
+    
+    // Parse JSON from response
+    const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+  } catch (error) {
+    console.error('Error analyzing campaign context:', error);
+  }
+
+  return getDefaultCampaignContext();
+}
+
+function getDefaultCampaignContext(): CampaignContext {
+  return {
+    campaign_type: 'brand_general',
+    primary_focus: '',
+    detected_products: [],
+    detected_collections: []
+  };
+}
+
+/**
+ * Phase 2: Get descriptions for each slice
+ */
+async function getSliceDescriptions(
+  slices: SliceInput[],
+  fullCampaignImage: string | undefined,
+  campaignContext: CampaignContext | null,
+  domain: string | null,
+  knownProductUrls: Array<{ name: string; url: string }> | undefined,
+  useIndexMatching: boolean,
+  apiKey: string
+): Promise<SliceDescription[]> {
+  
+  // Build prompt based on matching strategy
+  let prompt: string;
+  
+  if (useIndexMatching) {
+    // Simplified prompt - no web search, just describe what you see
+    prompt = `Analyze these email campaign slices.
+
+${fullCampaignImage ? 'FIRST IMAGE: Full campaign overview (REFERENCE ONLY - DO NOT include in your output).' : ''}
+${campaignContext ? `Campaign context: ${campaignContext.campaign_type} - "${campaignContext.primary_focus}"` : ''}
+
+For each labeled slice, provide:
+
+1. **altText** (max 200 chars): Capture the marketing message. Include visible text.
+
+2. **isClickable**: true/false
+   - YES: Header logos, product images, CTAs, hero sections with buttons
+   - NO: Text-only sections without CTAs, dividers, spacers, legal text
+
+3. **isGenericCta**: true if the slice is a generic call-to-action like "Shop Now", "Learn More", "Shop [Brand]", "Discover", "Get Yours" - buttons that don't show a specific product name
+
+4. **description**: Brief description of what's shown (for product matching). Be specific about product names, collection names, or what the CTA refers to.
+
+IMPORTANT: Each slice is labeled "=== SLICE N (index: X) ===" before its image.
+Your output MUST have exactly ${slices.length} entries, with indices 0 to ${slices.length - 1}.
+
+Return JSON:
+{
+  "slices": [
+    { "index": 0, "altText": "...", "isClickable": true/false, "isGenericCta": true/false, "description": "..." },
+    ...
+  ]
+}`;
+  } else {
+    // Full prompt with web search instructions (legacy behavior)
+    const knownUrlsContext = knownProductUrls && knownProductUrls.length > 0
+      ? `\n\nKNOWN PRODUCT URLs (use these FIRST before searching):
+${knownProductUrls.map(u => `- "${u.name}" → ${u.url}`).join('\n')}`
+      : '';
+
+    prompt = `Analyze these email campaign slices.
+
+${fullCampaignImage ? 'FIRST IMAGE: Full campaign overview (REFERENCE ONLY).' : ''}
+
+Brand: ${domain || 'Unknown'}${knownUrlsContext}
+
+For each labeled slice:
+
+**ALT TEXT** (max 200 chars) - Capture the marketing message:
+- If there's a headline, offer text, body copy visible -> capture the key message
+- ONLY include "Click to shop" when there is a VISIBLE CTA BUTTON
+
+**CLICKABLE** - Be selective:
+SHOULD be clickable: Header logos, CTA buttons, product images, hero sections with CTAs
+Should NOT be clickable: Text-only sections without CTAs, dividers, spacers, legal text
+
+**LINKS** - Find the real page:
+- Header logos -> brand homepage: https://${domain}/
+- Single product -> find actual product page (must contain /products/)
+- Multiple products/general CTA -> find appropriate collection
+
+**LINK SELECTION - Prefer evergreen URLs:**
+✅ PREFER: /products/[name], /collections/new-arrivals, /collections/[category]
+❌ REJECT: URLs with discounts, promo codes, campaign-specific paths
+
+Return JSON with exactly ${slices.length} slices:
+{
+  "slices": [
+    { "index": 0, "altText": "...", "isClickable": true/false, "suggestedLink": "https://..." or null, "linkVerified": true/false },
+    ...
+  ],
+  "discoveredUrls": [
+    { "productName": "...", "url": "..." }
+  ]
+}`;
+  }
+
+  // Build content array with images
+  const content: Array<{ type: string; text?: string; source?: { type: string; media_type?: string; data?: string; url?: string } }> = [
+    { type: 'text', text: prompt }
+  ];
+
+  // Add full campaign image for context
+  if (fullCampaignImage) {
+    content.push({ type: 'text', text: '=== REFERENCE IMAGE (DO NOT ANALYZE) ===' });
+    if (fullCampaignImage.startsWith('http')) {
+      content.push({ type: 'image', source: { type: 'url', url: fullCampaignImage } });
+    } else {
+      const matches = fullCampaignImage.match(/^data:([^;]+);base64,(.+)$/);
+      if (matches) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: matches[1], data: matches[2] } });
+      }
+    }
+  }
+
+  // Add each slice image
+  for (let i = 0; i < slices.length; i++) {
+    const slice = slices[i];
+    let columnContext = '';
+    if (slice.totalColumns && slice.totalColumns > 1) {
+      columnContext = ` | COLUMN ${(slice.column ?? 0) + 1} of ${slice.totalColumns}`;
+    }
+    
+    content.push({ type: 'text', text: `=== SLICE ${i + 1} (index: ${i})${columnContext} ===` });
+    
+    if (slice.imageUrl && !slice.dataUrl) {
+      content.push({ type: 'image', source: { type: 'url', url: slice.imageUrl } });
+    } else if (slice.dataUrl) {
+      const matches = slice.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (matches) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: matches[1], data: matches[2] } });
+      }
+    }
+  }
+
+  // Build tools array for legacy web search mode
+  const tools: Array<{ type: string; name: string; max_uses: number; allowed_domains?: string[] }> = [];
+  const betaHeaders: string[] = [];
+  
+  if (!useIndexMatching && domain) {
+    tools.push(
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 50 },
+      { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 10, allowed_domains: [domain, `www.${domain}`] }
+    );
+    betaHeaders.push('web-search-2025-03-05', 'web-fetch-2025-09-10');
+  }
+
+  const requestBody: { model: string; max_tokens: number; messages: Array<{ role: string; content: typeof content }>; tools?: typeof tools } = {
+    model: useIndexMatching ? 'claude-haiku-4-5-20250929' : 'claude-sonnet-4-5', // Faster model for index matching
+    max_tokens: useIndexMatching ? 3000 : 6000,
+    messages: [{ role: 'user', content }]
+  };
+  
+  if (tools.length > 0) {
+    requestBody.tools = tools;
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+  };
+  
+  if (betaHeaders.length > 0) {
+    headers['anthropic-beta'] = betaHeaders.join(',');
+  }
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Slice description API error:', response.status, errorText);
+    return slices.map((_, i) => ({
+      index: i,
+      altText: '',
+      isClickable: false,
+      isGenericCta: false,
+      description: ''
+    }));
+  }
+
+  const aiResponse = await response.json();
+  
+  // Parse response
+  let allTextContent = '';
+  if (aiResponse.content && Array.isArray(aiResponse.content)) {
+    const textBlocks = aiResponse.content.filter((block: { type: string }) => block.type === 'text');
+    allTextContent = textBlocks.map((block: { text?: string }) => block.text || '').join('\n');
+  }
+
+  // Extract JSON
+  const codeBlockMatch = allTextContent.match(/```json\s*([\s\S]*?)```/);
+  const rawJsonMatch = allTextContent.match(/\{\s*"slices"\s*:\s*\[[\s\S]*?\]\s*\}/);
+  const jsonStr = codeBlockMatch?.[1] || rawJsonMatch?.[0];
+
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return (parsed.slices || []).map((s: SliceDescription, i: number) => ({
+        index: typeof s.index === 'number' ? s.index : i,
+        altText: s.altText || '',
+        isClickable: s.isClickable ?? false,
+        isGenericCta: s.isGenericCta ?? false,
+        description: s.description || s.altText || ''
+      }));
+    } catch (e) {
+      console.error('Failed to parse slice descriptions:', e);
+    }
+  }
+
+  return slices.map((_, i) => ({
+    index: i,
+    altText: '',
+    isClickable: false,
+    isGenericCta: false,
+    description: ''
+  }));
+}
+
+/**
+ * Phase 3a: Match slices using the brand's link index
+ */
+async function matchSlicesViaIndex(
+  sliceDescriptions: SliceDescription[],
+  brandId: string,
+  campaignContext: CampaignContext | null,
+  linkPreferences: { default_destination_url?: string; product_churn?: string; rules?: Array<{ name: string; destination_url: string }> } | null,
+  domain: string | null,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<SliceAnalysis[]> {
+  
+  const analyses: SliceAnalysis[] = [];
+  
+  for (const slice of sliceDescriptions) {
+    if (!slice.isClickable) {
+      analyses.push({
+        index: slice.index,
+        altText: slice.altText,
+        suggestedLink: null,
+        isClickable: false,
+        linkVerified: false,
+        linkSource: 'not_clickable'
+      });
+      continue;
+    }
+
+    // Call match-slice-to-link function
+    try {
+      const matchResponse = await fetch(`${supabaseUrl}/functions/v1/match-slice-to-link`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          brand_id: brandId,
+          slice_description: slice.description,
+          campaign_context: campaignContext || getDefaultCampaignContext(),
+          is_generic_cta: slice.isGenericCta
+        }),
+      });
+
+      if (matchResponse.ok) {
+        const matchResult: MatchResult = await matchResponse.json();
+        
+        analyses.push({
+          index: slice.index,
+          altText: slice.altText,
+          suggestedLink: matchResult.url,
+          isClickable: true,
+          linkVerified: matchResult.confidence > 0.8,
+          linkSource: matchResult.source
+        });
+        
+        console.log(`Slice ${slice.index}: ${matchResult.source} (${matchResult.url || 'no match'})`);
+      } else {
+        console.error(`match-slice-to-link error for slice ${slice.index}:`, await matchResponse.text());
+        analyses.push({
+          index: slice.index,
+          altText: slice.altText,
+          suggestedLink: null,
+          isClickable: true,
+          linkVerified: false,
+          linkSource: 'error'
+        });
+      }
+    } catch (error) {
+      console.error(`Error matching slice ${slice.index}:`, error);
+      analyses.push({
+        index: slice.index,
+        altText: slice.altText,
+        suggestedLink: null,
+        isClickable: true,
+        linkVerified: false,
+        linkSource: 'error'
+      });
+    }
+  }
+
+  // Handle web search fallback for high-churn brands
+  if (linkPreferences?.product_churn === 'high') {
+    const unmatchedSlices = analyses.filter(a => a.isClickable && !a.suggestedLink);
+    if (unmatchedSlices.length > 0) {
+      console.log(`${unmatchedSlices.length} unmatched slices for high-churn brand - would fall back to web search`);
+      // TODO: Implement web search fallback and reactive indexing
+    }
+  }
+
+  return analyses;
+}
+
+/**
+ * Phase 3b: Legacy web-search matching (for brands without indexed links)
+ */
+async function matchSlicesViaWebSearch(
+  slices: SliceInput[],
+  sliceDescriptions: SliceDescription[],
+  fullCampaignImage: string | undefined,
+  domain: string | null,
+  brandUrl: string | undefined,
+  knownProductUrls: Array<{ name: string; url: string }> | undefined,
+  apiKey: string
+): Promise<SliceAnalysis[]> {
+  // This is the legacy behavior - sliceDescriptions already include suggestedLink from the Claude call
+  // We just need to transform them to SliceAnalysis format
+  
+  const analyses: SliceAnalysis[] = slices.map((_, i) => {
+    const desc = sliceDescriptions.find(d => d.index === i);
+    return {
+      index: i,
+      altText: desc?.altText || '',
+      suggestedLink: null, // Will be filled by the response from Claude with web search
+      isClickable: desc?.isClickable ?? false,
+      linkVerified: false,
+      linkSource: 'web_search'
+    };
+  });
+
+  // The actual web search happens in getSliceDescriptions when useIndexMatching is false
+  // The response includes suggestedLink directly
+  // For now, just return the basic analysis since the full web search flow is in the prompt
+  
+  return analyses;
+}

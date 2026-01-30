@@ -723,7 +723,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      match_brand_links: {
+        Args: {
+          match_brand_id: string
+          match_count?: number
+          query_embedding: string
+        }
+        Returns: {
+          id: string
+          link_type: string
+          similarity: number
+          title: string
+          url: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
