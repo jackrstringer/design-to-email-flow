@@ -61,8 +61,14 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Matching slice for brand ${brand_id}: "${slice_description.substring(0, 100)}..."`);
-    console.log(`Is generic CTA: ${is_generic_cta}, Campaign type: ${campaign_context?.campaign_type}`);
+    // [DIAGNOSTIC] Log 1: Function entry
+    console.log('[match-slice-to-link] Starting', {
+      brandId: brand_id,
+      isGenericCta: is_generic_cta,
+      description: slice_description?.substring(0, 80),
+      campaignType: campaign_context?.campaign_type,
+      primaryFocus: campaign_context?.primary_focus
+    });
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -84,6 +90,15 @@ serve(async (req) => {
     }
 
     const preferences: LinkPreferences = brand.link_preferences || {};
+
+    // [DIAGNOSTIC] Log 2: Brand preferences
+    console.log('[match-slice-to-link] Brand preferences', {
+      brandFound: !!brand,
+      hasDefaultUrl: !!preferences?.default_destination_url,
+      defaultUrl: preferences?.default_destination_url?.substring(0, 60),
+      ruleCount: preferences?.rules?.length || 0,
+      rules: preferences?.rules?.map(r => r.name) || []
+    });
 
     // 1. Handle generic CTAs first
     if (is_generic_cta) {
@@ -138,7 +153,13 @@ serve(async (req) => {
     }
 
     const healthyLinks = (linkIndex || []).filter(l => l.url) as LinkIndexEntry[];
-    console.log(`Found ${healthyLinks.length} healthy links in index`);
+    
+    // [DIAGNOSTIC] Log 3: Link index
+    console.log('[match-slice-to-link] Link index', {
+      totalLinks: linkIndex?.length || 0,
+      healthyLinks: healthyLinks.length,
+      matchingStrategy: healthyLinks.length < 50 ? 'claude_list' : 'vector_search'
+    });
 
     if (healthyLinks.length === 0) {
       // No index - caller should fall back to web search
@@ -173,7 +194,13 @@ serve(async (req) => {
         .eq('id', matchResult.link_id);
     }
 
-    console.log(`Match result: ${matchResult.source} (confidence: ${matchResult.confidence})`);
+    // [DIAGNOSTIC] Log 4: Final result
+    console.log('[match-slice-to-link] Final result', {
+      matchedUrl: matchResult.url?.substring(0, 60) || 'none',
+      source: matchResult.source,
+      confidence: matchResult.confidence.toFixed(2),
+      linkId: matchResult.link_id || 'none'
+    });
     
     return new Response(
       JSON.stringify(matchResult),
