@@ -20,6 +20,7 @@ interface SitemapImportCardProps {
   domain: string;
   savedSitemapUrl?: string;
   onImportComplete?: () => void;
+  compact?: boolean;
 }
 
 export function SitemapImportCard({ 
@@ -27,6 +28,7 @@ export function SitemapImportCard({
   domain, 
   savedSitemapUrl,
   onImportComplete,
+  compact = false,
 }: SitemapImportCardProps) {
   const { job, isRunning, isComplete, isFailed, triggerImport, isTriggering } = useSitemapImport(brandId);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -75,6 +77,51 @@ export function SitemapImportCard({
 
   // Show nothing if no job and not in a relevant state
   if (!job && !isRunning) {
+    // Compact mode - just show button
+    if (compact) {
+      return (
+        <>
+          <Button size="sm" variant="outline" onClick={() => setImportModalOpen(true)}>
+            <Download className="w-4 h-4 mr-1" />
+            Import
+          </Button>
+          
+          <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import from Sitemap</DialogTitle>
+                <DialogDescription>
+                  Enter the URL of your sitemap. We'll index all products and collections.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Input
+                  value={sitemapUrl}
+                  onChange={(e) => setSitemapUrl(e.target.value)}
+                  placeholder="https://example.com/sitemap.xml"
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleTriggerImport} disabled={isTriggering || !sitemapUrl}>
+                  {isTriggering ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    'Start Import'
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    }
+
     return (
       <div className="flex items-center justify-between p-4 rounded-lg border border-dashed border-border/50 bg-muted/30">
         <div>
@@ -121,6 +168,83 @@ export function SitemapImportCard({
           </DialogContent>
         </Dialog>
       </div>
+    );
+  }
+
+  // Compact mode with job running
+  if (compact) {
+    return (
+      <>
+        <Button size="sm" variant="outline" onClick={() => setImportModalOpen(true)} disabled={isRunning}>
+          {isRunning ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              Importing...
+            </>
+          ) : isComplete ? (
+            <>
+              <CheckCircle className="w-4 h-4 mr-1 text-green-500" />
+              Re-import
+            </>
+          ) : isFailed ? (
+            <>
+              <AlertCircle className="w-4 h-4 mr-1 text-destructive" />
+              Retry
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4 mr-1" />
+              Import
+            </>
+          )}
+        </Button>
+        
+        <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Import from Sitemap</DialogTitle>
+              <DialogDescription>
+                Enter the URL of your sitemap. We'll index all products and collections.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Input
+                value={sitemapUrl}
+                onChange={(e) => setSitemapUrl(e.target.value)}
+                placeholder="https://example.com/sitemap.xml"
+              />
+              {isRunning && job && job.urls_found > 0 && (
+                <div className="mt-4 space-y-2">
+                  <Progress value={getProgress()} className="h-2" />
+                  <p className="text-xs text-muted-foreground">
+                    {job.urls_processed} / {job.urls_found} URLs processed
+                  </p>
+                </div>
+              )}
+              {isComplete && job && (
+                <p className="mt-4 text-xs text-muted-foreground">
+                  Last import: {job.product_urls_count} products, {job.collection_urls_count} collections
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setImportModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleTriggerImport} disabled={isTriggering || isRunning || !sitemapUrl}>
+                {isTriggering ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  'Start Import'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 
