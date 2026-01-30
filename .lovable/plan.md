@@ -1,234 +1,306 @@
 
 
-# Simplify Link Preferences to Inline Editor
+# Wire Up Link Intelligence to Slice Analysis Pipeline
 
 ## Overview
-Replace the current card + wizard + modal approach with a simple inline editor. No popups - everything editable directly on the page with a single Save button.
+Replace the expensive web search for every slice with instant matching against the pre-indexed brand links. This will significantly reduce processing time (from 20+ seconds to 3-8 seconds for indexed brands).
 
 ---
 
-## Target Design
+## Current Flow
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Link Preferences                                              [Save]  │
-│  ───────────────────────────────────────────────────────────────────── │
-│                                                                         │
-│  General Highlight URL                                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │ https://brand.com/pages/main-lp                                 │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  Product-Specific Links                                                 │
-│  ┌──────────────────────────────┐  ┌──────────────────────────────┐   │
-│  │ Whey Protein                 │  │ https://brand.com/whey       │ ✕ │
-│  └──────────────────────────────┘  └──────────────────────────────┘   │
-│  ┌──────────────────────────────┐  ┌──────────────────────────────┐   │
-│  │ Collagen                     │  │ https://brand.com/collagen   │ ✕ │
-│  └──────────────────────────────┘  └──────────────────────────────┘   │
-│  ┌──────────────────────────────┐  ┌──────────────────────────────┐   │
-│  │                              │  │                              │   │
-│  └──────────────────────────────┘  └──────────────────────────────┘   │
-│                                              (empty row for adding)    │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+analyze-slices → Claude with web_search tool → finds URLs (20+ seconds)
+```
+
+## New Flow
+
+```text
+1. Campaign context analysis (quick Claude call)
+2. Slice descriptions (simplified Claude call - no web search)
+3. Match descriptions against brand_link_index (instant vector/list lookup)
+4. Apply brand preferences for generic CTAs
+5. Only web search fallback if no match + high product churn
+6. Save any discovered URLs to index (reactive learning)
 ```
 
 ---
 
-## Key Simplifications
+## Files to Create/Update
 
-| Current | New |
-|---------|-----|
-| LinkPreferencesCard (summary view) | Removed |
-| LinkPreferencesWizard (6-step popup) | Keep for initial onboarding only |
-| LinkPreferencesManageView (edit dialog) | Replaced with inline editor |
-| Edit/Reconfigure buttons | Single inline form + Save button |
-
----
-
-## New Component: LinkPreferencesEditor.tsx
-
-A single inline component that replaces both the card summary and the manage modal.
-
-**Features:**
-- Direct editing in place (no modal)
-- One input for "General Highlight URL"
-- Rows for product rules: `[Product Name] [URL] [X]`
-- Empty row at bottom for adding new rules
-- Single "Save" button (appears when changes detected)
-- No wizard trigger needed - user just edits directly
+| File | Action | Description |
+|------|--------|-------------|
+| `supabase/functions/match-slice-to-link/index.ts` | CREATE | New edge function - core matching logic |
+| `supabase/functions/analyze-slices/index.ts` | UPDATE | Add campaign context, use index-first matching |
+| `supabase/migrations/*.sql` | CREATE | Add `match_brand_links` Postgres function for vector search |
+| `supabase/config.toml` | UPDATE | Add new edge function config |
 
 ---
 
-## Implementation Details
+## Part 1: Database Function for Vector Search
 
-### File: `src/components/brand/LinkPreferencesEditor.tsx` (NEW)
+Create a new migration to add the `match_brand_links` function:
 
-```tsx
-export function LinkPreferencesEditor({ brandId }: { brandId: string }) {
-  const { preferences, updatePreferences, isUpdating, isLoading } = useLinkPreferences(brandId);
-  
-  // Local state for editing
-  const [generalUrl, setGeneralUrl] = useState('');
-  const [rules, setRules] = useState<Array<{ id: string; name: string; url: string }>>([]);
-  const [hasChanges, setHasChanges] = useState(false);
-  
-  // Sync from preferences on load
-  useEffect(() => {
-    if (preferences) {
-      setGeneralUrl(preferences.default_destination_url || '');
-      setRules(preferences.rules?.map(r => ({
-        id: r.id,
-        name: r.name,
-        url: r.destination_url
-      })) || []);
-    }
-  }, [preferences]);
-  
-  // Track changes
-  const updateGeneralUrl = (value: string) => {
-    setGeneralUrl(value);
-    setHasChanges(true);
+```sql
+CREATE OR REPLACE FUNCTION public.match_brand_links(
+  query_embedding extensions.vector(1536),
+  match_brand_id UUID,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (
+  id UUID,
+  url TEXT,
+  title TEXT,
+  link_type TEXT,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    brand_link_index.id,
+    brand_link_index.url,
+    brand_link_index.title,
+    brand_link_index.link_type,
+    1 - (brand_link_index.embedding <=> query_embedding) AS similarity
+  FROM brand_link_index
+  WHERE brand_link_index.brand_id = match_brand_id
+    AND brand_link_index.is_healthy = true
+    AND brand_link_index.embedding IS NOT NULL
+  ORDER BY brand_link_index.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+```
+
+---
+
+## Part 2: New Edge Function - `match-slice-to-link`
+
+This function handles the core matching logic with size-based routing:
+
+**Input:**
+```typescript
+interface MatchSliceInput {
+  brand_id: string;
+  slice_description: string;
+  campaign_context: {
+    campaign_type: string;
+    primary_focus: string;
+    detected_products: string[];
+    detected_collections: string[];
   };
-  
-  const updateRule = (id: string, field: 'name' | 'url', value: string) => {
-    setRules(rules.map(r => r.id === id ? { ...r, [field]: value } : r));
-    setHasChanges(true);
-  };
-  
-  const addRule = () => {
-    setRules([...rules, { id: crypto.randomUUID(), name: '', url: '' }]);
-  };
-  
-  const removeRule = (id: string) => {
-    setRules(rules.filter(r => r.id !== id));
-    setHasChanges(true);
-  };
-  
-  const handleSave = async () => {
-    // Filter out empty rules
-    const validRules = rules.filter(r => r.name.trim() && r.url.trim());
-    
-    await updatePreferences({
-      default_destination_url: generalUrl || undefined,
-      rules: validRules.map(r => ({
-        id: r.id,
-        name: r.name.trim(),
-        destination_url: r.url.trim()
-      }))
-    });
-    
-    setHasChanges(false);
-    toast.success('Saved');
-  };
-  
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Link Preferences</CardTitle>
-          {hasChanges && (
-            <Button size="sm" onClick={handleSave} disabled={isUpdating}>
-              {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* General Highlight URL */}
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground uppercase tracking-wide">
-            General Highlight URL
-          </Label>
-          <Input
-            placeholder="https://brand.com/pages/main-landing"
-            value={generalUrl}
-            onChange={(e) => updateGeneralUrl(e.target.value)}
-          />
-        </div>
-        
-        {/* Product-Specific Links */}
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground uppercase tracking-wide">
-            Product-Specific Links
-          </Label>
-          <div className="space-y-2">
-            {rules.map((rule, index) => (
-              <div key={rule.id} className="flex gap-2">
-                <Input
-                  placeholder="Product name"
-                  value={rule.name}
-                  onChange={(e) => updateRule(rule.id, 'name', e.target.value)}
-                  className="flex-1"
-                />
-                <Input
-                  placeholder="https://..."
-                  value={rule.url}
-                  onChange={(e) => updateRule(rule.id, 'url', e.target.value)}
-                  className="flex-1"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeRule(rule.id)}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-            
-            {/* Empty row for adding */}
-            <div className="flex gap-2">
-              <Input
-                placeholder="Product name"
-                onFocus={addRule}
-                className="flex-1"
-              />
-              <Input
-                placeholder="https://..."
-                disabled
-                className="flex-1"
-              />
-              <div className="w-9" /> {/* Spacer for alignment */}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  is_generic_cta: boolean;
+}
+```
+
+**Logic Flow:**
+1. **Generic CTAs first** - Check brand preferences rules, then default destination
+2. **Small catalog (<50 links)** - Pass full list to Claude Haiku for matching
+3. **Large catalog (50+ links)** - Vector search + Claude confirmation
+
+**Output:**
+```typescript
+interface MatchResult {
+  url: string | null;
+  source: 'brand_rule' | 'brand_default' | 'index_list_match' | 'vector_high_confidence' | 'vector_claude_confirmed' | 'no_match' | 'no_index';
+  confidence: number;
+  link_id?: string; // For usage tracking
 }
 ```
 
 ---
 
-## Files to Update
+## Part 3: Update `analyze-slices`
 
-| File | Action |
-|------|--------|
-| `src/components/brand/LinkPreferencesEditor.tsx` | NEW - Simple inline editor |
-| `src/components/brand/LinkIntelligenceSection.tsx` | Replace `LinkPreferencesCard` with `LinkPreferencesEditor` |
-| `src/components/brand/LinkPreferencesCard.tsx` | DELETE (no longer needed) |
-| `src/components/brand/LinkPreferencesManageView.tsx` | DELETE (replaced by inline editor) |
-| `src/components/brand/LinkPreferencesWizard.tsx` | KEEP but only used for first-time setup (optional) |
+### New Two-Phase Approach
+
+**Phase 1: Campaign Context (Single Claude Call)**
+```typescript
+// Add to beginning of function
+const campaignContextPrompt = `
+Analyze this email campaign image:
+
+1. Campaign type: product_launch | collection_highlight | sale_promo | brand_general
+2. Primary focus (e.g., "Summer Collection", "New Protein Formula")
+3. Detected products/collections
+
+Respond in JSON:
+{
+  "campaign_type": "...",
+  "primary_focus": "...",
+  "detected_products": [...],
+  "detected_collections": [...]
+}
+`;
+```
+
+**Phase 2: Simplified Slice Descriptions (No Web Search)**
+
+Remove web_search and web_fetch tools from the Claude call. Instead, ask Claude only to:
+- Generate alt text for each slice
+- Determine if slice is clickable
+- Identify if slice is a generic CTA ("Shop Now", "Learn More", etc.)
+- Describe what the slice shows (for matching)
+
+```typescript
+const sliceDescriptionPrompt = `
+For each slice, provide:
+- altText: Max 200 chars, capture marketing message
+- isClickable: true/false
+- isGenericCta: true if "Shop Now", "Learn More", etc. without specific product
+- description: Brief description for product matching
+
+DO NOT search for links - just describe what you see.
+`;
+```
+
+**Phase 3: Link Matching (Call `match-slice-to-link`)**
+
+After getting descriptions, call the new matching function for each clickable slice:
+
+```typescript
+const results = await Promise.all(
+  sliceDescriptions.map(async (slice) => {
+    if (!slice.isClickable) {
+      return { ...slice, suggestedLink: null, linkSource: 'not_clickable' };
+    }
+    
+    const match = await matchSliceToLink({
+      brand_id: brandId,
+      slice_description: slice.description,
+      campaign_context: campaignContext,
+      is_generic_cta: slice.isGenericCta
+    });
+    
+    return {
+      ...slice,
+      suggestedLink: match.url,
+      linkSource: match.source,
+      linkVerified: match.confidence > 0.8
+    };
+  })
+);
+```
 
 ---
 
-## Wizard Handling
+## Part 4: Web Search Fallback (Only for High Churn Brands)
 
-The wizard can remain for first-time onboarding if you want a guided experience, but the inline editor becomes the primary way to manage preferences afterward. 
+If no match is found and brand has `product_churn: 'high'` in link_preferences:
 
-Alternatively, we can remove the wizard entirely and users just fill in the inline form directly.
-
-**Recommendation:** Remove wizard - the inline form is simple enough that no guided setup is needed. Users see empty fields and just fill them in.
+```typescript
+if (!match.url && brand.link_preferences?.product_churn === 'high') {
+  // Fall back to web search (existing logic)
+  const webResult = await webSearchForLink(slice.description, brand.domain);
+  
+  if (webResult.url) {
+    // Reactive indexing - save for next time
+    await addToLinkIndex({
+      brand_id: brandId,
+      url: webResult.url,
+      title: slice.description,
+      link_type: 'product',
+      source: 'ai_discovered'
+    });
+  }
+}
+```
 
 ---
 
-## Summary
+## Part 5: Usage Tracking
 
-1. Create `LinkPreferencesEditor.tsx` - simple inline form
-2. Update `LinkIntelligenceSection.tsx` to use new editor
-3. Delete `LinkPreferencesCard.tsx` and `LinkPreferencesManageView.tsx`
-4. Optionally remove/keep wizard for first-time users
+When a link from the index is used, update its stats:
+
+```typescript
+// In match-slice-to-link, after finding a match:
+if (match.link_id) {
+  await supabase
+    .from('brand_link_index')
+    .update({
+      last_used_at: new Date().toISOString(),
+      use_count: supabase.sql`use_count + 1`
+    })
+    .eq('id', match.link_id);
+}
+```
+
+---
+
+## Performance Expectations
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| Small brand (indexed) | 20s | 3-5s |
+| Large brand (indexed) | 20s | 5-8s |
+| New brand (no index) | 20s | 20s (first time) |
+| High churn brand | 20s | 10-15s (some web searches) |
+
+---
+
+## Technical Details
+
+### Small Catalog Matching (< 50 links)
+
+```typescript
+async function matchViaClaudeList(sliceDescription: string, links: LinkIndexEntry[]) {
+  const linkList = links.map((l, i) => `${i + 1}. ${l.title} → ${l.url}`).join('\n');
+  
+  const prompt = `
+A slice shows: "${sliceDescription}"
+
+Known product/collection links:
+${linkList}
+
+Which link best matches? Respond with just the number, or "none".
+`;
+
+  // Use Claude Haiku for speed
+  const response = await callClaude(prompt, { model: 'claude-haiku-4-5-20250929' });
+  // ... parse response
+}
+```
+
+### Large Catalog Matching (50+ links)
+
+```typescript
+async function matchViaVectorSearch(brandId: string, sliceDescription: string) {
+  // 1. Generate embedding for slice description
+  const { embeddings } = await generateEmbedding({ texts: [sliceDescription] });
+  
+  // 2. Vector search for top 5 candidates
+  const { data: candidates } = await supabase.rpc('match_brand_links', {
+    query_embedding: embeddings[0],
+    match_brand_id: brandId,
+    match_count: 5
+  });
+  
+  // 3. High confidence (>90%) - use directly
+  if (candidates[0]?.similarity > 0.90) {
+    return { url: candidates[0].url, source: 'vector_high_confidence', confidence: candidates[0].similarity };
+  }
+  
+  // 4. Medium confidence (75-90%) - Claude picks from candidates
+  if (candidates[0]?.similarity > 0.75) {
+    return await claudePickFromCandidates(sliceDescription, candidates);
+  }
+  
+  // 5. Low confidence - no match
+  return { url: null, source: 'low_confidence', confidence: 0 };
+}
+```
+
+---
+
+## Changes Summary
+
+1. **Create migration** - `match_brand_links` Postgres function
+2. **Create `match-slice-to-link`** - New edge function for smart matching
+3. **Update `analyze-slices`** - Two-phase approach (context + descriptions, then matching)
+4. **Update `supabase/config.toml`** - Register new function
+5. **Add reactive indexing** - Save newly discovered URLs from web search fallback
 
