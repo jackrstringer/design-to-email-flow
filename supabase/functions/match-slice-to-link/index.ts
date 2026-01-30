@@ -221,7 +221,7 @@ Which link best matches what's shown in the slice?
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20250929',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 50,
         messages: [{ role: 'user', content: prompt }]
       }),
@@ -365,7 +365,7 @@ Which is the correct match? Respond with ONLY the number, or "none" if none are 
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20250929',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 50,
           messages: [{ role: 'user', content: prompt }]
         }),
