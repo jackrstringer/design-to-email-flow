@@ -1,203 +1,238 @@
 
-# Flexible Link Preferences with Conditional Rules
+# Link Preferences Wizard - Lucy the Smart Assistant
 
 ## Overview
-Replace the rigid radio-button-based CTA behavior with a flexible system that supports:
-- A default destination URL for generic CTAs
-- Unlimited conditional rules with keyword matching
-- First-match-wins rule evaluation at campaign processing time
+Create a conversational, step-by-step wizard that guides users through link preferences setup with friendly, first-person copy from "Lucy" - replacing the current form-based UI with a welcoming onboarding experience.
 
 ---
 
-## Phase 1: Update Type Definitions
+## Components to Create
 
-### File: `src/types/link-intelligence.ts`
+### 1. `LinkPreferencesWizard.tsx`
+A modal wizard with 6 steps, smooth transitions, and conversational copy.
 
-Replace the `BrandLinkPreferences` interface:
-
+**Props:**
 ```typescript
-// Conditional routing rule
-export interface LinkRoutingRule {
-  id: string;           // UUID for React keys and deletion
-  name: string;         // User's label: "Protein campaigns"
-  keywords: string[];   // Triggers: ["protein", "whey", "mass gainer"]
-  destination_url: string;
-}
-
-// Link preferences stored in brands.link_preferences JSONB
-export interface BrandLinkPreferences {
-  // Default destination for generic CTAs when no rule matches
-  default_destination_url?: string;
-  default_destination_name?: string;  // Optional friendly label
-  
-  // Conditional rules - checked in order, first match wins
-  rules?: LinkRoutingRule[];
-  
-  // Catalog characteristics (keep these)
-  catalog_size?: 'small' | 'medium' | 'large';
-  product_churn?: 'low' | 'medium' | 'high';
-  
-  // Import tracking (keep these)
-  sitemap_url?: string;
-  last_sitemap_import_at?: string;
-  
-  // Legacy fields (for migration compatibility)
-  default_cta_behavior?: 'homepage' | 'primary_collection' | 'campaign_context';
-  primary_collection_name?: string;
-  primary_collection_url?: string;
-  onboarding_completed_at?: string;
+interface LinkPreferencesWizardProps {
+  brandId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
+  existingPreferences?: BrandLinkPreferences; // For reconfigure flow
 }
 ```
 
----
-
-## Phase 2: Update LinkPreferencesCard Component
-
-### File: `src/components/brand/LinkPreferencesCard.tsx`
-
-Complete rewrite with three sections:
-
-### Section 1: Default Destination
-- Name field (optional): Text input for friendly label
-- URL field (required): Full URL input
-
-### Section 2: Conditional Rules
-- List of rule cards showing: name, keywords (comma-separated), destination URL
-- Delete button on each rule
-- "+ Add Rule" button at the bottom
-- Empty state: "No rules configured"
-
-### Section 3: Catalog Information
-- Keep existing dropdowns for catalog_size and product_churn
-
-### Add Rule Modal
-New dialog for creating rules with:
-- Rule Name (required)
-- Keywords (required, comma-separated input)
-- Destination URL (required, URL validation)
-
-### Read-Only View Updates
-Display:
-- Default destination name + URL (or "Not configured")
-- Rules count with bullet list of rule names → shortened URLs
-- Catalog size + update frequency
-
-### Component State
+**State Management:**
 ```typescript
-// Form state for editing
+type WizardStep = 'welcome' | 'default-destination' | 'routing-choice' | 'add-rules' | 'catalog' | 'complete';
+
+const [step, setStep] = useState<WizardStep>('welcome');
 const [defaultDestinationUrl, setDefaultDestinationUrl] = useState('');
 const [defaultDestinationName, setDefaultDestinationName] = useState('');
+const [wantsRules, setWantsRules] = useState<boolean | null>(null);
 const [rules, setRules] = useState<LinkRoutingRule[]>([]);
 const [catalogSize, setCatalogSize] = useState<'small' | 'medium' | 'large'>('medium');
 const [productChurn, setProductChurn] = useState<'low' | 'medium' | 'high'>('medium');
+const [isSaving, setIsSaving] = useState(false);
 
-// Add rule modal state
-const [addRuleOpen, setAddRuleOpen] = useState(false);
-const [newRuleName, setNewRuleName] = useState('');
-const [newRuleKeywords, setNewRuleKeywords] = useState('');
-const [newRuleUrl, setNewRuleUrl] = useState('');
+// Current rule being added
+const [currentRuleName, setCurrentRuleName] = useState('');
+const [currentRuleKeywords, setCurrentRuleKeywords] = useState('');
+const [currentRuleUrl, setCurrentRuleUrl] = useState('');
+```
+
+**Step Flow:**
+```text
+welcome → default-destination → routing-choice
+                                     ↓
+                         ┌───────────┴───────────┐
+                         ↓ (No)                  ↓ (Yes)
+                      catalog              add-rules → catalog
+                         ↓                           ↓
+                      complete                   complete
+```
+
+**UI Structure per Step:**
+
+| Step | Content |
+|------|---------|
+| welcome | Lucy intro, "Let's set up your links", ~30 seconds estimate, "Let's go" button |
+| default-destination | Question about generic CTA destination, Name + URL inputs |
+| routing-choice | Radio: "No, send everything to default" vs "Yes, I have specific destinations" |
+| add-rules | Form for rule name, keywords, URL + summary of added rules + "Add another" |
+| catalog | Two dropdowns for catalog size and product frequency |
+| complete | Summary of what was configured, "Done" button |
+
+**Progress Indicator:**
+4 dots at bottom (welcome counts, but add-rules shares step with routing-choice visually)
+
+---
+
+### 2. `LinkPreferencesManageView.tsx`
+A streamlined inline/modal view for editing after initial setup.
+
+**Sections:**
+- Default Destination: Name + URL fields with inline save
+- Rules: List with Edit/Delete per rule, Add Rule button (opens inline form)
+- Catalog Info: Two dropdowns with save
+
+**Key difference from wizard:** No conversational framing, just efficient editing. Edit in place without step-by-step flow.
+
+---
+
+## Updates to Existing Components
+
+### 3. Update `LinkPreferencesCard.tsx`
+
+**If configured:** Show summary with two action buttons
+- "Edit" → Opens `LinkPreferencesManageView`
+- "Reconfigure" → Opens `LinkPreferencesWizard` from step 1
+
+**If not configured:** Show empty state with
+- Friendly message: "Not set up yet. I need to know where to send traffic from your campaigns."
+- "Set up link preferences →" button → Opens wizard
+
+**Detection Logic:**
+```typescript
+const isConfigured = Boolean(
+  preferences?.default_destination_url || 
+  (preferences?.rules && preferences.rules.length > 0)
+);
 ```
 
 ---
 
-## Phase 3: Migration Logic
+## Wizard Copy (Lucy's Voice)
 
-### In `LinkPreferencesCard.tsx` - openEdit function
+### Step 1: Welcome
+```text
+🔗 Let's set up your links
 
-When opening the edit modal, migrate old data structure:
+I'll ask a few quick questions so I know where to send 
+traffic from your campaigns.
 
-```typescript
-const openEdit = () => {
-  if (preferences) {
-    // Migrate legacy structure if present
-    if (preferences.default_cta_behavior && !preferences.default_destination_url) {
-      // Old structure detected - migrate
-      if (preferences.default_cta_behavior === 'primary_collection' && preferences.primary_collection_url) {
-        setDefaultDestinationUrl(preferences.primary_collection_url);
-        setDefaultDestinationName(preferences.primary_collection_name || '');
-      } else if (preferences.default_cta_behavior === 'homepage') {
-        // Will need brand domain - set empty, user can fill in
-        setDefaultDestinationUrl('');
-        setDefaultDestinationName('Homepage');
-      } else {
-        // campaign_context - leave empty
-        setDefaultDestinationUrl('');
-        setDefaultDestinationName('');
-      }
-    } else {
-      // New structure
-      setDefaultDestinationUrl(preferences.default_destination_url || '');
-      setDefaultDestinationName(preferences.default_destination_name || '');
-    }
-    
-    setRules(preferences.rules || []);
-    setCatalogSize(preferences.catalog_size || 'medium');
-    setProductChurn(preferences.product_churn || 'medium');
-  }
-  setEditOpen(true);
-};
+This takes about 30 seconds.
+
+                                         [Let's go →]
+```
+
+### Step 2: Default Destination
+```text
+When a campaign has a general CTA like "Shop Now"
+and isn't highlighting a specific product, where
+should I send people?
+
+This is usually your homepage or a main landing page.
+
+Name (optional)
+[________________________]
+
+URL
+[________________________]
+
+                              [← Back]  [Continue →]
+```
+
+### Step 3: Routing Choice
+```text
+Are there specific products or categories that should
+go somewhere other than your default?
+
+For example, some brands send protein campaigns to a
+dedicated protein landing page instead of the homepage.
+
+○ No, send everything to my default destination
+○ Yes, I have some specific destinations
+
+                              [← Back]  [Continue →]
+```
+
+### Step 4: Add Rules (if Yes)
+```text
+Got it. Let's add your first rule.
+
+What should I call this rule?
+[________________________]
+
+What keywords should trigger it?
+[________________________]
+↳ Comma-separated. If any appear in the campaign, I'll 
+  use this destination.
+
+Where should these campaigns link?
+[________________________]
+
+{If rules already added, show summary above:}
+✓ Protein campaigns → /pages/protein-lp
+✓ Collagen campaigns → /pages/collagen-lp
+
+    [+ Add another rule]        [← Back]  [Continue →]
+```
+
+### Step 5: Catalog Info
+```text
+Last thing — tell me a bit about your product catalog.
+
+How many products does this brand have?
+[Small — under 50 products              ▼]
+
+How often do you add new products?
+[Rarely — mostly the same products      ▼]
+
+                              [← Back]  [Finish →]
+```
+
+### Step 6: Complete
+```text
+✓ You're all set
+
+I'll use these preferences when processing campaigns
+for this brand.
+
+Default destination: Main Landing Page
+Rules: 2 configured
+Catalog: Small • Updates rarely
+
+You can edit these anytime in the Link Intelligence
+section of this brand's settings.
+
+                                          [Done]
 ```
 
 ---
 
-## Phase 4: Rule Management Functions
+## Files to Create
 
-### Add Rule
-```typescript
-const handleAddRule = () => {
-  // Validate
-  if (!newRuleName.trim()) {
-    toast.error('Rule name is required');
-    return;
-  }
-  const keywords = newRuleKeywords.split(',').map(k => k.trim()).filter(Boolean);
-  if (keywords.length === 0) {
-    toast.error('At least one keyword is required');
-    return;
-  }
-  if (!newRuleUrl.trim() || !isValidUrl(newRuleUrl)) {
-    toast.error('Valid URL is required');
-    return;
-  }
-  
-  const newRule: LinkRoutingRule = {
-    id: crypto.randomUUID(),
-    name: newRuleName.trim(),
-    keywords,
-    destination_url: newRuleUrl.trim(),
-  };
-  
-  setRules([...rules, newRule]);
-  setAddRuleOpen(false);
-  resetRuleForm();
-};
-```
+| File | Purpose |
+|------|---------|
+| `src/components/brand/LinkPreferencesWizard.tsx` | Conversational wizard component |
+| `src/components/brand/LinkPreferencesManageView.tsx` | Edit view for ongoing management |
 
-### Delete Rule
-```typescript
-const handleDeleteRule = (ruleId: string) => {
-  setRules(rules.filter(r => r.id !== ruleId));
-};
-```
+## Files to Modify
 
-### URL Validation Helper
-```typescript
-const isValidUrl = (url: string) => {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-};
-```
+| File | Change |
+|------|---------|
+| `src/components/brand/LinkPreferencesCard.tsx` | Update to show configured/unconfigured states, add Edit + Reconfigure buttons, trigger wizard |
+| `src/components/brand/LinkIntelligenceSection.tsx` | Pass additional props if needed |
 
 ---
 
-## Phase 5: Save Handler Update
+## Technical Implementation Details
 
+### Wizard Transitions
+Use CSS transitions for smooth step changes:
 ```typescript
-const handleSave = async () => {
+className={cn(
+  "transition-all duration-300 ease-in-out",
+  isCurrentStep ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4 absolute"
+)}
+```
+
+### Save Logic
+On "Finish" in catalog step, save all preferences at once:
+```typescript
+const handleFinish = async () => {
+  setIsSaving(true);
   try {
     await updatePreferences({
       default_destination_url: defaultDestinationUrl || undefined,
@@ -205,151 +240,66 @@ const handleSave = async () => {
       rules: rules.length > 0 ? rules : undefined,
       catalog_size: catalogSize,
       product_churn: productChurn,
-      // Clear legacy fields
-      default_cta_behavior: undefined,
-      primary_collection_name: undefined,
-      primary_collection_url: undefined,
     });
-    toast.success('Link preferences updated');
-    setEditOpen(false);
+    setStep('complete');
   } catch (error) {
-    toast.error('Failed to update preferences');
+    toast.error('Failed to save preferences');
+  } finally {
+    setIsSaving(false);
   }
 };
 ```
 
----
+### Rule Management in Wizard
+When clicking "+ Add another rule":
+1. Validate current inputs
+2. Add to `rules` array
+3. Clear form fields for next rule
+4. Show summary of added rules above the form
 
-## Phase 6: Updated UI Layout
-
-### Edit Modal Structure
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ Link Preferences                                      [X]   │
-│ Configure where generic CTAs should link                    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│ DEFAULT DESTINATION                                         │
-│ Where generic CTAs link when no rule matches                │
-│                                                             │
-│ Name (optional)                                             │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ Main Landing Page                                       │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│                                                             │
-│ URL                                                         │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ https://eskiin.com/pages/main-lp                        │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│                                                             │
-│ ─────────────────────────────────────────────────────────── │
-│                                                             │
-│ CONDITIONAL RULES (optional)                                │
-│ Route specific campaigns to dedicated pages                 │
-│                                                             │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ Protein Campaigns                              [Delete] │ │
-│ │ Keywords: protein, whey, mass gainer                    │ │
-│ │ → https://store.com/pages/protein-lp                    │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│                                                             │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ Collagen Campaigns                             [Delete] │ │
-│ │ Keywords: collagen, beauty, skin                        │ │
-│ │ → https://store.com/pages/collagen-lp                   │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│                                                             │
-│ [+ Add Rule]                                                │
-│                                                             │
-│ ─────────────────────────────────────────────────────────── │
-│                                                             │
-│ CATALOG INFORMATION                                         │
-│                                                             │
-│ Catalog Size        Product Updates                         │
-│ ┌─────────────────┐ ┌─────────────────┐                     │
-│ │ Medium       ▼  │ │ Sometimes    ▼  │                     │
-│ └─────────────────┘ └─────────────────┘                     │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│                               [Cancel]  [Save Preferences]  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Add Rule Dialog
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ Add Routing Rule                                      [X]   │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│ Rule Name *                                                 │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ Protein Campaigns                                       │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│ A label for your reference                                  │
-│                                                             │
-│ Keywords *                                                  │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ protein, whey, mass gainer                              │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│ Comma-separated. If any keyword appears in the campaign,    │
-│ this rule triggers.                                         │
-│                                                             │
-│ Destination URL *                                           │
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ https://store.com/pages/protein-lp                      │ │
-│ └─────────────────────────────────────────────────────────┘ │
-│ Where generic CTAs should link for matching campaigns       │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│                                    [Cancel]  [Add Rule]     │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/types/link-intelligence.ts` | Add `LinkRoutingRule` interface, update `BrandLinkPreferences` |
-| `src/components/brand/LinkPreferencesCard.tsx` | Complete rewrite with new UI structure |
-
----
-
-## Technical Notes
-
-### Keyword Matching (Future Use)
-At campaign processing time, the rules array will be evaluated:
+### Progress Dots
 ```typescript
-function findDestinationUrl(
-  campaignContent: string, 
-  preferences: BrandLinkPreferences
-): string | null {
-  const contentLower = campaignContent.toLowerCase();
-  
-  // Check rules in order - first match wins
-  for (const rule of (preferences.rules || [])) {
-    const hasMatch = rule.keywords.some(keyword => 
-      contentLower.includes(keyword.toLowerCase())
-    );
-    if (hasMatch) {
-      return rule.destination_url;
-    }
-  }
-  
-  // Fall back to default destination
-  return preferences.default_destination_url || null;
-}
+const stepIndex = {
+  'welcome': 0,
+  'default-destination': 1,
+  'routing-choice': 2,
+  'add-rules': 2,  // Same dot as routing-choice
+  'catalog': 3,
+  'complete': 3,   // Same dot as catalog (completion state)
+};
+
+const totalDots = 4;
 ```
 
-### Backward Compatibility
-- Legacy fields (`default_cta_behavior`, `primary_collection_*`) kept in type for reading old data
-- Migration logic converts old structure when editing
-- On save, legacy fields are cleared and new structure is written
+### Modal Styling
+- Max width: 500px (as specified)
+- Clean white background
+- Centered content with generous padding
+- No heavy headers - content speaks for itself
 
-### URL Validation
-- URLs must include protocol (https://)
-- Validation using `new URL()` constructor
-- Show error toast for invalid URLs
+---
+
+## Integration Points
+
+### Triggering the Wizard
+1. **From LinkPreferencesCard** (not configured): Click "Set up link preferences →"
+2. **From LinkPreferencesCard** (configured): Click "Reconfigure"
+3. **Future: From BrandOnboardingModal**: Add as a step after ClickUp, before Footer
+
+### After Wizard Completes
+1. Close modal
+2. Refetch preferences (via query invalidation)
+3. Card updates to show configured state
+
+---
+
+## Validation Rules
+
+| Field | Validation |
+|-------|------------|
+| Default URL | Required, must be valid URL with protocol |
+| Rule name | Required (when adding a rule) |
+| Rule keywords | Required, at least one keyword |
+| Rule URL | Required, valid URL with protocol |
+| Catalog size | Required (has default) |
+| Product churn | Required (has default) |
