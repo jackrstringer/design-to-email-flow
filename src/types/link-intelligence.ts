@@ -1,9 +1,9 @@
 // Conditional routing rule
 export interface LinkRoutingRule {
   id: string;           // UUID for React keys and deletion
-  name: string;         // User's label: "Protein campaigns"
-  keywords: string[];   // Triggers: ["protein", "whey", "mass gainer"]
+  name: string;         // Product/category name (also used for matching)
   destination_url: string;
+  keywords?: string[];  // Optional for backwards compatibility
 }
 
 // Link preferences stored in brands.link_preferences JSONB
@@ -91,9 +91,11 @@ export function findDestinationUrl(
   
   // Check rules in order - first match wins
   for (const rule of (preferences.rules || [])) {
-    const hasMatch = rule.keywords.some(keyword => 
-      contentLower.includes(keyword.toLowerCase())
-    );
+    // Use keywords if available (legacy), otherwise match on name
+    const hasMatch = rule.keywords && rule.keywords.length > 0
+      ? rule.keywords.some(k => contentLower.includes(k.toLowerCase()))
+      : contentLower.includes(rule.name.toLowerCase());
+    
     if (hasMatch) {
       return rule.destination_url;
     }

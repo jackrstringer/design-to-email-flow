@@ -51,7 +51,6 @@ export function LinkPreferencesWizard({
 
   // Current rule being added
   const [currentRuleName, setCurrentRuleName] = useState('');
-  const [currentRuleKeywords, setCurrentRuleKeywords] = useState('');
   const [currentRuleUrl, setCurrentRuleUrl] = useState('');
 
   const isValidUrl = (url: string) => {
@@ -105,7 +104,7 @@ export function LinkPreferencesWizard({
         break;
       case 'add-rules':
         // If there's a rule in progress, try to save it first
-        if (currentRuleName.trim() || currentRuleKeywords.trim() || currentRuleUrl.trim()) {
+        if (currentRuleName.trim() || currentRuleUrl.trim()) {
           if (!addCurrentRule()) return;
         }
         setStep('catalog');
@@ -158,12 +157,7 @@ export function LinkPreferencesWizard({
 
   const addCurrentRule = (): boolean => {
     if (!currentRuleName.trim()) {
-      toast.error('Rule name is required');
-      return false;
-    }
-    const keywords = currentRuleKeywords.split(',').map(k => k.trim()).filter(Boolean);
-    if (keywords.length === 0) {
-      toast.error('At least one keyword is required');
+      toast.error('Product/category name is required');
       return false;
     }
     if (!currentRuleUrl.trim() || !isValidUrl(currentRuleUrl)) {
@@ -174,13 +168,11 @@ export function LinkPreferencesWizard({
     const newRule: LinkRoutingRule = {
       id: crypto.randomUUID(),
       name: currentRuleName.trim(),
-      keywords,
       destination_url: currentRuleUrl.trim(),
     };
 
     setRules([...rules, newRule]);
     setCurrentRuleName('');
-    setCurrentRuleKeywords('');
     setCurrentRuleUrl('');
     return true;
   };
@@ -444,28 +436,17 @@ export function LinkPreferencesWizard({
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>What should I call this rule?</Label>
+                    <Label>Product or category name</Label>
                     <Input
-                      placeholder="e.g., Protein campaigns"
+                      placeholder="e.g., Whey Protein"
                       value={currentRuleName}
                       onChange={(e) => setCurrentRuleName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>What keywords should trigger it?</Label>
+                    <Label>Preferred URL</Label>
                     <Input
-                      placeholder="protein, whey, mass gainer"
-                      value={currentRuleKeywords}
-                      onChange={(e) => setCurrentRuleKeywords(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Comma-separated. If any appear in the campaign, I'll use this destination.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Where should these campaigns link?</Label>
-                    <Input
-                      placeholder="https://store.com/pages/protein-lp"
+                      placeholder="https://store.com/pages/whey-protein"
                       value={currentRuleUrl}
                       onChange={(e) => setCurrentRuleUrl(e.target.value)}
                     />
@@ -477,7 +458,7 @@ export function LinkPreferencesWizard({
                   variant="outline"
                   onClick={handleAddAnotherRule}
                   className="w-full mt-4"
-                  disabled={!currentRuleName.trim() && !currentRuleKeywords.trim() && !currentRuleUrl.trim()}
+                  disabled={!currentRuleName.trim() && !currentRuleUrl.trim()}
                 >
                   {rules.length === 0 ? 'Add rule' : '+ Add another rule'}
                 </Button>
