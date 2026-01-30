@@ -52,6 +52,8 @@ export function SitemapImportCard({
         return 'Waiting to start...';
       case 'parsing':
         return 'Parsing sitemap...';
+      case 'crawling_nav':
+        return 'Discovering navigation links...';
       case 'fetching_titles':
         return 'Fetching page titles...';
       case 'generating_embeddings':
