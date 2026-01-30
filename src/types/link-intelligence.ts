@@ -55,7 +55,7 @@ export interface SitemapImportJob {
   id: string;
   brand_id: string;
   sitemap_url: string;
-  status: 'pending' | 'parsing' | 'fetching_titles' | 'generating_embeddings' | 'complete' | 'failed';
+  status: 'pending' | 'parsing' | 'crawling_nav' | 'fetching_titles' | 'generating_embeddings' | 'complete' | 'failed';
   urls_found: number;
   urls_processed: number;
   urls_failed: number;

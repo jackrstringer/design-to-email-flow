@@ -24,7 +24,7 @@ export function useSitemapImport(brandId: string) {
     // Poll every 3 seconds while job is running
     refetchInterval: (query) => {
       const job = query.state.data as SitemapImportJob | null;
-      if (job && ['pending', 'parsing', 'fetching_titles', 'generating_embeddings'].includes(job.status)) {
+      if (job && ['pending', 'parsing', 'crawling_nav', 'fetching_titles', 'generating_embeddings'].includes(job.status)) {
         return 3000;
       }
       return false;
@@ -49,7 +49,7 @@ export function useSitemapImport(brandId: string) {
   });
 
   const job = jobQuery.data;
-  const isRunning = job && ['pending', 'parsing', 'fetching_titles', 'generating_embeddings'].includes(job.status);
+  const isRunning = job && ['pending', 'parsing', 'crawling_nav', 'fetching_titles', 'generating_embeddings'].includes(job.status);
   const isComplete = job?.status === 'complete';
   const isFailed = job?.status === 'failed';
 

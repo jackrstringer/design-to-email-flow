@@ -6,12 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// URLs to skip during import
+// URLs to skip during import - only utility/transactional pages
 const SKIP_PATTERNS = [
   '/cart', '/checkout', '/account', '/login', '/register', '/password',
-  '/policies', '/pages/faq', '/pages/contact', '/pages/about',
-  '/blogs/', '/apps/', '/admin', '/api/', '/sitemap',
-  '/search', '/wishlist', '/compare',
+  '/policies', '/apps/', '/admin', '/api/', '/sitemap',
+  '/search', '/wishlist', '/compare', '/blogs/',
 ];
 
 function shouldSkipUrl(url: string): boolean {
@@ -23,7 +22,7 @@ function categorizeUrl(url: string): 'product' | 'collection' | 'page' | null {
   const lowerUrl = url.toLowerCase();
   if (lowerUrl.includes('/products/')) return 'product';
   if (lowerUrl.includes('/collections/')) return 'collection';
-  // Skip other pages for now
+  if (lowerUrl.includes('/pages/')) return 'page';
   return null;
 }
 
@@ -31,7 +30,10 @@ async function fetchWithTimeout(url: string, timeout = 10000): Promise<Response>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SentrBot/1.0)' }
+    });
     return response;
   } finally {
     clearTimeout(timeoutId);
@@ -54,6 +56,68 @@ async function extractTitle(html: string): Promise<string | null> {
   }
 
   return null;
+}
+
+// NEW: Extract navigation links from homepage
+async function extractNavLinks(domain: string): Promise<Array<{ url: string; title: string; link_type: 'product' | 'collection' | 'page' }>> {
+  try {
+    const homepageUrl = `https://${domain}`;
+    console.log(`[import-sitemap] Crawling homepage: ${homepageUrl}`);
+    
+    const response = await fetchWithTimeout(homepageUrl, 15000);
+    if (!response.ok) {
+      console.log(`[import-sitemap] Homepage fetch failed: ${response.status}`);
+      return [];
+    }
+    
+    const html = await response.text();
+    const navLinks: Array<{ url: string; title: string; link_type: 'product' | 'collection' | 'page' }> = [];
+    
+    // Extract anchor tags from HTML
+    const linkRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi;
+    let match;
+    
+    while ((match = linkRegex.exec(html)) !== null) {
+      let url = match[1];
+      const title = match[2].trim();
+      
+      // Skip invalid links
+      if (!title || title.length < 2) continue;
+      if (url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('mailto:') || url.startsWith('tel:')) continue;
+      
+      // Convert relative URLs to absolute
+      if (url.startsWith('/')) {
+        url = `https://${domain}${url}`;
+      }
+      
+      // Only same-domain links
+      if (!url.includes(domain)) continue;
+      
+      // Skip utility pages
+      if (shouldSkipUrl(url)) continue;
+      
+      // Categorize
+      let link_type: 'product' | 'collection' | 'page' = 'page';
+      if (url.includes('/products/')) link_type = 'product';
+      else if (url.includes('/collections/')) link_type = 'collection';
+      
+      navLinks.push({ url, title, link_type });
+    }
+    
+    // Deduplicate by URL
+    const seen = new Set<string>();
+    const uniqueLinks = navLinks.filter(link => {
+      if (seen.has(link.url)) return false;
+      seen.add(link.url);
+      return true;
+    });
+    
+    console.log(`[import-sitemap] Found ${uniqueLinks.length} unique nav links`);
+    return uniqueLinks;
+  } catch (error) {
+    console.error('[import-sitemap] Failed to crawl nav:', error);
+    return [];
+  }
 }
 
 async function parseSitemap(xml: string, baseUrl: string): Promise<string[]> {
@@ -115,10 +179,19 @@ serve(async (req) => {
 
     console.log(`Starting sitemap import for brand ${brand_id}, job ${job_id}`);
 
+    // Get brand domain for nav crawling
+    const { data: brand } = await supabase
+      .from('brands')
+      .select('domain')
+      .eq('id', brand_id)
+      .single();
+    
+    const domain = brand?.domain || new URL(sitemap_url).hostname;
+
     // Update job status to parsing
     await supabase
       .from('sitemap_import_jobs')
-      .update({ status: 'parsing' })
+      .update({ status: 'parsing', started_at: new Date().toISOString() })
       .eq('id', job_id);
 
     // Fetch sitemap
@@ -135,17 +208,56 @@ serve(async (req) => {
     const allUrls = await parseSitemap(sitemapXml, baseUrl);
     console.log(`Found ${allUrls.length} total URLs in sitemap`);
 
-    // Filter and categorize URLs
-    const urlsToProcess: { url: string; link_type: 'product' | 'collection' }[] = [];
+    // Filter and categorize sitemap URLs
+    const sitemapUrlsToProcess: { url: string; link_type: 'product' | 'collection' | 'page'; title?: string; source: string }[] = [];
     for (const url of allUrls) {
       if (shouldSkipUrl(url)) continue;
       const category = categorizeUrl(url);
-      if (category === 'product' || category === 'collection') {
-        urlsToProcess.push({ url, link_type: category });
+      if (category) {
+        sitemapUrlsToProcess.push({ url, link_type: category, source: 'sitemap' });
       }
     }
 
-    console.log(`Filtered to ${urlsToProcess.length} product/collection URLs`);
+    console.log(`Filtered sitemap to ${sitemapUrlsToProcess.length} URLs`);
+
+    // NEW: Crawl homepage navigation
+    await supabase
+      .from('sitemap_import_jobs')
+      .update({ status: 'crawling_nav' })
+      .eq('id', job_id);
+
+    console.log('[import-sitemap] Crawling homepage navigation...');
+    const navLinks = await extractNavLinks(domain);
+    console.log(`[import-sitemap] Found ${navLinks.length} navigation links`);
+
+    // Merge URLs - nav links may add pages that sitemap missed
+    const urlMap = new Map<string, { url: string; link_type: 'product' | 'collection' | 'page'; title?: string; source: string }>();
+
+    // Add sitemap URLs first
+    for (const item of sitemapUrlsToProcess) {
+      urlMap.set(item.url, item);
+    }
+
+    // Add nav links (especially pages that sitemap missed)
+    for (const navLink of navLinks) {
+      if (!urlMap.has(navLink.url)) {
+        urlMap.set(navLink.url, { 
+          url: navLink.url, 
+          link_type: navLink.link_type, 
+          title: navLink.title,
+          source: 'navigation' 
+        });
+      } else {
+        // If nav link has a title and existing doesn't, use nav title
+        const existing = urlMap.get(navLink.url)!;
+        if (navLink.title && !existing.title) {
+          urlMap.set(navLink.url, { ...existing, title: navLink.title });
+        }
+      }
+    }
+
+    const urlsToProcess = Array.from(urlMap.values());
+    console.log(`Combined: ${urlsToProcess.length} URLs (${sitemapUrlsToProcess.length} from sitemap, ${navLinks.length} nav links)`);
 
     // Update job with urls_found
     await supabase
@@ -166,24 +278,38 @@ serve(async (req) => {
     const newUrls = urlsToProcess.filter(u => !existingUrls.has(u.url));
     console.log(`${newUrls.length} new URLs to process (${existingUrls.size} already exist)`);
 
-    // Fetch titles for new URLs (in batches of 20)
+    // Fetch titles for new URLs that don't have one (in batches of 20)
     const BATCH_SIZE = 20;
-    const urlsWithTitles: { url: string; link_type: 'product' | 'collection'; title: string }[] = [];
+    const urlsWithTitles: { url: string; link_type: 'product' | 'collection' | 'page'; title: string; source: string }[] = [];
     let processed = 0;
     let failed = 0;
 
-    for (let i = 0; i < newUrls.length; i += BATCH_SIZE) {
-      const batch = newUrls.slice(i, i + BATCH_SIZE);
+    // URLs that already have titles from nav crawling
+    const urlsNeedingTitles = newUrls.filter(u => !u.title);
+    const urlsWithNavTitles = newUrls.filter(u => u.title);
+    
+    // Add URLs with nav titles directly
+    for (const item of urlsWithNavTitles) {
+      urlsWithTitles.push({ 
+        url: item.url, 
+        link_type: item.link_type, 
+        title: item.title!, 
+        source: item.source 
+      });
+    }
+
+    for (let i = 0; i < urlsNeedingTitles.length; i += BATCH_SIZE) {
+      const batch = urlsNeedingTitles.slice(i, i + BATCH_SIZE);
       
       const batchResults = await Promise.allSettled(
-        batch.map(async ({ url, link_type }) => {
+        batch.map(async ({ url, link_type, source }) => {
           try {
             const response = await fetchWithTimeout(url, 8000);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const html = await response.text();
             const title = await extractTitle(html);
             if (title) {
-              return { url, link_type, title };
+              return { url, link_type, title, source };
             }
             return null;
           } catch (error) {
@@ -205,12 +331,12 @@ serve(async (req) => {
       await supabase
         .from('sitemap_import_jobs')
         .update({
-          urls_processed: processed,
+          urls_processed: processed + urlsWithNavTitles.length,
           urls_failed: failed,
         })
         .eq('id', job_id);
 
-      console.log(`Processed ${processed}/${newUrls.length} URLs, ${urlsWithTitles.length} with titles`);
+      console.log(`Processed ${processed}/${urlsNeedingTitles.length} URLs, ${urlsWithTitles.length} with titles`);
     }
 
     if (urlsWithTitles.length === 0) {
@@ -263,7 +389,7 @@ serve(async (req) => {
               url: item.url,
               link_type: item.link_type,
               title: item.title,
-              source: 'sitemap',
+              source: item.source,
               is_healthy: true,
               last_verified_at: new Date().toISOString(),
             });
@@ -277,7 +403,7 @@ serve(async (req) => {
               link_type: batch[j].link_type,
               title: batch[j].title,
               embedding: embeddings[j] ? `[${embeddings[j].join(',')}]` : null,
-              source: 'sitemap',
+              source: batch[j].source,
               is_healthy: true,
               last_verified_at: new Date().toISOString(),
             });
@@ -292,7 +418,7 @@ serve(async (req) => {
             url: item.url,
             link_type: item.link_type,
             title: item.title,
-            source: 'sitemap',
+            source: item.source,
             is_healthy: true,
             last_verified_at: new Date().toISOString(),
           });
@@ -315,9 +441,10 @@ serve(async (req) => {
       }
     }
 
-    // Count products and collections
+    // Count by type
     const productCount = allLinks.filter(l => l.link_type === 'product').length;
     const collectionCount = allLinks.filter(l => l.link_type === 'collection').length;
+    const pageCount = allLinks.filter(l => l.link_type === 'page').length;
 
     // Update job as complete
     await supabase
@@ -326,35 +453,37 @@ serve(async (req) => {
         status: 'complete',
         completed_at: new Date().toISOString(),
         product_urls_count: productCount,
-        collection_urls_count: collectionCount,
+        collection_urls_count: collectionCount + pageCount, // Include pages in collection count for now
       })
       .eq('id', job_id);
 
     // Update brand's link_preferences
-    const { data: brand } = await supabase
+    const { data: brandData } = await supabase
       .from('brands')
       .select('link_preferences')
       .eq('id', brand_id)
       .single();
 
-    const currentPrefs = brand?.link_preferences || {};
+    const currentPrefs = brandData?.link_preferences || {};
     await supabase
       .from('brands')
       .update({
         link_preferences: {
           ...currentPrefs,
+          sitemap_url,
           last_sitemap_import_at: new Date().toISOString(),
         },
       })
       .eq('id', brand_id);
 
-    console.log(`Import complete: ${productCount} products, ${collectionCount} collections`);
+    console.log(`Import complete: ${productCount} products, ${collectionCount} collections, ${pageCount} pages`);
 
     return new Response(JSON.stringify({
       success: true,
       imported: allLinks.length,
       products: productCount,
       collections: collectionCount,
+      pages: pageCount,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
