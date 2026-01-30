@@ -19,7 +19,7 @@ import { useLinkPreferences } from '@/hooks/useLinkPreferences';
 import type { BrandLinkPreferences, LinkRoutingRule } from '@/types/link-intelligence';
 import { toast } from 'sonner';
 
-type WizardStep = 'welcome' | 'default-destination' | 'routing-choice' | 'add-rules' | 'catalog' | 'complete';
+type WizardStep = 'welcome' | 'default-destination' | 'default-destination-url' | 'routing-choice' | 'add-rules' | 'catalog' | 'complete';
 
 interface LinkPreferencesWizardProps {
   brandId: string;
@@ -40,6 +40,7 @@ export function LinkPreferencesWizard({
   
   // Wizard state
   const [step, setStep] = useState<WizardStep>('welcome');
+  const [usesHomepage, setUsesHomepage] = useState<boolean | null>(null);
   const [defaultDestinationUrl, setDefaultDestinationUrl] = useState(existingPreferences?.default_destination_url || '');
   const [defaultDestinationName, setDefaultDestinationName] = useState(existingPreferences?.default_destination_name || '');
   const [wantsRules, setWantsRules] = useState<boolean | null>(null);
@@ -65,6 +66,7 @@ export function LinkPreferencesWizard({
   const stepIndex: Record<WizardStep, number> = {
     'welcome': 0,
     'default-destination': 1,
+    'default-destination-url': 1,
     'routing-choice': 2,
     'add-rules': 2,
     'catalog': 3,
@@ -77,6 +79,9 @@ export function LinkPreferencesWizard({
         setStep('default-destination');
         break;
       case 'default-destination':
+        // This step now handled by button clicks directly
+        break;
+      case 'default-destination-url':
         if (!defaultDestinationUrl.trim()) {
           toast.error('Please enter a destination URL');
           return;
@@ -116,8 +121,15 @@ export function LinkPreferencesWizard({
       case 'default-destination':
         setStep('welcome');
         break;
-      case 'routing-choice':
+      case 'default-destination-url':
         setStep('default-destination');
+        break;
+      case 'routing-choice':
+        if (usesHomepage) {
+          setStep('default-destination');
+        } else {
+          setStep('default-destination-url');
+        }
         break;
       case 'add-rules':
         setStep('routing-choice');
@@ -130,6 +142,18 @@ export function LinkPreferencesWizard({
         }
         break;
     }
+  };
+
+  const handleHomepageChoice = () => {
+    setUsesHomepage(true);
+    setDefaultDestinationUrl('');
+    setDefaultDestinationName('Homepage');
+    setStep('routing-choice');
+  };
+
+  const handleSomewhereElseChoice = () => {
+    setUsesHomepage(false);
+    setStep('default-destination-url');
   };
 
   const addCurrentRule = (): boolean => {
@@ -252,18 +276,48 @@ export function LinkPreferencesWizard({
             </div>
           )}
 
-          {/* Step: Default Destination */}
+          {/* Step: Default Destination - Choice */}
           {step === 'default-destination' && (
             <div className="flex-1 flex flex-col">
               <div className="space-y-4 flex-1">
                 <div className="space-y-2">
                   <p className="text-foreground">
-                    When a campaign has a general CTA like "Shop Now"
-                    and isn't highlighting a specific product, where
-                    should I send people?
+                    For a general send, would we send to your site homepage? Or somewhere else?
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    This is usually your homepage or a main landing page.
+                </div>
+
+                <div className="space-y-3 mt-6">
+                  <button
+                    onClick={handleHomepageChoice}
+                    className="w-full p-4 rounded-lg border border-border hover:border-primary/50 text-left transition-colors"
+                  >
+                    <span className="font-medium">Homepage is fine!</span>
+                  </button>
+                  <button
+                    onClick={handleSomewhereElseChoice}
+                    className="w-full p-4 rounded-lg border border-border hover:border-primary/50 text-left transition-colors"
+                  >
+                    <span className="font-medium">Somewhere else</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-start mt-6">
+                <Button variant="ghost" onClick={handleBack}>
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: Default Destination - URL Entry */}
+          {step === 'default-destination-url' && (
+            <div className="flex-1 flex flex-col">
+              <div className="space-y-4 flex-1">
+                <div className="space-y-2">
+                  <p className="text-foreground">
+                    Where should I send people?
                   </p>
                 </div>
 
@@ -271,7 +325,7 @@ export function LinkPreferencesWizard({
                   <div className="space-y-2">
                     <Label>Name (optional)</Label>
                     <Input
-                      placeholder="e.g., Main Landing Page"
+                      placeholder="e.g., Primary Landing Page"
                       value={defaultDestinationName}
                       onChange={(e) => setDefaultDestinationName(e.target.value)}
                     />
