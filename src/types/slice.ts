@@ -71,6 +71,11 @@ export interface AutoSliceV2Response {
       columns: 2 | 3 | 4 | 5 | 6;
       gutterPositions: number[];
     };
+    // Link intelligence outputs (when link index is provided)
+    isClickable?: boolean;
+    link?: string | null;
+    altText?: string;
+    linkSource?: 'index' | 'default' | 'rule' | 'needs_search' | 'not_clickable';
   }[];
   imageHeight: number;
   imageWidth: number;
@@ -78,6 +83,11 @@ export interface AutoSliceV2Response {
   confidence: {
     overall: 'high' | 'medium' | 'low';
   };
+  // For reactive web search (rare - only when product not in index)
+  needsLinkSearch?: Array<{
+    sliceIndex: number;
+    description: string;
+  }>;
   error?: string;
   debug?: {
     paragraphCount: number;
@@ -88,6 +98,7 @@ export interface AutoSliceV2Response {
     scaleFactor?: number;
     originalDimensions?: { width: number; height: number };
     claudeImageDimensions?: { width: number; height: number };
+    linkIndexSize?: number;
   };
 }
 

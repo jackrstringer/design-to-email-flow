@@ -124,13 +124,40 @@ async function startEarlyGeneration(
 // Brand is now always manually selected via plugin dropdown
 // The detect-brand-from-image edge function is kept for potential future use
 
-// Step 3: Auto-slice the image
+// Step 3: Auto-slice the image (with optional link intelligence)
+interface LinkIndexEntry {
+  title: string;
+  url: string;
+  link_type: string;
+}
+
+interface BrandPreferenceRule {
+  name: string;
+  destination_url: string;
+}
+
+interface AutoSliceResult {
+  slices: any[];
+  footerStartPercent: number;
+  footerStartY: number;
+  imageHeight: number;
+  analyzedWidth: number;
+  analyzedHeight: number;
+  needsLinkSearch?: Array<{ sliceIndex: number; description: string }>;
+  hasLinkIntelligence: boolean;
+}
+
 async function autoSliceImage(
   imageBase64: string,
   imageWidth: number,
-  imageHeight: number
-): Promise<{ slices: any[]; footerStartPercent: number; footerStartY: number; imageHeight: number; analyzedWidth: number; analyzedHeight: number } | null> {
-  console.log('[process] Step 3: Auto-slicing image...');
+  imageHeight: number,
+  // Link intelligence params (optional)
+  linkIndex?: LinkIndexEntry[],
+  defaultDestinationUrl?: string,
+  brandPreferenceRules?: BrandPreferenceRule[]
+): Promise<AutoSliceResult | null> {
+  const hasLinkIndex = linkIndex && linkIndex.length > 0;
+  console.log(`[process] Step 3: Auto-slicing image... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
 
   try {
     const sliceUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/auto-slice-v2';
@@ -143,7 +170,11 @@ async function autoSliceImage(
       body: JSON.stringify({
         imageDataUrl: `data:image/png;base64,${imageBase64}`,
         imageWidth,
-        imageHeight
+        imageHeight,
+        // Pass link intelligence if available
+        linkIndex: hasLinkIndex ? linkIndex : undefined,
+        defaultDestinationUrl: hasLinkIndex ? defaultDestinationUrl : undefined,
+        brandPreferenceRules: hasLinkIndex ? brandPreferenceRules : undefined
       })
     });
 
@@ -168,6 +199,9 @@ async function autoSliceImage(
     const contentSlices = allSlices.filter((slice: any) => slice.yBottom <= footerStartY);
     
     console.log(`[process] Filtered ${allSlices.length} -> ${contentSlices.length} slices (excluding footer at ${footerStartY}px)`);
+    if (hasLinkIndex) {
+      console.log(`[process] Link intelligence enabled: ${result.needsLinkSearch?.length || 0} slices need web search`);
+    }
     
     return {
       slices: contentSlices,
@@ -175,7 +209,9 @@ async function autoSliceImage(
       footerStartY,
       imageHeight: result.imageHeight,
       analyzedWidth: result.analyzedWidth || result.imageWidth || imageWidth,
-      analyzedHeight: result.analyzedHeight || result.imageHeight || imageHeight
+      analyzedHeight: result.analyzedHeight || result.imageHeight || imageHeight,
+      needsLinkSearch: result.needsLinkSearch || [],
+      hasLinkIntelligence: hasLinkIndex || false
     };
 
   } catch (err) {
@@ -746,11 +782,53 @@ serve(async (req) => {
       processing_percent: 15
     });
 
-    console.log('[process] Running auto-slice (brand already set from plugin:', brandId || 'none', ')...');
+    // === FETCH LINK INDEX FOR BRAND (if available) ===
+    let linkIndex: LinkIndexEntry[] = [];
+    let defaultDestinationUrl: string | null = null;
+    let brandPreferenceRules: BrandPreferenceRule[] = [];
+    
+    if (brandId) {
+      try {
+        // Fetch healthy links from brand_link_index
+        const { data: links } = await supabase
+          .from('brand_link_index')
+          .select('title, url, link_type')
+          .eq('brand_id', brandId)
+          .eq('is_healthy', true)
+          .order('use_count', { ascending: false })
+          .limit(100);
+        
+        linkIndex = (links || []).map((l: any) => ({
+          title: l.title || '',
+          url: l.url,
+          link_type: l.link_type
+        }));
+        
+        // Fetch brand preferences
+        const { data: brandPrefs } = await supabase
+          .from('brands')
+          .select('link_preferences, domain')
+          .eq('id', brandId)
+          .single();
+        
+        const prefs = brandPrefs?.link_preferences || {};
+        defaultDestinationUrl = prefs.default_destination_url || `https://${brandPrefs?.domain || brandContext?.domain}`;
+        brandPreferenceRules = prefs.rules || [];
+        
+        console.log(`[process] Fetched ${linkIndex.length} links for brand ${brandId}`);
+      } catch (err) {
+        console.log('[process] Could not fetch link index (non-fatal):', err);
+      }
+    }
+
+    console.log('[process] Running auto-slice (brand:', brandId || 'none', ', links:', linkIndex.length, ')...');
     const sliceResult = await autoSliceImage(
       imageResult.imageBase64,
       item.image_width || 600,
-      item.image_height || 2000
+      item.image_height || 2000,
+      linkIndex.length > 0 ? linkIndex : undefined,
+      defaultDestinationUrl || undefined,
+      brandPreferenceRules.length > 0 ? brandPreferenceRules : undefined
     );
 
     // Brand is already set from plugin (item.brand_id), no detection needed
@@ -819,21 +897,34 @@ serve(async (req) => {
       processing_percent: 45
     });
 
-    // === STEP 4: Analyze slices for alt text + links (60%) ===
-    await updateQueueItem(supabase, campaignQueueId, {
-      processing_step: 'analyzing_slices',
-      processing_percent: 50
-    });
+    // === STEP 4: Analyze slices for alt text + links (SKIP if link intelligence enabled) ===
+    let currentSlices = uploadedSlices;
+    
+    if (sliceResult.hasLinkIntelligence) {
+      // Slices already have altText and links from auto-slice - skip analyze-slices entirely
+      console.log('[process] Step 4: SKIPPING analyze-slices (link intelligence already applied)');
+      await updateQueueItem(supabase, campaignQueueId, {
+        processing_step: 'links_assigned',
+        processing_percent: 60
+      });
+    } else {
+      // Legacy path: No link index, use analyze-slices for alt text and links
+      console.log('[process] Step 4: Running analyze-slices (no link index)...');
+      await updateQueueItem(supabase, campaignQueueId, {
+        processing_step: 'analyzing_slices',
+        processing_percent: 50
+      });
 
-    const enrichedSlices = await analyzeSlices(
-      supabase,
-      uploadedSlices,
-      imageResult.imageUrl, // Pass Cloudinary URL, analyzeSlices will resize for AI
-      brandContext?.domain || null,
-      item.brand_id || null
-    );
+      const enrichedSlices = await analyzeSlices(
+        supabase,
+        uploadedSlices,
+        imageResult.imageUrl,
+        brandContext?.domain || null,
+        item.brand_id || null
+      );
 
-    let currentSlices = enrichedSlices || uploadedSlices;
+      currentSlices = enrichedSlices || uploadedSlices;
+    }
 
     await updateQueueItem(supabase, campaignQueueId, {
       slices: currentSlices,
