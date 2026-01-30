@@ -44,13 +44,11 @@ export function LinkPreferencesManageView({
   // Add rule state
   const [showAddRule, setShowAddRule] = useState(false);
   const [newRuleName, setNewRuleName] = useState('');
-  const [newRuleKeywords, setNewRuleKeywords] = useState('');
   const [newRuleUrl, setNewRuleUrl] = useState('');
   
   // Edit rule state
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editRuleName, setEditRuleName] = useState('');
-  const [editRuleKeywords, setEditRuleKeywords] = useState('');
   const [editRuleUrl, setEditRuleUrl] = useState('');
 
   const [hasChanges, setHasChanges] = useState(false);
@@ -81,12 +79,7 @@ export function LinkPreferencesManageView({
 
   const handleAddRule = () => {
     if (!newRuleName.trim()) {
-      toast.error('Rule name is required');
-      return;
-    }
-    const keywords = newRuleKeywords.split(',').map(k => k.trim()).filter(Boolean);
-    if (keywords.length === 0) {
-      toast.error('At least one keyword is required');
+      toast.error('Product/category name is required');
       return;
     }
     if (!newRuleUrl.trim() || !isValidUrl(newRuleUrl)) {
@@ -97,13 +90,11 @@ export function LinkPreferencesManageView({
     const newRule: LinkRoutingRule = {
       id: crypto.randomUUID(),
       name: newRuleName.trim(),
-      keywords,
       destination_url: newRuleUrl.trim(),
     };
 
     setRules([...rules, newRule]);
     setNewRuleName('');
-    setNewRuleKeywords('');
     setNewRuleUrl('');
     setShowAddRule(false);
     markChanged();
@@ -113,18 +104,12 @@ export function LinkPreferencesManageView({
   const handleEditRule = (rule: LinkRoutingRule) => {
     setEditingRuleId(rule.id);
     setEditRuleName(rule.name);
-    setEditRuleKeywords(rule.keywords.join(', '));
     setEditRuleUrl(rule.destination_url);
   };
 
   const handleSaveEditRule = () => {
     if (!editRuleName.trim()) {
-      toast.error('Rule name is required');
-      return;
-    }
-    const keywords = editRuleKeywords.split(',').map(k => k.trim()).filter(Boolean);
-    if (keywords.length === 0) {
-      toast.error('At least one keyword is required');
+      toast.error('Product/category name is required');
       return;
     }
     if (!editRuleUrl.trim() || !isValidUrl(editRuleUrl)) {
@@ -134,7 +119,7 @@ export function LinkPreferencesManageView({
 
     setRules(rules.map(r => 
       r.id === editingRuleId 
-        ? { ...r, name: editRuleName.trim(), keywords, destination_url: editRuleUrl.trim() }
+        ? { ...r, name: editRuleName.trim(), destination_url: editRuleUrl.trim() }
         : r
     ));
     setEditingRuleId(null);
@@ -236,7 +221,7 @@ export function LinkPreferencesManageView({
                     {editingRuleId === rule.id ? (
                       <div className="p-3 rounded-lg border border-primary bg-primary/5 space-y-3">
                         <div className="space-y-2">
-                          <Label className="text-xs">Name</Label>
+                          <Label className="text-xs">Product/Category Name</Label>
                           <Input
                             value={editRuleName}
                             onChange={(e) => setEditRuleName(e.target.value)}
@@ -244,15 +229,7 @@ export function LinkPreferencesManageView({
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-xs">Keywords</Label>
-                          <Input
-                            value={editRuleKeywords}
-                            onChange={(e) => setEditRuleKeywords(e.target.value)}
-                            className="h-8"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Destination URL</Label>
+                          <Label className="text-xs">Preferred URL</Label>
                           <Input
                             value={editRuleUrl}
                             onChange={(e) => setEditRuleUrl(e.target.value)}
@@ -264,12 +241,12 @@ export function LinkPreferencesManageView({
                             Cancel
                           </Button>
                           <Button size="sm" onClick={handleSaveEditRule}>
-                            Save Rule
+                            Save
                           </Button>
                         </div>
                       </div>
                     ) : (
-                      <div className="p-3 rounded-lg border border-border/50 bg-muted/30 space-y-1">
+                      <div className="p-3 rounded-lg border border-border/50 bg-muted/30">
                         <div className="flex items-start justify-between">
                           <span className="font-medium text-sm">{rule.name}</span>
                           <div className="flex gap-1">
@@ -291,11 +268,8 @@ export function LinkPreferencesManageView({
                             </Button>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Keywords: {rule.keywords.join(', ')}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          → {rule.destination_url}
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          → {shortenUrl(rule.destination_url)}
                           <a 
                             href={rule.destination_url} 
                             target="_blank" 
@@ -315,27 +289,18 @@ export function LinkPreferencesManageView({
             {showAddRule ? (
               <div className="p-3 rounded-lg border border-primary bg-primary/5 space-y-3">
                 <div className="space-y-2">
-                  <Label className="text-xs">Rule Name</Label>
+                  <Label className="text-xs">Product/Category Name</Label>
                   <Input
-                    placeholder="e.g., Protein campaigns"
+                    placeholder="e.g., Whey Protein"
                     value={newRuleName}
                     onChange={(e) => setNewRuleName(e.target.value)}
                     className="h-8"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Keywords</Label>
+                  <Label className="text-xs">Preferred URL</Label>
                   <Input
-                    placeholder="protein, whey, mass gainer"
-                    value={newRuleKeywords}
-                    onChange={(e) => setNewRuleKeywords(e.target.value)}
-                    className="h-8"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">Destination URL</Label>
-                  <Input
-                    placeholder="https://store.com/pages/protein-lp"
+                    placeholder="https://store.com/pages/whey-protein"
                     value={newRuleUrl}
                     onChange={(e) => setNewRuleUrl(e.target.value)}
                     className="h-8"
@@ -345,7 +310,6 @@ export function LinkPreferencesManageView({
                   <Button variant="ghost" size="sm" onClick={() => {
                     setShowAddRule(false);
                     setNewRuleName('');
-                    setNewRuleKeywords('');
                     setNewRuleUrl('');
                   }}>
                     Cancel
