@@ -627,7 +627,6 @@ async function askClaude(
   imageBase64: string,
   mimeType: string,
   rawData: RawVisionData,
-  claudeModel: string,  // Model to use (Haiku for indexed brands, Sonnet for non-indexed)
   linkIndex?: LinkIndexEntry[],
   defaultDestinationUrl?: string,
   brandPreferenceRules?: BrandPreferenceRule[]
@@ -1232,7 +1231,7 @@ ${rulesFormatted}
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: claudeModel,
+        model: "claude-sonnet-4-5",
         max_tokens: 4096,
         messages: [{
           role: "user",
@@ -1375,24 +1374,9 @@ serve(async (req) => {
     const mimeType = match[1];
     const imageBase64 = match[2];
     const hasLinkIndex = linkIndex && Array.isArray(linkIndex) && linkIndex.length > 0;
-    
-    // Determine if we can use the fast model
-    const hasEnoughLinks = hasLinkIndex && linkIndex.length >= 5;
-    
-    // Haiku for indexed brands (structured reasoning on Vision data)
-    // Sonnet for non-indexed brands (may need more complex analysis)
-    const claudeModel = hasEnoughLinks 
-      ? 'claude-3-5-haiku-20241022'
-      : 'claude-sonnet-4-5';
-    
     console.log(`\n========== AUTO-SLICE V2 (Claude Brain) ==========`);
     console.log(`Received image: ${mimeType}, base64 length: ${imageBase64.length}`);
     console.log(`Link intelligence: ${hasLinkIndex ? `${linkIndex.length} links` : 'disabled'}`);
-    console.log('[auto-slice-v2] Model selection:', { 
-      claudeModel, 
-      linkCount: hasLinkIndex ? linkIndex.length : 0, 
-      reason: hasEnoughLinks ? 'indexed brand - using fast model' : 'no index - using full model'
-    });
 
 
     // ========== GET TRUE IMAGE DIMENSIONS ==========
@@ -1456,7 +1440,6 @@ serve(async (req) => {
       resized.base64, 
       resized.mimeType, 
       scaledRawData,
-      claudeModel,  // Pass selected model
       hasLinkIndex ? linkIndex : undefined,
       defaultDestinationUrl,
       brandPreferenceRules
@@ -1508,15 +1491,6 @@ serve(async (req) => {
       altText: section.altText,
       linkSource: section.linkSource
     }));
-
-    // Quality check logging for model comparison
-    console.log('[auto-slice-v2] Result quality check:', {
-      model: claudeModel,
-      sliceCount: slices.length,
-      slicesWithLinks: slices.filter(s => s.link).length,
-      slicesClickable: slices.filter(s => s.isClickable).length,
-      needsLinkSearch: claudeResult.needsLinkSearch?.length || 0
-    });
 
     const processingTimeMs = Date.now() - startTime;
 
