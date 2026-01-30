@@ -58,6 +58,74 @@ export type Database = {
           },
         ]
       }
+      brand_link_index: {
+        Row: {
+          brand_id: string
+          created_at: string | null
+          description: string | null
+          embedding: string | null
+          id: string
+          is_healthy: boolean | null
+          last_used_at: string | null
+          last_verified_at: string | null
+          link_type: string
+          parent_collection_url: string | null
+          source: string
+          title: string | null
+          updated_at: string | null
+          url: string
+          use_count: number | null
+          user_confirmed: boolean | null
+          verification_failures: number | null
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string | null
+          description?: string | null
+          embedding?: string | null
+          id?: string
+          is_healthy?: boolean | null
+          last_used_at?: string | null
+          last_verified_at?: string | null
+          link_type: string
+          parent_collection_url?: string | null
+          source: string
+          title?: string | null
+          updated_at?: string | null
+          url: string
+          use_count?: number | null
+          user_confirmed?: boolean | null
+          verification_failures?: number | null
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string | null
+          description?: string | null
+          embedding?: string | null
+          id?: string
+          is_healthy?: boolean | null
+          last_used_at?: string | null
+          last_verified_at?: string | null
+          link_type?: string
+          parent_collection_url?: string | null
+          source?: string
+          title?: string | null
+          updated_at?: string | null
+          url?: string
+          use_count?: number | null
+          user_confirmed?: boolean | null
+          verification_failures?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_link_index_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           accent_color: string | null
@@ -81,6 +149,7 @@ export type Database = {
           light_logo_public_id: string | null
           light_logo_url: string | null
           link_color: string | null
+          link_preferences: Json | null
           name: string
           primary_color: string
           secondary_color: string
@@ -114,6 +183,7 @@ export type Database = {
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           link_color?: string | null
+          link_preferences?: Json | null
           name: string
           primary_color?: string
           secondary_color?: string
@@ -147,6 +217,7 @@ export type Database = {
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           link_color?: string | null
+          link_preferences?: Json | null
           name?: string
           primary_color?: string
           secondary_color?: string
@@ -581,6 +652,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "segment_presets_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sitemap_import_jobs: {
+        Row: {
+          brand_id: string
+          collection_urls_count: number | null
+          completed_at: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          product_urls_count: number | null
+          sitemap_url: string
+          started_at: string | null
+          status: string
+          updated_at: string | null
+          urls_failed: number | null
+          urls_found: number | null
+          urls_processed: number | null
+        }
+        Insert: {
+          brand_id: string
+          collection_urls_count?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          product_urls_count?: number | null
+          sitemap_url: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string | null
+          urls_failed?: number | null
+          urls_found?: number | null
+          urls_processed?: number | null
+        }
+        Update: {
+          brand_id?: string
+          collection_urls_count?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          product_urls_count?: number | null
+          sitemap_url?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string | null
+          urls_failed?: number | null
+          urls_found?: number | null
+          urls_processed?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sitemap_import_jobs_brand_id_fkey"
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
