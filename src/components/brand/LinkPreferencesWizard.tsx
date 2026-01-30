@@ -472,16 +472,15 @@ export function LinkPreferencesWizard({
                   </div>
                 </div>
 
-                {(currentRuleName || currentRuleKeywords || currentRuleUrl) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddAnotherRule}
-                    className="mt-2"
-                  >
-                    + Add another rule
-                  </Button>
-                )}
+                {/* Always show the add button - more prominent */}
+                <Button
+                  variant="outline"
+                  onClick={handleAddAnotherRule}
+                  className="w-full mt-4"
+                  disabled={!currentRuleName.trim() && !currentRuleKeywords.trim() && !currentRuleUrl.trim()}
+                >
+                  {rules.length === 0 ? 'Add rule' : '+ Add another rule'}
+                </Button>
               </div>
 
               <div className="flex justify-between mt-6">

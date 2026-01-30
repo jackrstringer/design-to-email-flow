@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { CampaignCard } from '@/components/CampaignCard';
-import { BrandSettings } from '@/components/dashboard/BrandSettings';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Brand, Campaign, SocialLink, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
 import { BrandLinkPreferences } from '@/types/link-intelligence';
 import { Json } from '@/integrations/supabase/types';
+import { BrandHeader } from '@/components/brand/BrandHeader';
+import { BrandIdentitySection } from '@/components/brand/BrandIdentitySection';
+import { BrandIntegrationsSection } from '@/components/brand/BrandIntegrationsSection';
+import { BrandEmailSection } from '@/components/brand/BrandEmailSection';
+import { LinkIntelligenceSection } from '@/components/brand/LinkIntelligenceSection';
+import { Separator } from '@/components/ui/separator';
 
 const parseSocialLinks = (json: Json | null): SocialLink[] => {
   if (!json || !Array.isArray(json)) return [];
@@ -46,7 +51,6 @@ function parseLinkPreferences(json: Json | null): BrandLinkPreferences | undefin
 
 export default function BrandDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [brand, setBrand] = useState<Brand | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -150,11 +154,10 @@ export default function BrandDetail() {
   if (!brand) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="max-w-5xl mx-auto px-8 py-10">
           <p className="text-muted-foreground">Brand not found</p>
           <Link to="/brands">
             <Button variant="outline" className="mt-4">
-              <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Brands
             </Button>
           </Link>
@@ -165,23 +168,40 @@ export default function BrandDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Back link */}
-        <Link to="/brands" className="inline-flex items-center text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Brands
-        </Link>
+      <div className="max-w-5xl mx-auto px-8 py-10">
+        
+        {/* Header */}
+        <BrandHeader brand={brand} onBrandChange={fetchBrandAndCampaigns} />
 
-        {/* Brand Settings (inline - all brand info) */}
-        <BrandSettings
-          brand={brand}
-          onBack={() => navigate('/brands')}
-          onBrandChange={fetchBrandAndCampaigns}
-        />
+        {/* Brand Identity Section */}
+        <section className="mt-12">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-6">Brand Identity</h2>
+          <BrandIdentitySection brand={brand} onBrandChange={fetchBrandAndCampaigns} />
+        </section>
+
+        {/* Link Intelligence Section - Elevated prominence */}
+        <section className="mt-12">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-6">Link Intelligence</h2>
+          <LinkIntelligenceSection brandId={brand.id} domain={brand.domain} />
+        </section>
+
+        {/* Email Components Section */}
+        <section className="mt-12">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-6">Email Components</h2>
+          <BrandEmailSection brand={brand} onBrandChange={fetchBrandAndCampaigns} />
+        </section>
+
+        {/* Integrations Section */}
+        <section className="mt-12">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-6">Integrations</h2>
+          <BrandIntegrationsSection brand={brand} onBrandChange={fetchBrandAndCampaigns} />
+        </section>
+
+        {/* Separator before campaigns */}
+        <Separator className="mt-12" />
 
         {/* Campaigns Section */}
-        <div className="mt-8 pt-8 border-t border-border/30">
+        <section className="mt-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Campaigns ({campaigns.length})</h2>
             <Link to="/">
@@ -193,7 +213,7 @@ export default function BrandDetail() {
           </div>
 
           {campaigns.length === 0 ? (
-            <div className="py-8 text-center border border-dashed border-border/50 rounded-lg">
+            <div className="py-12 text-center border border-dashed border-border/50 rounded-lg">
               <p className="text-muted-foreground mb-4">No campaigns yet for this brand</p>
               <Link to="/">
                 <Button>
@@ -203,7 +223,7 @@ export default function BrandDetail() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {campaigns.map((campaign) => (
                 <CampaignCard 
                   key={campaign.id} 
@@ -215,7 +235,8 @@ export default function BrandDetail() {
               ))}
             </div>
           )}
-        </div>
+        </section>
+
       </div>
     </div>
   );
