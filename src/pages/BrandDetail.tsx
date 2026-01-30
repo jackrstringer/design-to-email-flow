@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Brand, Campaign, SocialLink, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
+import { BrandLinkPreferences } from '@/types/link-intelligence';
 import { Json } from '@/integrations/supabase/types';
 
 const parseSocialLinks = (json: Json | null): SocialLink[] => {
@@ -36,6 +37,11 @@ function parseTypography(json: Json | null): BrandTypography | undefined {
 function parseFormattingRules(json: Json | null): HtmlFormattingRule[] | undefined {
   if (!json || !Array.isArray(json)) return undefined;
   return json as unknown as HtmlFormattingRule[];
+}
+
+function parseLinkPreferences(json: Json | null): BrandLinkPreferences | undefined {
+  if (!json || typeof json !== 'object') return undefined;
+  return json as unknown as BrandLinkPreferences;
 }
 
 export default function BrandDetail() {
@@ -91,6 +97,7 @@ export default function BrandDetail() {
       clickupApiKey: brandData.clickup_api_key || undefined,
       clickupWorkspaceId: brandData.clickup_workspace_id || undefined,
       clickupListId: brandData.clickup_list_id || undefined,
+      linkPreferences: parseLinkPreferences(brandData.link_preferences),
       createdAt: brandData.created_at,
       updatedAt: brandData.updated_at,
     };

@@ -145,6 +145,8 @@ export interface Brand {
   clickupApiKey?: string;
   clickupWorkspaceId?: string;
   clickupListId?: string;
+  // Link intelligence
+  linkPreferences?: import('./link-intelligence').BrandLinkPreferences;
   createdAt: string;
   updatedAt: string;
 }

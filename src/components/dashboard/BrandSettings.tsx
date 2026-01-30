@@ -24,6 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Brand, BrandFooter, BrandTypography } from '@/types/brand-assets';
 import { ChevronRight } from 'lucide-react';
 import { FooterBuilderModal } from '@/components/FooterBuilderModal';
+import { LinkIntelligenceSection } from '@/components/brand/LinkIntelligenceSection';
 
 interface BrandSettingsProps {
   brand: Brand;
@@ -94,6 +95,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     clickup: false,
     copyExamples: false,
     sentCopy: false,
+    linkIntelligence: false,
   });
 
   useEffect(() => {
@@ -113,7 +115,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     
     // Handle hash navigation - auto-expand and scroll to section
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['footers', 'api', 'copyExamples', 'sentCopy'].includes(hash)) {
+    if (hash && ['footers', 'api', 'copyExamples', 'sentCopy', 'linkIntelligence'].includes(hash)) {
       setOpenSections(prev => ({ ...prev, [hash]: true }));
       // Scroll to section after a short delay to allow render
       setTimeout(() => {
@@ -1599,6 +1601,20 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
               </p>
             )}
           </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Link Intelligence - Product URL index for instant matching */}
+      <Collapsible open={openSections.linkIntelligence} onOpenChange={() => toggleSection('linkIntelligence')}>
+        <CollapsibleTrigger className="w-full py-4 border-b border-border/30 flex items-center justify-between hover:bg-muted/30 -mx-2 px-2 rounded">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.linkIntelligence ? 'rotate-90' : ''}`} />
+            <span className="text-sm font-medium">Link Intelligence</span>
+            <span className="text-xs text-muted-foreground">(Product Links)</span>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="py-4">
+          <LinkIntelligenceSection brandId={brand.id} domain={brand.domain} />
         </CollapsibleContent>
       </Collapsible>
 
