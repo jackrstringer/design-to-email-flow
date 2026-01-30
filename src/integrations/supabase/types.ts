@@ -182,6 +182,7 @@ export type Database = {
           klaviyo_campaign_url: string | null
           klaviyo_template_id: string | null
           name: string | null
+          processing_completed_at: string | null
           processing_percent: number | null
           processing_step: string | null
           provided_preview_text: string | null
@@ -223,6 +224,7 @@ export type Database = {
           klaviyo_campaign_url?: string | null
           klaviyo_template_id?: string | null
           name?: string | null
+          processing_completed_at?: string | null
           processing_percent?: number | null
           processing_step?: string | null
           provided_preview_text?: string | null
@@ -264,6 +266,7 @@ export type Database = {
           klaviyo_campaign_url?: string | null
           klaviyo_template_id?: string | null
           name?: string | null
+          processing_completed_at?: string | null
           processing_percent?: number | null
           processing_step?: string | null
           provided_preview_text?: string | null

@@ -1002,6 +1002,7 @@ serve(async (req) => {
       status: 'ready_for_review',
       processing_step: 'complete',
       processing_percent: 100,
+      processing_completed_at: new Date().toISOString(),
       error_message: null
     });
 
