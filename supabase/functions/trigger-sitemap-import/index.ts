@@ -16,20 +16,28 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { brand_id, sitemap_url } = await req.json();
+    const { brand_id, sitemap_url, domain } = await req.json();
 
-    if (!brand_id || !sitemap_url) {
-      throw new Error('brand_id and sitemap_url are required');
+    if (!brand_id) {
+      throw new Error('brand_id is required');
     }
 
-    console.log(`Triggering sitemap import for brand ${brand_id}: ${sitemap_url}`);
+    // Domain is required for Firecrawl crawling
+    if (!domain && !sitemap_url) {
+      throw new Error('Either domain or sitemap_url is required');
+    }
+
+    const effectiveDomain = domain || new URL(sitemap_url).hostname;
+    const useFirecrawl = !sitemap_url; // Use Firecrawl if no sitemap URL provided
+
+    console.log(`[trigger-sitemap-import] ${useFirecrawl ? 'Firecrawl crawl' : 'Sitemap import'} for brand ${brand_id}: ${effectiveDomain}`);
 
     // Check if there's already a running import for this brand
     const { data: existingJob } = await supabase
       .from('sitemap_import_jobs')
       .select('id, status')
       .eq('brand_id', brand_id)
-      .in('status', ['pending', 'parsing', 'fetching_titles', 'generating_embeddings'])
+      .in('status', ['pending', 'parsing', 'crawling', 'crawling_nav', 'fetching_titles', 'generating_embeddings'])
       .single();
 
     if (existingJob) {
@@ -41,7 +49,7 @@ serve(async (req) => {
       .from('sitemap_import_jobs')
       .insert({
         brand_id,
-        sitemap_url,
+        sitemap_url: sitemap_url || `https://${effectiveDomain}`, // Store domain URL if no sitemap
         status: 'pending',
         started_at: new Date().toISOString(),
       })
@@ -50,50 +58,74 @@ serve(async (req) => {
 
     if (jobError) throw jobError;
 
-    console.log(`Created import job ${job.id}`);
+    console.log(`[trigger-sitemap-import] Created import job ${job.id}`);
 
-    // Update brand's link_preferences with sitemap_url
-    const { data: brand } = await supabase
-      .from('brands')
-      .select('link_preferences')
-      .eq('id', brand_id)
-      .single();
+    // Update brand's link_preferences if sitemap_url provided
+    if (sitemap_url) {
+      const { data: brand } = await supabase
+        .from('brands')
+        .select('link_preferences')
+        .eq('id', brand_id)
+        .single();
 
-    const currentPrefs = brand?.link_preferences || {};
-    await supabase
-      .from('brands')
-      .update({
-        link_preferences: {
-          ...currentPrefs,
-          sitemap_url,
+      const currentPrefs = brand?.link_preferences || {};
+      await supabase
+        .from('brands')
+        .update({
+          link_preferences: {
+            ...currentPrefs,
+            sitemap_url,
+          },
+        })
+        .eq('id', brand_id);
+    }
+
+    // Choose which function to call based on whether we have a sitemap URL
+    if (useFirecrawl) {
+      // Use Firecrawl for comprehensive site crawling
+      const crawlUrl = `${supabaseUrl}/functions/v1/crawl-brand-site`;
+      fetch(crawlUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
         },
-      })
-      .eq('id', brand_id);
+        body: JSON.stringify({
+          brand_id,
+          domain: effectiveDomain,
+          job_id: job.id,
+        }),
+      }).catch(err => {
+        console.error('[trigger-sitemap-import] Error triggering crawl-brand-site:', err);
+      });
 
-    // Fire async call to import-sitemap (non-blocking)
-    const importUrl = `${supabaseUrl}/functions/v1/import-sitemap`;
-    fetch(importUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        brand_id,
-        sitemap_url,
-        job_id: job.id,
-      }),
-    }).catch(err => {
-      console.error('Error triggering import-sitemap:', err);
-    });
+      console.log(`[trigger-sitemap-import] Triggered crawl-brand-site for job ${job.id}`);
+    } else {
+      // Use legacy sitemap import
+      const importUrl = `${supabaseUrl}/functions/v1/import-sitemap`;
+      fetch(importUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          brand_id,
+          sitemap_url,
+          job_id: job.id,
+        }),
+      }).catch(err => {
+        console.error('[trigger-sitemap-import] Error triggering import-sitemap:', err);
+      });
 
-    console.log(`Triggered import-sitemap for job ${job.id}`);
+      console.log(`[trigger-sitemap-import] Triggered import-sitemap for job ${job.id}`);
+    }
 
     return new Response(JSON.stringify({ job }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error triggering sitemap import:', error);
+    console.error('[trigger-sitemap-import] Error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
