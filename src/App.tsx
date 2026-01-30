@@ -6,11 +6,15 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { AuthGuard } from "./components/AuthGuard";
 import { AppLayout } from "./layouts/AppLayout";
+import { BrandLayout } from "./layouts/BrandLayout";
 import Auth from "./pages/Auth";
 import SimpleUpload from "./pages/SimpleUpload";
 import Index from "./pages/Index";
 import Brands from "./pages/Brands";
-import BrandDetail from "./pages/BrandDetail";
+import BrandOverview from "./pages/BrandOverview";
+import BrandLinks from "./pages/BrandLinks";
+import BrandEmail from "./pages/BrandEmail";
+import BrandIntegrations from "./pages/BrandIntegrations";
 import OverlayTest from "./pages/OverlayTest";
 import CampaignPage from "./pages/CampaignPage";
 import CampaignSend from "./pages/CampaignSend";
@@ -45,7 +49,12 @@ const App = () => (
             <Route path="/" element={<Navigate to="/queue" replace />} />
             <Route path="/queue" element={<AuthGuard><AppLayout><CampaignQueue /></AppLayout></AuthGuard>} />
             <Route path="/brands" element={<AuthGuard><AppLayout><Brands /></AppLayout></AuthGuard>} />
-            <Route path="/brands/:id" element={<AuthGuard><AppLayout><BrandDetail /></AppLayout></AuthGuard>} />
+            <Route path="/brands/:id" element={<AuthGuard><AppLayout><BrandLayout /></AppLayout></AuthGuard>}>
+              <Route index element={<BrandOverview />} />
+              <Route path="links" element={<BrandLinks />} />
+              <Route path="email" element={<BrandEmail />} />
+              <Route path="integrations" element={<BrandIntegrations />} />
+            </Route>
             <Route path="/segments" element={<AuthGuard><AppLayout><Segments /></AppLayout></AuthGuard>} />
             <Route path="/upload" element={<AuthGuard><AppLayout><SimpleUpload /></AppLayout></AuthGuard>} />
             <Route path="/settings" element={<AuthGuard><AppLayout><Settings /></AppLayout></AuthGuard>} />
