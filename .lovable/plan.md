@@ -1,124 +1,114 @@
 
 
-# Fix Link Intelligence Pipeline - Critical Bug Fixes
+# Add Diagnostic Logging to Link Intelligence Pipeline
 
-## Problem Summary
-
-The most recent campaign took **75 seconds** and produced **0 links** for any slice. Investigation reveals two critical bugs:
-
-### Bug 1: `brandId` Not Passed to analyze-slices
-
-**Location:** `supabase/functions/process-campaign-queue/index.ts` line 365-370
-
-```typescript
-// Current (BROKEN):
-body: JSON.stringify({
-  slices: sliceInputs,
-  brandDomain,
-  fullCampaignImage: resizedFullImageUrl,
-  knownProductUrls
-  // ❌ brandId is missing!
-})
-```
-
-**Effect:** 
-- analyze-slices receives `brandId: 'none'`
-- Cannot look up brand's link index
-- Falls back to legacy web-search mode
-- Legacy mode is also broken (returns no links)
-
-### Bug 2: Invalid Claude Model Name
-
-The model `claude-haiku-4-5-20250929` does not exist. Logs show:
-```
-Anthropic API error: model: claude-haiku-4-5-20250929 - not_found_error
-```
-
-This affects:
-- `qa-spelling-check-early` 
-- `analyze-slices` (context analysis)
-- `match-slice-to-link` (list matching)
-
-### Bug 3: Legacy Web Search Fallback is Broken
-
-When `brandId` is missing, the code falls to `matchSlicesViaWebSearch()` which:
-1. Doesn't include web_search tools in the Claude call (those were stripped for index mode)
-2. Returns `suggestedLink: null` for all slices
-3. The prompt only asks for descriptions, not links
+## Purpose
+Debug why campaigns are taking 45+ seconds and producing no links despite having 26 indexed links and configured preferences.
 
 ---
 
-## Timeline Analysis (Most Recent Campaign)
+## Logging Points in `analyze-slices`
 
-| Time | Step | Duration | Issue |
-|------|------|----------|-------|
-| 05:16:18 | Start processing | - | - |
-| 05:16:35 | Auto-slice | 17s | OK |
-| 05:17:00 | Analyze slices started | - | brandId missing! |
-| 05:17:01 | Phase 2 (slice descriptions) | - | Used Sonnet (slow) because useIndexMatching=false |
-| 05:17:31 | Phase 3 (matching) | 30s | No index, legacy path broken |
-| 05:17:33 | Complete | 75s total | 0 links produced |
-
-**Why it was slow:** 
-- Without brandId, `useIndexMatching = false`
-- Used `claude-sonnet-4-5` with web search tools (30s)
-- But web search didn't produce links because the prompt/response handling is broken for that path
-
----
-
-## Fixes Required
-
-### Fix 1: Pass brandId to analyze-slices
-
-**File:** `supabase/functions/process-campaign-queue/index.ts`
-
+### 1. Function Entry (Line ~75)
 ```typescript
-body: JSON.stringify({
-  slices: sliceInputs,
-  brandDomain,
-  brandId,  // ← ADD THIS
-  fullCampaignImage: resizedFullImageUrl,
-  knownProductUrls
-})
+console.log('[analyze-slices] Starting', {
+  brandId: brandId || 'none',
+  sliceCount: slices.length,
+  hasBrandId: !!brandId,
+  brandDomain: domain
+});
 ```
 
-### Fix 2: Update Model Names
-
-Replace `claude-haiku-4-5-20250929` with the correct model name `claude-3-5-haiku-20241022` in:
-- `supabase/functions/analyze-slices/index.ts` (3 occurrences)
-- `supabase/functions/match-slice-to-link/index.ts` (2 occurrences)  
-- `supabase/functions/qa-spelling-check-early/index.ts` (1 occurrence)
-
-### Fix 3: Fix Legacy Web Search Fallback
-
-**File:** `supabase/functions/analyze-slices/index.ts`
-
-The `matchSlicesViaWebSearch` function needs to properly extract `suggestedLink` from the Claude response. Currently it ignores the web search results.
-
+### 2. After Link Index Check (Line ~107)
 ```typescript
-// In matchSlicesViaWebSearch, parse the full response which includes suggestedLink
-const analyses: SliceAnalysis[] = slices.map((_, i) => {
-  const desc = sliceDescriptions.find(d => d.index === i);
-  return {
-    index: i,
-    altText: desc?.altText || '',
-    suggestedLink: (desc as any)?.suggestedLink || null,  // ← Extract from response
-    isClickable: desc?.isClickable ?? false,
-    linkVerified: (desc as any)?.linkVerified ?? false,
-    linkSource: 'web_search'
-  };
+console.log('[analyze-slices] Link index check', {
+  brandId,
+  hasLinkIndex,
+  linkCount: count || 0,
+  hasPreferences: !!linkPreferences,
+  defaultUrl: linkPreferences?.default_destination_url || 'none',
+  ruleCount: linkPreferences?.rules?.length || 0,
+  usingIndexPath: hasLinkIndex && Boolean(brandId)
+});
+```
+
+### 3. After Campaign Context Analysis (Line ~116)
+```typescript
+console.log('[analyze-slices] Campaign context', {
+  campaign_type: campaignContext?.campaign_type,
+  primary_focus: campaignContext?.primary_focus,
+  detected_products: campaignContext?.detected_products?.length || 0,
+  detected_collections: campaignContext?.detected_collections?.length || 0
+});
+```
+
+### 4. After Getting Slice Descriptions (after Line ~132)
+```typescript
+console.log('[analyze-slices] Slice descriptions received');
+sliceDescriptions.forEach((slice, i) => {
+  console.log(`[analyze-slices] Slice ${i}`, {
+    isClickable: slice.isClickable,
+    isGenericCta: slice.isGenericCta,
+    description: slice.description?.substring(0, 80),
+    altText: slice.altText?.substring(0, 50)
+  });
+});
+```
+
+### 5. After Link Matching (before return, Line ~166)
+```typescript
+console.log('[analyze-slices] Link matching complete', {
+  slicesWithLinks: analyses.filter(r => r.suggestedLink).length,
+  slicesWithoutLinks: analyses.filter(r => !r.suggestedLink).length,
+  clickableWithoutLinks: analyses.filter(r => r.isClickable && !r.suggestedLink).length,
+  linkSources: analyses.map(r => r.linkSource)
 });
 ```
 
 ---
 
-## Expected Results After Fix
+## Logging Points in `match-slice-to-link`
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| Brand with indexed links (26 links) | 75s, 0 links | 5-10s, links matched |
-| Brand without index | 75s, 0 links | 20-30s, links via web search |
-| Model errors | Fails silently | Works correctly |
+### 1. Function Entry (Line ~64)
+```typescript
+console.log('[match-slice-to-link] Starting', {
+  brandId: brand_id,
+  isGenericCta: is_generic_cta,
+  description: slice_description?.substring(0, 80),
+  campaignType: campaign_context?.campaign_type,
+  primaryFocus: campaign_context?.primary_focus
+});
+```
+
+### 2. After Brand Preferences Lookup (Line ~86)
+```typescript
+console.log('[match-slice-to-link] Brand preferences', {
+  brandFound: !!brand,
+  hasDefaultUrl: !!preferences?.default_destination_url,
+  defaultUrl: preferences?.default_destination_url?.substring(0, 60),
+  ruleCount: preferences?.rules?.length || 0,
+  rules: preferences?.rules?.map(r => r.name) || []
+});
+```
+
+### 3. After Link Index Fetch (Line ~141)
+```typescript
+console.log('[match-slice-to-link] Link index', {
+  totalLinks: linkIndex?.length || 0,
+  healthyLinks: healthyLinks.length,
+  matchingStrategy: healthyLinks.length < 50 ? 'claude_list' : 'vector_search'
+});
+```
+
+### 4. Final Match Result (Line ~176)
+```typescript
+console.log('[match-slice-to-link] Final result', {
+  matchedUrl: matchResult.url?.substring(0, 60) || 'none',
+  source: matchResult.source,
+  confidence: matchResult.confidence.toFixed(2),
+  linkId: matchResult.link_id || 'none'
+});
+```
 
 ---
 
@@ -126,19 +116,39 @@ const analyses: SliceAnalysis[] = slices.map((_, i) => {
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/process-campaign-queue/index.ts` | Add `brandId` to analyze-slices call |
-| `supabase/functions/analyze-slices/index.ts` | Fix model name (3 places), fix legacy fallback |
-| `supabase/functions/match-slice-to-link/index.ts` | Fix model name (2 places) |
-| `supabase/functions/qa-spelling-check-early/index.ts` | Fix model name (1 place) |
+| `supabase/functions/analyze-slices/index.ts` | Add 5 logging points |
+| `supabase/functions/match-slice-to-link/index.ts` | Add 4 logging points |
 
 ---
 
-## Testing Plan
+## Expected Diagnostic Output
 
-After fixes are deployed:
-1. Reprocess the same campaign (eskiin brand)
-2. Expected: 
-   - Processing time ~5-10 seconds for analysis step
-   - Slices should have links matched from the 26 indexed URLs
-   - Alt text should be populated correctly
+After reprocessing, logs will show:
+
+```
+[analyze-slices] Starting { brandId: 'abc-123', sliceCount: 15, hasBrandId: true }
+[analyze-slices] Link index check { hasLinkIndex: true, linkCount: 26, usingIndexPath: true }
+[analyze-slices] Campaign context { campaign_type: 'product_launch', primary_focus: '...' }
+[analyze-slices] Slice 0 { isClickable: true, isGenericCta: false, description: '...' }
+...
+[match-slice-to-link] Starting { brandId: 'abc-123', isGenericCta: false, description: '...' }
+[match-slice-to-link] Brand preferences { hasDefaultUrl: true, ruleCount: 2 }
+[match-slice-to-link] Link index { healthyLinks: 26, matchingStrategy: 'claude_list' }
+[match-slice-to-link] Final result { matchedUrl: 'https://...', source: 'index_list_match' }
+...
+[analyze-slices] Link matching complete { slicesWithLinks: 12, slicesWithoutLinks: 3 }
+```
+
+This will reveal:
+1. Whether `brandId` is being passed correctly
+2. Whether link index is being found
+3. Whether slice descriptions are being generated correctly
+4. Whether matching is being called and what results it returns
+5. Where the pipeline is failing
+
+---
+
+## Summary
+
+Add comprehensive logging at 9 strategic points across both edge functions to trace the complete flow from input to final link matching results.
 
