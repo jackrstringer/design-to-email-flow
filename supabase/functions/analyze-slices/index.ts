@@ -72,8 +72,13 @@ serve(async (req) => {
 
     const domain = brandDomain || (brandUrl ? new URL(brandUrl).hostname.replace('www.', '') : null);
 
-    console.log(`Analyzing ${slices.length} slices for brand: ${brandUrl || 'unknown'}, domain: ${domain}, brandId: ${brandId || 'none'}`);
-    console.log(`Full campaign image: ${fullCampaignImage ? 'yes' : 'no'}`);
+    // [DIAGNOSTIC] Log 1: Function entry
+    console.log('[analyze-slices] Starting', {
+      brandId: brandId || 'none',
+      sliceCount: slices.length,
+      hasBrandId: !!brandId,
+      brandDomain: domain
+    });
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
@@ -104,7 +109,17 @@ serve(async (req) => {
         .eq('is_healthy', true);
       
       hasLinkIndex = (count || 0) > 0;
-      console.log(`Brand has ${count || 0} healthy indexed links, using ${hasLinkIndex ? 'index-first' : 'web-search'} matching`);
+      
+      // [DIAGNOSTIC] Log 2: Link index check
+      console.log('[analyze-slices] Link index check', {
+        brandId,
+        hasLinkIndex,
+        linkCount: count || 0,
+        hasPreferences: !!linkPreferences,
+        defaultUrl: linkPreferences?.default_destination_url || 'none',
+        ruleCount: linkPreferences?.rules?.length || 0,
+        usingIndexPath: hasLinkIndex && Boolean(brandId)
+      });
     }
 
     // PHASE 1: Campaign Context Analysis (if we have indexed links)
@@ -113,7 +128,14 @@ serve(async (req) => {
     if (hasLinkIndex && fullCampaignImage) {
       console.log('Phase 1: Analyzing campaign context...');
       campaignContext = await analyzeCampaignContext(fullCampaignImage, ANTHROPIC_API_KEY);
-      console.log(`Campaign context: type=${campaignContext?.campaign_type}, focus="${campaignContext?.primary_focus}"`);
+      
+      // [DIAGNOSTIC] Log 3: Campaign context
+      console.log('[analyze-slices] Campaign context', {
+        campaign_type: campaignContext?.campaign_type,
+        primary_focus: campaignContext?.primary_focus,
+        detected_products: campaignContext?.detected_products?.length || 0,
+        detected_collections: campaignContext?.detected_collections?.length || 0
+      });
     }
 
     // PHASE 2: Get slice descriptions from Claude
@@ -130,6 +152,17 @@ serve(async (req) => {
       useIndexMatching,
       ANTHROPIC_API_KEY
     );
+
+    // [DIAGNOSTIC] Log 4: Slice descriptions received
+    console.log('[analyze-slices] Slice descriptions received');
+    sliceDescriptions.forEach((slice, i) => {
+      console.log(`[analyze-slices] Slice ${i}`, {
+        isClickable: slice.isClickable,
+        isGenericCta: slice.isGenericCta,
+        description: slice.description?.substring(0, 80),
+        altText: slice.altText?.substring(0, 50)
+      });
+    });
 
     // PHASE 3: Match slices to links
     console.log('Phase 3: Matching slices to links...');
@@ -162,6 +195,14 @@ serve(async (req) => {
 
     // Extract discovered URLs for reactive indexing
     const discoveredUrls: Array<{ productName: string; url: string }> = [];
+
+    // [DIAGNOSTIC] Log 5: Link matching complete
+    console.log('[analyze-slices] Link matching complete', {
+      slicesWithLinks: analyses.filter(r => r.suggestedLink).length,
+      slicesWithoutLinks: analyses.filter(r => !r.suggestedLink).length,
+      clickableWithoutLinks: analyses.filter(r => r.isClickable && !r.suggestedLink).length,
+      linkSources: analyses.map(r => r.linkSource)
+    });
 
     return new Response(
       JSON.stringify({ analyses, discoveredUrls }),
