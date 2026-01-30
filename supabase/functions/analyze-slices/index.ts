@@ -541,19 +541,17 @@ async function matchSlicesViaIndex(
   supabaseKey: string
 ): Promise<SliceAnalysis[]> {
   
-  const analyses: SliceAnalysis[] = [];
-  
-  for (const slice of sliceDescriptions) {
+  // Run all link matching calls in parallel for better performance
+  const matchPromises = sliceDescriptions.map(async (slice): Promise<SliceAnalysis> => {
     if (!slice.isClickable) {
-      analyses.push({
+      return {
         index: slice.index,
         altText: slice.altText,
         suggestedLink: null,
         isClickable: false,
         linkVerified: false,
         linkSource: 'not_clickable'
-      });
-      continue;
+      };
     }
 
     // Call match-slice-to-link function
@@ -574,40 +572,40 @@ async function matchSlicesViaIndex(
 
       if (matchResponse.ok) {
         const matchResult: MatchResult = await matchResponse.json();
-        
-        analyses.push({
+        console.log(`Slice ${slice.index}: ${matchResult.source} (${matchResult.url || 'no match'})`);
+        return {
           index: slice.index,
           altText: slice.altText,
           suggestedLink: matchResult.url,
           isClickable: true,
           linkVerified: matchResult.confidence > 0.8,
           linkSource: matchResult.source
-        });
-        
-        console.log(`Slice ${slice.index}: ${matchResult.source} (${matchResult.url || 'no match'})`);
+        };
       } else {
         console.error(`match-slice-to-link error for slice ${slice.index}:`, await matchResponse.text());
-        analyses.push({
+        return {
           index: slice.index,
           altText: slice.altText,
           suggestedLink: null,
           isClickable: true,
           linkVerified: false,
           linkSource: 'error'
-        });
+        };
       }
     } catch (error) {
       console.error(`Error matching slice ${slice.index}:`, error);
-      analyses.push({
+      return {
         index: slice.index,
         altText: slice.altText,
         suggestedLink: null,
         isClickable: true,
         linkVerified: false,
         linkSource: 'error'
-      });
+      };
     }
-  }
+  });
+
+  const analyses = await Promise.all(matchPromises);
 
   // Handle web search fallback for high-churn brands
   if (linkPreferences?.product_churn === 'high') {
