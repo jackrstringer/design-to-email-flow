@@ -1,188 +1,178 @@
 
-# Add Navigation Crawling to Sitemap Import
+# Replace Sitemap Import with Firecrawl Site Crawling
 
 ## Problem
-Sitemaps typically only include `/products/*` and `/collections/*` URLs. Important pages that appear in the site navigation (like `/pages/recipes`, `/pages/our-story`, `/pages/faq`) are often missing from sitemaps but are crucial destinations for email campaigns.
+The current sitemap + nav crawling approach has significant limitations:
+- **Sitemaps are often incomplete** - typically only include products/collections
+- **Nav extraction only gets top-level links** - misses nested pages
+- **JavaScript menus don't get parsed** - basic regex can't see dynamic content
+- **Nested pages get missed** - no deep crawling capability
 
 ## Solution
-After parsing the sitemap, crawl the brand's homepage to extract navigation links. These are the pages the brand considers important enough to put in their main nav.
+Replace the sitemap-based approach with **Firecrawl**, which:
+- Crawls entire sites starting from the homepage
+- Handles JavaScript-rendered content
+- Discovers ALL pages, not just what's in the sitemap
+- Returns structured data with titles already extracted
+
+**FIRECRAWL_API_KEY is already configured** in the project secrets.
+
+---
+
+## Architecture Overview
+
+```text
+Current Flow:
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│ trigger-sitemap │ ──► │  import-sitemap  │ ──► │ brand_link_index│
+│     -import     │     │ (sitemap + nav)  │     │    (database)   │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+
+New Flow:
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  trigger-site   │ ──► │ crawl-brand-site │ ──► │ brand_link_index│
+│     -crawl      │     │   (Firecrawl)    │     │    (database)   │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+```
 
 ---
 
 ## Implementation Details
 
-### 1. Add Navigation Extraction Function
+### 1. Create New Edge Function: `crawl-brand-site`
 
+This function will:
+1. Accept `brand_id`, `domain`, and `job_id`
+2. Call Firecrawl's `/crawl` endpoint to start a site crawl
+3. Poll for completion (Firecrawl crawls are async)
+4. Process results: filter, categorize, and extract page metadata
+5. Generate embeddings for all discovered pages
+6. Insert into `brand_link_index`
+
+**Key Firecrawl API usage:**
 ```typescript
-async function extractNavLinks(domain: string): Promise<Array<{ url: string; title: string; link_type: string }>> {
-  try {
-    const homepageUrl = `https://${domain}`;
-    const response = await fetchWithTimeout(homepageUrl, 15000);
-    if (!response.ok) return [];
-    
-    const html = await response.text();
-    const navLinks: Array<{ url: string; title: string; link_type: string }> = [];
-    
-    // Extract anchor tags from HTML
-    const linkRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([^<]*)<\/a>/gi;
-    let match;
-    
-    while ((match = linkRegex.exec(html)) !== null) {
-      let url = match[1];
-      const title = match[2].trim();
-      
-      // Skip invalid links
-      if (!title || url.startsWith('#') || url.startsWith('javascript:') || url.startsWith('mailto:')) continue;
-      
-      // Convert relative URLs to absolute
-      if (url.startsWith('/')) url = `https://${domain}${url}`;
-      
-      // Only same-domain links
-      if (!url.includes(domain)) continue;
-      
-      // Skip utility pages
-      const skipPatterns = ['/cart', '/account', '/login', '/checkout', '/search', '/policies', '/apps/'];
-      if (skipPatterns.some(p => url.includes(p))) continue;
-      
-      // Categorize
-      let linkType = 'page';
-      if (url.includes('/products/')) linkType = 'product';
-      else if (url.includes('/collections/')) linkType = 'collection';
-      
-      navLinks.push({ url, title, linkType });
+// Start crawl
+const crawlResponse = await fetch('https://api.firecrawl.dev/v1/crawl', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    url: `https://${domain}`,
+    limit: 200,  // Max pages
+    scrapeOptions: {
+      formats: ['markdown'],
+      onlyMainContent: true
     }
-    
-    // Deduplicate
-    const seen = new Set<string>();
-    return navLinks.filter(link => {
-      if (seen.has(link.url)) return false;
-      seen.add(link.url);
-      return true;
-    });
-  } catch (error) {
-    console.error('[import-sitemap] Failed to crawl nav:', error);
-    return [];
-  }
-}
-```
+  })
+});
 
-### 2. Update Import Flow
-
-After sitemap parsing, merge navigation links:
-
-```typescript
-// Existing: Parse sitemap
-const allUrls = await parseSitemap(sitemapXml, baseUrl);
-
-// NEW: Also crawl homepage navigation
-await supabase.from('sitemap_import_jobs').update({ status: 'crawling_nav' }).eq('id', job_id);
-console.log('[import-sitemap] Crawling homepage navigation...');
-const navLinks = await extractNavLinks(domain);
-console.log(`[import-sitemap] Found ${navLinks.length} navigation links`);
-
-// Merge URLs - nav links may have better titles
-const urlMap = new Map<string, { url: string; link_type: string; title?: string; source: string }>();
-
-// Add sitemap URLs
-for (const url of filteredSitemapUrls) {
-  urlMap.set(url.url, { ...url, source: 'sitemap' });
-}
-
-// Add/enhance with nav links (page types that sitemap missed)
-for (const navLink of navLinks) {
-  if (!urlMap.has(navLink.url)) {
-    urlMap.set(navLink.url, { 
-      url: navLink.url, 
-      link_type: navLink.linkType, 
-      title: navLink.title,
-      source: 'navigation' 
-    });
-  }
-}
-```
-
-### 3. Update SKIP_PATTERNS
-
-Remove pages from the skip list that we now want to capture:
-
-```typescript
-// BEFORE: Skipping useful pages
-const SKIP_PATTERNS = [
-  '/cart', '/checkout', '/account', '/login', '/register', '/password',
-  '/policies', '/pages/faq', '/pages/contact', '/pages/about',  // ← Remove these
-  '/blogs/', '/apps/', '/admin', '/api/', '/sitemap',
-  '/search', '/wishlist', '/compare',
-];
-
-// AFTER: Only skip utility pages
-const SKIP_PATTERNS = [
-  '/cart', '/checkout', '/account', '/login', '/register', '/password',
-  '/policies', '/apps/', '/admin', '/api/', '/sitemap',
-  '/search', '/wishlist', '/compare',
-];
-```
-
-### 4. Update categorizeUrl to Include Pages
-
-```typescript
-function categorizeUrl(url: string): 'product' | 'collection' | 'page' | null {
-  const lowerUrl = url.toLowerCase();
-  if (lowerUrl.includes('/products/')) return 'product';
-  if (lowerUrl.includes('/collections/')) return 'collection';
-  if (lowerUrl.includes('/pages/')) return 'page';  // NEW: Include pages
-  return null;
-}
-```
-
-### 5. Add New Job Status
-
-Update the status enum to include `crawling_nav`:
-
-| Status | Description |
-|--------|-------------|
-| pending | Job created, waiting to start |
-| parsing | Parsing sitemap XML |
-| **crawling_nav** | **NEW: Extracting navigation links from homepage** |
-| fetching_titles | Fetching page titles for URLs |
-| generating_embeddings | Creating vector embeddings |
-| complete | Done |
-| failed | Error occurred |
-
-### 6. Update UI Status Message
-
-```typescript
-case 'crawling_nav':
-  return 'Discovering navigation links...';
-```
-
-### 7. Track Page Count Separately
-
-Add `page_urls_count` to the job completion data:
-
-```typescript
-const productCount = allLinks.filter(l => l.link_type === 'product').length;
-const collectionCount = allLinks.filter(l => l.link_type === 'collection').length;
-const pageCount = allLinks.filter(l => l.link_type === 'page').length;
-
-// Update job
-await supabase.from('sitemap_import_jobs').update({
-  status: 'complete',
-  product_urls_count: productCount,
-  collection_urls_count: collectionCount,
-  // Note: page_urls_count would need schema update, or combine in collection count for now
+// Poll for results
+const statusResponse = await fetch(`https://api.firecrawl.dev/v1/crawl/${crawlId}`, {
+  headers: { 'Authorization': `Bearer ${FIRECRAWL_API_KEY}` }
 });
 ```
 
+### 2. Update `trigger-sitemap-import` to Support Domain-Only Crawling
+
+**Changes:**
+- Rename conceptually to "site crawl" (keep function name for compatibility)
+- Make `sitemap_url` optional - if not provided, use domain-based crawling
+- Add `crawling` status to the running statuses check
+- Call `crawl-brand-site` instead of `import-sitemap` when using Firecrawl
+
+```typescript
+// If sitemap_url provided: legacy sitemap import
+// If only domain: use Firecrawl crawl
+if (sitemap_url) {
+  // Call import-sitemap (legacy path)
+} else {
+  // Call crawl-brand-site (Firecrawl path)
+}
+```
+
+### 3. Update UI: Remove Sitemap URL Requirement
+
+The import modal will change from:
+- "Enter sitemap URL" input field
+- To: Simple "Crawl Site" button (domain is already known from brand)
+
+**UI Changes in `SitemapImportCard.tsx`:**
+- Remove the sitemap URL input field
+- Change button text from "Import" to "Crawl Site"
+- Update dialog text: "We'll discover all products, collections, and pages on your site"
+- Keep ability to enter sitemap URL as an "advanced option" (optional)
+
+### 4. Update Job Status Messages
+
+Add new status for the crawling phase:
+```typescript
+case 'crawling':
+  return 'Discovering all pages...';
+case 'generating_embeddings':
+  return 'Processing page titles...';
+```
+
+### 5. Update Types and Hook
+
+**`SitemapImportJob` status type:**
+Add `'crawling'` to the status union.
+
+**`useSitemapImport` hook:**
+- Add `'crawling'` to the list of running statuses for polling
+- Update mutation to optionally pass domain-only (no sitemap URL)
+
 ---
 
-## Files to Modify
+## File Changes Summary
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/import-sitemap/index.ts` | Add `extractNavLinks()` function, update SKIP_PATTERNS, update `categorizeUrl()`, integrate nav crawling into flow |
-| `src/hooks/useSitemapImport.ts` | Add `crawling_nav` to polling status list |
-| `src/components/brand/SitemapImportCard.tsx` | Add status message for `crawling_nav` |
-| `src/types/link-intelligence.ts` | Add `crawling_nav` to `SitemapImportJob` status union |
+| File | Action | Changes |
+|------|--------|---------|
+| `supabase/functions/crawl-brand-site/index.ts` | **Create** | New Firecrawl-based crawling function |
+| `supabase/functions/trigger-sitemap-import/index.ts` | **Modify** | Support domain-only crawling, call crawl-brand-site |
+| `supabase/config.toml` | **Modify** | Add `crawl-brand-site` function config |
+| `src/components/brand/SitemapImportCard.tsx` | **Modify** | Remove sitemap URL input, update UI text |
+| `src/hooks/useSitemapImport.ts` | **Modify** | Add 'crawling' status, support domain-only trigger |
+| `src/types/link-intelligence.ts` | **Modify** | Add 'crawling' to status union |
+
+---
+
+## Coverage Comparison
+
+| Approach | Coverage |
+|----------|----------|
+| Sitemap only | Products, collections (if in sitemap) |
+| Sitemap + nav | + Top-level nav links |
+| **Firecrawl** | **Everything: products, collections, all pages, nested pages, footer links, etc.** |
+
+---
+
+## Technical Details
+
+### Firecrawl Polling Strategy
+Firecrawl crawls are async. The function will:
+1. Start crawl, receive `crawl_id`
+2. Poll every 5 seconds for up to 5 minutes
+3. Update job progress in real-time (`urls_found`, `urls_processed`)
+4. Handle `completed`, `failed`, and timeout states
+
+### Page Categorization
+```typescript
+let linkType = 'page';
+if (url.includes('/products/')) linkType = 'product';
+else if (url.includes('/collections/')) linkType = 'collection';
+// All other pages remain as 'page' type
+```
+
+### Skip Patterns
+Keep existing skip patterns for utility pages:
+```typescript
+const skipPatterns = [
+  '/cart', '/account', '/login', '/checkout', 
+  '/search', '/policies', '/apps/', '/admin', '/password'
+];
+```
 
 ---
 
@@ -190,10 +180,9 @@ await supabase.from('sitemap_import_jobs').update({
 
 For eskiin.com:
 
-| Source | URLs Found |
-|--------|-----------|
-| Sitemap | ~25 (products + collections) |
-| Navigation | +5-10 (pages like Recipes, Our Story, FAQ) |
-| **Total** | ~30-35 indexed links |
+| Approach | URLs Found |
+|----------|-----------|
+| Current (sitemap + nav) | ~26-35 |
+| Firecrawl | ~100-200 (all discoverable pages) |
 
-This ensures important pages like `/pages/recipes` get captured even when missing from the sitemap.
+Firecrawl will find `/pages/recipes`, `/pages/our-story`, `/pages/faq`, and everything else linked anywhere on the site - including footer links, nested product pages, and JavaScript-rendered navigation items.
