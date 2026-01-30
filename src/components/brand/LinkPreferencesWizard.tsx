@@ -361,11 +361,12 @@ export function LinkPreferencesWizard({
                 <div className="space-y-2">
                   <p className="text-foreground">
                     Are there specific products or categories that should
-                    go somewhere other than your default?
+                    lead somewhere specific?
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    For example, some brands send protein campaigns to a
-                    dedicated protein landing page instead of the homepage.
+                    For instance, maybe you have some products with dedicated
+                    landing pages you'd like to always send to, instead of
+                    the site product page.
                   </p>
                 </div>
 
@@ -379,7 +380,7 @@ export function LinkPreferencesWizard({
                         : "border-border hover:border-primary/50"
                     )}
                   >
-                    <span className="font-medium">No, send everything to my default destination</span>
+                    <span className="font-medium">No, normal destinations are fine</span>
                   </button>
                   <button
                     onClick={() => setWantsRules(true)}
@@ -390,7 +391,7 @@ export function LinkPreferencesWizard({
                         : "border-border hover:border-primary/50"
                     )}
                   >
-                    <span className="font-medium">Yes, I have some specific destinations</span>
+                    <span className="font-medium">Yes, I have some preferences</span>
                   </button>
                 </div>
               </div>
