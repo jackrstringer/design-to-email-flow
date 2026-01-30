@@ -234,7 +234,7 @@ Respond ONLY in JSON:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20250929', // Fast model for context analysis
+        model: 'claude-3-5-haiku-20241022', // Fast model for context analysis
         max_tokens: 500,
         messages: [{ role: 'user', content }]
       }),
@@ -409,7 +409,7 @@ Return JSON with exactly ${slices.length} slices:
   }
 
   const requestBody: { model: string; max_tokens: number; messages: Array<{ role: string; content: typeof content }>; tools?: typeof tools } = {
-    model: useIndexMatching ? 'claude-haiku-4-5-20250929' : 'claude-sonnet-4-5', // Faster model for index matching
+    model: useIndexMatching ? 'claude-3-5-haiku-20241022' : 'claude-sonnet-4-5', // Faster model for index matching
     max_tokens: useIndexMatching ? 3000 : 6000,
     messages: [{ role: 'user', content }]
   };
@@ -463,12 +463,15 @@ Return JSON with exactly ${slices.length} slices:
   if (jsonStr) {
     try {
       const parsed = JSON.parse(jsonStr);
-      return (parsed.slices || []).map((s: SliceDescription, i: number) => ({
+      return (parsed.slices || []).map((s: SliceDescription & { suggestedLink?: string; linkVerified?: boolean }, i: number) => ({
         index: typeof s.index === 'number' ? s.index : i,
         altText: s.altText || '',
         isClickable: s.isClickable ?? false,
         isGenericCta: s.isGenericCta ?? false,
-        description: s.description || s.altText || ''
+        description: s.description || s.altText || '',
+        // Preserve suggestedLink and linkVerified for legacy web search mode
+        suggestedLink: s.suggestedLink,
+        linkVerified: s.linkVerified
       }));
     } catch (e) {
       console.error('Failed to parse slice descriptions:', e);
@@ -589,24 +592,20 @@ async function matchSlicesViaWebSearch(
   knownProductUrls: Array<{ name: string; url: string }> | undefined,
   apiKey: string
 ): Promise<SliceAnalysis[]> {
-  // This is the legacy behavior - sliceDescriptions already include suggestedLink from the Claude call
-  // We just need to transform them to SliceAnalysis format
+  // Legacy behavior - the web search prompt in getSliceDescriptions asks for suggestedLink directly
+  // We need to extract it from the parsed response (sliceDescriptions may have suggestedLink attached)
   
   const analyses: SliceAnalysis[] = slices.map((_, i) => {
-    const desc = sliceDescriptions.find(d => d.index === i);
+    const desc = sliceDescriptions.find(d => d.index === i) as (SliceDescription & { suggestedLink?: string; linkVerified?: boolean }) | undefined;
     return {
       index: i,
       altText: desc?.altText || '',
-      suggestedLink: null, // Will be filled by the response from Claude with web search
+      suggestedLink: desc?.suggestedLink || null, // Extract from Claude response
       isClickable: desc?.isClickable ?? false,
-      linkVerified: false,
+      linkVerified: desc?.linkVerified ?? false,
       linkSource: 'web_search'
     };
   });
 
-  // The actual web search happens in getSliceDescriptions when useIndexMatching is false
-  // The response includes suggestedLink directly
-  // For now, just return the basic analysis since the full web search flow is in the prompt
-  
   return analyses;
 }

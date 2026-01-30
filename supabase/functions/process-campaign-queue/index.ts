@@ -365,6 +365,7 @@ async function analyzeSlices(
       body: JSON.stringify({
         slices: sliceInputs,
         brandDomain,
+        brandId, // Critical: Pass brandId for link index matching
         fullCampaignImage: resizedFullImageUrl, // Pass URL, not dataUrl
         knownProductUrls
       })
