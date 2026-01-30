@@ -1,154 +1,122 @@
 
+# Parallelize Link Matching Calls
 
-# Add Diagnostic Logging to Link Intelligence Pipeline
+## Problem
+The `matchSlicesViaIndex` function processes slices sequentially, waiting for each `match-slice-to-link` call to complete before starting the next. With 4 clickable slices at ~4.5 seconds each, this adds 18 seconds to the pipeline.
 
-## Purpose
-Debug why campaigns are taking 45+ seconds and producing no links despite having 26 indexed links and configured preferences.
+## Current Code (Sequential)
 
----
-
-## Logging Points in `analyze-slices`
-
-### 1. Function Entry (Line ~75)
 ```typescript
-console.log('[analyze-slices] Starting', {
-  brandId: brandId || 'none',
-  sliceCount: slices.length,
-  hasBrandId: !!brandId,
-  brandDomain: domain
-});
+// Lines 544-610 in analyze-slices/index.ts
+const analyses: SliceAnalysis[] = [];
+
+for (const slice of sliceDescriptions) {
+  if (!slice.isClickable) {
+    analyses.push({ ...not_clickable_result });
+    continue;
+  }
+
+  // Each call waits for the previous one to complete
+  const matchResponse = await fetch(`${supabaseUrl}/functions/v1/match-slice-to-link`, {...});
+  // ... process response
+  analyses.push(result);
+}
 ```
 
-### 2. After Link Index Check (Line ~107)
+## Solution (Parallel)
+
+Replace the sequential loop with `Promise.all()` to run all matching calls simultaneously:
+
 ```typescript
-console.log('[analyze-slices] Link index check', {
-  brandId,
-  hasLinkIndex,
-  linkCount: count || 0,
-  hasPreferences: !!linkPreferences,
-  defaultUrl: linkPreferences?.default_destination_url || 'none',
-  ruleCount: linkPreferences?.rules?.length || 0,
-  usingIndexPath: hasLinkIndex && Boolean(brandId)
+const matchPromises = sliceDescriptions.map(async (slice): Promise<SliceAnalysis> => {
+  if (!slice.isClickable) {
+    return {
+      index: slice.index,
+      altText: slice.altText,
+      suggestedLink: null,
+      isClickable: false,
+      linkVerified: false,
+      linkSource: 'not_clickable'
+    };
+  }
+
+  try {
+    const matchResponse = await fetch(`${supabaseUrl}/functions/v1/match-slice-to-link`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        brand_id: brandId,
+        slice_description: slice.description,
+        campaign_context: campaignContext || getDefaultCampaignContext(),
+        is_generic_cta: slice.isGenericCta
+      }),
+    });
+
+    if (matchResponse.ok) {
+      const matchResult: MatchResult = await matchResponse.json();
+      console.log(`Slice ${slice.index}: ${matchResult.source} (${matchResult.url || 'no match'})`);
+      return {
+        index: slice.index,
+        altText: slice.altText,
+        suggestedLink: matchResult.url,
+        isClickable: true,
+        linkVerified: matchResult.confidence > 0.8,
+        linkSource: matchResult.source
+      };
+    } else {
+      console.error(`match-slice-to-link error for slice ${slice.index}:`, await matchResponse.text());
+      return {
+        index: slice.index,
+        altText: slice.altText,
+        suggestedLink: null,
+        isClickable: true,
+        linkVerified: false,
+        linkSource: 'error'
+      };
+    }
+  } catch (error) {
+    console.error(`Error matching slice ${slice.index}:`, error);
+    return {
+      index: slice.index,
+      altText: slice.altText,
+      suggestedLink: null,
+      isClickable: true,
+      linkVerified: false,
+      linkSource: 'error'
+    };
+  }
 });
-```
 
-### 3. After Campaign Context Analysis (Line ~116)
-```typescript
-console.log('[analyze-slices] Campaign context', {
-  campaign_type: campaignContext?.campaign_type,
-  primary_focus: campaignContext?.primary_focus,
-  detected_products: campaignContext?.detected_products?.length || 0,
-  detected_collections: campaignContext?.detected_collections?.length || 0
-});
-```
-
-### 4. After Getting Slice Descriptions (after Line ~132)
-```typescript
-console.log('[analyze-slices] Slice descriptions received');
-sliceDescriptions.forEach((slice, i) => {
-  console.log(`[analyze-slices] Slice ${i}`, {
-    isClickable: slice.isClickable,
-    isGenericCta: slice.isGenericCta,
-    description: slice.description?.substring(0, 80),
-    altText: slice.altText?.substring(0, 50)
-  });
-});
-```
-
-### 5. After Link Matching (before return, Line ~166)
-```typescript
-console.log('[analyze-slices] Link matching complete', {
-  slicesWithLinks: analyses.filter(r => r.suggestedLink).length,
-  slicesWithoutLinks: analyses.filter(r => !r.suggestedLink).length,
-  clickableWithoutLinks: analyses.filter(r => r.isClickable && !r.suggestedLink).length,
-  linkSources: analyses.map(r => r.linkSource)
-});
-```
-
----
-
-## Logging Points in `match-slice-to-link`
-
-### 1. Function Entry (Line ~64)
-```typescript
-console.log('[match-slice-to-link] Starting', {
-  brandId: brand_id,
-  isGenericCta: is_generic_cta,
-  description: slice_description?.substring(0, 80),
-  campaignType: campaign_context?.campaign_type,
-  primaryFocus: campaign_context?.primary_focus
-});
-```
-
-### 2. After Brand Preferences Lookup (Line ~86)
-```typescript
-console.log('[match-slice-to-link] Brand preferences', {
-  brandFound: !!brand,
-  hasDefaultUrl: !!preferences?.default_destination_url,
-  defaultUrl: preferences?.default_destination_url?.substring(0, 60),
-  ruleCount: preferences?.rules?.length || 0,
-  rules: preferences?.rules?.map(r => r.name) || []
-});
-```
-
-### 3. After Link Index Fetch (Line ~141)
-```typescript
-console.log('[match-slice-to-link] Link index', {
-  totalLinks: linkIndex?.length || 0,
-  healthyLinks: healthyLinks.length,
-  matchingStrategy: healthyLinks.length < 50 ? 'claude_list' : 'vector_search'
-});
-```
-
-### 4. Final Match Result (Line ~176)
-```typescript
-console.log('[match-slice-to-link] Final result', {
-  matchedUrl: matchResult.url?.substring(0, 60) || 'none',
-  source: matchResult.source,
-  confidence: matchResult.confidence.toFixed(2),
-  linkId: matchResult.link_id || 'none'
-});
+const analyses = await Promise.all(matchPromises);
 ```
 
 ---
 
-## Files to Update
+## File to Update
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/analyze-slices/index.ts` | Add 5 logging points |
-| `supabase/functions/match-slice-to-link/index.ts` | Add 4 logging points |
+| `supabase/functions/analyze-slices/index.ts` | Replace sequential for-loop (lines 544-610) with parallel Promise.all pattern |
 
 ---
 
-## Expected Diagnostic Output
+## Expected Performance Improvement
 
-After reprocessing, logs will show:
-
-```
-[analyze-slices] Starting { brandId: 'abc-123', sliceCount: 15, hasBrandId: true }
-[analyze-slices] Link index check { hasLinkIndex: true, linkCount: 26, usingIndexPath: true }
-[analyze-slices] Campaign context { campaign_type: 'product_launch', primary_focus: '...' }
-[analyze-slices] Slice 0 { isClickable: true, isGenericCta: false, description: '...' }
-...
-[match-slice-to-link] Starting { brandId: 'abc-123', isGenericCta: false, description: '...' }
-[match-slice-to-link] Brand preferences { hasDefaultUrl: true, ruleCount: 2 }
-[match-slice-to-link] Link index { healthyLinks: 26, matchingStrategy: 'claude_list' }
-[match-slice-to-link] Final result { matchedUrl: 'https://...', source: 'index_list_match' }
-...
-[analyze-slices] Link matching complete { slicesWithLinks: 12, slicesWithoutLinks: 3 }
-```
-
-This will reveal:
-1. Whether `brandId` is being passed correctly
-2. Whether link index is being found
-3. Whether slice descriptions are being generated correctly
-4. Whether matching is being called and what results it returns
-5. Where the pipeline is failing
+| Metric | Before | After |
+|--------|--------|-------|
+| 4 clickable slices | 18s (sequential) | ~4.5s (parallel) |
+| Total campaign time | 48s | ~34s |
+| Speedup | - | ~30% faster |
 
 ---
 
-## Summary
+## Technical Notes
 
-Add comprehensive logging at 9 strategic points across both edge functions to trace the complete flow from input to final link matching results.
-
+- All 4 matching calls will execute concurrently
+- Each call still takes ~4.5s, but they overlap instead of running back-to-back
+- Error handling is preserved - individual failures won't break the batch
+- Results maintain correct order via `.map()` index preservation
+- The high-churn fallback logic after matching remains unchanged
