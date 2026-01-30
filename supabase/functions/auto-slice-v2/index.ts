@@ -56,6 +56,23 @@ interface SliceOutput {
     columns: 2 | 3 | 4 | 5 | 6;
     gutterPositions: number[]; // X percentages where columns divide
   };
+  // Link intelligence outputs (when link index is provided)
+  isClickable?: boolean;
+  link?: string | null;
+  altText?: string;
+  linkSource?: 'index' | 'default' | 'rule' | 'needs_search' | 'not_clickable';
+}
+
+// Link intelligence inputs
+interface LinkIndexEntry {
+  title: string;
+  url: string;
+  link_type: string;
+}
+
+interface BrandPreferenceRule {
+  name: string;
+  destination_url: string;
 }
 
 // Raw data from Vision APIs - no decisions, just facts
@@ -82,6 +99,11 @@ interface ClaudeDecision {
       columns: 2 | 3 | 4 | 5 | 6;
       gutterPositions: number[];
     };
+    // Link intelligence outputs
+    isClickable?: boolean;
+    link?: string | null;
+    altText?: string;
+    linkSource?: 'index' | 'default' | 'rule' | 'needs_search' | 'not_clickable';
   }[];
 }
 
@@ -95,6 +117,11 @@ interface AutoSliceV2Response {
   confidence: {
     overall: 'high' | 'medium' | 'low';
   };
+  // For reactive web search (rare - only when product not in index)
+  needsLinkSearch?: Array<{
+    sliceIndex: number;
+    description: string;
+  }>;
   error?: string;
   debug?: {
     paragraphCount: number;
@@ -105,6 +132,7 @@ interface AutoSliceV2Response {
     scaleFactor?: number;
     originalDimensions?: { width: number; height: number };
     claudeImageDimensions?: { width: number; height: number };
+    linkIndexSize?: number;
   };
 }
 
@@ -581,7 +609,12 @@ function scaleClaudeDecision(decision: ClaudeDecision, scaleFactor: number): Cla
       hasCTA: s.hasCTA,
       ctaText: s.ctaText,
       // Pass through horizontal split (gutterPositions are percentages, no scaling needed)
-      horizontalSplit: s.horizontalSplit
+      horizontalSplit: s.horizontalSplit,
+      // Pass through link intelligence fields (no scaling needed)
+      isClickable: s.isClickable,
+      link: s.link,
+      altText: s.altText,
+      linkSource: s.linkSource
     }))
   };
 }
@@ -593,15 +626,19 @@ function scaleClaudeDecision(decision: ClaudeDecision, scaleFactor: number): Cla
 async function askClaude(
   imageBase64: string,
   mimeType: string,
-  rawData: RawVisionData
-): Promise<{ success: true; decision: ClaudeDecision } | { success: false; error: string }> {
+  rawData: RawVisionData,
+  linkIndex?: LinkIndexEntry[],
+  defaultDestinationUrl?: string,
+  brandPreferenceRules?: BrandPreferenceRule[]
+): Promise<{ success: true; decision: ClaudeDecision; needsLinkSearch: Array<{ sliceIndex: number; description: string }> } | { success: false; error: string }> {
   
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return { success: false, error: "ANTHROPIC_API_KEY not configured" };
   }
 
-  console.log("Asking Claude to analyze and make ALL decisions...");
+  const hasLinkIndex = linkIndex && linkIndex.length > 0;
+  console.log(`Asking Claude to analyze and make ALL decisions... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
   
   // Format raw data for Claude - just the facts, no decisions
   const ocrData = rawData.paragraphs.map(p => ({
@@ -974,8 +1011,15 @@ Return ONLY a valid JSON object:
       "yBottom": <number>,
       "hasCTA": <boolean - true if this slice contains a button>,
       "ctaText": "<button text if hasCTA is true, otherwise null>",
-      "horizontalSplit": null or { "columns": 2-6, "gutterPositions": [percentages] }
+      "horizontalSplit": null or { "columns": 2-6, "gutterPositions": [percentages] },
+      "isClickable": <boolean - true if this slice should link somewhere>,
+      "link": "<URL from available links, or null if needs_search>",
+      "altText": "<descriptive alt text for the slice, max 200 chars>",
+      "linkSource": "<'index' | 'default' | 'rule' | 'needs_search' | 'not_clickable'>"
     }
+  ],
+  "needsLinkSearch": [
+    { "sliceIndex": <number>, "description": "<what product/link is missing>" }
   ]
 }
 
@@ -987,18 +1031,22 @@ Return ONLY a valid JSON object:
 4. Each section's yBottom MUST equal the next section's yTop (no gaps)
 5. Every button in the email must be in its own slice
 6. footerStartY marks where utility content begins (see Footer Detection above)
+7. isClickable: true for any slice with product images, CTAs, or promotional banners; false for decorative/text-only
+8. linkSource: 'rule' if matched brand rule, 'index' if from available links, 'default' for generic CTAs, 'needs_search' if no match found, 'not_clickable' if not clickable
+9. needsLinkSearch: Only include slices where isClickable=true AND no link match was found
 
 ### Example Output:
 
 {
   "footerStartY": 2450,
+  "needsLinkSearch": [],
   "sections": [
-    { "name": "header_hero", "yTop": 0, "yBottom": 580, "hasCTA": true, "ctaText": "SHOP NOW", "horizontalSplit": null },
-    { "name": "value_prop", "yTop": 580, "yBottom": 920, "hasCTA": false, "ctaText": null, "horizontalSplit": null },
-    { "name": "product_row", "yTop": 920, "yBottom": 1180, "hasCTA": true, "ctaText": "SHOP NOW", "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] } },
-    { "name": "testimonial", "yTop": 1180, "yBottom": 1460, "hasCTA": false, "ctaText": null, "horizontalSplit": null },
-    { "name": "final_cta", "yTop": 1460, "yBottom": 1840, "hasCTA": true, "ctaText": "GET STARTED", "horizontalSplit": null },
-    { "name": "pre_footer", "yTop": 1840, "yBottom": 2450, "hasCTA": false, "ctaText": null, "horizontalSplit": null }
+    { "name": "header_hero", "yTop": 0, "yBottom": 580, "hasCTA": true, "ctaText": "SHOP NOW", "horizontalSplit": null, "isClickable": true, "link": "https://brand.com/collections/summer", "altText": "Summer collection hero - Up to 30% off beach essentials", "linkSource": "index" },
+    { "name": "value_prop", "yTop": 580, "yBottom": 920, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Brand value proposition - Quality ingredients and sustainable packaging", "linkSource": "not_clickable" },
+    { "name": "product_row", "yTop": 920, "yBottom": 1180, "hasCTA": true, "ctaText": "SHOP NOW", "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] }, "isClickable": true, "link": "https://brand.com/collections/bestsellers", "altText": "Three bestselling products side by side", "linkSource": "index" },
+    { "name": "testimonial", "yTop": 1180, "yBottom": 1460, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Customer testimonial - 5 star review", "linkSource": "not_clickable" },
+    { "name": "final_cta", "yTop": 1460, "yBottom": 1840, "hasCTA": true, "ctaText": "GET STARTED", "horizontalSplit": null, "isClickable": true, "link": "https://brand.com", "altText": "Final call to action - Get started today", "linkSource": "default" },
+    { "name": "pre_footer", "yTop": 1840, "yBottom": 2450, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Pre-footer content", "linkSource": "not_clickable" }
   ]
 }
 
@@ -1102,7 +1150,77 @@ Before returning your response, verify:
 ☐ Cuts are in visual gaps, not through content
 ☐ Slice boundaries have 30+ px padding from nearest text block
 ☐ Cuts are in the CENTER of whitespace gaps, not at edges of content
-☐ Horizontal split columns are always even (2-6, never 1)`;
+☐ Horizontal split columns are always even (2-6, never 1)
+☐ Every clickable slice has a link assigned (or linkSource='needs_search' if no match)
+☐ Alt text is descriptive and captures the marketing message`;
+
+  // Build link intelligence prompt section (only if link index is provided)
+  let linkIntelligencePrompt = '';
+  if (hasLinkIndex) {
+    const linkListFormatted = linkIndex!.slice(0, 100).map((l, i) => 
+      `${i + 1}. [${l.link_type}] "${l.title}" → ${l.url}`
+    ).join('\n');
+    
+    const rulesFormatted = brandPreferenceRules && brandPreferenceRules.length > 0
+      ? brandPreferenceRules.map(r => `- "${r.name}" → ${r.destination_url}`).join('\n')
+      : 'None configured';
+    
+    linkIntelligencePrompt = `
+
+---
+
+## LINK ASSIGNMENT
+
+You are also responsible for assigning links to each slice.
+
+### Available Brand Links (${linkIndex!.length} total)
+${linkListFormatted}
+
+### Default Destination (for generic CTAs like "Shop Now", "Learn More", etc.)
+${defaultDestinationUrl || 'Use homepage'}
+
+### Brand-Specific Routing Rules (check first)
+${rulesFormatted}
+
+### Link Assignment Rules
+
+1. **isClickable**: Determine if the slice should be clickable:
+   - YES: Product images, CTAs/buttons, promotional banners, hero sections with buttons, header logos
+   - NO: Decorative elements, plain text blocks, dividers, spacers, testimonials without buttons
+
+2. **link** assignment priority (in order):
+   a. Check brand routing rules first - if slice content matches a rule name, use that URL
+   b. Check available brand links - find the best matching product/collection based on visible text and imagery
+   c. For generic CTAs (Shop Now, Learn More, Shop [Brand], etc.) → use the default destination
+   d. If clickable but NO match found in the available links → set linkSource: 'needs_search' and add to needsLinkSearch array
+
+3. **altText**: Write concise, descriptive alt text (max 200 chars):
+   - Capture the marketing message and visual content
+   - Include any visible product names, prices, or promotional text
+   - Be specific about what's shown (not generic like "image")
+
+4. **linkSource** values:
+   - 'rule' → matched a brand routing rule
+   - 'index' → found a matching URL in the available brand links
+   - 'default' → used the default destination URL (for generic CTAs)
+   - 'needs_search' → clickable but no match found (add to needsLinkSearch)
+   - 'not_clickable' → slice is not clickable
+
+5. **needsLinkSearch**: When a slice is clickable but you can't find a matching URL:
+   - Add an entry with the sliceIndex (0-based) and a description of what product/collection is shown
+   - This triggers a web search fallback to find the correct URL
+   - Only use this for specific products not in the available links, NOT for generic CTAs
+
+### Link Matching Tips
+- Look at the OCR text for product names, collection names, promotional text
+- Match text like "SHOP GOLDEN" to a link with "Golden" in the title
+- For product grids, each column may need a different link (use the first/main product link for the whole slice if horizontal split)
+- Header logos typically link to homepage (use default destination)
+- When multiple products are visible, choose the most prominent/featured one`;
+  }
+
+  // Combine base prompt with link intelligence
+  const fullPrompt = prompt + linkIntelligencePrompt;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1128,7 +1246,7 @@ Before returning your response, verify:
             },
             {
               type: "text",
-              text: prompt
+              text: fullPrompt
             }
           ]
         }]
@@ -1161,6 +1279,13 @@ Before returning your response, verify:
     
     const parsed = JSON.parse(jsonStr.trim());
     
+    // Parse needsLinkSearch from Claude's response
+    const needsLinkSearch: Array<{ sliceIndex: number; description: string }> = 
+      (parsed.needsLinkSearch || []).map((n: any) => ({
+        sliceIndex: n.sliceIndex,
+        description: n.description || ''
+      }));
+    
     const decision: ClaudeDecision = {
       footerStartY: parsed.footerStartY,
       sections: (parsed.sections || []).map((s: any) => ({
@@ -1173,13 +1298,18 @@ Before returning your response, verify:
         horizontalSplit: s.horizontalSplit ? {
           columns: s.horizontalSplit.columns,
           gutterPositions: s.horizontalSplit.gutterPositions || []
-        } : undefined
+        } : undefined,
+        // Parse link intelligence fields if present
+        isClickable: s.isClickable ?? (s.hasCTA || false),
+        link: s.link ?? null,
+        altText: s.altText ?? '',
+        linkSource: s.linkSource ?? (s.isClickable === false ? 'not_clickable' : 'needs_search')
       }))
     };
     
-    console.log(`  → Claude decided: footerStartY=${decision.footerStartY}, ${decision.sections.length} sections`);
+    console.log(`  → Claude decided: footerStartY=${decision.footerStartY}, ${decision.sections.length} sections, ${needsLinkSearch.length} need link search`);
     
-    return { success: true, decision };
+    return { success: true, decision, needsLinkSearch };
     
   } catch (e) {
     console.error("Failed to get/parse Claude response:", e);
@@ -1199,7 +1329,13 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const { imageDataUrl } = await req.json();
+    const { 
+      imageDataUrl,
+      // Link intelligence params (optional)
+      linkIndex,
+      defaultDestinationUrl,
+      brandPreferenceRules
+    } = await req.json();
     
     if (!imageDataUrl) {
       return new Response(JSON.stringify({
@@ -1237,8 +1373,11 @@ serve(async (req) => {
     
     const mimeType = match[1];
     const imageBase64 = match[2];
+    const hasLinkIndex = linkIndex && Array.isArray(linkIndex) && linkIndex.length > 0;
     console.log(`\n========== AUTO-SLICE V2 (Claude Brain) ==========`);
     console.log(`Received image: ${mimeType}, base64 length: ${imageBase64.length}`);
+    console.log(`Link intelligence: ${hasLinkIndex ? `${linkIndex.length} links` : 'disabled'}`);
+
 
     // ========== GET TRUE IMAGE DIMENSIONS ==========
     const headerDimensions = getImageDimensions(imageBase64);
@@ -1296,8 +1435,15 @@ serve(async (req) => {
       console.log(`Scaled raw data coordinates by ${scaleFactor.toFixed(4)} to match resized image`);
     }
 
-    // ========== ASK CLAUDE TO MAKE ALL DECISIONS (with resized image) ==========
-    const claudeResult = await askClaude(resized.base64, resized.mimeType, scaledRawData);
+    // ========== ASK CLAUDE TO MAKE ALL DECISIONS (with resized image + link index) ==========
+    const claudeResult = await askClaude(
+      resized.base64, 
+      resized.mimeType, 
+      scaledRawData,
+      hasLinkIndex ? linkIndex : undefined,
+      defaultDestinationUrl,
+      brandPreferenceRules
+    );
 
     if (!claudeResult.success) {
       // If Claude fails, we fail - NO FALLBACK
@@ -1330,7 +1476,7 @@ serve(async (req) => {
       console.log(`Scaled Claude's decision back to original image space (inverse scale: ${(1/scaleFactor).toFixed(4)})`);
     }
     
-    // Convert Claude's sections directly to slices - NO MODIFICATIONS (except scaling)
+    // Convert Claude's sections directly to slices - including link intelligence fields
     const slices: SliceOutput[] = originalSpaceDecision.sections.map(section => ({
       yTop: Math.round(section.yTop),
       yBottom: Math.round(section.yBottom),
@@ -1338,7 +1484,12 @@ serve(async (req) => {
       hasCTA: section.hasCTA,
       ctaText: section.ctaText,
       // Pass through horizontal split info
-      horizontalSplit: section.horizontalSplit
+      horizontalSplit: section.horizontalSplit,
+      // Pass through link intelligence fields
+      isClickable: section.isClickable,
+      link: section.link,
+      altText: section.altText,
+      linkSource: section.linkSource
     }));
 
     const processingTimeMs = Date.now() - startTime;
@@ -1353,6 +1504,8 @@ serve(async (req) => {
       confidence: {
         overall: rawData.paragraphs.length > 5 ? 'high' : rawData.paragraphs.length > 0 ? 'medium' : 'low'
       },
+      // Include needsLinkSearch from Claude's response
+      needsLinkSearch: claudeResult.needsLinkSearch,
       debug: {
         paragraphCount: rawData.paragraphs.length,
         objectCount: rawData.objects.length,
@@ -1361,12 +1514,16 @@ serve(async (req) => {
         claudeSections: originalSpaceDecision.sections,
         scaleFactor,
         originalDimensions: { width: imageWidth, height: imageHeight },
-        claudeImageDimensions: { width: resized.newWidth, height: resized.newHeight }
+        claudeImageDimensions: { width: resized.newWidth, height: resized.newHeight },
+        linkIndexSize: hasLinkIndex ? linkIndex.length : 0
       }
     };
 
     console.log(`\n========== COMPLETE ==========`);
     console.log(`Claude decided: ${slices.length} slices, footer at ${originalSpaceDecision.footerStartY}px`);
+    if (hasLinkIndex) {
+      console.log(`Link intelligence: ${linkIndex.length} links provided, ${claudeResult.needsLinkSearch?.length || 0} need web search`);
+    }
     console.log(`Scale factor: ${scaleFactor} (original: ${imageWidth}x${imageHeight}, Claude saw: ${resized.newWidth}x${resized.newHeight})`);
     console.log(`Processing time: ${processingTimeMs}ms`);
 
