@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle, CheckCircle2, Clock, Wand2, AlertTriangle } from 'lucide-react';
+import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle, CheckCircle2, Clock, Wand2, AlertTriangle, Code, ImageIcon } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,8 @@ import { FooterCropSelector } from './FooterCropSelector';
 import { AssetCollectionModal } from './AssetCollectionModal';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import type { FooterType, FooterSliceResponse, ImageFooterSlice, LegalSectionData, generateImageFooterHtml } from '@/types/footer';
 
 interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -35,7 +37,14 @@ interface FooterBuilderModalProps {
   renderDuringGeneration?: React.ReactNode;
 }
 
-type Step = 'reference' | 'links' | 'social' | 'generate';
+// Footer type: html (complex refinement) or image (sliced images + legal HTML)
+type FooterCreationType = 'html' | 'image' | null;
+
+// Steps vary based on footer type
+type HtmlStep = 'type' | 'reference' | 'links' | 'social' | 'generate';
+type ImageStep = 'type' | 'upload' | 'review' | 'save';
+type Step = HtmlStep | ImageStep;
+
 type SourceType = 'image' | 'figma' | 'campaign' | null;
 
 interface DetectedLink {
@@ -131,10 +140,19 @@ interface LogoConversionNeeded {
 }
 
 export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, onOpenStudio, initialCampaignImageUrl, onGenerationStateChange, renderDuringGeneration }: FooterBuilderModalProps) {
-  const [step, setStep] = useState<Step>('reference');
+  // Footer creation type selection
+  const [footerCreationType, setFooterCreationType] = useState<FooterCreationType>(null);
+  
+  const [step, setStep] = useState<Step>('type');
   const [sourceType, setSourceType] = useState<SourceType>(null);
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
   const [isUploadingReference, setIsUploadingReference] = useState(false);
+  
+  // Image footer specific state
+  const [imageFooterSlices, setImageFooterSlices] = useState<ImageFooterSlice[]>([]);
+  const [imageFooterLegalSection, setImageFooterLegalSection] = useState<LegalSectionData | null>(null);
+  const [isSlicingFooter, setIsSlicingFooter] = useState(false);
+  const [imageFooterDimensions, setImageFooterDimensions] = useState<{ width: number; height: number } | null>(null);
   
   // Figma state
   const [figmaUrl, setFigmaUrl] = useState('');
@@ -192,12 +210,16 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState<string>('');
   
+  // Image footer save state
+  const [isSavingImageFooter, setIsSavingImageFooter] = useState(false);
+  
   // Notify parent when generation state changes
   useEffect(() => {
     onGenerationStateChange?.(isGenerating);
   }, [isGenerating, onGenerationStateChange]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageFooterInputRef = useRef<HTMLInputElement>(null);
 
   // Compute if processing is in progress
   const isProcessingReference = isUploadingReference || isUploadingCrop || isFetchingFigma || isExtractingAssets || isDetectingLinks || isDetectingSocials;
@@ -265,8 +287,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     }
   }, [open]);
 
-  // Reset to reference step - clears all state for a fresh start
-  const resetToReference = useCallback(() => {
+  // Reset to type step - clears all state for a fresh start
+  const resetToTypeSelection = useCallback(() => {
+    setFooterCreationType(null);
     setReferenceImageUrl(null);
     setSourceType(null);
     setFigmaUrl('');
@@ -284,7 +307,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     setDetectedLinks([]);
     setApprovedLinks([]);
     setSocialLinks(brand.socialLinks || []);
-    setStep('reference');
+    setImageFooterSlices([]);
+    setImageFooterLegalSection(null);
+    setImageFooterDimensions(null);
+    setStep('type');
   }, [brand.socialLinks]);
 
   // No brand library - user uploads all assets explicitly
@@ -767,6 +793,155 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     if (file) handleReferenceUpload(file);
   }, [handleReferenceUpload]);
 
+  // ========== IMAGE FOOTER HANDLERS ==========
+
+  // Handle image footer upload
+  const handleImageFooterUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    setIsUploadingReference(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target?.result as string;
+        
+        // Upload to Cloudinary
+        const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+          body: { 
+            imageData: base64,
+            folder: `brands/${brand.domain}/footer-images`
+          }
+        });
+
+        if (uploadError) throw uploadError;
+        
+        setReferenceImageUrl(uploadData.url);
+        setImageFooterDimensions({ width: uploadData.width, height: uploadData.height });
+        
+        // Now slice the footer
+        setIsSlicingFooter(true);
+        
+        const { data: sliceData, error: sliceError } = await supabase.functions.invoke('auto-slice-footer', {
+          body: { 
+            imageUrl: uploadData.url,
+            brandDomain: brand.domain,
+            imageWidth: uploadData.width,
+            imageHeight: uploadData.height,
+          }
+        });
+
+        if (sliceError) {
+          console.error('Slice error:', sliceError);
+          toast.error('Failed to analyze footer');
+        } else if (sliceData?.success) {
+          console.log('Footer sliced:', sliceData);
+          setImageFooterSlices(sliceData.slices || []);
+          setImageFooterLegalSection(sliceData.legalSection || null);
+          toast.success('Footer analyzed successfully');
+        } else {
+          toast.error(sliceData?.error || 'Failed to slice footer');
+        }
+        
+        setIsSlicingFooter(false);
+        setIsUploadingReference(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload image');
+      setIsUploadingReference(false);
+      setIsSlicingFooter(false);
+    }
+  }, [brand.domain]);
+
+  const handleImageFooterDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleImageFooterUpload(file);
+  }, [handleImageFooterUpload]);
+
+  // Update slice alt text
+  const updateSliceAltText = useCallback((index: number, altText: string) => {
+    setImageFooterSlices(prev => prev.map((slice, i) => 
+      i === index ? { ...slice, altText } : slice
+    ));
+  }, []);
+
+  // Update slice link
+  const updateSliceLink = useCallback((index: number, link: string) => {
+    setImageFooterSlices(prev => prev.map((slice, i) => 
+      i === index ? { ...slice, link: link || null, isClickable: !!link } : slice
+    ));
+  }, []);
+
+  // Save image footer
+  const handleSaveImageFooter = useCallback(async () => {
+    if (!referenceImageUrl || imageFooterSlices.length === 0) {
+      toast.error('No footer data to save');
+      return;
+    }
+
+    setIsSavingImageFooter(true);
+    try {
+      // Import the generator function
+      const { generateImageFooterHtml } = await import('@/types/footer');
+      
+      // Generate the HTML
+      const footerHtml = generateImageFooterHtml(
+        imageFooterSlices,
+        imageFooterLegalSection,
+        imageFooterDimensions?.width || 600
+      );
+
+      // Check if this is the first footer
+      const { data: existingFooters } = await supabase
+        .from('brand_footers')
+        .select('id')
+        .eq('brand_id', brand.id);
+
+      const isFirstFooter = !existingFooters || existingFooters.length === 0;
+
+      // Save to database - cast to include new columns not yet in types
+      const { error } = await supabase
+        .from('brand_footers')
+        .insert({
+          brand_id: brand.id,
+          name: 'Image Footer',
+          html: footerHtml,
+          footer_type: 'image',
+          image_slices: {
+            slices: imageFooterSlices,
+            legalSection: imageFooterLegalSection,
+            originalImageUrl: referenceImageUrl,
+            generatedAt: new Date().toISOString(),
+          },
+          is_primary: isFirstFooter,
+        } as any);
+
+      if (error) throw error;
+
+      // Update brand footer_configured
+      await supabase
+        .from('brands')
+        .update({ footer_configured: true })
+        .eq('id', brand.id);
+
+      toast.success('Footer saved successfully!');
+      onFooterSaved();
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Save error:', error);
+      toast.error('Failed to save footer');
+    } finally {
+      setIsSavingImageFooter(false);
+    }
+  }, [referenceImageUrl, imageFooterSlices, imageFooterLegalSection, imageFooterDimensions, brand.id, onFooterSaved, onOpenChange]);
+
+  // ========== END IMAGE FOOTER HANDLERS ==========
+
   const handleGenerateFooter = async () => {
     setIsGenerating(true);
     setGenerationStatus('Uploading social icons...');
@@ -898,6 +1073,271 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const renderStepContent = () => {
     switch (step) {
+      case 'type':
+        return (
+          <div className="space-y-6 py-4">
+            <div className="text-center space-y-2">
+              <h3 className="font-medium text-lg">How would you like to create your footer?</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                Choose based on your needs - you can always create additional footers later.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
+              {/* HTML Footer Option */}
+              <Card 
+                className={`cursor-pointer transition-all hover:border-primary/50 ${
+                  footerCreationType === 'html' ? 'ring-2 ring-primary border-primary' : ''
+                }`}
+                onClick={() => setFooterCreationType('html')}
+              >
+                <CardContent className="p-6 text-center space-y-3">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                    <Code className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold">HTML Footer</h4>
+                    <p className="text-xs text-muted-foreground mt-1">AI-generated, fully editable</p>
+                  </div>
+                  <ul className="text-xs text-left space-y-1 text-muted-foreground">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-green-600" /> Best practice for email
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-green-600" /> Fully customizable text
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Clock className="w-3 h-3 text-amber-600" /> Takes longer to set up
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* Image Footer Option */}
+              <Card 
+                className={`cursor-pointer transition-all hover:border-primary/50 ${
+                  footerCreationType === 'image' ? 'ring-2 ring-primary border-primary' : ''
+                }`}
+                onClick={() => setFooterCreationType('image')}
+              >
+                <CardContent className="p-6 text-center space-y-3">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                    <ImageIcon className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold">Image Footer</h4>
+                    <p className="text-xs text-muted-foreground mt-1">Pixel-perfect, fast setup</p>
+                  </div>
+                  <ul className="text-xs text-left space-y-1 text-muted-foreground">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-green-600" /> Quick 2-minute setup
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-green-600" /> Exact design match
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <AlertCircle className="w-3 h-3 text-amber-600" /> Fixed visual layout
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
+
+            {footerCreationType && (
+              <div className="text-center">
+                <Button onClick={() => setStep(footerCreationType === 'image' ? 'upload' : 'reference')}>
+                  Continue with {footerCreationType === 'image' ? 'Image' : 'HTML'} Footer
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+        
+      case 'upload':
+        // Image footer upload step
+        return (
+          <div className="space-y-4">
+            <div className="text-center space-y-2 py-4">
+              <h3 className="font-medium">Upload your footer image</h3>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                Upload a screenshot of your footer. We'll automatically detect the legal section.
+              </p>
+            </div>
+
+            {!referenceImageUrl ? (
+              <div
+                onDrop={handleImageFooterDrop}
+                onDragOver={(e) => e.preventDefault()}
+                onClick={() => imageFooterInputRef.current?.click()}
+                className="border-2 border-dashed border-border/60 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+              >
+                {isUploadingReference ? (
+                  <div className="space-y-2">
+                    <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Uploading...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="w-14 h-14 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                      <ImageIcon className="w-7 h-7 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Drop footer image here</p>
+                      <p className="text-sm text-muted-foreground">or click to browse</p>
+                    </div>
+                  </div>
+                )}
+                <input
+                  ref={imageFooterInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleImageFooterUpload(e.target.files[0])}
+                />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="relative rounded-lg overflow-hidden border bg-muted/20">
+                  <img 
+                    src={referenceImageUrl} 
+                    alt="Footer preview" 
+                    className="w-full h-auto max-h-64 object-contain mx-auto"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 bg-background/80 hover:bg-background"
+                    onClick={() => {
+                      setReferenceImageUrl(null);
+                      setImageFooterSlices([]);
+                      setImageFooterLegalSection(null);
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {isSlicingFooter ? (
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    <span className="text-sm text-muted-foreground">Analyzing footer...</span>
+                  </div>
+                ) : imageFooterSlices.length > 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Footer analyzed! Found {imageFooterSlices.length} visual section(s)</span>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        );
+        
+      case 'review':
+        // Image footer review step
+        return (
+          <div className="space-y-4">
+            <div className="text-center space-y-2 py-2">
+              <h3 className="font-medium">Review your footer</h3>
+              <p className="text-sm text-muted-foreground">
+                Add links to clickable areas. Legal text will use Klaviyo merge tags.
+              </p>
+            </div>
+
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {imageFooterSlices.map((slice, idx) => (
+                <div key={slice.id} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={slice.imageUrl} 
+                      alt={slice.altText}
+                      className="w-24 h-auto rounded border"
+                    />
+                    <div className="flex-1 space-y-2">
+                      <div>
+                        <Label className="text-xs">Alt Text</Label>
+                        <Input
+                          value={slice.altText}
+                          onChange={(e) => updateSliceAltText(idx, e.target.value)}
+                          className="h-8 text-sm"
+                          placeholder="Describe this section..."
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Link (optional)</Label>
+                        <Input
+                          value={slice.link || ''}
+                          onChange={(e) => updateSliceLink(idx, e.target.value)}
+                          className="h-8 text-sm font-mono"
+                          placeholder="https://..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {imageFooterLegalSection && (
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <span className="font-medium text-sm">Legal Section (Auto-generated HTML)</span>
+                </div>
+                <div 
+                  className="text-xs p-3 rounded font-mono"
+                  style={{ 
+                    backgroundColor: imageFooterLegalSection.backgroundColor,
+                    color: imageFooterLegalSection.textColor 
+                  }}
+                >
+                  <p>{'{{ organization.name }}'}</p>
+                  <p>{'{{ organization.address }}'}</p>
+                  <p className="mt-1">
+                    <span className="underline">Unsubscribe</span> | <span className="underline">Manage Preferences</span>
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  This section uses Klaviyo merge tags for compliance.
+                </p>
+              </div>
+            )}
+          </div>
+        );
+        
+      case 'save':
+        // Image footer save step
+        return (
+          <div className="space-y-4 text-center py-8">
+            {isSavingImageFooter ? (
+              <>
+                <Loader2 className="w-12 h-12 mx-auto animate-spin text-primary" />
+                <div>
+                  <h3 className="font-medium">Saving your footer...</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Generating final HTML
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-12 h-12 mx-auto text-green-600" />
+                <div>
+                  <h3 className="font-medium">Ready to save</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    Your image-based footer is ready. Click below to save it.
+                  </p>
+                </div>
+                <Button onClick={handleSaveImageFooter} size="lg">
+                  <Check className="w-4 h-4 mr-2" />
+                  Save Footer
+                </Button>
+              </>
+            )}
+          </div>
+        );
+        
       case 'reference':
         return (
           <div className="space-y-4">
@@ -1527,12 +1967,20 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   const canProceed = () => {
     switch (step) {
+      case 'type':
+        return footerCreationType !== null;
       case 'reference': 
         // Lock navigation while processing
         return !isProcessingReference;
+      case 'upload':
+        return referenceImageUrl !== null && !isSlicingFooter;
+      case 'review':
+        return imageFooterSlices.length > 0;
       case 'links': return true;
       case 'social': return true;
       case 'generate': return false;
+      case 'save': return false;
+      default: return false;
     }
   };
   
@@ -1540,31 +1988,64 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const canForceSkip = processingElapsed >= 30;
 
   const getNextStep = (): Step | null => {
-    switch (step) {
-      case 'reference': return 'links';
-      case 'links': return 'social';
-      case 'social': return 'generate';
-      case 'generate': return null;
+    if (footerCreationType === 'image') {
+      // Image footer flow: type → upload → review → save
+      switch (step) {
+        case 'type': return 'upload';
+        case 'upload': return 'review';
+        case 'review': return 'save';
+        case 'save': return null;
+        default: return null;
+      }
+    } else {
+      // HTML footer flow: type → reference → links → social → generate
+      switch (step) {
+        case 'type': return 'reference';
+        case 'reference': return 'links';
+        case 'links': return 'social';
+        case 'social': return 'generate';
+        case 'generate': return null;
+        default: return null;
+      }
     }
   };
 
   const getPrevStep = (): Step | null => {
-    switch (step) {
-      case 'reference': return null;
-      case 'links': return 'reference';
-      case 'social': return 'links';
-      case 'generate': return 'social';
+    if (footerCreationType === 'image') {
+      switch (step) {
+        case 'type': return null;
+        case 'upload': return 'type';
+        case 'review': return 'upload';
+        case 'save': return 'review';
+        default: return null;
+      }
+    } else {
+      switch (step) {
+        case 'type': return null;
+        case 'reference': return 'type';
+        case 'links': return 'reference';
+        case 'social': return 'links';
+        case 'generate': return 'social';
+        default: return null;
+      }
     }
   };
 
   const stepLabels: Record<Step, string> = {
+    type: 'Type',
     reference: 'Reference',
+    upload: 'Upload',
+    review: 'Review',
     links: 'Links',
     social: 'Social',
     generate: 'Generate',
+    save: 'Save',
   };
 
-  const stepOrder: Step[] = ['reference', 'links', 'social', 'generate'];
+  // Step order depends on footer type
+  const stepOrder: Step[] = footerCreationType === 'image'
+    ? ['type', 'upload', 'review', 'save']
+    : ['type', 'reference', 'links', 'social', 'generate'];
 
   return (
     <>
@@ -1607,8 +2088,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               variant="ghost"
               onClick={() => {
                 const prev = getPrevStep();
-                if (prev === 'reference') {
-                  resetToReference();
+                if (prev === 'type') {
+                  resetToTypeSelection();
                 } else if (prev) {
                   setStep(prev);
                 }

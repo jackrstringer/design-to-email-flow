@@ -18,8 +18,10 @@ export type Database = {
         Row: {
           brand_id: string
           created_at: string
+          footer_type: string | null
           html: string
           id: string
+          image_slices: Json | null
           is_primary: boolean | null
           logo_public_id: string | null
           logo_url: string | null
@@ -29,8 +31,10 @@ export type Database = {
         Insert: {
           brand_id: string
           created_at?: string
+          footer_type?: string | null
           html: string
           id?: string
+          image_slices?: Json | null
           is_primary?: boolean | null
           logo_public_id?: string | null
           logo_url?: string | null
@@ -40,8 +44,10 @@ export type Database = {
         Update: {
           brand_id?: string
           created_at?: string
+          footer_type?: string | null
           html?: string
           id?: string
+          image_slices?: Json | null
           is_primary?: boolean | null
           logo_public_id?: string | null
           logo_url?: string | null
