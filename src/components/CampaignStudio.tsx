@@ -15,6 +15,7 @@ import { CampaignChat, ChatMessage } from './CampaignChat';
 import { FooterSelector, BrandFooter } from './FooterSelector';
 import { PLATFORM_SLUGS } from '@/lib/socialIcons';
 import { useDomCapture } from '@/hooks/useDomCapture';
+import { computeVisionDifferences, type FooterVisionData } from '@/lib/footerVisionDiff';
 
 const BASE_WIDTH = 600;
 
@@ -49,29 +50,7 @@ interface ConversationMessage {
   content: any;
 }
 
-// Vision data from analyze-footer-reference edge function
-interface FooterVisionData {
-  dimensions: { width: number; height: number };
-  textBlocks: Array<{
-    text: string;
-    bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
-    width: number;
-    height: number;
-    estimatedFontSize: number;
-  }>;
-  logos: Array<{
-    name: string;
-    bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
-    width: number;
-    height: number;
-  }>;
-  horizontalEdges: Array<{
-    y: number;
-    colorAbove: string;
-    colorBelow: string;
-  }>;
-  colorPalette: { background: string; text: string; accent: string };
-}
+// FooterVisionData is imported from '@/lib/footerVisionDiff'
 
 interface CampaignStudioProps {
   mode?: 'campaign' | 'footer';
@@ -205,8 +184,14 @@ export function CampaignStudio({
   // Ref for just the comparison panels (reference + preview, excluding chat)
   const comparisonPanelsRef = useRef<HTMLDivElement>(null);
   
+  // Ref for just the render/preview panel (right side) for standalone Vision analysis
+  const renderPanelRef = useRef<HTMLDivElement>(null);
+  
   // DOM capture hook for reliable screenshots (no permission needed)
   const { isCapturing, captureScreenshot } = useDomCapture({ targetRef: comparisonPanelsRef });
+  
+  // Separate capture for just the render panel
+  const { isCapturing: isCapturingRender, captureScreenshot: captureRenderScreenshot } = useDomCapture({ targetRef: renderPanelRef });
   
   // Claude conversation history - persisted across refinements
   const [claudeConversationHistory, setClaudeConversationHistory] = useState<ConversationMessage[]>(initialConversationHistory);
@@ -217,6 +202,10 @@ export function CampaignStudio({
   // Vision data from analyze-footer-reference - provides precise measurements
   const [footerVisionData, setFooterVisionData] = useState<FooterVisionData | null>(null);
   const [isAnalyzingReference, setIsAnalyzingReference] = useState(false);
+  
+  // Render vision data for mathematical comparison during refinement
+  const [renderVisionData, setRenderVisionData] = useState<FooterVisionData | null>(null);
+  const [isAnalyzingRender, setIsAnalyzingRender] = useState(false);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
@@ -544,26 +533,65 @@ export function CampaignStudio({
     }
 
     // Footer mode: Use unified footer-conversation with side-by-side screenshot
-    // No permission needed - DOM capture works immediately
+    // AND Vision analysis for mathematical comparison
     setIsAutoRefining(true);
     setHasAutoRefined(true);
     
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Capturing comparison for pixel-perfect analysis]' }];
+    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Capturing & analyzing for pixel-perfect comparison]' }];
     setChatMessages(newMessages);
 
     try {
       // Wait a moment for the preview to fully render
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Capture the side-by-side screenshot using DOM capture
+      // Capture BOTH screenshots in parallel
       toast.info('Capturing comparison...');
-      const sideBySideScreenshotUrl = await captureScreenshot();
+      const [sideBySideScreenshotUrl, renderScreenshotUrl] = await Promise.all([
+        captureScreenshot(),
+        captureRenderScreenshot()
+      ]);
       
       if (!sideBySideScreenshotUrl) {
         throw new Error('Failed to capture comparison panels');
       }
 
-      // Call footer-conversation with refine action - include brand assets and vision data
+      // Analyze the render with Vision APIs if we have reference vision data
+      let computedRenderVision: FooterVisionData | null = null;
+      let mathematicalDiffs: string[] = [];
+      
+      if (footerVisionData && renderScreenshotUrl) {
+        toast.info('Analyzing render with Vision APIs...');
+        setIsAnalyzingRender(true);
+        
+        try {
+          const { data: renderAnalysis, error: renderError } = await supabase.functions.invoke('analyze-footer-render', {
+            body: { renderScreenshotUrl }
+          });
+          
+          if (renderError) {
+            console.warn('Render Vision analysis failed:', renderError);
+          } else if (renderAnalysis?.success) {
+            computedRenderVision = renderAnalysis as FooterVisionData;
+            setRenderVisionData(computedRenderVision);
+            
+            // Compute mathematical differences between reference and render
+            mathematicalDiffs = computeVisionDifferences(footerVisionData, computedRenderVision);
+            console.log('Mathematical differences computed:', mathematicalDiffs.length);
+            
+            if (mathematicalDiffs.length > 0) {
+              toast.success(`Found ${mathematicalDiffs.length} measurable differences`);
+            } else {
+              toast.success('Render closely matches reference!');
+            }
+          }
+        } catch (visionErr) {
+          console.warn('Vision comparison failed:', visionErr);
+        } finally {
+          setIsAnalyzingRender(false);
+        }
+      }
+
+      // Call footer-conversation with refine action - include brand assets, vision data, AND mathematical diffs
       const { data, error } = await supabase.functions.invoke('footer-conversation', {
         body: {
           action: 'refine',
@@ -583,6 +611,9 @@ export function CampaignStudio({
           },
           // Pass vision data for precise measurements
           visionData: footerVisionData,
+          // NEW: Pass render vision data and mathematical diffs
+          renderVisionData: computedRenderVision,
+          mathematicalDiffs,
           brandName: brandContext?.name,
           brandDomain: brandContext?.domain,
         }
@@ -605,7 +636,11 @@ export function CampaignStudio({
         }
 
         setLocalFooterHtml(data.html);
-        toast.success('Footer refined based on your screen');
+        
+        const diffMsg = mathematicalDiffs.length > 0 
+          ? `Fixed ${mathematicalDiffs.length} measured differences` 
+          : 'Footer refined';
+        toast.success(diffMsg);
         
         // Persist to session if we have one
         if (sessionId) {
@@ -613,7 +648,21 @@ export function CampaignStudio({
         }
       }
 
-      setChatMessages([...newMessages, { role: 'assistant', content: data.message || 'Compared your screen and fixed differences.' }]);
+      // Build summary message with diff info
+      const summaryParts: string[] = [];
+      if (mathematicalDiffs.length > 0) {
+        summaryParts.push(`**${mathematicalDiffs.length} measurements corrected:**`);
+        summaryParts.push(mathematicalDiffs.slice(0, 4).map(d => `• ${d}`).join('\n'));
+        if (mathematicalDiffs.length > 4) {
+          summaryParts.push(`...and ${mathematicalDiffs.length - 4} more`);
+        }
+      } else if (computedRenderVision) {
+        summaryParts.push('Vision analysis confirmed render matches reference closely.');
+      } else {
+        summaryParts.push(data.message || 'Compared your screen and fixed differences.');
+      }
+      
+      setChatMessages([...newMessages, { role: 'assistant', content: summaryParts.join('\n') }]);
       
       // Update conversation history
       if (data.conversationHistory) {
@@ -627,6 +676,7 @@ export function CampaignStudio({
       toast.error('Auto-refine failed');
     } finally {
       setIsAutoRefining(false);
+      setIsAnalyzingRender(false);
     }
   };
 
@@ -1220,6 +1270,7 @@ export function CampaignStudio({
                             <div className="flex flex-col items-center gap-4">
                               <span className="text-xs text-muted-foreground/60 uppercase tracking-wider">Current HTML</span>
                               <div 
+                                ref={renderPanelRef}
                                 style={{ 
                                   width: scaledWidth,
                                   height: footerPreviewHeight * (zoomLevel / 100),
