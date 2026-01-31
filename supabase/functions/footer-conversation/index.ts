@@ -44,6 +44,14 @@ interface DetectedLogo {
   height: number;
 }
 
+interface DetectedObject {
+  type: string;
+  bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
+  width: number;
+  height: number;
+  score: number;
+}
+
 interface HorizontalEdge {
   y: number;
   colorAbove: string;
@@ -54,6 +62,7 @@ interface FooterVisionData {
   dimensions: { width: number; height: number };
   textBlocks: TextBlock[];
   logos: DetectedLogo[];
+  objects?: DetectedObject[];
   horizontalEdges: HorizontalEdge[];
   colorPalette: { background: string; text: string; accent: string };
 }
@@ -310,10 +319,21 @@ CRITICAL: The above measurements are from automated Vision analysis. They are MO
 2. PRESERVE all existing structure - do not rewrite the entire footer
 3. PRESERVE all Klaviyo tags exactly: {% unsubscribe_url %}, {% manage_preferences_url %}, {{ organization.address }}, {{ organization.name }}
 4. PRESERVE all href URLs exactly as they are
-5. Only adjust: padding, font-size, color values, spacing between elements
+5. Only adjust: padding, font-size, color values, spacing, element widths/heights
 6. If RIGHT looks correct, return the SAME HTML unchanged
 7. NEVER reduce element sizes - only increase if needed
 8. Width MUST remain 600px
+
+## 🎯 DIMENSIONAL ACCURACY (HIGHEST PRIORITY)
+When mathematical differences are provided below, these are PRECISE measurements from Vision API analysis.
+- If a button is listed as "120px NARROWER" → set button width to the EXACT reference value provided
+- If social icons are "10px SMALLER" → set icon dimensions to the EXACT reference size
+- NEVER estimate - use the EXACT pixel values from the diffs
+
+Example fixes based on diff messages:
+- "Button 1 is 120px NARROWER... INCREASE button width to 500px" → set button td width="500" and style="width: 500px"
+- "Social icons are 12px SMALLER... INCREASE icon size to 36px" → set icon img width="36" height="36"
+- "Logo is 18px NARROWER... INCREASE logo width to 142px" → set logo img width="142"
 
 ${visionData ? `Reference dimensions: ${visionData.dimensions.width}x${visionData.dimensions.height}px, bg=${visionData.colorPalette.background}` : ''}
 ${renderVisionData ? `Render dimensions: ${renderVisionData.dimensions.width}x${renderVisionData.dimensions.height}px, bg=${renderVisionData.colorPalette.background}` : ''}`;

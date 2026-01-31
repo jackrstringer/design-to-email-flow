@@ -18,6 +18,14 @@ export interface DetectedLogo {
   height: number;
 }
 
+export interface DetectedObject {
+  type: string; // e.g., "Button", "Icon", "Image", "Person"
+  bounds: { xLeft: number; xRight: number; yTop: number; yBottom: number };
+  width: number;
+  height: number;
+  score: number;
+}
+
 export interface HorizontalEdge {
   y: number;
   colorAbove: string;
@@ -28,6 +36,7 @@ export interface FooterVisionData {
   dimensions: { width: number; height: number };
   textBlocks: TextBlock[];
   logos: DetectedLogo[];
+  objects?: DetectedObject[]; // Buttons, icons, images detected by OBJECT_LOCALIZATION
   horizontalEdges: HorizontalEdge[];
   colorPalette: { background: string; text: string; accent: string };
 }
@@ -39,8 +48,12 @@ const THRESHOLDS = {
   LOGO_POSITION_DIFF: 15, // pixels
   FONT_SIZE_DIFF: 3,      // pixels
   TEXT_Y_DIFF: 10,        // pixels
+  TEXT_WIDTH_DIFF: 30,    // pixels - for button labels
   COLOR_DIFF: 30,         // RGB distance
   SECTION_Y_DIFF: 15,     // pixels
+  BUTTON_WIDTH_DIFF: 20,  // pixels
+  BUTTON_HEIGHT_DIFF: 8,  // pixels
+  ICON_SIZE_DIFF: 6,      // pixels
 };
 
 /**
@@ -50,9 +63,9 @@ function colorRgbDistance(hex1: string, hex2: string): number {
   const parseHex = (hex: string) => {
     const clean = hex.replace('#', '');
     return {
-      r: parseInt(clean.slice(0, 2), 16),
-      g: parseInt(clean.slice(2, 4), 16),
-      b: parseInt(clean.slice(4, 6), 16),
+      r: parseInt(clean.slice(0, 2), 16) || 0,
+      g: parseInt(clean.slice(2, 4), 16) || 0,
+      b: parseInt(clean.slice(4, 6), 16) || 0,
     };
   };
   
@@ -87,6 +100,28 @@ function findMatchingTextBlock(refText: TextBlock, renderBlocks: TextBlock[]): T
 }
 
 /**
+ * Identify button-like elements from detected objects
+ * Buttons are typically wide rectangular elements (>150px in 600px footer)
+ */
+function identifyButtons(objects: DetectedObject[] = []): DetectedObject[] {
+  return objects.filter(o => 
+    o.type.toLowerCase().includes('button') ||
+    (o.width > 150 && o.height >= 30 && o.height <= 80) // Wide, rectangular elements
+  ).sort((a, b) => a.bounds.yTop - b.bounds.yTop);
+}
+
+/**
+ * Identify social icon-like elements from detected objects
+ * Icons are small, roughly square elements (20-60px)
+ */
+function identifyIcons(objects: DetectedObject[] = []): DetectedObject[] {
+  return objects.filter(o => 
+    o.width >= 20 && o.width <= 60 && 
+    Math.abs(o.width - o.height) < 10 // Square-ish elements
+  );
+}
+
+/**
  * Compute mathematical differences between reference and render Vision data.
  * Returns an array of human-readable difference strings for Claude to fix.
  */
@@ -118,9 +153,9 @@ export function computeVisionDifferences(
       const widthDiff = renderLogo.width - refLogo.width;
       if (Math.abs(widthDiff) > THRESHOLDS.LOGO_SIZE_DIFF) {
         if (widthDiff < 0) {
-          diffs.push(`Logo is ${Math.abs(widthDiff)}px NARROWER than reference (${renderLogo.width}px vs ${refLogo.width}px) - INCREASE logo width`);
+          diffs.push(`Logo is ${Math.abs(widthDiff)}px NARROWER than reference (${renderLogo.width}px vs ${refLogo.width}px) - INCREASE logo width to ${refLogo.width}px`);
         } else {
-          diffs.push(`Logo is ${widthDiff}px WIDER than reference (${renderLogo.width}px vs ${refLogo.width}px) - decrease logo width`);
+          diffs.push(`Logo is ${widthDiff}px WIDER than reference (${renderLogo.width}px vs ${refLogo.width}px) - decrease logo width to ${refLogo.width}px`);
         }
       }
       
@@ -128,9 +163,9 @@ export function computeVisionDifferences(
       const heightLogoDiff = renderLogo.height - refLogo.height;
       if (Math.abs(heightLogoDiff) > THRESHOLDS.LOGO_SIZE_DIFF) {
         if (heightLogoDiff < 0) {
-          diffs.push(`Logo is ${Math.abs(heightLogoDiff)}px SHORTER than reference (${renderLogo.height}px vs ${refLogo.height}px) - INCREASE logo height`);
+          diffs.push(`Logo is ${Math.abs(heightLogoDiff)}px SHORTER than reference (${renderLogo.height}px vs ${refLogo.height}px) - INCREASE logo height to ${refLogo.height}px`);
         } else {
-          diffs.push(`Logo is ${heightLogoDiff}px TALLER than reference (${renderLogo.height}px vs ${refLogo.height}px) - decrease logo height`);
+          diffs.push(`Logo is ${heightLogoDiff}px TALLER than reference (${renderLogo.height}px vs ${refLogo.height}px) - decrease logo height to ${refLogo.height}px`);
         }
       }
       
@@ -146,7 +181,52 @@ export function computeVisionDifferences(
     }
   }
   
-  // 3. Text block comparisons (font sizes and positions)
+  // 3. Button/element width and height comparisons (NEW)
+  const refButtons = identifyButtons(reference.objects);
+  const renderButtons = identifyButtons(render.objects);
+  
+  for (let i = 0; i < Math.min(refButtons.length, renderButtons.length); i++) {
+    const refBtn = refButtons[i];
+    const renderBtn = renderButtons[i];
+    
+    const widthDiff = renderBtn.width - refBtn.width;
+    if (Math.abs(widthDiff) > THRESHOLDS.BUTTON_WIDTH_DIFF) {
+      if (widthDiff < 0) {
+        diffs.push(`Button ${i + 1} is ${Math.abs(widthDiff)}px NARROWER (render=${renderBtn.width}px vs reference=${refBtn.width}px) - INCREASE button width to ${refBtn.width}px`);
+      } else {
+        diffs.push(`Button ${i + 1} is ${widthDiff}px WIDER (render=${renderBtn.width}px vs reference=${refBtn.width}px) - decrease button width to ${refBtn.width}px`);
+      }
+    }
+    
+    const heightDiff = renderBtn.height - refBtn.height;
+    if (Math.abs(heightDiff) > THRESHOLDS.BUTTON_HEIGHT_DIFF) {
+      if (heightDiff < 0) {
+        diffs.push(`Button ${i + 1} is ${Math.abs(heightDiff)}px SHORTER (render=${renderBtn.height}px vs reference=${refBtn.height}px) - INCREASE button height to ${refBtn.height}px`);
+      } else {
+        diffs.push(`Button ${i + 1} is ${heightDiff}px TALLER (render=${renderBtn.height}px vs reference=${refBtn.height}px) - decrease button height to ${refBtn.height}px`);
+      }
+    }
+  }
+  
+  // 4. Social icon size comparison (NEW)
+  const refIcons = identifyIcons(reference.objects);
+  const renderIcons = identifyIcons(render.objects);
+  
+  if (refIcons.length > 0 && renderIcons.length > 0) {
+    const avgRefIconSize = refIcons.reduce((sum, i) => sum + i.width, 0) / refIcons.length;
+    const avgRenderIconSize = renderIcons.reduce((sum, i) => sum + i.width, 0) / renderIcons.length;
+    
+    const iconSizeDiff = avgRenderIconSize - avgRefIconSize;
+    if (Math.abs(iconSizeDiff) > THRESHOLDS.ICON_SIZE_DIFF) {
+      if (iconSizeDiff < 0) {
+        diffs.push(`Social icons are ${Math.abs(Math.round(iconSizeDiff))}px SMALLER on average (render=${Math.round(avgRenderIconSize)}px vs reference=${Math.round(avgRefIconSize)}px) - INCREASE icon size to ${Math.round(avgRefIconSize)}px`);
+      } else {
+        diffs.push(`Social icons are ${Math.round(iconSizeDiff)}px LARGER on average (render=${Math.round(avgRenderIconSize)}px vs reference=${Math.round(avgRefIconSize)}px) - decrease icon size to ${Math.round(avgRefIconSize)}px`);
+      }
+    }
+  }
+  
+  // 5. Text block comparisons (font sizes, positions, AND widths)
   const significantRefTexts = reference.textBlocks.filter(t => 
     t.estimatedFontSize >= 10 && t.text.length >= 3
   );
@@ -167,9 +247,9 @@ export function computeVisionDifferences(
     if (Math.abs(fontDiff) > THRESHOLDS.FONT_SIZE_DIFF) {
       const textPreview = refText.text.substring(0, 20);
       if (fontDiff < 0) {
-        diffs.push(`"${textPreview}": font is ${Math.abs(fontDiff)}px SMALLER (${matchingRender.estimatedFontSize}px vs ${refText.estimatedFontSize}px) - INCREASE font-size`);
+        diffs.push(`"${textPreview}": font is ${Math.abs(fontDiff)}px SMALLER (${matchingRender.estimatedFontSize}px vs ${refText.estimatedFontSize}px) - INCREASE font-size to ${refText.estimatedFontSize}px`);
       } else {
-        diffs.push(`"${textPreview}": font is ${fontDiff}px LARGER (${matchingRender.estimatedFontSize}px vs ${refText.estimatedFontSize}px) - decrease font-size`);
+        diffs.push(`"${textPreview}": font is ${fontDiff}px LARGER (${matchingRender.estimatedFontSize}px vs ${refText.estimatedFontSize}px) - decrease font-size to ${refText.estimatedFontSize}px`);
       }
     }
     
@@ -183,20 +263,33 @@ export function computeVisionDifferences(
         diffs.push(`"${textPreview}": is ${Math.abs(textYDiff)}px HIGHER than reference - move DOWN`);
       }
     }
+    
+    // Width comparison (for button labels/containers) - NEW
+    if (refText.width > 100) { // Only compare significant width text
+      const widthDiff = matchingRender.width - refText.width;
+      if (Math.abs(widthDiff) > THRESHOLDS.TEXT_WIDTH_DIFF) {
+        const textPreview = refText.text.substring(0, 15);
+        if (widthDiff < 0) {
+          diffs.push(`"${textPreview}" container is ${Math.abs(widthDiff)}px NARROWER (${matchingRender.width}px vs ${refText.width}px) - INCREASE container/button width`);
+        } else {
+          diffs.push(`"${textPreview}" container is ${widthDiff}px WIDER (${matchingRender.width}px vs ${refText.width}px) - decrease container width`);
+        }
+      }
+    }
   }
   
-  // 4. Color palette comparison
+  // 6. Color palette comparison
   const bgColorDiff = colorRgbDistance(reference.colorPalette.background, render.colorPalette.background);
   if (bgColorDiff > THRESHOLDS.COLOR_DIFF) {
-    diffs.push(`Background color mismatch: render=${render.colorPalette.background} vs reference=${reference.colorPalette.background} - use exact reference color`);
+    diffs.push(`Background color mismatch: render=${render.colorPalette.background} vs reference=${reference.colorPalette.background} - use exact reference color ${reference.colorPalette.background}`);
   }
   
   const textColorDiff = colorRgbDistance(reference.colorPalette.text, render.colorPalette.text);
   if (textColorDiff > THRESHOLDS.COLOR_DIFF) {
-    diffs.push(`Text color mismatch: render=${render.colorPalette.text} vs reference=${reference.colorPalette.text} - use exact reference color`);
+    diffs.push(`Text color mismatch: render=${render.colorPalette.text} vs reference=${reference.colorPalette.text} - use exact reference color ${reference.colorPalette.text}`);
   }
   
-  // 5. Section boundary comparison (major horizontal edges)
+  // 7. Section boundary comparison (major horizontal edges)
   if (reference.horizontalEdges.length > 0 && render.horizontalEdges.length > 0) {
     const refMainEdge = reference.horizontalEdges[0];
     const renderMainEdge = render.horizontalEdges[0];
