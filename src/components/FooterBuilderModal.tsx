@@ -19,7 +19,9 @@ import { AssetCollectionModal } from './AssetCollectionModal';
 import type { Brand, SocialLink } from '@/types/brand-assets';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import type { FooterType, FooterSliceResponse, ImageFooterSlice, LegalSectionData, generateImageFooterHtml } from '@/types/footer';
+import { useFooterProcessingJob } from '@/hooks/useFooterProcessingJob';
 
 interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -151,8 +153,38 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   // Image footer specific state
   const [imageFooterSlices, setImageFooterSlices] = useState<ImageFooterSlice[]>([]);
   const [imageFooterLegalSection, setImageFooterLegalSection] = useState<LegalSectionData | null>(null);
-  const [isSlicingFooter, setIsSlicingFooter] = useState(false);
   const [imageFooterDimensions, setImageFooterDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [cloudinaryPublicId, setCloudinaryPublicId] = useState<string | null>(null);
+  
+  // Footer processing job hook - NEW PIPELINE INTEGRATION
+  const {
+    job: footerJob,
+    isLoading: isJobLoading,
+    processingStep: jobProcessingStep,
+    processingPercent: jobProcessingPercent,
+    status: jobStatus,
+    slices: jobSlices,
+    legalSection: jobLegalSection,
+    createJob: createFooterJob,
+    completeJob: completeFooterJob,
+    reset: resetFooterJob,
+  } = useFooterProcessingJob({
+    onComplete: (job) => {
+      console.log('[FooterBuilderModal] Processing complete:', job.id);
+      // Transition slices/legalSection to local state for editing
+      setImageFooterSlices(job.slices || []);
+      setImageFooterLegalSection(job.legal_section || null);
+      setStep('review');
+      toast.success('Footer analyzed! Review and edit the links below.');
+    },
+    onError: (error) => {
+      console.error('[FooterBuilderModal] Processing failed:', error);
+      toast.error(error || 'Footer processing failed');
+    }
+  });
+  
+  // Derived: is footer job processing?
+  const isFooterJobProcessing = jobStatus === 'processing';
   
   // Figma state
   const [figmaUrl, setFigmaUrl] = useState('');
@@ -310,8 +342,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     setImageFooterSlices([]);
     setImageFooterLegalSection(null);
     setImageFooterDimensions(null);
+    setCloudinaryPublicId(null);
+    resetFooterJob(); // Reset job state
     setStep('type');
-  }, [brand.socialLinks]);
+  }, [brand.socialLinks, resetFooterJob]);
 
   // No brand library - user uploads all assets explicitly
 
@@ -795,7 +829,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
   // ========== IMAGE FOOTER HANDLERS ==========
 
-  // Handle image footer upload
+  // Handle image footer upload - now uses job-based processing
   const handleImageFooterUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       toast.error('Please upload an image file');
@@ -819,43 +853,84 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         if (uploadError) throw uploadError;
         
         setReferenceImageUrl(uploadData.url);
+        setCloudinaryPublicId(uploadData.public_id || null);
         setImageFooterDimensions({ width: uploadData.width, height: uploadData.height });
-        
-        // Now slice the footer
-        setIsSlicingFooter(true);
-        
-        const { data: sliceData, error: sliceError } = await supabase.functions.invoke('auto-slice-footer', {
-          body: { 
-            imageUrl: uploadData.url,
-            brandDomain: brand.domain,
-            imageWidth: uploadData.width,
-            imageHeight: uploadData.height,
-          }
-        });
-
-        if (sliceError) {
-          console.error('Slice error:', sliceError);
-          toast.error('Failed to analyze footer');
-        } else if (sliceData?.success) {
-          console.log('Footer sliced:', sliceData);
-          setImageFooterSlices(sliceData.slices || []);
-          setImageFooterLegalSection(sliceData.legalSection || null);
-          toast.success('Footer analyzed successfully');
-        } else {
-          toast.error(sliceData?.error || 'Failed to slice footer');
-        }
-        
-        setIsSlicingFooter(false);
         setIsUploadingReference(false);
+        
+        // Create a processing job instead of inline slicing
+        const jobId = await createFooterJob({
+          brandId: brand.id,
+          source: sourceType === 'figma' ? 'figma' : 'upload',
+          sourceUrl: sourceType === 'figma' ? figmaUrl : undefined,
+          imageUrl: uploadData.url,
+          cloudinaryPublicId: uploadData.public_id,
+          imageWidth: uploadData.width,
+          imageHeight: uploadData.height,
+        });
+        
+        if (!jobId) {
+          toast.error('Failed to start footer processing');
+        } else {
+          console.log('[FooterBuilderModal] Created processing job:', jobId);
+        }
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload image');
       setIsUploadingReference(false);
-      setIsSlicingFooter(false);
     }
-  }, [brand.domain]);
+  }, [brand.domain, brand.id, sourceType, figmaUrl, createFooterJob]);
+
+  // Handle Figma URL for image footer route
+  const handleImageFooterFigmaFetch = useCallback(async () => {
+    if (!figmaUrl.trim()) {
+      toast.error('Please enter a Figma URL');
+      return;
+    }
+
+    setIsFetchingFigma(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
+        body: { figmaUrl }
+      });
+
+      if (error) throw error;
+      
+      if (!data.success || !data.exportedImageUrl) {
+        throw new Error(data.error || 'Failed to fetch Figma design');
+      }
+
+      // Set the image and start processing
+      setReferenceImageUrl(data.exportedImageUrl);
+      setImageFooterDimensions({ 
+        width: data.dimensions?.width || 600, 
+        height: data.dimensions?.height || 400 
+      });
+      
+      toast.success('Figma design fetched');
+      
+      // Create processing job
+      const jobId = await createFooterJob({
+        brandId: brand.id,
+        source: 'figma',
+        sourceUrl: figmaUrl,
+        imageUrl: data.exportedImageUrl,
+        imageWidth: data.dimensions?.width || 600,
+        imageHeight: data.dimensions?.height || 400,
+      });
+      
+      if (!jobId) {
+        toast.error('Failed to start footer processing');
+      }
+      
+    } catch (error) {
+      console.error('Figma fetch error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch Figma design');
+    } finally {
+      setIsFetchingFigma(false);
+    }
+  }, [figmaUrl, brand.id, createFooterJob]);
 
   const handleImageFooterDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -929,6 +1004,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         .update({ footer_configured: true })
         .eq('id', brand.id);
 
+      // Mark processing job as completed
+      await completeFooterJob();
+
       toast.success('Footer saved successfully!');
       onFooterSaved();
       onOpenChange(false);
@@ -938,7 +1016,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     } finally {
       setIsSavingImageFooter(false);
     }
-  }, [referenceImageUrl, imageFooterSlices, imageFooterLegalSection, imageFooterDimensions, brand.id, onFooterSaved, onOpenChange]);
+  }, [referenceImageUrl, imageFooterSlices, imageFooterLegalSection, imageFooterDimensions, brand.id, onFooterSaved, onOpenChange, completeFooterJob]);
 
   // ========== END IMAGE FOOTER HANDLERS ==========
 
@@ -1226,7 +1304,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     placeholder="https://www.figma.com/file/..."
                     className="flex-1"
                   />
-                  <Button onClick={handleFetchFigma} disabled={isFetchingFigma || !figmaUrl.trim()}>
+                  <Button onClick={handleImageFooterFigmaFetch} disabled={isFetchingFigma || !figmaUrl.trim()}>
                     {isFetchingFigma ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Fetch'}
                   </Button>
                 </div>
@@ -1266,10 +1344,25 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   </Button>
                 </div>
 
-                {isSlicingFooter ? (
-                  <div className="flex items-center justify-center gap-2 py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                    <span className="text-sm text-muted-foreground">Analyzing footer structure...</span>
+                {isFooterJobProcessing ? (
+                  <div className="space-y-3 py-4">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">
+                        {jobProcessingStep === 'fetching_image' && 'Fetching image...'}
+                        {jobProcessingStep === 'slicing' && 'Detecting clickable areas...'}
+                        {jobProcessingStep === 'legal_detection' && 'Finding legal section...'}
+                        {jobProcessingStep === 'generating_urls' && 'Generating image URLs...'}
+                        {jobProcessingStep === 'finalizing' && 'Finalizing...'}
+                        {(!jobProcessingStep || jobProcessingStep === 'queued') && 'Starting analysis...'}
+                      </span>
+                    </div>
+                    <div className="max-w-xs mx-auto">
+                      <Progress value={jobProcessingPercent} className="h-1.5" />
+                      <p className="text-xs text-center text-muted-foreground mt-1">
+                        {jobProcessingPercent}% complete
+                      </p>
+                    </div>
                   </div>
                 ) : imageFooterSlices.length > 0 ? (
                   <div className="flex items-center gap-2 text-sm text-green-600">
@@ -2022,7 +2115,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         // Lock navigation while processing
         return !isProcessingReference;
       case 'upload':
-        return referenceImageUrl !== null && !isSlicingFooter;
+        return referenceImageUrl !== null && !isFooterJobProcessing;
       case 'review':
         return imageFooterSlices.length > 0;
       case 'links': return true;
