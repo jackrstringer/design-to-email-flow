@@ -391,6 +391,13 @@ async function extractColorPalette(imageBase64: string): Promise<ColorPalette> {
     // Sample colors from the image
     const colorCounts: Map<string, number> = new Map();
     
+    // Quantization function: preserve pure white/black, use finer 8-step for mid-range
+    const quantize = (v: number): number => {
+      if (v >= 250) return 255; // Preserve pure white
+      if (v <= 5) return 0;     // Preserve pure black
+      return Math.round(v / 8) * 8; // Finer 8-step for mid-range colors
+    };
+    
     // Sample every 10th pixel to speed up
     for (let y = 0; y < image.height; y += 10) {
       for (let x = 0; x < image.width; x += 10) {
@@ -399,11 +406,9 @@ async function extractColorPalette(imageBase64: string): Promise<ColorPalette> {
         const g = (pixel >> 16) & 0xFF;
         const b = (pixel >> 8) & 0xFF;
         
-        // Quantize to reduce unique colors - clamp to prevent overflow
-        // Use floor then clamp to ensure we never exceed 240
-        const qr = Math.min(240, Math.floor(r / 16) * 16);
-        const qg = Math.min(240, Math.floor(g / 16) * 16);
-        const qb = Math.min(240, Math.floor(b / 16) * 16);
+        const qr = quantize(r);
+        const qg = quantize(g);
+        const qb = quantize(b);
         
         const hex = rgbToHex(qr, qg, qb);
         colorCounts.set(hex, (colorCounts.get(hex) || 0) + 1);

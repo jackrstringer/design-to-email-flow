@@ -299,13 +299,19 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         ? `\n\nAvailable logo URLs (use exactly as provided):\n${Object.entries(assets).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\nFor dark backgrounds, use the "logo" or "brand_logo_light" URL.`
         : '';
 
+      // Check if there's a background color issue (highest priority)
+      const hasColorIssue = mathematicalDiffs.some(d => d.includes('Background color') || d.includes('CRITICAL'));
+      const colorFirstInstruction = hasColorIssue 
+        ? `\n\n⚠️⚠️⚠️ BEFORE ANYTHING ELSE: Fix the background color. The mathematical analysis shows the background is WRONG. Set background-color on EVERY table element to the exact reference value.\n`
+        : '';
+
       // Build mathematical differences section if available
       const mathDiffSection = mathematicalDiffs.length > 0 
         ? `
 ## 🎯 MATHEMATICAL DISCREPANCIES (from Vision API analysis)
 These are PRECISE pixel measurements comparing reference vs current render.
 FIX THESE SPECIFIC VALUES - do not guess, use the exact pixel differences:
-
+${colorFirstInstruction}
 ${mathematicalDiffs.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 
 CRITICAL: The above measurements are from automated Vision analysis. They are MORE RELIABLE than visual estimation.

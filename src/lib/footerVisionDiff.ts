@@ -49,7 +49,7 @@ const THRESHOLDS = {
   FONT_SIZE_DIFF: 3,      // pixels
   TEXT_Y_DIFF: 10,        // pixels
   TEXT_WIDTH_DIFF: 30,    // pixels - for button labels
-  COLOR_DIFF: 30,         // RGB distance
+  COLOR_DIFF: 15,         // RGB distance - lowered to catch white vs light grey
   SECTION_Y_DIFF: 15,     // pixels
   BUTTON_WIDTH_DIFF: 20,  // pixels
   BUTTON_HEIGHT_DIFF: 8,  // pixels
@@ -152,7 +152,18 @@ export function computeVisionDifferences(
 ): string[] {
   const diffs: string[] = [];
   
-  // 1. Overall height comparison
+  // 1. COLOR FIRST (highest priority - most obvious visual difference)
+  const bgColorDiff = colorRgbDistance(reference.colorPalette.background, render.colorPalette.background);
+  if (bgColorDiff > THRESHOLDS.COLOR_DIFF) {
+    diffs.push(`⚠️ CRITICAL: Background color is WRONG. Reference=${reference.colorPalette.background}, render=${render.colorPalette.background} → SET background-color: ${reference.colorPalette.background} on ALL wrapper tables`);
+  }
+  
+  const textColorDiff = colorRgbDistance(reference.colorPalette.text, render.colorPalette.text);
+  if (textColorDiff > THRESHOLDS.COLOR_DIFF) {
+    diffs.push(`⚠️ CRITICAL: Text color is WRONG. Reference=${reference.colorPalette.text}, render=${render.colorPalette.text} → SET color: ${reference.colorPalette.text} on text elements`);
+  }
+  
+  // 2. Overall height comparison
   const heightDiff = render.dimensions.height - reference.dimensions.height;
   if (Math.abs(heightDiff) > THRESHOLDS.HEIGHT_DIFF) {
     if (heightDiff > 0) {
@@ -303,16 +314,8 @@ export function computeVisionDifferences(
     }
   }
   
-  // 6. Color palette comparison
-  const bgColorDiff = colorRgbDistance(reference.colorPalette.background, render.colorPalette.background);
-  if (bgColorDiff > THRESHOLDS.COLOR_DIFF) {
-    diffs.push(`Background color mismatch: render=${render.colorPalette.background} vs reference=${reference.colorPalette.background} - use exact reference color ${reference.colorPalette.background}`);
-  }
-  
-  const textColorDiff = colorRgbDistance(reference.colorPalette.text, render.colorPalette.text);
-  if (textColorDiff > THRESHOLDS.COLOR_DIFF) {
-    diffs.push(`Text color mismatch: render=${render.colorPalette.text} vs reference=${reference.colorPalette.text} - use exact reference color ${reference.colorPalette.text}`);
-  }
+  // 6. Color palette comparison - MOVED TO POSITION #1 for highest priority
+  // (Already checked at the start of the function)
   
   // 7. Section boundary comparison (major horizontal edges)
   if (reference.horizontalEdges.length > 0 && render.horizontalEdges.length > 0) {
