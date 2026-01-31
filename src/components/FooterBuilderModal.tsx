@@ -1155,48 +1155,94 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         );
         
       case 'upload':
-        // Image footer upload step
+        // Image footer upload step - with source selection
         return (
           <div className="space-y-4">
             <div className="text-center space-y-2 py-4">
               <h3 className="font-medium">Upload your footer image</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Upload a screenshot of your footer. We'll automatically detect the legal section.
+                Upload a screenshot or paste a Figma link. We'll automatically detect clickable areas.
               </p>
             </div>
 
-            {!referenceImageUrl ? (
-              <div
-                onDrop={handleImageFooterDrop}
-                onDragOver={(e) => e.preventDefault()}
-                onClick={() => imageFooterInputRef.current?.click()}
-                className="border-2 border-dashed border-border/60 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
-              >
-                {isUploadingReference ? (
-                  <div className="space-y-2">
-                    <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Uploading...</p>
-                  </div>
-                ) : (
+            {/* Source selection - show if no image yet */}
+            {!referenceImageUrl && !sourceType && (
+              <div className="grid grid-cols-2 gap-4">
+                <div
+                  onDrop={handleImageFooterDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => imageFooterInputRef.current?.click()}
+                  className="border-2 border-dashed border-border/60 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                >
+                  {isUploadingReference ? (
+                    <div className="space-y-2">
+                      <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Uploading...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">Upload Image</p>
+                        <p className="text-xs text-muted-foreground">Drop or click to browse</p>
+                      </div>
+                    </div>
+                  )}
+                  <input
+                    ref={imageFooterInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleImageFooterUpload(e.target.files[0])}
+                  />
+                </div>
+
+                <div
+                  onClick={() => setSourceType('figma')}
+                  className="border-2 border-dashed border-border/60 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-all"
+                >
                   <div className="space-y-3">
-                    <div className="w-14 h-14 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
-                      <ImageIcon className="w-7 h-7 text-muted-foreground" />
+                    <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                      <Figma className="w-6 h-6 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-medium">Drop footer image here</p>
-                      <p className="text-sm text-muted-foreground">or click to browse</p>
+                      <p className="font-medium text-sm">Figma Link</p>
+                      <p className="text-xs text-muted-foreground">Paste frame URL</p>
                     </div>
                   </div>
-                )}
-                <input
-                  ref={imageFooterInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && handleImageFooterUpload(e.target.files[0])}
-                />
+                </div>
               </div>
-            ) : (
+            )}
+
+            {/* Figma URL input */}
+            {sourceType === 'figma' && !referenceImageUrl && (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    value={figmaUrl}
+                    onChange={(e) => setFigmaUrl(e.target.value)}
+                    placeholder="https://www.figma.com/file/..."
+                    className="flex-1"
+                  />
+                  <Button onClick={handleFetchFigma} disabled={isFetchingFigma || !figmaUrl.trim()}>
+                    {isFetchingFigma ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Fetch'}
+                  </Button>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => { setSourceType(null); setFigmaUrl(''); }}
+                  className="text-xs"
+                >
+                  <ChevronLeft className="w-3 h-3 mr-1" /> Back to options
+                </Button>
+              </div>
+            )}
+
+            {/* Image preview */}
+            {referenceImageUrl && (
               <div className="space-y-4">
                 <div className="relative rounded-lg overflow-hidden border bg-muted/20">
                   <img 
@@ -1210,8 +1256,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     className="absolute top-2 right-2 bg-background/80 hover:bg-background"
                     onClick={() => {
                       setReferenceImageUrl(null);
+                      setSourceType(null);
                       setImageFooterSlices([]);
                       setImageFooterLegalSection(null);
+                      setFigmaUrl('');
                     }}
                   >
                     <X className="w-4 h-4" />
@@ -1221,12 +1269,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {isSlicingFooter ? (
                   <div className="flex items-center justify-center gap-2 py-4">
                     <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                    <span className="text-sm text-muted-foreground">Analyzing footer...</span>
+                    <span className="text-sm text-muted-foreground">Analyzing footer structure...</span>
                   </div>
                 ) : imageFooterSlices.length > 0 ? (
                   <div className="flex items-center gap-2 text-sm text-green-600">
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Footer analyzed! Found {imageFooterSlices.length} visual section(s)</span>
+                    <span>Found {imageFooterSlices.length} clickable section(s)</span>
+                    {imageFooterLegalSection && <Badge variant="secondary" className="text-xs">+ Legal section</Badge>}
                   </div>
                 ) : null}
               </div>
@@ -1247,7 +1296,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {imageFooterSlices.map((slice, idx) => (
-                <div key={slice.id} className="border rounded-lg p-3 space-y-2">
+                <div key={`slice-${idx}`} className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center gap-3">
                     <img 
                       src={slice.imageUrl} 

@@ -558,6 +558,80 @@ export type Database = {
           },
         ]
       }
+      footer_processing_jobs: {
+        Row: {
+          brand_id: string
+          cloudinary_public_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          image_height: number | null
+          image_url: string
+          image_width: number | null
+          legal_cutoff_y: number | null
+          legal_section: Json | null
+          processing_completed_at: string | null
+          processing_percent: number | null
+          processing_step: string | null
+          slices: Json | null
+          source: string
+          source_url: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          brand_id: string
+          cloudinary_public_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          image_height?: number | null
+          image_url: string
+          image_width?: number | null
+          legal_cutoff_y?: number | null
+          legal_section?: Json | null
+          processing_completed_at?: string | null
+          processing_percent?: number | null
+          processing_step?: string | null
+          slices?: Json | null
+          source: string
+          source_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          brand_id?: string
+          cloudinary_public_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          image_height?: number | null
+          image_url?: string
+          image_width?: number | null
+          legal_cutoff_y?: number | null
+          legal_section?: Json | null
+          processing_completed_at?: string | null
+          processing_percent?: number | null
+          processing_step?: string | null
+          slices?: Json | null
+          source?: string
+          source_url?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "footer_processing_jobs_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plugin_tokens: {
         Row: {
           created_at: string | null
