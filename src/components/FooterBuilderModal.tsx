@@ -163,6 +163,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [logoConversionNeeded, setLogoConversionNeeded] = useState<LogoConversionNeeded | null>(null);
   const [isInvertingLogo, setIsInvertingLogo] = useState(false);
   
+  // Vision analysis data for precise generation
+  const [footerVisionData, setFooterVisionData] = useState<any>(null);
+  const [isAnalyzingVision, setIsAnalyzingVision] = useState(false);
+  
   // Asset collection modal state
   const [showAssetCollectionModal, setShowAssetCollectionModal] = useState(false);
   const [collectedAssets, setCollectedAssets] = useState<Record<string, string>>({});
@@ -352,12 +356,20 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     setIsExtractingAssets(true);
     setLogoAnalysis(null);
     setLogoConversionNeeded(null);
+    setFooterVisionData(null);
     
     try {
-      const { data, error } = await supabase.functions.invoke('extract-section-assets', {
-        body: { referenceImageUrl: imageUrl }
-      });
+      // Run asset extraction and Vision analysis in parallel
+      const [assetResult, visionResult] = await Promise.all([
+        supabase.functions.invoke('extract-section-assets', {
+          body: { referenceImageUrl: imageUrl }
+        }),
+        supabase.functions.invoke('analyze-footer-reference', {
+          body: { imageUrl }
+        })
+      ]);
 
+      const { data, error } = assetResult;
       if (error) throw error;
       
       if (!data.success) {
@@ -365,6 +377,18 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       }
 
       console.log('Extracted assets:', data);
+      
+      // Store Vision data for generation
+      if (visionResult.data?.success) {
+        console.log('Vision analysis complete:', {
+          textBlocks: visionResult.data.textBlocks?.length,
+          logos: visionResult.data.logos?.length,
+          processingTime: visionResult.data.processingTimeMs
+        });
+        setFooterVisionData(visionResult.data);
+      } else {
+        console.warn('Vision analysis failed:', visionResult.error || visionResult.data?.error);
+      }
 
       // Store logo analysis result
       const logoAnalysisResult = data.logo_analysis as LogoAnalysis | null;
@@ -806,7 +830,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
           conversationHistory: [], // Fresh conversation
           // Brand context for isolation - prevents Claude from substituting other brands' logos
           brandName: brand.name,
-          brandDomain: cleanBrandDomain
+          brandDomain: cleanBrandDomain,
+          // Vision data for precise measurements
+          visionData: footerVisionData || undefined
         }
       });
 
@@ -818,6 +844,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
       console.log('Footer generated, HTML length:', data.html.length);
       console.log('Conversation history length:', data.conversationHistory?.length || 0);
+      console.log('Vision data was provided:', !!footerVisionData);
 
       // Create a session in the database for conversation continuity
       let sessionId: string | null = null;
@@ -832,6 +859,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             conversation_history: data.conversationHistory || [],
             footer_name: 'New Footer',
             figma_design_data: figmaData ? { design: figmaData.design, designData: figmaData.designData } : null,
+            vision_data: footerVisionData || null,
           })
           .select('id')
           .single();

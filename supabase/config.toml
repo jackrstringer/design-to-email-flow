@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.crawl-brand-site]
 verify_jwt = false
+
+[functions.analyze-footer-render]
+verify_jwt = false

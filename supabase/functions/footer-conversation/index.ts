@@ -71,8 +71,12 @@ interface FooterConversationRequest {
   links?: LinkMapping[];
   brandName?: string;
   brandDomain?: string;
-  // NEW: Vision analysis data for precise refinement
+  // Vision analysis data for precise refinement
   visionData?: FooterVisionData;
+  // NEW: Render analysis data for mathematical comparison
+  renderVisionData?: FooterVisionData;
+  // NEW: Pre-computed mathematical differences
+  mathematicalDiffs?: string[];
 }
 
 serve(async (req) => {
@@ -95,7 +99,9 @@ serve(async (req) => {
       links = [],
       brandName,
       brandDomain,
-      visionData
+      visionData,
+      renderVisionData,
+      mathematicalDiffs = []
     } = request;
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -109,6 +115,8 @@ serve(async (req) => {
       hasSideBySide: !!sideBySideScreenshotUrl,
       hasCurrentHtml: !!currentHtml,
       hasVisionData: !!visionData,
+      hasRenderVisionData: !!renderVisionData,
+      hasMathDiffs: mathematicalDiffs.length > 0,
       historyLength: conversationHistory.length,
       assetCount: Object.keys(assets).length
     });
@@ -282,6 +290,19 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
         ? `\n\nAvailable logo URLs (use exactly as provided):\n${Object.entries(assets).map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n\nFor dark backgrounds, use the "logo" or "brand_logo_light" URL.`
         : '';
 
+      // Build mathematical differences section if available
+      const mathDiffSection = mathematicalDiffs.length > 0 
+        ? `
+## 🎯 MATHEMATICAL DISCREPANCIES (from Vision API analysis)
+These are PRECISE pixel measurements comparing reference vs current render.
+FIX THESE SPECIFIC VALUES - do not guess, use the exact pixel differences:
+
+${mathematicalDiffs.map((d, i) => `${i + 1}. ${d}`).join('\n')}
+
+CRITICAL: The above measurements are from automated Vision analysis. They are MORE RELIABLE than visual estimation.
+`
+        : '';
+
       // Surgical refinement instructions - minimal changes only
       const surgicalRules = `
 ⚠️ SURGICAL REFINEMENT RULES (CRITICAL):
@@ -294,7 +315,8 @@ When asked to generate or refine HTML, return ONLY the HTML code wrapped in \`\`
 7. NEVER reduce element sizes - only increase if needed
 8. Width MUST remain 600px
 
-${visionData ? `Reference dimensions: ${visionData.dimensions.width}x${visionData.dimensions.height}px, bg=${visionData.colorPalette.background}` : ''}`;
+${visionData ? `Reference dimensions: ${visionData.dimensions.width}x${visionData.dimensions.height}px, bg=${visionData.colorPalette.background}` : ''}
+${renderVisionData ? `Render dimensions: ${renderVisionData.dimensions.width}x${renderVisionData.dimensions.height}px, bg=${renderVisionData.colorPalette.background}` : ''}`;
 
       newUserContent = [
         {
@@ -304,7 +326,7 @@ ${visionData ? `Reference dimensions: ${visionData.dimensions.width}x${visionDat
         {
           type: 'text',
           text: `Compare LEFT (reference) vs RIGHT (current render).
-
+${mathDiffSection}
 ${surgicalRules}
 
 Look for these specific differences:
