@@ -239,10 +239,11 @@ export function CampaignStudio({
           console.log('Vision analysis complete:', {
             textBlocks: data.textBlocks?.length,
             logos: data.logos?.length,
+            objects: data.objects?.length, // NEW: Log object count for buttons/icons
             processingTime: data.processingTimeMs
           });
           setFooterVisionData(data);
-          toast.success(`Reference analyzed: ${data.textBlocks?.length || 0} text blocks detected`);
+          toast.success(`Reference analyzed: ${data.textBlocks?.length || 0} text blocks, ${data.objects?.length || 0} elements`);
         }
       } catch (err) {
         console.error('Vision analysis failed:', err);
