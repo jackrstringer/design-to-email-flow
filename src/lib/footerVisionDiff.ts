@@ -122,6 +122,27 @@ function identifyIcons(objects: DetectedObject[] = []): DetectedObject[] {
 }
 
 /**
+ * Synthesize button-like objects from wide text blocks
+ * This is a fallback when OBJECT_LOCALIZATION doesn't detect HTML buttons
+ */
+function synthesizeButtonsFromText(textBlocks: TextBlock[]): DetectedObject[] {
+  return textBlocks
+    .filter(t => 
+      t.width > 150 && // Wide text likely a button label
+      t.height >= 20 && 
+      t.height <= 60 &&
+      t.text.length < 30 // Button labels are short
+    )
+    .map(t => ({
+      type: 'SyntheticButton',
+      bounds: t.bounds,
+      width: t.width,
+      height: t.height,
+      score: 0.8
+    }));
+}
+
+/**
  * Compute mathematical differences between reference and render Vision data.
  * Returns an array of human-readable difference strings for Claude to fix.
  */
@@ -153,37 +174,41 @@ export function computeVisionDifferences(
       const widthDiff = renderLogo.width - refLogo.width;
       if (Math.abs(widthDiff) > THRESHOLDS.LOGO_SIZE_DIFF) {
         if (widthDiff < 0) {
-          diffs.push(`Logo is ${Math.abs(widthDiff)}px NARROWER than reference (${renderLogo.width}px vs ${refLogo.width}px) - INCREASE logo width to ${refLogo.width}px`);
+          diffs.push(`LOGO WIDTH: render=${renderLogo.width}px, reference=${refLogo.width}px → SET width="${refLogo.width}" in <img> tag`);
         } else {
-          diffs.push(`Logo is ${widthDiff}px WIDER than reference (${renderLogo.width}px vs ${refLogo.width}px) - decrease logo width to ${refLogo.width}px`);
+          diffs.push(`LOGO WIDTH: render=${renderLogo.width}px, reference=${refLogo.width}px → SET width="${refLogo.width}" in <img> tag`);
         }
       }
       
       // Height comparison
       const heightLogoDiff = renderLogo.height - refLogo.height;
       if (Math.abs(heightLogoDiff) > THRESHOLDS.LOGO_SIZE_DIFF) {
-        if (heightLogoDiff < 0) {
-          diffs.push(`Logo is ${Math.abs(heightLogoDiff)}px SHORTER than reference (${renderLogo.height}px vs ${refLogo.height}px) - INCREASE logo height to ${refLogo.height}px`);
-        } else {
-          diffs.push(`Logo is ${heightLogoDiff}px TALLER than reference (${renderLogo.height}px vs ${refLogo.height}px) - decrease logo height to ${refLogo.height}px`);
-        }
+        diffs.push(`LOGO HEIGHT: render=${renderLogo.height}px, reference=${refLogo.height}px → SET height="${refLogo.height}" in <img> tag`);
       }
       
       // Vertical position
       const yDiff = renderLogo.bounds.yTop - refLogo.bounds.yTop;
       if (Math.abs(yDiff) > THRESHOLDS.LOGO_POSITION_DIFF) {
         if (yDiff > 0) {
-          diffs.push(`Logo is ${yDiff}px LOWER than reference - move logo UP (reduce top padding)`);
+          diffs.push(`LOGO POSITION: ${yDiff}px too LOW → reduce top padding by ${yDiff}px`);
         } else {
-          diffs.push(`Logo is ${Math.abs(yDiff)}px HIGHER than reference - move logo DOWN (increase top padding)`);
+          diffs.push(`LOGO POSITION: ${Math.abs(yDiff)}px too HIGH → increase top padding by ${Math.abs(yDiff)}px`);
         }
       }
     }
   }
   
-  // 3. Button/element width and height comparisons (NEW)
-  const refButtons = identifyButtons(reference.objects);
-  const renderButtons = identifyButtons(render.objects);
+  // 3. Button/element comparisons - use objects OR synthesize from text
+  let refButtons = identifyButtons(reference.objects);
+  let renderButtons = identifyButtons(render.objects);
+  
+  // Fallback: if no objects detected, synthesize from wide text blocks
+  if (refButtons.length === 0) {
+    refButtons = synthesizeButtonsFromText(reference.textBlocks);
+  }
+  if (renderButtons.length === 0) {
+    renderButtons = synthesizeButtonsFromText(render.textBlocks);
+  }
   
   for (let i = 0; i < Math.min(refButtons.length, renderButtons.length); i++) {
     const refBtn = refButtons[i];
