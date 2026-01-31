@@ -206,6 +206,15 @@ export function CampaignStudio({
   // Render vision data for mathematical comparison during refinement
   const [renderVisionData, setRenderVisionData] = useState<FooterVisionData | null>(null);
   const [isAnalyzingRender, setIsAnalyzingRender] = useState(false);
+  
+  // Convergence loop state for live progress
+  const [convergenceState, setConvergenceState] = useState<{
+    isRunning: boolean;
+    currentIteration: number;
+    maxIterations: number;
+    lastDiffCount: number;
+    status: string;
+  } | null>(null);
 
   // Sync footer from props when they change (initial load or external updates)
   useEffect(() => {
@@ -533,142 +542,195 @@ export function CampaignStudio({
       return;
     }
 
-    // Footer mode: Use unified footer-conversation with side-by-side screenshot
-    // AND Vision analysis for mathematical comparison
+    // Footer mode: Use unified footer-conversation with CONVERGENCE LOOP
+    // Iterates until diff count < threshold or max iterations reached
     setIsAutoRefining(true);
     setHasAutoRefined(true);
     
-    const newMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: '[Auto-refine: Capturing & analyzing for pixel-perfect comparison]' }];
+    const MAX_ITERATIONS = 5;
+    const DIFF_THRESHOLD = 3; // Stop when <= 3 differences remain
+    
+    let currentHtml = localFooterHtml;
+    let currentHistory = claudeConversationHistory;
+    let iteration = 0;
+    let lastDiffCount = 999;
+    
+    // Initialize convergence state for live progress
+    setConvergenceState({
+      isRunning: true,
+      currentIteration: 0,
+      maxIterations: MAX_ITERATIONS,
+      lastDiffCount: 0,
+      status: 'Initializing...'
+    });
+
+    const newMessages: ChatMessage[] = [...chatMessages, { 
+      role: 'user', 
+      content: `[Auto-refine: Starting convergence loop (max ${MAX_ITERATIONS} iterations, target ≤${DIFF_THRESHOLD} diffs)]` 
+    }];
     setChatMessages(newMessages);
 
     try {
-      // Wait a moment for the preview to fully render
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Capture BOTH screenshots in parallel
-      toast.info('Capturing comparison...');
-      const [sideBySideScreenshotUrl, renderScreenshotUrl] = await Promise.all([
-        captureScreenshot(),
-        captureRenderScreenshot()
-      ]);
-      
-      if (!sideBySideScreenshotUrl) {
-        throw new Error('Failed to capture comparison panels');
-      }
-
-      // Analyze the render with Vision APIs if we have reference vision data
-      let computedRenderVision: FooterVisionData | null = null;
-      let mathematicalDiffs: string[] = [];
-      
-      if (footerVisionData && renderScreenshotUrl) {
-        toast.info('Analyzing render with Vision APIs...');
-        setIsAnalyzingRender(true);
+      while (iteration < MAX_ITERATIONS) {
+        iteration++;
         
-        try {
-          const { data: renderAnalysis, error: renderError } = await supabase.functions.invoke('analyze-footer-render', {
-            body: { renderScreenshotUrl }
-          });
+        // Update convergence state
+        setConvergenceState(prev => prev ? {
+          ...prev,
+          currentIteration: iteration,
+          status: `Iteration ${iteration}/${MAX_ITERATIONS}: Capturing screenshot...`
+        } : null);
+        
+        // Wait for the preview to fully render
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Capture BOTH screenshots in parallel
+        setConvergenceState(prev => prev ? {
+          ...prev,
+          status: `Iteration ${iteration}/${MAX_ITERATIONS}: Analyzing with Vision API...`
+        } : null);
+        
+        const [sideBySideScreenshotUrl, renderScreenshotUrl] = await Promise.all([
+          captureScreenshot(),
+          captureRenderScreenshot()
+        ]);
+        
+        if (!sideBySideScreenshotUrl) {
+          throw new Error('Failed to capture comparison panels');
+        }
+
+        // Analyze the render with Vision APIs
+        let computedRenderVision: FooterVisionData | null = null;
+        let mathematicalDiffs: string[] = [];
+        
+        if (footerVisionData && renderScreenshotUrl) {
+          setIsAnalyzingRender(true);
           
-          if (renderError) {
-            console.warn('Render Vision analysis failed:', renderError);
-          } else if (renderAnalysis?.success) {
-            computedRenderVision = renderAnalysis as FooterVisionData;
-            setRenderVisionData(computedRenderVision);
+          try {
+            const { data: renderAnalysis, error: renderError } = await supabase.functions.invoke('analyze-footer-render', {
+              body: { renderScreenshotUrl }
+            });
             
-            // Compute mathematical differences between reference and render
-            mathematicalDiffs = computeVisionDifferences(footerVisionData, computedRenderVision);
-            console.log('Mathematical differences computed:', mathematicalDiffs.length);
-            
-            if (mathematicalDiffs.length > 0) {
-              toast.success(`Found ${mathematicalDiffs.length} measurable differences`);
-            } else {
-              toast.success('Render closely matches reference!');
+            if (!renderError && renderAnalysis?.success) {
+              computedRenderVision = renderAnalysis as FooterVisionData;
+              setRenderVisionData(computedRenderVision);
+              
+              // Compute mathematical differences between reference and render
+              mathematicalDiffs = computeVisionDifferences(footerVisionData, computedRenderVision);
+              lastDiffCount = mathematicalDiffs.length;
+              
+              console.log(`Iteration ${iteration}: ${mathematicalDiffs.length} differences found`);
+              
+              setConvergenceState(prev => prev ? {
+                ...prev,
+                lastDiffCount: mathematicalDiffs.length,
+                status: `Iteration ${iteration}/${MAX_ITERATIONS}: Found ${mathematicalDiffs.length} differences`
+              } : null);
             }
+          } catch (visionErr) {
+            console.warn('Vision comparison failed:', visionErr);
+          } finally {
+            setIsAnalyzingRender(false);
           }
-        } catch (visionErr) {
-          console.warn('Vision comparison failed:', visionErr);
-        } finally {
-          setIsAnalyzingRender(false);
         }
-      }
 
-      // Call footer-conversation with refine action - include brand assets, vision data, AND mathematical diffs
-      const { data, error } = await supabase.functions.invoke('footer-conversation', {
-        body: {
-          action: 'refine',
-          referenceImageUrl: originalImageUrl,
-          sideBySideScreenshotUrl,
-          currentHtml: localFooterHtml,
-          conversationHistory: claudeConversationHistory,
-          // Pass brand assets so Claude knows which logo URLs to use
-          assets: {
-            ...(brandContext?.lightLogoUrl ? { 
-              logo: brandContext.lightLogoUrl,
-              brand_logo_light: brandContext.lightLogoUrl 
-            } : {}),
-            ...(brandContext?.darkLogoUrl ? { 
-              brand_logo_dark: brandContext.darkLogoUrl 
-            } : {}),
-          },
-          // Pass vision data for precise measurements
-          visionData: footerVisionData,
-          // NEW: Pass render vision data and mathematical diffs
-          renderVisionData: computedRenderVision,
-          mathematicalDiffs,
-          brandName: brandContext?.name,
-          brandDomain: brandContext?.domain,
-        }
-      });
-
-      if (error) throw new Error(error.message);
-      if (!data.success) throw new Error(data.error || 'Refinement failed');
-
-      // Validate the returned HTML before applying
-      if (data.html) {
-        const validation = validateFooterHtml(data.html, localFooterHtml);
-        if (!validation.valid) {
-          console.warn('Refined HTML failed validation:', validation.reason);
+        // Check if we've converged
+        if (mathematicalDiffs.length <= DIFF_THRESHOLD) {
+          console.log(`Converged at iteration ${iteration} with ${mathematicalDiffs.length} diffs`);
+          setConvergenceState(prev => prev ? {
+            ...prev,
+            status: `✓ Converged! Only ${mathematicalDiffs.length} minor differences remain`
+          } : null);
+          
+          // Update chat with success
           setChatMessages([...newMessages, { 
             role: 'assistant', 
-            content: `⚠️ Refinement rejected: ${validation.reason}. Keeping previous HTML.` 
+            content: `✅ **Converged after ${iteration} iteration(s)!**\n\n${mathematicalDiffs.length === 0 ? 'Render matches reference perfectly.' : `Only ${mathematicalDiffs.length} minor differences remain (within tolerance).`}` 
           }]);
-          toast.warning(`Refinement invalid: ${validation.reason}`);
-          return;
+          break;
         }
 
-        setLocalFooterHtml(data.html);
-        
-        const diffMsg = mathematicalDiffs.length > 0 
-          ? `Fixed ${mathematicalDiffs.length} measured differences` 
-          : 'Footer refined';
-        toast.success(diffMsg);
-        
-        // Persist to session if we have one
-        if (sessionId) {
-          persistSession(data.html, data.conversationHistory);
+        // Not converged yet - apply refinement
+        setConvergenceState(prev => prev ? {
+          ...prev,
+          status: `Iteration ${iteration}/${MAX_ITERATIONS}: Applying ${mathematicalDiffs.length} fixes...`
+        } : null);
+
+        // Call footer-conversation with refine action
+        const { data, error } = await supabase.functions.invoke('footer-conversation', {
+          body: {
+            action: 'refine',
+            referenceImageUrl: originalImageUrl,
+            sideBySideScreenshotUrl,
+            currentHtml: currentHtml,
+            conversationHistory: currentHistory,
+            assets: {
+              ...(brandContext?.lightLogoUrl ? { 
+                logo: brandContext.lightLogoUrl,
+                brand_logo_light: brandContext.lightLogoUrl 
+              } : {}),
+              ...(brandContext?.darkLogoUrl ? { 
+                brand_logo_dark: brandContext.darkLogoUrl 
+              } : {}),
+            },
+            visionData: footerVisionData,
+            renderVisionData: computedRenderVision,
+            mathematicalDiffs,
+            brandName: brandContext?.name,
+            brandDomain: brandContext?.domain,
+          }
+        });
+
+        if (error) throw new Error(error.message);
+        if (!data.success) throw new Error(data.error || 'Refinement failed');
+
+        // Validate and apply the returned HTML
+        if (data.html) {
+          const validation = validateFooterHtml(data.html, currentHtml);
+          if (!validation.valid) {
+            console.warn(`Iteration ${iteration}: Refined HTML failed validation:`, validation.reason);
+            // Continue to next iteration without applying invalid HTML
+            continue;
+          }
+
+          // Apply the refinement
+          currentHtml = data.html;
+          setLocalFooterHtml(data.html);
+          
+          if (data.conversationHistory) {
+            currentHistory = data.conversationHistory;
+            setClaudeConversationHistory(data.conversationHistory);
+          }
+          
+          // Persist to session
+          if (sessionId) {
+            persistSession(data.html, data.conversationHistory);
+          }
+          
+          // Update chat with iteration progress
+          setChatMessages([...newMessages, { 
+            role: 'assistant', 
+            content: `**Iteration ${iteration}/${MAX_ITERATIONS}:** Applied ${mathematicalDiffs.length} fixes. ${iteration < MAX_ITERATIONS ? 'Re-analyzing...' : 'Max iterations reached.'}` 
+          }]);
         }
+        
+        // Brief pause before next iteration
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // Build summary message with diff info
-      const summaryParts: string[] = [];
-      if (mathematicalDiffs.length > 0) {
-        summaryParts.push(`**${mathematicalDiffs.length} measurements corrected:**`);
-        summaryParts.push(mathematicalDiffs.slice(0, 4).map(d => `• ${d}`).join('\n'));
-        if (mathematicalDiffs.length > 4) {
-          summaryParts.push(`...and ${mathematicalDiffs.length - 4} more`);
-        }
-      } else if (computedRenderVision) {
-        summaryParts.push('Vision analysis confirmed render matches reference closely.');
-      } else {
-        summaryParts.push(data.message || 'Compared your screen and fixed differences.');
+      // Max iterations reached without full convergence
+      if (iteration >= MAX_ITERATIONS && lastDiffCount > DIFF_THRESHOLD) {
+        setConvergenceState(prev => prev ? {
+          ...prev,
+          status: `⚠️ Max iterations reached with ${lastDiffCount} differences remaining`
+        } : null);
+        
+        setChatMessages([...newMessages, { 
+          role: 'assistant', 
+          content: `⚠️ **Max iterations reached (${MAX_ITERATIONS})**\n\n${lastDiffCount} differences remain. You can click "Refine with AI" again or make manual adjustments.` 
+        }]);
       }
       
-      setChatMessages([...newMessages, { role: 'assistant', content: summaryParts.join('\n') }]);
-      
-      // Update conversation history
-      if (data.conversationHistory) {
-        setClaudeConversationHistory(data.conversationHistory);
-      }
     } catch (err) {
       setChatMessages([...newMessages, { 
         role: 'assistant', 
@@ -678,6 +740,8 @@ export function CampaignStudio({
     } finally {
       setIsAutoRefining(false);
       setIsAnalyzingRender(false);
+      // Clear convergence state after a delay so user can see final status
+      setTimeout(() => setConvergenceState(null), 5000);
     }
   };
 
@@ -760,6 +824,20 @@ export function CampaignStudio({
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Capturing...
                 </span>
+              )}
+              {/* Live convergence progress indicator */}
+              {convergenceState && (
+                <div className="flex items-center gap-2 ml-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
+                  <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                  <span className="text-xs font-medium text-primary">
+                    {convergenceState.status}
+                  </span>
+                  {convergenceState.lastDiffCount > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({convergenceState.lastDiffCount} diffs)
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           ) : (
