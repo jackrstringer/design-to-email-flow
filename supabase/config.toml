@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.analyze-footer-render]
 verify_jwt = false
+
+[functions.auto-slice-footer]
+verify_jwt = false
