@@ -1,188 +1,227 @@
 
-# Replace Sitemap Import with Firecrawl Site Crawling
+# Add Google Vision Analysis to Footer Creation Process
 
 ## Problem
-The current sitemap + nav crawling approach has significant limitations:
-- **Sitemaps are often incomplete** - typically only include products/collections
-- **Nav extraction only gets top-level links** - misses nested pages
-- **JavaScript menus don't get parsed** - basic regex can't see dynamic content
-- **Nested pages get missed** - no deep crawling capability
 
-## Solution
-Replace the sitemap-based approach with **Firecrawl**, which:
-- Crawls entire sites starting from the homepage
-- Handles JavaScript-rendered content
-- Discovers ALL pages, not just what's in the sitemap
-- Returns structured data with titles already extracted
+The footer creation and refinement process currently lacks precise positional and dimensional data:
 
-**FIRECRAWL_API_KEY is already configured** in the project secrets.
+1. **Initial Generation**: Claude only sees the reference image visually - no OCR text positions, logo bounds, section boundaries, or color palette data
+2. **Refinement Loop**: Only the reference image is analyzed with Vision APIs. The **generated HTML render** is not analyzed, so Claude can't calculate actual mathematical differences (e.g., "logo is 140x45px in reference but 120x38px in render")
+
+Meanwhile, the campaign slicing pipeline (`auto-slice-v2`) uses a comprehensive 4-layer Vision analysis:
+- Layer 1: Google Cloud Vision OCR (text blocks with coordinates)
+- Layer 2: Object Localization (detected elements)
+- Layer 3: Logo Detection (brand logos with bounds)
+- Layer 4: Horizontal Edge Detection (section boundaries)
+
+This same approach should be applied to footer creation for pixel-perfect results.
 
 ---
 
-## Architecture Overview
+## Solution Architecture
 
 ```text
-Current Flow:
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│ trigger-sitemap │ ──► │  import-sitemap  │ ──► │ brand_link_index│
-│     -import     │     │ (sitemap + nav)  │     │    (database)   │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
+CURRENT FLOW:
+┌────────────────┐     ┌─────────────────────┐     ┌──────────────┐
+│ Reference Image│ ──► │  footer-conversation │ ──► │ Generated HTML│
+│    (visual)    │     │   (Claude only)      │     │              │
+└────────────────┘     └─────────────────────┘     └──────────────┘
 
-New Flow:
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  trigger-site   │ ──► │ crawl-brand-site │ ──► │ brand_link_index│
-│     -crawl      │     │   (Firecrawl)    │     │    (database)   │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
+NEW FLOW:
+┌────────────────┐     ┌─────────────────────────┐     ┌──────────────────────┐     ┌──────────────┐
+│ Reference Image│ ──► │ analyze-footer-reference │ ──► │  footer-conversation  │ ──► │ Generated HTML│
+│                │     │   (Vision APIs)          │     │ (Claude + visionData) │     │              │
+└────────────────┘     └─────────────────────────┘     └──────────────────────┘     └──────────────┘
+                                                                                              │
+                                                                ┌──────────────────────┐      │
+                                                                │ analyze-footer-render │ ◄───┘
+                                                                │   (Vision on HTML)   │
+                                                                └──────────────────────┘
+                                                                           │
+                                                                           ▼
+                                                                ┌──────────────────────┐
+                                                                │   MATHEMATICAL DIFF   │
+                                                                │ "Logo: 140x45 → 120x38"│
+                                                                │ "Padding: 24px → 18px" │
+                                                                └──────────────────────┘
 ```
 
 ---
 
 ## Implementation Details
 
-### 1. Create New Edge Function: `crawl-brand-site`
+### Phase 1: Add Vision Analysis to Initial Footer Generation
+
+**In `FooterBuilderModal.tsx`:**
+
+After the reference image is obtained (from upload, Figma, or campaign crop), call `analyze-footer-reference` BEFORE calling `footer-conversation`:
+
+```typescript
+// After extractAssetsFromImage completes, analyze with Vision APIs
+const analyzeWithVision = async (imageUrl: string) => {
+  const { data, error } = await supabase.functions.invoke('analyze-footer-reference', {
+    body: { imageUrl }
+  });
+  
+  if (data.success) {
+    setFooterVisionData(data); // Store for passing to generation
+  }
+};
+```
+
+**In `handleGenerateFooter`:**
+
+Pass the vision data to the generation call:
+
+```typescript
+const { data, error } = await supabase.functions.invoke('footer-conversation', {
+  body: {
+    action: 'generate',
+    referenceImageUrl,
+    visionData: footerVisionData, // NEW: Include vision analysis
+    assets: assetsWithBrandLogos,
+    // ... rest of params
+  }
+});
+```
+
+### Phase 2: Create Render Analysis Function
+
+**New Edge Function: `analyze-footer-render`**
 
 This function will:
-1. Accept `brand_id`, `domain`, and `job_id`
-2. Call Firecrawl's `/crawl` endpoint to start a site crawl
-3. Poll for completion (Firecrawl crawls are async)
-4. Process results: filter, categorize, and extract page metadata
-5. Generate embeddings for all discovered pages
-6. Insert into `brand_link_index`
+1. Accept a screenshot URL of the rendered HTML
+2. Run the same Vision pipeline as `analyze-footer-reference`
+3. Return normalized coordinates (600px width)
 
-**Key Firecrawl API usage:**
+This is largely a copy of `analyze-footer-reference` - the same analysis, just on a different image.
+
+### Phase 3: Compare Reference vs Render in Refinement
+
+**In `CampaignStudio.tsx` refinement flow:**
+
+1. After capturing the side-by-side screenshot, also capture a standalone screenshot of just the rendered HTML
+2. Call `analyze-footer-render` on the rendered screenshot
+3. Compute mathematical differences between reference vision data and render vision data:
+
 ```typescript
-// Start crawl
-const crawlResponse = await fetch('https://api.firecrawl.dev/v1/crawl', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    url: `https://${domain}`,
-    limit: 200,  // Max pages
-    scrapeOptions: {
-      formats: ['markdown'],
-      onlyMainContent: true
+const computeDifferences = (reference: FooterVisionData, render: FooterVisionData) => {
+  const diffs: string[] = [];
+  
+  // Compare dimensions
+  if (Math.abs(reference.dimensions.height - render.dimensions.height) > 5) {
+    diffs.push(`Height: ${reference.dimensions.height}px → ${render.dimensions.height}px`);
+  }
+  
+  // Compare logos
+  if (reference.logos[0] && render.logos[0]) {
+    const refLogo = reference.logos[0];
+    const renderLogo = render.logos[0];
+    if (Math.abs(refLogo.width - renderLogo.width) > 5) {
+      diffs.push(`Logo width: ${refLogo.width}px → ${renderLogo.width}px (need to increase)`);
     }
-  })
-});
-
-// Poll for results
-const statusResponse = await fetch(`https://api.firecrawl.dev/v1/crawl/${crawlId}`, {
-  headers: { 'Authorization': `Bearer ${FIRECRAWL_API_KEY}` }
-});
+  }
+  
+  // Compare text positions
+  for (const refText of reference.textBlocks) {
+    const matchingRender = render.textBlocks.find(t => 
+      t.text.toLowerCase().includes(refText.text.toLowerCase().substring(0, 10))
+    );
+    if (matchingRender && Math.abs(refText.estimatedFontSize - matchingRender.estimatedFontSize) > 2) {
+      diffs.push(`"${refText.text}": ${refText.estimatedFontSize}px → ${matchingRender.estimatedFontSize}px`);
+    }
+  }
+  
+  return diffs;
+};
 ```
 
-### 2. Update `trigger-sitemap-import` to Support Domain-Only Crawling
-
-**Changes:**
-- Rename conceptually to "site crawl" (keep function name for compatibility)
-- Make `sitemap_url` optional - if not provided, use domain-based crawling
-- Add `crawling` status to the running statuses check
-- Call `crawl-brand-site` instead of `import-sitemap` when using Firecrawl
+4. Pass these differences to `footer-conversation` as part of the refinement prompt:
 
 ```typescript
-// If sitemap_url provided: legacy sitemap import
-// If only domain: use Firecrawl crawl
-if (sitemap_url) {
-  // Call import-sitemap (legacy path)
-} else {
-  // Call crawl-brand-site (Firecrawl path)
-}
+const { data, error } = await supabase.functions.invoke('footer-conversation', {
+  body: {
+    action: 'refine',
+    sideBySideScreenshotUrl,
+    currentHtml,
+    visionData: referenceVisionData,
+    renderVisionData: renderAnalysis, // NEW
+    mathematicalDiffs: diffs, // NEW: ["Logo width: 140px → 120px", ...]
+    // ... rest
+  }
+});
 ```
 
-### 3. Update UI: Remove Sitemap URL Requirement
+### Phase 4: Update `footer-conversation` to Use Diff Data
 
-The import modal will change from:
-- "Enter sitemap URL" input field
-- To: Simple "Crawl Site" button (domain is already known from brand)
+**In the refine action:**
 
-**UI Changes in `SitemapImportCard.tsx`:**
-- Remove the sitemap URL input field
-- Change button text from "Import" to "Crawl Site"
-- Update dialog text: "We'll discover all products, collections, and pages on your site"
-- Keep ability to enter sitemap URL as an "advanced option" (optional)
+Add the mathematical differences to the prompt:
 
-### 4. Update Job Status Messages
-
-Add new status for the crawling phase:
 ```typescript
-case 'crawling':
-  return 'Discovering all pages...';
-case 'generating_embeddings':
-  return 'Processing page titles...';
+const mathDiffSection = mathematicalDiffs?.length ? `
+## MATHEMATICAL DISCREPANCIES (from Vision analysis)
+These are PRECISE measurements comparing reference vs current render:
+${mathematicalDiffs.map(d => `- ${d}`).join('\n')}
+
+FIX THESE SPECIFIC VALUES. Do not guess - use the exact pixel differences above.
+` : '';
 ```
-
-### 5. Update Types and Hook
-
-**`SitemapImportJob` status type:**
-Add `'crawling'` to the status union.
-
-**`useSitemapImport` hook:**
-- Add `'crawling'` to the list of running statuses for polling
-- Update mutation to optionally pass domain-only (no sitemap URL)
 
 ---
 
-## File Changes Summary
+## Files to Modify
 
 | File | Action | Changes |
 |------|--------|---------|
-| `supabase/functions/crawl-brand-site/index.ts` | **Create** | New Firecrawl-based crawling function |
-| `supabase/functions/trigger-sitemap-import/index.ts` | **Modify** | Support domain-only crawling, call crawl-brand-site |
-| `supabase/config.toml` | **Modify** | Add `crawl-brand-site` function config |
-| `src/components/brand/SitemapImportCard.tsx` | **Modify** | Remove sitemap URL input, update UI text |
-| `src/hooks/useSitemapImport.ts` | **Modify** | Add 'crawling' status, support domain-only trigger |
-| `src/types/link-intelligence.ts` | **Modify** | Add 'crawling' to status union |
+| `src/components/FooterBuilderModal.tsx` | **Modify** | Add `analyze-footer-reference` call after image obtained, store visionData, pass to generation |
+| `supabase/functions/analyze-footer-render/index.ts` | **Create** | Clone of `analyze-footer-reference` for analyzing rendered HTML screenshots |
+| `supabase/config.toml` | **Modify** | Add `analyze-footer-render` function config |
+| `supabase/functions/footer-conversation/index.ts` | **Modify** | Accept `renderVisionData` and `mathematicalDiffs`, include in refinement prompts |
+| `src/components/CampaignStudio.tsx` | **Modify** | After capturing render screenshot, call `analyze-footer-render`, compute diffs, pass to refinement |
 
 ---
 
-## Coverage Comparison
+## Data Flow Summary
 
-| Approach | Coverage |
-|----------|----------|
-| Sitemap only | Products, collections (if in sitemap) |
-| Sitemap + nav | + Top-level nav links |
-| **Firecrawl** | **Everything: products, collections, all pages, nested pages, footer links, etc.** |
-
----
-
-## Technical Details
-
-### Firecrawl Polling Strategy
-Firecrawl crawls are async. The function will:
-1. Start crawl, receive `crawl_id`
-2. Poll every 5 seconds for up to 5 minutes
-3. Update job progress in real-time (`urls_found`, `urls_processed`)
-4. Handle `completed`, `failed`, and timeout states
-
-### Page Categorization
-```typescript
-let linkType = 'page';
-if (url.includes('/products/')) linkType = 'product';
-else if (url.includes('/collections/')) linkType = 'collection';
-// All other pages remain as 'page' type
+### Initial Generation
+```text
+Reference Image → analyze-footer-reference → visionData
+                                                  ↓
+                                    footer-conversation (generate)
+                                                  ↓
+                                    Claude generates HTML with precise measurements
 ```
 
-### Skip Patterns
-Keep existing skip patterns for utility pages:
-```typescript
-const skipPatterns = [
-  '/cart', '/account', '/login', '/checkout', 
-  '/search', '/policies', '/apps/', '/admin', '/password'
-];
+### Refinement Loop
+```text
+Reference Image ─────────────► analyze-footer-reference → referenceVisionData
+                                                                    │
+Rendered HTML Screenshot ────► analyze-footer-render → renderVisionData
+                                                                    │
+                                                        ┌───────────┴──────────┐
+                                                        │   computeDifferences  │
+                                                        │   (mathematical diff) │
+                                                        └───────────┬──────────┘
+                                                                    │
+                                                                    ▼
+                                            footer-conversation (refine) with:
+                                            - sideBySideScreenshot
+                                            - referenceVisionData
+                                            - renderVisionData
+                                            - mathematicalDiffs: ["Logo: 140→120px"]
 ```
 
 ---
 
-## Expected Results
+## Expected Improvements
 
-For eskiin.com:
+| Aspect | Before | After |
+|--------|--------|-------|
+| Logo sizing | Claude estimates visually | Exact dimensions: "Logo should be 142x48px" |
+| Text positioning | "Center the nav links" | "Nav text at y=85px, font-size=14px" |
+| Spacing | "Add some padding" | "Top padding: 32px, gap between items: 24px" |
+| Color matching | Visual approximation | Exact hex: "#1a1a1a" from palette extraction |
+| Refinement accuracy | "Looks about right" | "Logo is 18px too narrow, increase width" |
 
-| Approach | URLs Found |
-|----------|-----------|
-| Current (sitemap + nav) | ~26-35 |
-| Firecrawl | ~100-200 (all discoverable pages) |
-
-Firecrawl will find `/pages/recipes`, `/pages/our-story`, `/pages/faq`, and everything else linked anywhere on the site - including footer links, nested product pages, and JavaScript-rendered navigation items.
+This brings the footer creation pipeline to parity with the campaign slicing pipeline in terms of precision.
