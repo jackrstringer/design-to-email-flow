@@ -145,14 +145,21 @@ export function InlineLegalEditor({
     onUpdate({ content: newContent });
   }, [onUpdate]);
   
+  // Prevent blur when interacting with toolbar
+  const handleToolbarMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
   return (
-    <div className="relative" style={{ width }}>
+    <div className="relative" style={{ width, maxWidth: width, overflow: 'hidden' }}>
       {/* Floating Toolbar */}
       <div 
         className={cn(
           "absolute -top-12 left-0 right-0 z-20 flex items-center justify-center gap-1 p-1.5 bg-background border rounded-lg shadow-lg transition-all",
           isFocused ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"
         )}
+        onMouseDown={handleToolbarMouseDown}
       >
         {/* Background Color */}
         <div className="flex items-center gap-1 px-2 border-r">
@@ -160,7 +167,11 @@ export function InlineLegalEditor({
           <input
             type="color"
             value={bgColor}
-            onChange={(e) => onUpdate({ backgroundColor: e.target.value })}
+            onChange={(e) => {
+              e.stopPropagation();
+              onUpdate({ backgroundColor: e.target.value });
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
             className="w-6 h-6 rounded border cursor-pointer"
             title="Background Color"
           />
@@ -172,7 +183,11 @@ export function InlineLegalEditor({
           <input
             type="color"
             value={textColor}
-            onChange={(e) => onUpdate({ textColor: e.target.value })}
+            onChange={(e) => {
+              e.stopPropagation();
+              onUpdate({ textColor: e.target.value });
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
             className="w-6 h-6 rounded border cursor-pointer"
             title="Text Color"
           />
@@ -183,7 +198,12 @@ export function InlineLegalEditor({
           <input
             type="number"
             value={fontSize}
-            onChange={(e) => onUpdate({ fontSize: parseInt(e.target.value) || 11 })}
+            onChange={(e) => {
+              e.stopPropagation();
+              onUpdate({ fontSize: parseInt(e.target.value) || 11 });
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onFocus={(e) => e.stopPropagation()}
             className="w-10 h-6 text-[10px] text-center border rounded"
             min={8}
             max={18}
@@ -196,7 +216,10 @@ export function InlineLegalEditor({
         <div className="flex items-center gap-0.5 px-2 border-r">
           <button
             type="button"
-            onClick={() => onUpdate({ textAlign: 'left' })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate({ textAlign: 'left' });
+            }}
             className={cn(
               "p-1 rounded transition-colors",
               textAlign === 'left' ? "bg-muted" : "hover:bg-muted/50"
@@ -207,7 +230,10 @@ export function InlineLegalEditor({
           </button>
           <button
             type="button"
-            onClick={() => onUpdate({ textAlign: 'center' })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate({ textAlign: 'center' });
+            }}
             className={cn(
               "p-1 rounded transition-colors",
               textAlign === 'center' ? "bg-muted" : "hover:bg-muted/50"
@@ -218,7 +244,10 @@ export function InlineLegalEditor({
           </button>
           <button
             type="button"
-            onClick={() => onUpdate({ textAlign: 'right' })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdate({ textAlign: 'right' });
+            }}
             className={cn(
               "p-1 rounded transition-colors",
               textAlign === 'right' ? "bg-muted" : "hover:bg-muted/50"
@@ -233,7 +262,10 @@ export function InlineLegalEditor({
         <div className="flex items-center gap-1 px-2">
           <button
             type="button"
-            onClick={() => insertTag('org-name')}
+            onClick={(e) => {
+              e.stopPropagation();
+              insertTag('org-name');
+            }}
             className={cn(
               "flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border transition-colors",
               hasOrgName ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
@@ -245,7 +277,10 @@ export function InlineLegalEditor({
           </button>
           <button
             type="button"
-            onClick={() => insertTag('org-address')}
+            onClick={(e) => {
+              e.stopPropagation();
+              insertTag('org-address');
+            }}
             className={cn(
               "flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border transition-colors",
               hasOrgAddress ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
@@ -257,7 +292,10 @@ export function InlineLegalEditor({
           </button>
           <button
             type="button"
-            onClick={() => insertTag('unsub')}
+            onClick={(e) => {
+              e.stopPropagation();
+              insertTag('unsub');
+            }}
             className={cn(
               "flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border transition-colors",
               hasUnsubscribe ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
@@ -269,7 +307,10 @@ export function InlineLegalEditor({
           </button>
           <button
             type="button"
-            onClick={() => insertTag('prefs')}
+            onClick={(e) => {
+              e.stopPropagation();
+              insertTag('prefs');
+            }}
             className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border bg-muted/50 border-border text-muted-foreground hover:bg-muted transition-colors"
             title="Insert Manage Preferences Link"
           >
@@ -298,6 +339,10 @@ export function InlineLegalEditor({
           lineHeight: lineHeight,
           color: textColor,
           fontFamily: 'Arial, Helvetica, sans-serif',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          wordWrap: 'break-word',
+          overflowWrap: 'break-word',
         }}
         dangerouslySetInnerHTML={{ __html: displayHtml }}
       />
