@@ -608,13 +608,57 @@ serve(async (req) => {
 
     await updateJob(supabase, jobId, { processing_percent: 40 });
 
-    // === STEP 3: Detect legal section (50%) ===
+    // === STEP 3: Identify fine_print slice and convert to legal section (50%) ===
     await updateJob(supabase, jobId, {
-      processing_step: 'detecting_legal_section',
+      processing_step: 'processing_fine_print',
       processing_percent: 45
     });
 
-    const legalSection = await detectLegalSection(imageBase64, sliceResult.imageHeight);
+    // Find the fine_print slice from Claude's output
+    const finePrintSlice = sliceResult.slices.find((s: any) => 
+      s.name?.toLowerCase().includes('fine_print') || 
+      s.name?.toLowerCase().includes('legal') ||
+      s.name?.toLowerCase() === 'fine print'
+    );
+
+    let legalSection: LegalSectionData | null = null;
+    let imageSlices = sliceResult.slices;
+
+    if (finePrintSlice) {
+      console.log(`[process-footer] Found fine_print slice at Y=${finePrintSlice.yTop}-${finePrintSlice.yBottom}`);
+      
+      // Use OCR to extract metadata from the fine print section
+      legalSection = await detectLegalSection(imageBase64, sliceResult.imageHeight);
+      
+      // Override yStart with Claude's more accurate boundary
+      if (legalSection) {
+        legalSection.yStart = finePrintSlice.yTop;
+        console.log(`[process-footer] Set legal section yStart from fine_print slice: ${legalSection.yStart}`);
+      } else {
+        // Create a default legal section from the fine_print slice
+        console.log(`[process-footer] Creating default legal section from fine_print slice`);
+        legalSection = {
+          yStart: finePrintSlice.yTop,
+          backgroundColor: '#1a1a1a',
+          textColor: '#ffffff',
+          detectedElements: []
+        };
+      }
+      
+      // Remove fine_print from image slices (it becomes HTML)
+      imageSlices = sliceResult.slices.filter((s: any) => s !== finePrintSlice);
+      console.log(`[process-footer] Removed fine_print from image slices. Remaining: ${imageSlices.length}`);
+    } else {
+      // If no fine_print slice found, try OCR-based detection as fallback
+      console.log('[process-footer] No fine_print slice found, trying OCR detection...');
+      legalSection = await detectLegalSection(imageBase64, sliceResult.imageHeight);
+      
+      if (legalSection) {
+        // Filter slices above the legal section
+        imageSlices = sliceResult.slices.filter((s: any) => s.yBottom <= legalSection!.yStart);
+        console.log(`[process-footer] OCR detected legal section at Y=${legalSection.yStart}. Filtered to ${imageSlices.length} slices`);
+      }
+    }
     
     await updateJob(supabase, jobId, { processing_percent: 50 });
 
@@ -625,7 +669,7 @@ serve(async (req) => {
     });
 
     const processedSlices = generateSliceCropUrls(
-      sliceResult.slices,
+      imageSlices,
       job.image_url,
       job.image_width || 600,
       job.image_height || 800,

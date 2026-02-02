@@ -623,13 +623,207 @@ function scaleClaudeDecision(decision: ClaudeDecision, scaleFactor: number): Cla
 // CLAUDE: THE SOLE DECISION MAKER
 // ============================================================================
 
+// Footer-specific prompt for slicing standalone footer images
+function buildFooterPrompt(rawData: RawVisionData): string {
+  const ocrData = rawData.paragraphs.map(p => ({
+    text: p.text.substring(0, 150),
+    yTop: Math.round(p.yTop),
+    yBottom: Math.round(p.yBottom),
+    xLeft: Math.round(p.xLeft),
+    xRight: Math.round(p.xRight)
+  }));
+  
+  const objectData = rawData.objects.map(o => ({
+    name: o.name,
+    confidence: Math.round(o.score * 100),
+    yTop: Math.round(o.yTop),
+    yBottom: Math.round(o.yBottom),
+    xLeft: Math.round(o.xLeft),
+    xRight: Math.round(o.xRight)
+  }));
+  
+  const logoData = rawData.logos.map(l => ({
+    name: l.description,
+    yTop: Math.round(l.yTop),
+    yBottom: Math.round(l.yBottom),
+    xLeft: Math.round(l.xLeft),
+    xRight: Math.round(l.xRight)
+  }));
+
+  const edgeData = rawData.edges.map(e => ({
+    y: Math.round(e.y),
+    strength: Math.round(e.strength * 100) / 100,
+    colorAbove: e.colorAbove,
+    colorBelow: e.colorBelow
+  }));
+
+  return `You are analyzing an EMAIL FOOTER screenshot to slice it into component sections.
+
+## CRITICAL CONTEXT: This is a STANDALONE FOOTER IMAGE
+
+The ENTIRE image is footer content - there is no marketing content above it.
+This footer will be used as a reusable template appended to email campaigns.
+
+Your job is to:
+1. Slice ALL sections of the footer (logo, navigation, social icons, fine print)
+2. Each slice will become an IMAGE with a clickable link, EXCEPT for fine print
+3. The "fine_print" section will be converted to responsive HTML text after slicing
+
+## Image Dimensions
+${rawData.imageWidth}x${rawData.imageHeight} pixels
+
+## Raw OCR Data (Text Blocks with Coordinates)
+${JSON.stringify(ocrData, null, 2)}
+
+## Detected Objects
+${JSON.stringify(objectData, null, 2)}
+
+## Detected Logos
+${JSON.stringify(logoData, null, 2)}
+
+## Detected Horizontal Edges (Color Transitions)
+${JSON.stringify(edgeData, null, 2)}
+
+---
+
+## FOOTER SECTION TYPES
+
+### IMAGE-BASED SECTIONS (keep as clickable images):
+
+1. **logo** - Brand logo, typically at top of footer
+   - Links to homepage
+   - isClickable: true
+
+2. **navigation_links** - Text navigation like "Shop | About | Contact"
+   - MUST use horizontalSplit - each link needs its own column
+   - isClickable: true for each column
+
+3. **social_icons** - Row of social media icons (Instagram, Facebook, TikTok, etc.)
+   - MUST use horizontalSplit - each icon needs its own clickable column
+   - Count the actual icons visible and set columns accordingly
+   - isClickable: true for each column
+
+4. **cta_button** - Buttons like "Join Facebook Group", "Shop Now"
+   - isClickable: true
+
+5. **badge_row** - Certification badges (B Corp, Vegan, Cruelty Free, etc.)
+   - Usually NOT clickable (decorative)
+   - isClickable: false
+
+### FINE PRINT SECTION (will become HTML text):
+
+The **fine_print** section contains legal/compliance content. Look for ANY of these:
+- "Unsubscribe" or "Manage Preferences" text
+- "Update your preferences" or "opt out"
+- Physical mailing address (city, state, zip code)
+- "© 2024 Brand Name" or "All rights reserved"
+- "You are receiving this email because..."
+- Contact email addresses
+
+**CRITICAL**: Name this slice exactly "fine_print" - it will be converted to editable HTML text with Klaviyo merge tags.
+
+---
+
+## SLICING RULES FOR FOOTERS
+
+### RULE 1: INCLUDE ALL SECTIONS
+Unlike campaign emails where footers are excluded, here you must slice the ENTIRE image.
+Every visible section from y=0 to y=imageHeight must be included.
+
+### RULE 2: SOCIAL ICONS ALWAYS NEED HORIZONTAL SPLIT
+Social icon rows have multiple clickable destinations (one per platform).
+Count the icons and set horizontalSplit.columns accordingly.
+
+Example: If you see Instagram, Facebook, TikTok, YouTube icons:
+- horizontalSplit: { columns: 4, gutterPositions: [25, 50, 75] }
+
+### RULE 3: NAVIGATION LINKS NEED HORIZONTAL SPLIT
+Text navigation links arranged horizontally need individual columns.
+
+Example: "Shop | About | Contact | FAQ"
+- horizontalSplit: { columns: 4, gutterPositions: [25, 50, 75] }
+
+### RULE 4: FINE PRINT IS ALWAYS AT THE BOTTOM
+The fine_print section should be the LAST slice, containing all legal/compliance text.
+It typically has a different background color (often darker) than sections above.
+
+### RULE 5: SLICE BOUNDARIES
+- Cut in the CENTER of visual gaps between sections
+- Use horizontal edge data to find clean color transitions
+- NEVER cut through text, logos, or icons
+- Maintain 30-50px padding from text bounding boxes
+
+---
+
+## OUTPUT FORMAT
+
+Return ONLY a valid JSON object:
+
+{
+  "footerStartY": <set to imageHeight - entire image IS footer>,
+  "sections": [
+    {
+      "name": "<section type: logo, navigation_links, social_icons, cta_button, badge_row, fine_print>",
+      "yTop": <number>,
+      "yBottom": <number>,
+      "hasCTA": <boolean>,
+      "ctaText": "<text if applicable>",
+      "horizontalSplit": null or { "columns": 2-6, "gutterPositions": [percentages] },
+      "isClickable": <boolean>,
+      "link": null,
+      "altText": "<descriptive alt text>",
+      "linkSource": "<'default' for clickable, 'not_clickable' for non-clickable>"
+    }
+  ],
+  "needsLinkSearch": []
+}
+
+### Output Rules:
+
+1. First section MUST have yTop: 0
+2. Last section (fine_print) yBottom MUST equal imageHeight
+3. Sections MUST NOT overlap and MUST be contiguous (no gaps)
+4. footerStartY = imageHeight (entire image is footer)
+5. Social icons and horizontal nav links MUST have horizontalSplit
+6. fine_print section MUST be named exactly "fine_print"
+7. link: null for all slices (links are assigned later by the user)
+8. altText: Describe what's in each section
+
+### Example Output for a typical footer:
+
+{
+  "footerStartY": 800,
+  "needsLinkSearch": [],
+  "sections": [
+    { "name": "logo", "yTop": 0, "yBottom": 120, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": true, "link": null, "altText": "Brand logo", "linkSource": "default" },
+    { "name": "navigation_links", "yTop": 120, "yBottom": 200, "hasCTA": true, "ctaText": "Shop | About | Contact", "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] }, "isClickable": true, "link": null, "altText": "Footer navigation links", "linkSource": "default" },
+    { "name": "social_icons", "yTop": 200, "yBottom": 280, "hasCTA": false, "ctaText": null, "horizontalSplit": { "columns": 4, "gutterPositions": [25, 50, 75] }, "isClickable": true, "link": null, "altText": "Social media icons - Instagram, Facebook, TikTok, YouTube", "linkSource": "default" },
+    { "name": "fine_print", "yTop": 280, "yBottom": 800, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Legal fine print section with unsubscribe and address", "linkSource": "not_clickable" }
+  ]
+}
+
+---
+
+## CHECKLIST BEFORE RESPONDING
+
+☐ First section starts at yTop: 0
+☐ Last section (fine_print) ends at yBottom: imageHeight
+☐ footerStartY = imageHeight
+☐ Social icon rows have horizontalSplit with correct column count
+☐ Horizontal navigation has horizontalSplit with correct column count
+☐ fine_print section is named exactly "fine_print"
+☐ No gaps or overlaps between sections
+☐ Slice boundaries are in visual gaps, not through content`;
+}
+
 async function askClaude(
   imageBase64: string,
   mimeType: string,
   rawData: RawVisionData,
   linkIndex?: LinkIndexEntry[],
   defaultDestinationUrl?: string,
-  brandPreferenceRules?: BrandPreferenceRule[]
+  brandPreferenceRules?: BrandPreferenceRule[],
+  isFooterMode?: boolean
 ): Promise<{ success: true; decision: ClaudeDecision; needsLinkSearch: Array<{ sliceIndex: number; description: string }> } | { success: false; error: string }> {
   
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -638,7 +832,13 @@ async function askClaude(
   }
 
   const hasLinkIndex = linkIndex && linkIndex.length > 0;
-  console.log(`Asking Claude to analyze and make ALL decisions... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
+  console.log(`Asking Claude to analyze and make ALL decisions... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'}, footer mode: ${isFooterMode ? 'YES' : 'no'})`);
+  
+  // Use footer-specific prompt if in footer mode
+  if (isFooterMode) {
+    const footerPrompt = buildFooterPrompt(rawData);
+    return askClaudeWithPrompt(imageBase64, mimeType, footerPrompt, rawData.imageHeight);
+  }
   
   // Format raw data for Claude - just the facts, no decisions
   const ocrData = rawData.paragraphs.map(p => ({
@@ -1222,6 +1422,21 @@ ${rulesFormatted}
   // Combine base prompt with link intelligence
   const fullPrompt = prompt + linkIntelligencePrompt;
 
+  return askClaudeWithPrompt(imageBase64, mimeType, fullPrompt, rawData.imageHeight);
+}
+
+// Shared Claude API call logic
+async function askClaudeWithPrompt(
+  imageBase64: string,
+  mimeType: string,
+  prompt: string,
+  imageHeight: number
+): Promise<{ success: true; decision: ClaudeDecision; needsLinkSearch: Array<{ sliceIndex: number; description: string }> } | { success: false; error: string }> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    return { success: false, error: "ANTHROPIC_API_KEY not configured" };
+  }
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -1246,7 +1461,7 @@ ${rulesFormatted}
             },
             {
               type: "text",
-              text: fullPrompt
+              text: prompt
             }
           ]
         }]
@@ -1334,7 +1549,9 @@ serve(async (req) => {
       // Link intelligence params (optional)
       linkIndex,
       defaultDestinationUrl,
-      brandPreferenceRules
+      brandPreferenceRules,
+      // Footer mode - treats entire image as footer content
+      isFooterMode
     } = await req.json();
     
     if (!imageDataUrl) {
@@ -1377,6 +1594,7 @@ serve(async (req) => {
     console.log(`\n========== AUTO-SLICE V2 (Claude Brain) ==========`);
     console.log(`Received image: ${mimeType}, base64 length: ${imageBase64.length}`);
     console.log(`Link intelligence: ${hasLinkIndex ? `${linkIndex.length} links` : 'disabled'}`);
+    console.log(`Footer mode: ${isFooterMode ? 'ENABLED (slicing entire image as footer)' : 'disabled'}`);
 
 
     // ========== GET TRUE IMAGE DIMENSIONS ==========
@@ -1442,7 +1660,8 @@ serve(async (req) => {
       scaledRawData,
       hasLinkIndex ? linkIndex : undefined,
       defaultDestinationUrl,
-      brandPreferenceRules
+      brandPreferenceRules,
+      isFooterMode === true
     );
 
     if (!claudeResult.success) {
