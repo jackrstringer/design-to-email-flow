@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Upload, Loader2, ChevronRight, ChevronLeft, X, Sparkles, Figma, Image, Layers, Check, Link, ExternalLink, AlertCircle, CheckCircle2, Clock, Wand2, AlertTriangle, Code, ImageIcon } from 'lucide-react';
 import {
   Dialog,
@@ -156,6 +157,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const [imageFooterDimensions, setImageFooterDimensions] = useState<{ width: number; height: number } | null>(null);
   const [cloudinaryPublicId, setCloudinaryPublicId] = useState<string | null>(null);
   
+  // React Router navigation for studio redirect
+  const navigate = useNavigate();
+  
   // Footer processing job hook - NEW PIPELINE INTEGRATION
   const {
     job: footerJob,
@@ -171,11 +175,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   } = useFooterProcessingJob({
     onComplete: (job) => {
       console.log('[FooterBuilderModal] Processing complete:', job.id);
-      // Transition slices/legalSection to local state for editing
-      setImageFooterSlices(job.slices || []);
-      setImageFooterLegalSection(job.legal_section || null);
-      setStep('review');
-      toast.success('Footer analyzed! Review and edit the links below.');
+      // Navigate to the Image Footer Studio for full editing experience
+      toast.success('Footer analyzed! Opening studio...');
+      onOpenChange(false); // Close modal
+      navigate(`/footer-studio/${brand.id}/${job.id}`);
     },
     onError: (error) => {
       console.error('[FooterBuilderModal] Processing failed:', error);

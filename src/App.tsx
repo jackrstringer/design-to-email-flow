@@ -22,6 +22,7 @@ import CampaignQueue from "./pages/CampaignQueue";
 import Segments from "./pages/Segments";
 import Settings from "./pages/Settings";
 import FooterEditor from "./pages/FooterEditor";
+import ImageFooterStudio from "./pages/ImageFooterStudio";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -63,6 +64,7 @@ const App = () => (
             <Route path="/campaign/:id" element={<AuthGuard><CampaignPage /></AuthGuard>} />
             <Route path="/campaign/:id/send" element={<AuthGuard><CampaignSend /></AuthGuard>} />
             <Route path="/footer-editor/:brandId" element={<AuthGuard><FooterEditor /></AuthGuard>} />
+            <Route path="/footer-studio/:brandId/:jobId" element={<AuthGuard><ImageFooterStudio /></AuthGuard>} />
             <Route path="/legacy" element={<AuthGuard><Index /></AuthGuard>} />
             <Route path="/test-overlay" element={<OverlayTest />} />
             
