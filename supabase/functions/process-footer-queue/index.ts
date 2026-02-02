@@ -709,10 +709,11 @@ serve(async (req) => {
         if (legalSection) {
           legalSection.yStart = finePrintSlice.yTop;
         } else {
+          // Fallback: no OCR detected, default to matching footer style (white bg)
           legalSection = {
             yStart: finePrintSlice.yTop,
-            backgroundColor: '#1a1a1a',
-            textColor: '#ffffff',
+            backgroundColor: '#ffffff',
+            textColor: '#1a1a1a',
             detectedElements: []
           };
         }
@@ -727,10 +728,11 @@ serve(async (req) => {
       imageSlices = sliceResult.slices;
       
       // Create legal section to append AFTER all image slices
+      // Default to WHITE background with DARK text (most common for footers without fine print)
       legalSection = {
         yStart: sliceResult.imageHeight, // Appends at the very end
-        backgroundColor: '#1a1a1a',
-        textColor: '#ffffff',
+        backgroundColor: '#ffffff',
+        textColor: '#1a1a1a',
         detectedElements: []
       };
     }
