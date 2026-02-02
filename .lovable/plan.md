@@ -1,187 +1,170 @@
 
+# Redesign Image Footer Studio to Match Queue Experience
 
-# Image Footer Studio - Full Page Editing Experience
+## User Feedback Summary
 
-## Current Issue
-
-The image-based footer processing correctly slices the footer and detects the legal section, but:
-
-1. **Review step is cramped in a modal** - User can only see small slice thumbnails with basic editing
-2. **No legal section HTML preview** - Even when detected, the legal HTML isn't shown as a live preview
-3. **No AI refinement capability** - User can't request text edits to the legal section
-4. **Missing full footer preview** - User can't see the combined output (slices + legal HTML) as one email-ready footer
-
-## Solution
-
-Create a dedicated **Image Footer Studio** page at `/footer-studio/:brandId/:jobId` that provides the same full-screen editing experience as `CampaignStudio`, but specialized for image-based footers:
-
-```text
-┌────────────────────────────────────────────────────────────────────────────┐
-│ ◀ Back              Image Footer Studio              [Save Footer]         │
-├────────────────────────────────────────────────────────────────────────────┤
-│                                                                            │
-│  ┌──────────────────────────────┐  ┌─────────────────────────────────────┐ │
-│  │        Reference             │  │         Live Preview                │ │
-│  │      (Original Image)        │  │      (HTML Output @ 600px)          │ │
-│  │                              │  │                                     │ │
-│  │  ┌────────────────────────┐  │  │  ┌─────────────────────────────┐   │ │
-│  │  │ [O'Neill Logo]         │  │  │  │ [Cropped Slice 1]          │   │ │
-│  │  │                        │  │  │  │ Alt: Brand logo             │   │ │
-│  │  │ SHOP FOR HIM          │  │  │  │ Link: https://oneill.com    │   │ │
-│  │  │ SHOP FOR HER          │  │  │  └─────────────────────────────┘   │ │
-│  │  │ SALE FOR HIM          │  │  │  ┌─────────────────────────────┐   │ │
-│  │  │ SALE FOR HER          │  │  │  │ [Cropped Slice 2]          │   │ │
-│  │  │                        │  │  │  │ Alt: Shop for Him CTA      │   │ │
-│  │  │ [Social Icons Row]    │  │  │  │ Link: /collections/mens    │   │ │
-│  │  │                        │  │  │  └─────────────────────────────┘   │ │
-│  │  │ ─── Legal Text ───    │  │  │  ┌─────────────────────────────┐   │ │
-│  │  │ 123 Main St, City CA  │  │  │  │ [Legal Section - HTML]     │   │ │
-│  │  │ Unsubscribe | Prefs   │  │  │  │ {{ organization.name }}    │   │ │
-│  │  └────────────────────────┘  │  │  │ {{ organization.address }} │   │ │
-│  │                              │  │  │ Unsubscribe | Preferences  │   │ │
-│  └──────────────────────────────┘  │  └─────────────────────────────┘   │ │
-│                                     │                                     │ │
-├─────────────────────────────────────┴─────────────────────────────────────┤
-│                           Slice Editor                                     │
-├────────────────────────────────────────────────────────────────────────────┤
-│  Slice 1: Header Logo                      Slice 2: Shop For Him CTA      │
-│  ┌──────┐ Alt: [O'Neill logo with tagline] ┌──────┐ Alt: [Shop for Him]   │
-│  │ img  │ Link: [https://oneill.com_____]  │ img  │ Link: [/mens_______]  │
-│  └──────┘ ✓ Verified                       └──────┘ ✓ Verified             │
-│                                                                            │
-│  Slice 3: Shop For Her CTA                 Slice 4: Sale For Him CTA      │
-│  ┌──────┐ Alt: [Shop for Her__________]    ┌──────┐ Alt: [Mens Sale____]  │
-│  │ img  │ Link: [/womens______________]    │ img  │ Link: [/mens-sale__]  │
-│  └──────┘ ✓ Verified                       └──────┘ ✓ Verified             │
-│                                                                            │
-├────────────────────────────────────────────────────────────────────────────┤
-│                           Legal Section Editor                              │
-├────────────────────────────────────────────────────────────────────────────┤
-│  Background: [#1a1a1a] ▼   Text Color: [#ffffff] ▼                         │
-│                                                                            │
-│  Preview:                                                                  │
-│  ┌────────────────────────────────────────────────────────────────────┐   │
-│  │ {{ organization.name }} | {{ organization.address }}               │   │
-│  │                                                                    │   │
-│  │ Unsubscribe | Manage Preferences                                   │   │
-│  └────────────────────────────────────────────────────────────────────┘   │
-│                                                                            │
-│  [Edit Legal Text...]   <- Opens chat dialog for AI text refinement       │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+1. **Use same slice display style as queue** - The current grid-based `SliceEditorGrid` is different from the queue's approach of showing slices stacked with links/alt-text overlaid alongside the image
+2. **No need for side-by-side view** - Since it's image-based, the output will match the input. Instead, provide a toggle for "Original vs Render"
+3. **Social media icons missing** - These should be sliced as images too, not removed
+4. **Missing legal section prompt** - If no legal/fine print is detected, prompt user to add the required Klaviyo merge tags (org name, org address, unsubscribe link)
 
 ---
 
-## Architecture
-
-### New Route: `/footer-studio/:brandId/:jobId`
+## Current vs Target Architecture
 
 ```text
-FooterBuilderModal
-     │
-     │ (on job completion → status: pending_review)
-     │
-     └───► navigate('/footer-studio/:brandId/:jobId')
-                │
-                ├── Fetch job data from footer_processing_jobs
-                ├── Fetch brand data for context
-                │
-                └── Render ImageFooterStudio
-                         │
-                         ├── Left Panel: Reference image
-                         ├── Right Panel: Live HTML preview (CampaignPreviewFrame)
-                         ├── Bottom: Slice editor grid
-                         └── Legal section color/text editor
+CURRENT LAYOUT (Wrong):
+┌───────────────────────────────────────────────────────────┐
+│ ┌─────────────────────┐  ┌─────────────────────────────┐ │
+│ │   Reference Image   │  │      HTML Preview           │ │
+│ │  (Left 50%)         │  │      (Right 50%)            │ │
+│ └─────────────────────┘  └─────────────────────────────┘ │
+├───────────────────────────────────────────────────────────┤
+│ SliceEditorGrid (grid of cards - WRONG STYLE)            │
+├───────────────────────────────────────────────────────────┤
+│ LegalSectionEditor (only shows if legal detected)        │
+└───────────────────────────────────────────────────────────┘
+
+TARGET LAYOUT (Match Queue ExpandedRowPanel):
+┌───────────────────────────────────────────────────────────┐
+│ Header: Back | Title | [Original ◀▶ Render] | Save       │
+├───────────────────────────────────────────────────────────┤
+│         [Link Col]     [Image]        [Alt Col]          │
+│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
+│  │ ➕ Add link  │  │ [Slice 1]   │  │ "Logo image"  │   │
+│  └──────────────┘  └─────────────┘  └───────────────┘   │
+│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
+│  │ /shop-mens   │  │ [Slice 2]   │  │ "Shop Mens"   │   │
+│  └──────────────┘  └─────────────┘  └───────────────┘   │
+│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
+│  │ Multi-col... │  │ [Socials]   │  │ "Social..."   │   │
+│  └──────────────┘  └─────────────┘  └───────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │ Legal Section (HTML) - always shows                 │ │
+│  │ ⚠️ Missing legal? Click to add required fields     │ │
+│  └─────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Implementation Details
 
-### Phase 1: New Page Component - `ImageFooterStudio`
+### Phase 1: Restructure ImageFooterStudio Layout
 
 **File: `src/pages/ImageFooterStudio.tsx`**
 
-This page will:
-1. Accept `brandId` and `jobId` from URL params
-2. Fetch the job data (slices, legal section) from `footer_processing_jobs`
-3. Fetch brand data for context
-4. Allow inline editing of:
-   - Slice alt text
-   - Slice links (with autocomplete from brand_link_index)
-   - Legal section colors
-5. Generate live preview using existing `generateImageFooterHtml()` function
-6. Save completed footer to `brand_footers`
+Replace the side-by-side layout with a single centered column that:
+1. Shows a toggle for "Original" vs "Render" at the top
+2. Renders slices stacked vertically with link/alt columns on sides (like ExpandedRowPanel)
+3. Always shows legal section at bottom (with prompt if missing)
 
-### Phase 2: Update Modal Flow
+Key changes:
+- Remove the two-panel split (left reference, right preview)
+- Add view toggle state: `const [viewMode, setViewMode] = useState<'render' | 'original'>('render')`
+- Reuse the same slice row layout from `ExpandedRowPanel`:
+  - Left column: Link editor (Popover with Command for autocomplete)
+  - Center: Slice image (stacked, full width at scaled size)
+  - Right column: Alt text editor (click to edit)
+- Add slice separator lines between rows
+- Support multi-column display for horizontal splits (social icons)
 
-**File: `src/components/FooterBuilderModal.tsx`**
+### Phase 2: Add Missing Legal Section Prompt
 
-When job reaches `pending_review` status:
-- Instead of showing cramped "review" step in modal
-- Navigate to `/footer-studio/:brandId/:jobId`
-- Close modal
+**File: `src/pages/ImageFooterStudio.tsx`** and **`src/components/footer/LegalSectionEditor.tsx`**
 
-### Phase 3: Slice Editor Component
+When `legalSection` is null:
+1. Show a warning banner with an "Add Legal Section" button
+2. Clicking creates a default `LegalSectionData` with sensible defaults
+3. Required fields reminder: org name, org address, unsubscribe link
 
-**File: `src/components/footer/SliceEditorGrid.tsx`**
+New component structure:
+```tsx
+{legalSection ? (
+  <LegalSectionEditor legalSection={legalSection} onUpdate={handleLegalUpdate} />
+) : (
+  <MissingLegalPrompt onAdd={handleAddLegalSection} />
+)}
+```
 
-A grid of editable slice cards showing:
-- Slice thumbnail (64x64)
-- Alt text input
-- Link input with autocomplete
-- Link verification status indicator
+The `MissingLegalPrompt` component shows:
+- Warning icon + message about required legal compliance
+- "Add Legal Section" button that initializes a default `LegalSectionData`:
+  ```typescript
+  {
+    yStart: 0,
+    backgroundColor: '#1a1a1a',
+    textColor: '#ffffff',
+    detectedElements: []
+  }
+  ```
 
-### Phase 4: Legal Section Editor
+### Phase 3: Delete SliceEditorGrid Component
 
-**File: `src/components/footer/LegalSectionEditor.tsx`**
+The `SliceEditorGrid` component is no longer needed since we're adopting the queue's inline editing approach. The slice editing will be integrated directly into the `ImageFooterStudio` page.
 
-- Color pickers for background and text
-- Live preview of legal HTML block
-- Optional AI refinement for custom text
+**File: `src/components/footer/SliceEditorGrid.tsx`** - Delete or deprecate
+
+### Phase 4: Ensure Social Icons Are Included
+
+The current pipeline should already include social icons as slices since they're above the legal cutoff. Need to verify:
+1. `process-footer-queue` includes all slices above `legalCutoffY`
+2. Social icon rows are marked with `horizontalSplit` data for proper rendering
+3. Multi-column rows display correctly in the new layout
+
+If social icons are being excluded, check the `auto-slice-v2` function to ensure it's not filtering them out.
 
 ---
 
-## Files to Create/Modify
+## Files to Modify
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/pages/ImageFooterStudio.tsx` | **Create** | Full-page footer studio for image-based footers |
-| `src/components/footer/SliceEditorGrid.tsx` | **Create** | Grid of editable slice cards |
-| `src/components/footer/LegalSectionEditor.tsx` | **Create** | Legal section color/text editor |
-| `src/App.tsx` | **Modify** | Add route for `/footer-studio/:brandId/:jobId` |
-| `src/components/FooterBuilderModal.tsx` | **Modify** | Navigate to studio on job completion |
+| `src/pages/ImageFooterStudio.tsx` | **Major rewrite** | Replace side-by-side with queue-style stacked slices, add view toggle, add missing legal prompt |
+| `src/components/footer/LegalSectionEditor.tsx` | **Minor update** | Keep color pickers but integrate into new layout |
+| `src/components/footer/SliceEditorGrid.tsx` | **Delete** | No longer needed - slice editing moves inline |
 
 ---
 
-## Key Features
+## UI Component Details
 
-1. **Side-by-side comparison**: Original image on left, generated HTML on right (same as CampaignStudio)
+### View Toggle (Header)
+```tsx
+<div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+  <button 
+    onClick={() => setViewMode('original')}
+    className={cn("px-3 py-1.5 rounded text-sm", viewMode === 'original' && "bg-background shadow-sm")}
+  >
+    Original
+  </button>
+  <button 
+    onClick={() => setViewMode('render')}
+    className={cn("px-3 py-1.5 rounded text-sm", viewMode === 'render' && "bg-background shadow-sm")}
+  >
+    Render
+  </button>
+</div>
+```
 
-2. **Zoom-synchronized preview**: 25-150% zoom at 600px base width (matches Klaviyo standards)
+### Slice Row (Same as ExpandedRowPanel)
+- Left: Link editor with Popover/Command for autocomplete from `brand_link_index`
+- Center: Image at scaled width with separator lines
+- Right: Alt text with click-to-edit
 
-3. **Inline slice editing**: Edit alt text and links directly in the grid
-
-4. **Link autocomplete**: Suggest URLs from brand_link_index for faster editing
-
-5. **Legal section customization**: Adjust colors to match the original, edit text structure
-
-6. **Live preview**: See changes reflected instantly in the HTML preview
-
-7. **Save action**: Generates final HTML and saves to brand_footers
+### Legal Section Card
+Always visible at bottom:
+- If legal detected: Show color pickers + preview
+- If no legal: Show warning + "Add Legal Section" button
 
 ---
 
-## User Flow After Implementation
+## Expected Behavior After Implementation
 
-1. User opens Footer Builder Modal
-2. Selects "Image Footer" route
-3. Uploads image or pastes Figma link
-4. Processing runs (~12-16 seconds)
-5. **Modal closes → Studio opens**
-6. User reviews full footer preview
-7. Edits links/alt text as needed
-8. Adjusts legal section colors if needed
-9. Clicks "Save Footer"
-10. Redirected to brand page with new footer listed
-
+1. User uploads footer image or pastes Figma link
+2. Processing runs, slices the visual content (including social icons)
+3. Studio opens with:
+   - **Render view** (default): Shows sliced images stacked with link/alt editors
+   - **Original view** (toggle): Shows the original uploaded image
+4. User edits links/alt text inline (same UX as campaign queue)
+5. User customizes legal section colors (or adds one if missing)
+6. User saves footer to `brand_footers`
