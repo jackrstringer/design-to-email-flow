@@ -107,6 +107,20 @@ interface ClaudeDecision {
   }[];
 }
 
+// Fine print content extracted by Claude (for converting to HTML)
+interface FinePrintContent {
+  rawText: string;
+  detectedOrgName?: string;
+  detectedAddress?: string;
+  hasUnsubscribeText: boolean;
+  hasManagePreferences: boolean;
+  hasCopyright: boolean;
+  textAlignment: 'left' | 'center' | 'right';
+  estimatedFontSize: number;
+  backgroundColor?: string;
+  textColor?: string;
+}
+
 interface AutoSliceV2Response {
   success: boolean;
   footerStartY: number;
@@ -122,6 +136,8 @@ interface AutoSliceV2Response {
     sliceIndex: number;
     description: string;
   }>;
+  // Fine print content extracted from footer (if present)
+  finePrintContent?: FinePrintContent | null;
   error?: string;
   debug?: {
     paragraphCount: number;
@@ -721,7 +737,19 @@ ${JSON.stringify(edgeData, null, 2)}
 **If you do NOT see any legal/compliance text, do NOT create a fine_print slice.**
 The system will automatically append a legal section after all image slices.
 
----
+**WHEN FINE PRINT IS FOUND - EXTRACT THE CONTENT:**
+When you DO identify a fine_print section, you MUST also extract its content so we can convert
+the static image text into editable HTML with Klaviyo merge tags.
+
+Include a "finePrintContent" object in your output with:
+- rawText: The exact text content visible in the fine print section
+- detectedOrgName: If visible (e.g., "Eskiin Inc.", "One Sol Brands LLC")
+- detectedAddress: If visible (e.g., "123 Main St, City, ST 12345")
+- hasUnsubscribeText: true/false
+- hasManagePreferences: true/false
+- hasCopyright: true/false
+- textAlignment: "left" | "center" | "right"
+- estimatedFontSize: number (typically 10-14px)
 
 ## SLICING RULES FOR FOOTERS
 
@@ -775,7 +803,19 @@ Return ONLY a valid JSON object:
       "linkSource": "<'default' for clickable, 'not_clickable' for non-clickable>"
     }
   ],
-  "needsLinkSearch": []
+  "needsLinkSearch": [],
+  "finePrintContent": null or {
+    "rawText": "<exact text from fine print section>",
+    "detectedOrgName": "<org name if visible, e.g. 'Eskiin Inc.'>",
+    "detectedAddress": "<address if visible, e.g. '123 Main St, City, ST 12345'>",
+    "hasUnsubscribeText": <boolean>,
+    "hasManagePreferences": <boolean>,
+    "hasCopyright": <boolean>,
+    "textAlignment": "<'left' | 'center' | 'right'>",
+    "estimatedFontSize": <number 10-14>,
+    "backgroundColor": "<hex color of fine print background>",
+    "textColor": "<hex color of fine print text>"
+  }
 }
 
 ### Output Rules:
@@ -788,6 +828,7 @@ Return ONLY a valid JSON object:
 6. Only include "fine_print" if you ACTUALLY SEE legal/compliance text
 7. link: null for all slices (links are assigned later)
 8. altText: Describe what's in each section
+9. If fine_print section exists, populate finePrintContent with extracted text
 
 ### Example Output (WITH fine print visible):
 
@@ -798,7 +839,19 @@ Return ONLY a valid JSON object:
     { "name": "logo", "yTop": 0, "yBottom": 120, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": true, "link": null, "altText": "Brand logo", "linkSource": "default" },
     { "name": "social_icons", "yTop": 120, "yBottom": 200, "hasCTA": false, "ctaText": null, "horizontalSplit": { "columns": 4, "gutterPositions": [25, 50, 75] }, "isClickable": true, "link": null, "altText": "Social media icons", "linkSource": "default" },
     { "name": "fine_print", "yTop": 200, "yBottom": 800, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Legal fine print", "linkSource": "not_clickable" }
-  ]
+  ],
+  "finePrintContent": {
+    "rawText": "Eskiin Inc.\\n9450 Southwest Gemini Drive, Beaverton, Oregon 97008, United States\\n\\nUNSUBSCRIBE",
+    "detectedOrgName": "Eskiin Inc.",
+    "detectedAddress": "9450 Southwest Gemini Drive, Beaverton, Oregon 97008, United States",
+    "hasUnsubscribeText": true,
+    "hasManagePreferences": false,
+    "hasCopyright": false,
+    "textAlignment": "center",
+    "estimatedFontSize": 11,
+    "backgroundColor": "#1a1a1a",
+    "textColor": "#ffffff"
+  }
 }
 
 ### Example Output (NO fine print visible):
@@ -810,7 +863,8 @@ Return ONLY a valid JSON object:
     { "name": "logo", "yTop": 0, "yBottom": 150, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": true, "link": null, "altText": "Brand logo", "linkSource": "default" },
     { "name": "cta_button", "yTop": 150, "yBottom": 280, "hasCTA": true, "ctaText": "Join Our Community", "horizontalSplit": null, "isClickable": true, "link": null, "altText": "CTA button - Join Our Community", "linkSource": "default" },
     { "name": "social_icons", "yTop": 280, "yBottom": 500, "hasCTA": false, "ctaText": null, "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] }, "isClickable": true, "link": null, "altText": "Social media icons", "linkSource": "default" }
-  ]
+  ],
+  "finePrintContent": null
 }
 
 ---
@@ -835,7 +889,12 @@ async function askClaude(
   defaultDestinationUrl?: string,
   brandPreferenceRules?: BrandPreferenceRule[],
   isFooterMode?: boolean
-): Promise<{ success: true; decision: ClaudeDecision; needsLinkSearch: Array<{ sliceIndex: number; description: string }> } | { success: false; error: string }> {
+): Promise<{ 
+  success: true; 
+  decision: ClaudeDecision; 
+  needsLinkSearch: Array<{ sliceIndex: number; description: string }>;
+  finePrintContent?: FinePrintContent | null;
+} | { success: false; error: string }> {
   
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
@@ -1442,7 +1501,12 @@ async function askClaudeWithPrompt(
   mimeType: string,
   prompt: string,
   imageHeight: number
-): Promise<{ success: true; decision: ClaudeDecision; needsLinkSearch: Array<{ sliceIndex: number; description: string }> } | { success: false; error: string }> {
+): Promise<{ 
+  success: true; 
+  decision: ClaudeDecision; 
+  needsLinkSearch: Array<{ sliceIndex: number; description: string }>;
+  finePrintContent?: FinePrintContent | null;
+} | { success: false; error: string }> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return { success: false, error: "ANTHROPIC_API_KEY not configured" };
@@ -1512,6 +1576,24 @@ async function askClaudeWithPrompt(
         description: n.description || ''
       }));
     
+    // Parse finePrintContent from Claude's response (for footer mode)
+    let finePrintContent: FinePrintContent | null = null;
+    if (parsed.finePrintContent) {
+      finePrintContent = {
+        rawText: parsed.finePrintContent.rawText || '',
+        detectedOrgName: parsed.finePrintContent.detectedOrgName || undefined,
+        detectedAddress: parsed.finePrintContent.detectedAddress || undefined,
+        hasUnsubscribeText: parsed.finePrintContent.hasUnsubscribeText ?? false,
+        hasManagePreferences: parsed.finePrintContent.hasManagePreferences ?? false,
+        hasCopyright: parsed.finePrintContent.hasCopyright ?? false,
+        textAlignment: parsed.finePrintContent.textAlignment || 'center',
+        estimatedFontSize: parsed.finePrintContent.estimatedFontSize || 11,
+        backgroundColor: parsed.finePrintContent.backgroundColor || undefined,
+        textColor: parsed.finePrintContent.textColor || undefined,
+      };
+      console.log(`  → Fine print content extracted: ${finePrintContent.rawText.substring(0, 50)}...`);
+    }
+    
     const decision: ClaudeDecision = {
       footerStartY: parsed.footerStartY,
       sections: (parsed.sections || []).map((s: any) => ({
@@ -1535,7 +1617,7 @@ async function askClaudeWithPrompt(
     
     console.log(`  → Claude decided: footerStartY=${decision.footerStartY}, ${decision.sections.length} sections, ${needsLinkSearch.length} need link search`);
     
-    return { success: true, decision, needsLinkSearch };
+    return { success: true, decision, needsLinkSearch, finePrintContent };
     
   } catch (e) {
     console.error("Failed to get/parse Claude response:", e);
@@ -1736,6 +1818,8 @@ serve(async (req) => {
       },
       // Include needsLinkSearch from Claude's response
       needsLinkSearch: claudeResult.needsLinkSearch,
+      // Include finePrintContent from Claude's response (for footer mode)
+      finePrintContent: claudeResult.finePrintContent || null,
       debug: {
         paragraphCount: rawData.paragraphs.length,
         objectCount: rawData.objects.length,
