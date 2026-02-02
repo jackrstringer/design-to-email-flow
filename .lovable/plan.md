@@ -1,172 +1,187 @@
 
 
-# Fix Image-Based Footer Processing Pipeline
+# Image Footer Studio - Full Page Editing Experience
 
-## Problem Summary
+## Current Issue
 
-The image-based footer processing is failing due to two bugs:
+The image-based footer processing correctly slices the footer and detects the legal section, but:
 
-1. **MIME Type Mismatch**: `process-footer-queue` hardcodes `image/png` when calling `auto-slice-v2`, but the actual image is a JPEG. Claude's API returns a 400 error.
+1. **Review step is cramped in a modal** - User can only see small slice thumbnails with basic editing
+2. **No legal section HTML preview** - Even when detected, the legal HTML isn't shown as a live preview
+3. **No AI refinement capability** - User can't request text edits to the legal section
+4. **Missing full footer preview** - User can't see the combined output (slices + legal HTML) as one email-ready footer
 
-2. **Missing Cloudinary Crop URLs**: When the image comes from Figma (S3 URL) without being uploaded to Cloudinary first, the `generateSliceCropUrls` function cannot parse the URL and returns `imageUrl: null` for all slices.
+## Solution
+
+Create a dedicated **Image Footer Studio** page at `/footer-studio/:brandId/:jobId` that provides the same full-screen editing experience as `CampaignStudio`, but specialized for image-based footers:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ◀ Back              Image Footer Studio              [Save Footer]         │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  ┌──────────────────────────────┐  ┌─────────────────────────────────────┐ │
+│  │        Reference             │  │         Live Preview                │ │
+│  │      (Original Image)        │  │      (HTML Output @ 600px)          │ │
+│  │                              │  │                                     │ │
+│  │  ┌────────────────────────┐  │  │  ┌─────────────────────────────┐   │ │
+│  │  │ [O'Neill Logo]         │  │  │  │ [Cropped Slice 1]          │   │ │
+│  │  │                        │  │  │  │ Alt: Brand logo             │   │ │
+│  │  │ SHOP FOR HIM          │  │  │  │ Link: https://oneill.com    │   │ │
+│  │  │ SHOP FOR HER          │  │  │  └─────────────────────────────┘   │ │
+│  │  │ SALE FOR HIM          │  │  │  ┌─────────────────────────────┐   │ │
+│  │  │ SALE FOR HER          │  │  │  │ [Cropped Slice 2]          │   │ │
+│  │  │                        │  │  │  │ Alt: Shop for Him CTA      │   │ │
+│  │  │ [Social Icons Row]    │  │  │  │ Link: /collections/mens    │   │ │
+│  │  │                        │  │  │  └─────────────────────────────┘   │ │
+│  │  │ ─── Legal Text ───    │  │  │  ┌─────────────────────────────┐   │ │
+│  │  │ 123 Main St, City CA  │  │  │  │ [Legal Section - HTML]     │   │ │
+│  │  │ Unsubscribe | Prefs   │  │  │  │ {{ organization.name }}    │   │ │
+│  │  └────────────────────────┘  │  │  │ {{ organization.address }} │   │ │
+│  │                              │  │  │ Unsubscribe | Preferences  │   │ │
+│  └──────────────────────────────┘  │  └─────────────────────────────┘   │ │
+│                                     │                                     │ │
+├─────────────────────────────────────┴─────────────────────────────────────┤
+│                           Slice Editor                                     │
+├────────────────────────────────────────────────────────────────────────────┤
+│  Slice 1: Header Logo                      Slice 2: Shop For Him CTA      │
+│  ┌──────┐ Alt: [O'Neill logo with tagline] ┌──────┐ Alt: [Shop for Him]   │
+│  │ img  │ Link: [https://oneill.com_____]  │ img  │ Link: [/mens_______]  │
+│  └──────┘ ✓ Verified                       └──────┘ ✓ Verified             │
+│                                                                            │
+│  Slice 3: Shop For Her CTA                 Slice 4: Sale For Him CTA      │
+│  ┌──────┐ Alt: [Shop for Her__________]    ┌──────┐ Alt: [Mens Sale____]  │
+│  │ img  │ Link: [/womens______________]    │ img  │ Link: [/mens-sale__]  │
+│  └──────┘ ✓ Verified                       └──────┘ ✓ Verified             │
+│                                                                            │
+├────────────────────────────────────────────────────────────────────────────┤
+│                           Legal Section Editor                              │
+├────────────────────────────────────────────────────────────────────────────┤
+│  Background: [#1a1a1a] ▼   Text Color: [#ffffff] ▼                         │
+│                                                                            │
+│  Preview:                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │ {{ organization.name }} | {{ organization.address }}               │   │
+│  │                                                                    │   │
+│  │ Unsubscribe | Manage Preferences                                   │   │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│  [Edit Legal Text...]   <- Opens chat dialog for AI text refinement       │
+└────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Root Causes
+## Architecture
 
-### Bug 1: Hardcoded MIME Type
+### New Route: `/footer-studio/:brandId/:jobId`
 
-In `supabase/functions/process-footer-queue/index.ts` line 115:
-
-```typescript
-// WRONG: Always sends image/png regardless of actual format
-imageDataUrl: `data:image/png;base64,${imageBase64}`,
+```text
+FooterBuilderModal
+     │
+     │ (on job completion → status: pending_review)
+     │
+     └───► navigate('/footer-studio/:brandId/:jobId')
+                │
+                ├── Fetch job data from footer_processing_jobs
+                ├── Fetch brand data for context
+                │
+                └── Render ImageFooterStudio
+                         │
+                         ├── Left Panel: Reference image
+                         ├── Right Panel: Live HTML preview (CampaignPreviewFrame)
+                         ├── Bottom: Slice editor grid
+                         └── Legal section color/text editor
 ```
-
-The image is a JPEG (from Cloudinary URL `...jh0sr0mi1rxcfiez7atx.jpg`) but we're telling Claude it's a PNG. Claude validates this and returns:
-
-```
-"Image does not match the provided media type image/png"
-```
-
-### Bug 2: Figma S3 URLs Not Uploaded to Cloudinary
-
-When using a Figma link, the image URL is an S3 URL:
-```
-https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/...
-```
-
-The `generateSliceCropUrls` function tries to parse this as a Cloudinary URL and fails:
-```typescript
-const match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/...)/);
-// match === null for S3 URLs
-```
-
-Result: All slices have `imageUrl: null` and the Review step shows empty image placeholders.
 
 ---
 
-## Fixes Required
+## Implementation Details
 
-### Fix 1: Detect MIME Type from Image Data
+### Phase 1: New Page Component - `ImageFooterStudio`
 
-**File: `supabase/functions/process-footer-queue/index.ts`**
+**File: `src/pages/ImageFooterStudio.tsx`**
 
-Add a function to detect the image type from the base64 magic bytes:
+This page will:
+1. Accept `brandId` and `jobId` from URL params
+2. Fetch the job data (slices, legal section) from `footer_processing_jobs`
+3. Fetch brand data for context
+4. Allow inline editing of:
+   - Slice alt text
+   - Slice links (with autocomplete from brand_link_index)
+   - Legal section colors
+5. Generate live preview using existing `generateImageFooterHtml()` function
+6. Save completed footer to `brand_footers`
 
-```typescript
-function detectMimeType(base64: string): string {
-  // Decode first few bytes to check magic bytes
-  const binaryStr = atob(base64.substring(0, 20));
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
-  }
-  
-  // PNG: 89 50 4E 47
-  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
-    return 'image/png';
-  }
-  // JPEG: FF D8 FF
-  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
-    return 'image/jpeg';
-  }
-  // WebP: 52 49 46 46 ... 57 45 42 50
-  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
-    return 'image/webp';
-  }
-  
-  // Fallback: guess from Cloudinary URL extension
-  return 'image/jpeg';
-}
-```
-
-Then update the `autoSliceFooter` call:
-
-```typescript
-const mimeType = detectMimeType(imageBase64);
-console.log(`[process-footer] Detected MIME type: ${mimeType}`);
-
-body: JSON.stringify({
-  imageDataUrl: `data:${mimeType};base64,${imageBase64}`,
-  // ... rest unchanged
-})
-```
-
-### Fix 2: Ensure Figma Images Are Uploaded to Cloudinary First
-
-The frontend (`FooterBuilderModal.tsx`) must upload the Figma S3 URL to Cloudinary BEFORE creating the processing job. This was partially implemented but not consistently applied.
+### Phase 2: Update Modal Flow
 
 **File: `src/components/FooterBuilderModal.tsx`**
 
-Update `handleImageFooterFigmaFetch`:
+When job reaches `pending_review` status:
+- Instead of showing cramped "review" step in modal
+- Navigate to `/footer-studio/:brandId/:jobId`
+- Close modal
 
-```typescript
-const handleImageFooterFigmaFetch = async () => {
-  // Step 1: Fetch Figma design (gets S3 URL)
-  const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
-    body: { figmaUrl }
-  });
-  
-  // Step 2: Upload S3 URL to Cloudinary
-  const { data: uploadData } = await supabase.functions.invoke('upload-to-cloudinary', {
-    body: { 
-      imageUrl: data.exportedImageUrl,
-      folder: `brands/${brand.domain}/footer-images`
-    }
-  });
-  
-  // Step 3: Create job with Cloudinary URL
-  const jobId = await createFooterJob({
-    imageUrl: uploadData.url,  // Cloudinary URL, not S3
-    cloudinaryPublicId: uploadData.public_id,
-    // ...
-  });
-};
-```
+### Phase 3: Slice Editor Component
 
-### Fix 3: Validate Cloudinary URL Before Processing
+**File: `src/components/footer/SliceEditorGrid.tsx`**
 
-**File: `supabase/functions/process-footer-queue/index.ts`**
+A grid of editable slice cards showing:
+- Slice thumbnail (64x64)
+- Alt text input
+- Link input with autocomplete
+- Link verification status indicator
 
-Add validation at the start:
+### Phase 4: Legal Section Editor
 
-```typescript
-// Validate image is on Cloudinary (required for crop URLs)
-if (!job.image_url.includes('cloudinary.com')) {
-  console.error('[process-footer] Image must be hosted on Cloudinary');
-  await updateJob(supabase, jobId, {
-    status: 'failed',
-    error_message: 'Image must be uploaded to Cloudinary first'
-  });
-  return new Response(
-    JSON.stringify({ success: false, error: 'Image not on Cloudinary' }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-```
+**File: `src/components/footer/LegalSectionEditor.tsx`**
+
+- Color pickers for background and text
+- Live preview of legal HTML block
+- Optional AI refinement for custom text
 
 ---
 
-## Files to Modify
+## Files to Create/Modify
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/process-footer-queue/index.ts` | Add MIME type detection, validate Cloudinary URL |
-| `src/components/FooterBuilderModal.tsx` | Ensure Figma images are uploaded to Cloudinary before job creation |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/pages/ImageFooterStudio.tsx` | **Create** | Full-page footer studio for image-based footers |
+| `src/components/footer/SliceEditorGrid.tsx` | **Create** | Grid of editable slice cards |
+| `src/components/footer/LegalSectionEditor.tsx` | **Create** | Legal section color/text editor |
+| `src/App.tsx` | **Modify** | Add route for `/footer-studio/:brandId/:jobId` |
+| `src/components/FooterBuilderModal.tsx` | **Modify** | Navigate to studio on job completion |
 
 ---
 
-## Technical Summary
+## Key Features
 
-The pipeline architecture is correct - the problem is two small bugs:
+1. **Side-by-side comparison**: Original image on left, generated HTML on right (same as CampaignStudio)
 
-1. **MIME type detection**: Detect from image bytes instead of hardcoding `image/png`
-2. **Cloudinary requirement**: Validate that the image URL is a Cloudinary URL (required for server-side cropping)
+2. **Zoom-synchronized preview**: 25-150% zoom at 600px base width (matches Klaviyo standards)
 
-After these fixes:
-- JPEGs will be sent to Claude with the correct MIME type
-- Figma images will be uploaded to Cloudinary before processing
-- Slice crop URLs will be generated correctly
-- The Review step will display the sliced images with editable links/alt text
+3. **Inline slice editing**: Edit alt text and links directly in the grid
+
+4. **Link autocomplete**: Suggest URLs from brand_link_index for faster editing
+
+5. **Legal section customization**: Adjust colors to match the original, edit text structure
+
+6. **Live preview**: See changes reflected instantly in the HTML preview
+
+7. **Save action**: Generates final HTML and saves to brand_footers
+
+---
+
+## User Flow After Implementation
+
+1. User opens Footer Builder Modal
+2. Selects "Image Footer" route
+3. Uploads image or pastes Figma link
+4. Processing runs (~12-16 seconds)
+5. **Modal closes → Studio opens**
+6. User reviews full footer preview
+7. Edits links/alt text as needed
+8. Adjusts legal section colors if needed
+9. Clicks "Save Footer"
+10. Redirected to brand page with new footer listed
 
