@@ -17,32 +17,37 @@ interface InlineLegalEditorProps {
   width: number;
 }
 
-// Merge tag display mappings
-const MERGE_TAG_DISPLAY: Record<string, string> = {
-  '{{ organization.name }}': 'Acme Inc.',
-  '{{ organization.address }}': '123 Main St, City, ST 12345',
-};
-
-// Convert merge tags to display chips for editing
+// Convert stored content (which may include HTML anchor tags) to clean display format
 function contentToDisplayHtml(content: string): string {
   let html = content;
   
-  // Replace merge tags with visible chips
+  // First, strip anchor tags but keep their merge tag content
+  // e.g. <a href="{% unsubscribe_url %}" style="...">Unsubscribe</a> -> just the merge tag chip
+  html = html.replace(
+    /<a[^>]*href=["'][^"']*\{%\s*unsubscribe_url\s*%\}[^"']*["'][^>]*>.*?<\/a>/gi,
+    '<span class="merge-tag" data-tag="unsub" contenteditable="false">Unsubscribe</span>'
+  );
+  html = html.replace(
+    /<a[^>]*href=["'][^"']*\{%\s*manage_preferences_url\s*%\}[^"']*["'][^>]*>.*?<\/a>/gi,
+    '<span class="merge-tag" data-tag="prefs" contenteditable="false">Preferences</span>'
+  );
+  
+  // Now replace remaining bare merge tags with chips
   html = html.replace(
     /\{\{\s*organization\.name\s*\}\}/g,
-    '<span class="merge-tag" data-tag="org-name" contenteditable="false" style="background:rgba(59,130,246,0.15);color:#2563eb;padding:1px 6px;border-radius:3px;font-size:inherit;white-space:nowrap;cursor:default;">Org Name</span>'
+    '<span class="merge-tag" data-tag="org-name" contenteditable="false">Org Name</span>'
   );
   html = html.replace(
     /\{\{\s*organization\.address\s*\}\}/g,
-    '<span class="merge-tag" data-tag="org-address" contenteditable="false" style="background:rgba(59,130,246,0.15);color:#2563eb;padding:1px 6px;border-radius:3px;font-size:inherit;white-space:nowrap;cursor:default;">Address</span>'
+    '<span class="merge-tag" data-tag="org-address" contenteditable="false">Address</span>'
   );
   html = html.replace(
     /\{%\s*unsubscribe_url\s*%\}/g,
-    '<span class="merge-tag" data-tag="unsub" contenteditable="false" style="background:rgba(59,130,246,0.15);color:#2563eb;padding:1px 6px;border-radius:3px;font-size:inherit;white-space:nowrap;cursor:default;">Unsubscribe</span>'
+    '<span class="merge-tag" data-tag="unsub" contenteditable="false">Unsubscribe</span>'
   );
   html = html.replace(
     /\{%\s*manage_preferences_url\s*%\}/g,
-    '<span class="merge-tag" data-tag="prefs" contenteditable="false" style="background:rgba(59,130,246,0.15);color:#2563eb;padding:1px 6px;border-radius:3px;font-size:inherit;white-space:nowrap;cursor:default;">Preferences</span>'
+    '<span class="merge-tag" data-tag="prefs" contenteditable="false">Preferences</span>'
   );
   
   return html;
@@ -52,11 +57,11 @@ function contentToDisplayHtml(content: string): string {
 function displayHtmlToContent(html: string): string {
   let content = html;
   
-  // Replace chips back to merge tags
+  // Replace chips back to merge tags (wrapped in anchor tags for links)
   content = content.replace(/<span[^>]*data-tag="org-name"[^>]*>.*?<\/span>/gi, '{{ organization.name }}');
   content = content.replace(/<span[^>]*data-tag="org-address"[^>]*>.*?<\/span>/gi, '{{ organization.address }}');
-  content = content.replace(/<span[^>]*data-tag="unsub"[^>]*>.*?<\/span>/gi, '{% unsubscribe_url %}');
-  content = content.replace(/<span[^>]*data-tag="prefs"[^>]*>.*?<\/span>/gi, '{% manage_preferences_url %}');
+  content = content.replace(/<span[^>]*data-tag="unsub"[^>]*>.*?<\/span>/gi, '<a href="{% unsubscribe_url %}">Unsubscribe</a>');
+  content = content.replace(/<span[^>]*data-tag="prefs"[^>]*>.*?<\/span>/gi, '<a href="{% manage_preferences_url %}">Manage Preferences</a>');
   
   return content;
 }
@@ -105,17 +110,17 @@ export function InlineLegalEditor({
   const insertTag = useCallback((tagType: 'org-name' | 'org-address' | 'unsub' | 'prefs') => {
     if (!editorRef.current) return;
     
-    const tagMap: Record<string, { display: string; raw: string }> = {
-      'org-name': { display: 'Org Name', raw: '{{ organization.name }}' },
-      'org-address': { display: 'Address', raw: '{{ organization.address }}' },
-      'unsub': { display: 'Unsubscribe', raw: '{% unsubscribe_url %}' },
-      'prefs': { display: 'Preferences', raw: '{% manage_preferences_url %}' },
+    const tagMap: Record<string, { display: string }> = {
+      'org-name': { display: 'Org Name' },
+      'org-address': { display: 'Address' },
+      'unsub': { display: 'Unsubscribe' },
+      'prefs': { display: 'Preferences' },
     };
     
     const tag = tagMap[tagType];
     
     // Insert chip HTML at cursor
-    const chipHtml = `<span class="merge-tag" data-tag="${tagType}" contenteditable="false" style="background:rgba(59,130,246,0.15);color:#2563eb;padding:1px 6px;border-radius:3px;font-size:inherit;white-space:nowrap;cursor:default;">${tag.display}</span>&nbsp;`;
+    const chipHtml = `<span class="merge-tag" data-tag="${tagType}" contenteditable="false">${tag.display}</span>&nbsp;`;
     
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
@@ -152,12 +157,12 @@ export function InlineLegalEditor({
   };
   
   return (
-    <div className="relative" style={{ width, maxWidth: width, overflow: 'hidden' }}>
+    <div className="relative pt-14" style={{ width, maxWidth: width }}>
       {/* Floating Toolbar */}
       <div 
         className={cn(
-          "absolute -top-12 left-0 right-0 z-20 flex items-center justify-center gap-1 p-1.5 bg-background border rounded-lg shadow-lg transition-all",
-          isFocused ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none"
+          "absolute top-0 left-0 right-0 z-50 flex items-center justify-center gap-1 p-1.5 bg-background border rounded-lg shadow-lg transition-all",
+          isFocused ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         onMouseDown={handleToolbarMouseDown}
       >
@@ -319,6 +324,22 @@ export function InlineLegalEditor({
           </button>
         </div>
       </div>
+      
+      {/* Merge Tag Styles */}
+      <style>{`
+        .merge-tag {
+          display: inline-block;
+          background: rgba(59, 130, 246, 0.15);
+          color: #2563eb;
+          padding: 1px 6px;
+          border-radius: 3px;
+          font-size: inherit;
+          white-space: nowrap;
+          cursor: default;
+          user-select: none;
+          vertical-align: baseline;
+        }
+      `}</style>
       
       {/* Editable Content Area */}
       <div
