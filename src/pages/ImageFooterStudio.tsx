@@ -652,17 +652,6 @@ export default function ImageFooterStudio() {
                 </div>
               )}
               
-              {/* Legal Section Editor - Below the preview */}
-              {legalSection && (
-                <div className="w-full mt-6 border-t pt-6">
-                  <h3 className="font-medium mb-4 text-sm">Legal Section Settings</h3>
-                  <LegalContentEditor
-                    legalSection={legalSection}
-                    onUpdate={handleLegalUpdate}
-                    footerWidth={600}
-                  />
-                </div>
-              )}
             </div>
           )}
         </div>

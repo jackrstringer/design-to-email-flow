@@ -561,6 +561,7 @@ serve(async (req) => {
     let linkIndex: LinkIndexEntry[] = [];
     let defaultDestinationUrl: string | null = null;
     let brandPreferenceRules: BrandPreferenceRule[] = [];
+    let brandDomain: string | null = null;
     
     if (job.brand_id) {
       try {
@@ -581,15 +582,16 @@ serve(async (req) => {
           console.log(`[process-footer] Loaded ${linkIndex.length} links from brand index`);
         }
 
-        // Fetch brand preferences
+        // Fetch brand preferences and domain
         const { data: brand } = await supabase
           .from('brands')
-          .select('website_url, link_preferences')
+          .select('website_url, link_preferences, domain')
           .eq('id', job.brand_id)
           .single();
         
         if (brand) {
           defaultDestinationUrl = brand.website_url || null;
+          brandDomain = brand.domain || null;
           const prefs = brand.link_preferences as any;
           brandPreferenceRules = prefs?.rules || [];
         }
@@ -785,7 +787,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           slices: sliceInputs,
-          brandDomain: null, // Will be fetched inside analyze-slices
+          brandDomain: brandDomain, // Pass the actual brand domain
           brandId: job.brand_id,
           fullCampaignImage: resizedImageUrl
         })
