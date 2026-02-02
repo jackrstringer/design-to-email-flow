@@ -1,170 +1,239 @@
 
-# Redesign Image Footer Studio to Match Queue Experience
+# Footer-Specific Slicing Pipeline
 
-## User Feedback Summary
+## Problem Analysis
 
-1. **Use same slice display style as queue** - The current grid-based `SliceEditorGrid` is different from the queue's approach of showing slices stacked with links/alt-text overlaid alongside the image
-2. **No need for side-by-side view** - Since it's image-based, the output will match the input. Instead, provide a toggle for "Original vs Render"
-3. **Social media icons missing** - These should be sliced as images too, not removed
-4. **Missing legal section prompt** - If no legal/fine print is detected, prompt user to add the required Klaviyo merge tags (org name, org address, unsubscribe link)
+The current `auto-slice-v2` prompt is designed for full campaign emails. It:
+1. Searches for where "marketing content ends and utility content begins"
+2. Sets `footerStartY` to exclude the footer from slices
+3. Treats footer sections as non-marketing content to skip
 
----
+**For standalone footer images**, this is completely wrong:
+- The ENTIRE image is footer content
+- Social icons ARE the content (not utility to skip)
+- Fine print IS a slice (to be converted to HTML later)
+- There's no "marketing content" to separate from
 
-## Current vs Target Architecture
+## Solution Architecture
+
+### Phase 1: Footer-Specific Prompt in `auto-slice-v2`
+
+When `isFooterMode: true` is passed, use a completely different Claude prompt:
 
 ```text
-CURRENT LAYOUT (Wrong):
-┌───────────────────────────────────────────────────────────┐
-│ ┌─────────────────────┐  ┌─────────────────────────────┐ │
-│ │   Reference Image   │  │      HTML Preview           │ │
-│ │  (Left 50%)         │  │      (Right 50%)            │ │
-│ └─────────────────────┘  └─────────────────────────────┘ │
-├───────────────────────────────────────────────────────────┤
-│ SliceEditorGrid (grid of cards - WRONG STYLE)            │
-├───────────────────────────────────────────────────────────┤
-│ LegalSectionEditor (only shows if legal detected)        │
-└───────────────────────────────────────────────────────────┘
+You are analyzing an EMAIL FOOTER screenshot to slice it into component sections.
 
-TARGET LAYOUT (Match Queue ExpandedRowPanel):
-┌───────────────────────────────────────────────────────────┐
-│ Header: Back | Title | [Original ◀▶ Render] | Save       │
-├───────────────────────────────────────────────────────────┤
-│         [Link Col]     [Image]        [Alt Col]          │
-│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
-│  │ ➕ Add link  │  │ [Slice 1]   │  │ "Logo image"  │   │
-│  └──────────────┘  └─────────────┘  └───────────────┘   │
-│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
-│  │ /shop-mens   │  │ [Slice 2]   │  │ "Shop Mens"   │   │
-│  └──────────────┘  └─────────────┘  └───────────────┘   │
-│  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
-│  │ Multi-col... │  │ [Socials]   │  │ "Social..."   │   │
-│  └──────────────┘  └─────────────┘  └───────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐ │
-│  │ Legal Section (HTML) - always shows                 │ │
-│  │ ⚠️ Missing legal? Click to add required fields     │ │
-│  └─────────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────┘
+## CONTEXT: This is a standalone footer image
+The entire image is a footer - there is no marketing content above. Your job is to:
+1. Slice ALL sections (logo, navigation, social icons, fine print)
+2. Each slice becomes either an IMAGE link or (for fine print) HTML text
+3. The "fine print" section will be converted to responsive HTML after slicing
+
+## Footer Section Types
+
+### IMAGE-BASED SECTIONS (keep as images):
+- **Logo section**: Brand logo, typically at top
+- **Navigation links**: "Shop | About | Contact" or vertical nav stacks
+- **Social icons row**: Instagram, Facebook, TikTok, YouTube icons
+- **CTA buttons**: "Join Facebook Group", "Shop Now", etc.
+- **Badge rows**: B Corp, Vegan, Cruelty Free certifications
+
+### FINE PRINT SECTION (will become HTML):
+Look for the section containing ANY of these:
+- "Unsubscribe" or "Manage Preferences" links
+- Physical mailing address (city, state, zip)
+- "© 2024 Brand Name" or "All rights reserved"
+- "You are receiving this because..."
+- Email: contact@brand.com
+
+**Label this section as "fine_print"** - it will be converted to HTML.
+
+## Slicing Rules for Footers
+
+1. **Include ALL sections** - nothing is skipped
+2. **Fine print is its own slice** - always the bottom section
+3. **Social icons need horizontal split** - each icon is clickable
+4. **Navigation links need horizontal split** - each link is clickable
+5. **Logo is clickable** - links to homepage
+6. **Badge rows are NOT clickable** - decorative only
+
+## Output
+
+Set `footerStartY = imageHeight` (the entire image is footer content)
+
+Return slices covering the FULL image from yTop: 0 to yBottom: imageHeight
+
+Each slice must have:
+- name: Descriptive name (e.g., "logo", "navigation_links", "social_icons", "fine_print")
+- yTop/yBottom: Pixel boundaries
+- isClickable: true/false
+- hasCTA: true if contains buttons
+- horizontalSplit: For social icons and nav links
 ```
+
+### Phase 2: Fine Print Detection in Process Flow
+
+After slicing, the pipeline will:
+1. Identify the slice named `fine_print` (or detect via OCR keywords)
+2. Store its pixel boundaries for reference
+3. **Convert it to HTML** using existing `LegalSectionData` structure:
+   - Extract background color and text color from that region
+   - Generate Klaviyo-compatible HTML with merge tags:
+     - `{{ organization.name }}`
+     - `{{ organization.address }}`
+     - `{% unsubscribe_url %}`
+     - `{% manage_preferences_url %}`
+
+### Phase 3: Store Both in Job
+
+The `footer_processing_jobs` table already has:
+- `slices` (JSONB) - for image slices
+- `legal_section` (JSONB) - for fine print metadata
+
+After processing:
+```json
+{
+  "slices": [
+    { "name": "logo", "imageUrl": "...", "link": "https://brand.com", ... },
+    { "name": "social_icons", "horizontalSplit": { "columns": 4 }, ... },
+    // NO fine_print slice here - it's converted to HTML
+  ],
+  "legal_section": {
+    "yStart": 450,
+    "backgroundColor": "#1a1a1a",
+    "textColor": "#ffffff",
+    "detectedElements": [...]
+  }
+}
+```
+
+### Phase 4: Studio Display
+
+The `ImageFooterStudio` already handles this:
+1. Image slices shown with link/alt editors
+2. Legal section shown as editable HTML preview
+3. User can customize colors, padding, text
 
 ---
 
-## Implementation Details
+## Implementation Steps
 
-### Phase 1: Restructure ImageFooterStudio Layout
+### Step 1: Add Footer-Specific Prompt to `auto-slice-v2`
 
-**File: `src/pages/ImageFooterStudio.tsx`**
+**File: `supabase/functions/auto-slice-v2/index.ts`**
 
-Replace the side-by-side layout with a single centered column that:
-1. Shows a toggle for "Original" vs "Render" at the top
-2. Renders slices stacked vertically with link/alt columns on sides (like ExpandedRowPanel)
-3. Always shows legal section at bottom (with prompt if missing)
+1. Accept `isFooterMode` parameter in the request
+2. Build a different prompt when `isFooterMode: true`
+3. Key differences:
+   - No "footer detection" - entire image IS footer
+   - Slice covers full image (yTop: 0 to yBottom: imageHeight)
+   - Identify `fine_print` section by name
+   - Social icons and nav links ALWAYS get horizontal split
 
-Key changes:
-- Remove the two-panel split (left reference, right preview)
-- Add view toggle state: `const [viewMode, setViewMode] = useState<'render' | 'original'>('render')`
-- Reuse the same slice row layout from `ExpandedRowPanel`:
-  - Left column: Link editor (Popover with Command for autocomplete)
-  - Center: Slice image (stacked, full width at scaled size)
-  - Right column: Alt text editor (click to edit)
-- Add slice separator lines between rows
-- Support multi-column display for horizontal splits (social icons)
+### Step 2: Update `process-footer-queue` to Handle Fine Print
 
-### Phase 2: Add Missing Legal Section Prompt
+**File: `supabase/functions/process-footer-queue/index.ts`**
 
-**File: `src/pages/ImageFooterStudio.tsx`** and **`src/components/footer/LegalSectionEditor.tsx`**
+1. After auto-slice returns, find the slice named "fine_print"
+2. Use existing `detectLegalSection` OCR to extract metadata
+3. Remove fine_print from image slices (it becomes HTML)
+4. Store remaining slices + legal section in job
 
-When `legalSection` is null:
-1. Show a warning banner with an "Add Legal Section" button
-2. Clicking creates a default `LegalSectionData` with sensible defaults
-3. Required fields reminder: org name, org address, unsubscribe link
+### Step 3: Ensure Social Icons Are Split
 
-New component structure:
-```tsx
-{legalSection ? (
-  <LegalSectionEditor legalSection={legalSection} onUpdate={handleLegalUpdate} />
-) : (
-  <MissingLegalPrompt onAdd={handleAddLegalSection} />
-)}
-```
-
-The `MissingLegalPrompt` component shows:
-- Warning icon + message about required legal compliance
-- "Add Legal Section" button that initializes a default `LegalSectionData`:
-  ```typescript
-  {
-    yStart: 0,
-    backgroundColor: '#1a1a1a',
-    textColor: '#ffffff',
-    detectedElements: []
-  }
-  ```
-
-### Phase 3: Delete SliceEditorGrid Component
-
-The `SliceEditorGrid` component is no longer needed since we're adopting the queue's inline editing approach. The slice editing will be integrated directly into the `ImageFooterStudio` page.
-
-**File: `src/components/footer/SliceEditorGrid.tsx`** - Delete or deprecate
-
-### Phase 4: Ensure Social Icons Are Included
-
-The current pipeline should already include social icons as slices since they're above the legal cutoff. Need to verify:
-1. `process-footer-queue` includes all slices above `legalCutoffY`
-2. Social icon rows are marked with `horizontalSplit` data for proper rendering
-3. Multi-column rows display correctly in the new layout
-
-If social icons are being excluded, check the `auto-slice-v2` function to ensure it's not filtering them out.
+The prompt explicitly instructs:
+- Social icon rows → `horizontalSplit: { columns: N }`
+- Each icon gets its own clickable column
+- Links can be set to platform URLs (instagram.com/brand, etc.)
 
 ---
 
 ## Files to Modify
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/ImageFooterStudio.tsx` | **Major rewrite** | Replace side-by-side with queue-style stacked slices, add view toggle, add missing legal prompt |
-| `src/components/footer/LegalSectionEditor.tsx` | **Minor update** | Keep color pickers but integrate into new layout |
-| `src/components/footer/SliceEditorGrid.tsx` | **Delete** | No longer needed - slice editing moves inline |
+| File | Changes |
+|------|---------|
+| `supabase/functions/auto-slice-v2/index.ts` | Add footer-specific prompt when `isFooterMode: true` |
+| `supabase/functions/process-footer-queue/index.ts` | Handle fine_print slice → convert to legal section |
 
 ---
 
-## UI Component Details
+## Technical Details
 
-### View Toggle (Header)
-```tsx
-<div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
-  <button 
-    onClick={() => setViewMode('original')}
-    className={cn("px-3 py-1.5 rounded text-sm", viewMode === 'original' && "bg-background shadow-sm")}
-  >
-    Original
-  </button>
-  <button 
-    onClick={() => setViewMode('render')}
-    className={cn("px-3 py-1.5 rounded text-sm", viewMode === 'render' && "bg-background shadow-sm")}
-  >
-    Render
-  </button>
-</div>
+### Footer Prompt Key Sections
+
+```typescript
+const footerPrompt = `
+You are analyzing an EMAIL FOOTER screenshot to slice it into component sections.
+
+## CRITICAL CONTEXT
+This is a STANDALONE FOOTER IMAGE. The entire image is footer content.
+There is no "marketing content" above - you are slicing the footer itself.
+
+## Your Task
+Slice this footer into its component sections:
+1. Logo (if present) - typically clickable, links to homepage
+2. Navigation links - horizontal or vertical, each link is clickable
+3. Social media icons - MUST use horizontalSplit, each icon is clickable
+4. CTA buttons - "Join Facebook Group", etc.
+5. Badge/certification rows - usually not clickable
+6. Fine print - the legal text section (name it "fine_print")
+
+## Fine Print Detection
+The "fine_print" section contains legal/compliance content:
+- Unsubscribe link text
+- Physical mailing address
+- Copyright notice
+- "You're receiving this email because..."
+
+**IMPORTANT**: Name this slice exactly "fine_print" - it will be converted to HTML.
+
+## Output Requirements
+- footerStartY: Set to image height (entire image is footer)
+- Slices: Cover FULL image from y=0 to y=imageHeight
+- Social icons: ALWAYS use horizontalSplit with correct column count
+- Navigation links: Use horizontalSplit if arranged horizontally
+- Fine print: Must be its own slice at the bottom
+`;
 ```
 
-### Slice Row (Same as ExpandedRowPanel)
-- Left: Link editor with Popover/Command for autocomplete from `brand_link_index`
-- Center: Image at scaled width with separator lines
-- Right: Alt text with click-to-edit
+### Fine Print Slice Handling
 
-### Legal Section Card
-Always visible at bottom:
-- If legal detected: Show color pickers + preview
-- If no legal: Show warning + "Add Legal Section" button
+In `process-footer-queue`:
+```typescript
+// Find the fine_print slice
+const finePrintSlice = slices.find(s => 
+  s.name.toLowerCase().includes('fine_print') || 
+  s.name.toLowerCase().includes('legal')
+);
+
+if (finePrintSlice) {
+  // Use OCR to extract legal section metadata
+  const legalSection = await detectLegalSection(imageBase64, imageHeight);
+  
+  // Override yStart with Claude's more accurate boundary
+  if (legalSection) {
+    legalSection.yStart = finePrintSlice.yTop;
+  }
+  
+  // Remove fine_print from image slices
+  const imageSlices = slices.filter(s => s !== finePrintSlice);
+  
+  // Store both
+  await updateJob(supabase, jobId, {
+    slices: generateSliceCropUrls(imageSlices, ...),
+    legal_section: legalSection
+  });
+}
+```
 
 ---
 
-## Expected Behavior After Implementation
+## Expected Outcome
 
-1. User uploads footer image or pastes Figma link
-2. Processing runs, slices the visual content (including social icons)
-3. Studio opens with:
-   - **Render view** (default): Shows sliced images stacked with link/alt editors
-   - **Original view** (toggle): Shows the original uploaded image
-4. User edits links/alt text inline (same UX as campaign queue)
-5. User customizes legal section colors (or adds one if missing)
-6. User saves footer to `brand_footers`
+After implementation:
+
+1. **Footer images are fully sliced** - including social icons, nav links, logo
+2. **Social icons appear as individual columns** - each links to platform
+3. **Fine print becomes editable HTML** - with Klaviyo merge tags
+4. **Studio shows complete footer** - image slices + HTML legal section
+5. **User can customize** - links, alt text, legal section colors/text
