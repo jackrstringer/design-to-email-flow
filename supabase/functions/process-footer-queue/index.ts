@@ -328,13 +328,25 @@ function generateSliceCropUrls(
     console.log(`[process-footer] Legal cutoff at Y=${legalCutoffY}`);
   }
 
-  // Extract Cloudinary base URL and public ID
-  const match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)\/[^/]+\/(.+)\.(png|jpg|jpeg|webp)/i);
+  // Extract Cloudinary base URL and public ID - support both with and without transformations
+  // Pattern 1: .../upload/v123456/path/to/image.png
+  // Pattern 2: .../upload/c_limit,w_600,h_4000/v123456/path/to/image.png
+  let match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/v][^/]*)*\/v\d+\/(.+)\.(png|jpg|jpeg|webp)/i);
+  
+  // Fallback pattern without version number
+  if (!match) {
+    match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/]+)*\/([^/]+)\.(png|jpg|jpeg|webp)/i);
+  }
+  
   if (!match) {
     console.error('[process-footer] Could not parse Cloudinary URL:', originalImageUrl);
+    console.warn('[process-footer] Expected Cloudinary URL format. Slices will not have crop URLs.');
+    
+    // Return slices without crop URLs - they can still be displayed but won't be cropped
     return slices.map((slice, i) => ({
       ...slice,
       imageUrl: null,
+      needsCloudinaryUpload: true,  // Signal to frontend that image needs to be on Cloudinary
       width: actualWidth,
       height: slice.yBottom - slice.yTop,
     }));
