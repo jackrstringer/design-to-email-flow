@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { SitemapImportJob, TriggerSitemapImportResponse } from '@/types/link-intelligence';
 
@@ -8,6 +8,7 @@ const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
 export function useSitemapImport(brandId: string, domain?: string) {
   const queryClient = useQueryClient();
+  const previousStatusRef = useRef<string | null>(null);
 
   // Fetch latest import job
   const jobQuery = useQuery({
@@ -35,6 +36,32 @@ export function useSitemapImport(brandId: string, domain?: string) {
     },
   });
 
+  const job = jobQuery.data;
+  const isRunning = job && RUNNING_STATUSES.includes(job.status);
+  const isComplete = job?.status === 'complete';
+  const isFailed = job?.status === 'failed';
+  const isCancelled = job?.status === 'cancelled';
+
+  // CRITICAL: When job transitions to complete, immediately refetch link data
+  useEffect(() => {
+    const currentStatus = job?.status || null;
+    const prevStatus = previousStatusRef.current;
+    
+    // Check if status just changed to 'complete' from a running status
+    if (
+      currentStatus === 'complete' && 
+      prevStatus && 
+      RUNNING_STATUSES.includes(prevStatus)
+    ) {
+      console.log('[useSitemapImport] Job completed, refreshing link index');
+      // Invalidate immediately to show new links
+      queryClient.invalidateQueries({ queryKey: ['brand-link-index', brandId] });
+      queryClient.invalidateQueries({ queryKey: ['brand-link-stats', brandId] });
+    }
+    
+    previousStatusRef.current = currentStatus;
+  }, [job?.status, brandId, queryClient]);
+
   // Trigger crawl mutation (domain-only, uses Firecrawl)
   const triggerCrawlMutation = useMutation({
     mutationFn: async (): Promise<TriggerSitemapImportResponse> => {
@@ -47,8 +74,6 @@ export function useSitemapImport(brandId: string, domain?: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sitemap-import-job', brandId] });
-      queryClient.invalidateQueries({ queryKey: ['brand-link-index', brandId] });
-      queryClient.invalidateQueries({ queryKey: ['brand-link-stats', brandId] });
     },
   });
 
@@ -63,16 +88,14 @@ export function useSitemapImport(brandId: string, domain?: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sitemap-import-job', brandId] });
-      queryClient.invalidateQueries({ queryKey: ['brand-link-index', brandId] });
-      queryClient.invalidateQueries({ queryKey: ['brand-link-stats', brandId] });
     },
   });
 
   // Cancel job mutation
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      const job = jobQuery.data;
-      if (!job) throw new Error('No job to cancel');
+      const currentJob = jobQuery.data;
+      if (!currentJob) throw new Error('No job to cancel');
       
       const { error } = await supabase
         .from('sitemap_import_jobs')
@@ -81,19 +104,13 @@ export function useSitemapImport(brandId: string, domain?: string) {
           error_message: 'Cancelled by user',
           completed_at: new Date().toISOString()
         })
-        .eq('id', job.id);
+        .eq('id', currentJob.id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sitemap-import-job', brandId] });
     },
   });
-
-  const job = jobQuery.data;
-  const isRunning = job && RUNNING_STATUSES.includes(job.status);
-  const isComplete = job?.status === 'complete';
-  const isFailed = job?.status === 'failed';
-  const isCancelled = job?.status === 'cancelled';
 
   // Calculate if job is stale (no activity for 10+ minutes)
   const isStale = useMemo(() => {
