@@ -81,10 +81,13 @@ serve(async (req) => {
       })
       .eq('id', job_id);
 
-    // Use Map API instead of Crawl API - much faster and cheaper!
-    console.log(`[crawl-brand-site] Calling Firecrawl Map API for https://${domain}`);
+    // Two-phase discovery: collections first, then products
+    const MAX_TOTAL = 100;
     
-    const mapResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
+    // Phase 1: Discover navigation/collection pages first
+    console.log(`[crawl-brand-site] Phase 1: Discovering collection/nav pages for https://${domain}`);
+    
+    const navResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
@@ -92,22 +95,23 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: `https://${domain}`,
-        limit: 100,  // Max URLs to discover
+        search: 'collections',
+        limit: MAX_TOTAL,
         includeSubdomains: false
       })
     });
 
     // Handle API errors with user-friendly messages
-    if (!mapResponse.ok) {
-      const errorText = await mapResponse.text();
-      console.error(`[crawl-brand-site] Firecrawl Map API error: ${mapResponse.status}`, errorText);
+    if (!navResponse.ok) {
+      const errorText = await navResponse.text();
+      console.error(`[crawl-brand-site] Firecrawl Map API error: ${navResponse.status}`, errorText);
       
       let userMessage = 'Failed to crawl site';
-      if (mapResponse.status === 402) {
+      if (navResponse.status === 402) {
         userMessage = 'Firecrawl API credits exhausted. Please add credits at firecrawl.dev/pricing';
-      } else if (mapResponse.status === 429) {
+      } else if (navResponse.status === 429) {
         userMessage = 'Rate limited by Firecrawl. Please try again in a few minutes.';
-      } else if (mapResponse.status === 401) {
+      } else if (navResponse.status === 401) {
         userMessage = 'Firecrawl API key is invalid. Please check your configuration.';
       } else {
         try {
@@ -116,11 +120,10 @@ serve(async (req) => {
             userMessage = errorData.error;
           }
         } catch {
-          userMessage = `Firecrawl API error (${mapResponse.status})`;
+          userMessage = `Firecrawl API error (${navResponse.status})`;
         }
       }
       
-      // Update job with user-friendly error message
       await supabase
         .from('sitemap_import_jobs')
         .update({ 
@@ -133,10 +136,55 @@ serve(async (req) => {
       throw new Error(userMessage);
     }
 
-    const mapData = await mapResponse.json();
-    const allUrls: string[] = mapData.links || [];
+    const navData = await navResponse.json();
+    const navUrls: string[] = navData.links || [];
+    console.log(`[crawl-brand-site] Phase 1 found ${navUrls.length} collection/nav URLs`);
 
-    console.log(`[crawl-brand-site] Map API found ${allUrls.length} URLs`);
+    // Filter nav URLs
+    const navFiltered = navUrls.filter(url => {
+      if (!url) return false;
+      if (shouldSkipUrl(url)) return false;
+      if (!url.includes(domain)) return false;
+      return true;
+    });
+
+    // Phase 2: Fill remaining quota with products
+    const remainingQuota = Math.max(0, MAX_TOTAL - navFiltered.length);
+    let productUrls: string[] = [];
+
+    if (remainingQuota > 0) {
+      console.log(`[crawl-brand-site] Phase 2: Discovering up to ${remainingQuota} product pages`);
+      
+      const productResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: `https://${domain}`,
+          search: 'products',
+          limit: remainingQuota,
+          includeSubdomains: false
+        })
+      });
+
+      if (productResponse.ok) {
+        const productData = await productResponse.json();
+        productUrls = (productData.links || []).filter((url: string) => 
+          url && !shouldSkipUrl(url) && url.includes(domain)
+        );
+        console.log(`[crawl-brand-site] Phase 2 found ${productUrls.length} product URLs`);
+      } else {
+        console.warn(`[crawl-brand-site] Phase 2 product fetch failed, continuing with nav URLs only`);
+      }
+    } else {
+      console.log(`[crawl-brand-site] Phase 2 skipped - nav URLs already at quota`);
+    }
+
+    // Merge and deduplicate (nav links take priority)
+    const allUrls = [...new Set([...navFiltered, ...productUrls])];
+    console.log(`[crawl-brand-site] Total unique URLs after merge: ${allUrls.length}`);
 
     // Immediately update with URLs found count
     await supabase
@@ -147,22 +195,8 @@ serve(async (req) => {
       })
       .eq('id', job_id);
 
-    // Filter URLs
-    const filteredUrls = allUrls.filter(url => {
-      if (!url) return false;
-      if (shouldSkipUrl(url)) return false;
-      // Only include same-domain URLs
-      if (!url.includes(domain)) return false;
-      return true;
-    });
-
-    // Deduplicate
-    const uniqueUrls = [...new Set(filteredUrls)];
-
-    console.log(`[crawl-brand-site] Filtered to ${uniqueUrls.length} unique content pages`);
-
-    // Build links with titles from URL
-    const links = uniqueUrls.map(url => ({
+    // Build links with titles from URL (already filtered)
+    const links = allUrls.map(url => ({
       url,
       title: titleFromUrl(url),
       link_type: categorizeUrl(url)
