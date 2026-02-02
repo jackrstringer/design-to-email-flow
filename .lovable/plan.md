@@ -1,144 +1,152 @@
 
+# Fix Image Footer Studio: Incorrect Links + Missing Slice
 
-# Prioritize Navigation/Collections Over Products in Crawl
+## Problems Identified
 
-## Summary
+### Problem 1: Links Show `https://null/collections/...`
 
-Use the Firecrawl Map API's `search` parameter to prioritize important navigation links (collections, categories) before filling the remaining quota with product pages.
+**Root Cause**: The `process-footer-queue` function doesn't pass the brand's domain to `analyze-slices`. It sets `brandDomain: null` (line 788), so when the web search fallback constructs URLs, it uses `null` as the domain.
 
-## Current Behavior
-
-- Single Map API call with `limit: 100`
-- Gets whatever URLs Firecrawl finds first (often many products)
-- May miss important collection pages if the site has 500+ URLs
-
-## New Behavior: Two-Phase Discovery
-
-### Phase 1: Grab All Navigation/Collection Links (Unlimited)
-
-First Map call uses `search` to filter for collection/category pages:
-
-```typescript
-// Phase 1: Get all collections/categories (no limit needed - typically < 50)
-const navResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
-  method: 'POST',
-  headers: { 'Authorization': `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    url: `https://${domain}`,
-    search: 'collections',  // Firecrawl filters/prioritizes URLs containing this
-    limit: 100,  // Grab up to 100 nav/collection links
-    includeSubdomains: false
-  })
-});
+**Evidence from logs**:
+```
+[analyze-slices] Starting { brandDomain: null }
 ```
 
-### Phase 2: Fill Remaining With Products
-
-Second Map call gets products, limited to fill the remaining quota:
+**The Fix**: Fetch the brand's `domain` field and pass it to `analyze-slices`:
 
 ```typescript
-// Calculate remaining quota
-const remainingQuota = Math.max(0, 100 - navLinks.length);
+// In process-footer-queue/index.ts, line 586-587
+const { data: brand } = await supabase
+  .from('brands')
+  .select('website_url, link_preferences, domain')  // ADD domain
+  .eq('id', job.brand_id)
+  .single();
 
-if (remainingQuota > 0) {
-  const productResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url: `https://${domain}`,
-      search: 'products',  // Focus on product pages
-      limit: remainingQuota,
-      includeSubdomains: false
-    })
-  });
-}
+// Store domain for later use
+const brandDomain = brand?.domain || null;
+
+// Then at line 788-789
+body: JSON.stringify({
+  slices: sliceInputs,
+  brandDomain: brandDomain,  // PASS the actual domain
+  brandId: job.brand_id,
+  fullCampaignImage: resizedImageUrl
+})
 ```
 
-### Credit Cost
+### Problem 2: Missing "SALE FOR HER" Slice (Black Button at Bottom)
 
-- **Current**: 1 credit (single map call)
-- **New**: 2 credits (two map calls)
-- **Benefit**: Much better coverage of important navigation pages
+**Root Cause**: Looking at the slices data from the database, there are only 6 image slices before the social icons. The image shows:
+1. Logo
+2. "Founded by Jack O'Neill" tagline  
+3. SHOP FOR HIM button
+4. SHOP FOR HER button
+5. SALE FOR HIM button (black)
+6. SALE FOR HER button (black)  <-- This one is missing/merged
+7. Social icons
+
+The auto-slice-v2 function is incorrectly slicing - it's creating only 6 sections when there should be 7 (before social icons).
+
+**The Fix**: This is a Claude vision interpretation issue. The footer prompt needs to emphasize detecting ALL visible CTA buttons, even if they have similar styling. We should add a rule to the footer slicing prompt in `auto-slice-v2`:
+
+Add to the footer prompt rules:
+```
+### RULE 6: SEPARATE BUTTONS BY CONTENT
+If there are multiple buttons with similar styling but different text (e.g., "SHOP FOR HIM" and "SHOP FOR HER", or "SALE FOR HIM" and "SALE FOR HER"), each button MUST be a separate slice. Never merge buttons with different text content.
+```
+
+### Problem 3: Remove Preview Section
+
+The user mentioned removing a "preview section" - this refers to removing unnecessary UI elements. Looking at the ImageFooterStudio component, there's a Legal Section Editor at the bottom that shows settings. If the user wants a cleaner view, we could make this collapsible or remove redundant preview display.
+
+---
 
 ## Implementation
 
-**File: `supabase/functions/crawl-brand-site/index.ts`**
-
-```typescript
-// Phase 1: Discover navigation/collection pages first
-console.log(`[crawl-brand-site] Phase 1: Discovering collection/nav pages`);
-
-const navResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    url: `https://${domain}`,
-    search: 'collections',
-    limit: 100,
-    includeSubdomains: false
-  })
-});
-
-// ... error handling ...
-
-const navData = await navResponse.json();
-const navUrls: string[] = navData.links || [];
-console.log(`[crawl-brand-site] Found ${navUrls.length} collection/nav URLs`);
-
-// Phase 2: Fill remaining quota with products
-const MAX_TOTAL = 100;
-const navFiltered = navUrls.filter(url => !shouldSkipUrl(url) && url.includes(domain));
-const remainingQuota = Math.max(0, MAX_TOTAL - navFiltered.length);
-
-let productUrls: string[] = [];
-if (remainingQuota > 0) {
-  console.log(`[crawl-brand-site] Phase 2: Discovering up to ${remainingQuota} product pages`);
-  
-  const productResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      url: `https://${domain}`,
-      search: 'products',
-      limit: remainingQuota,
-      includeSubdomains: false
-    })
-  });
-  
-  if (productResponse.ok) {
-    const productData = await productResponse.json();
-    productUrls = (productData.links || []).filter(url => 
-      !shouldSkipUrl(url) && url.includes(domain)
-    );
-    console.log(`[crawl-brand-site] Found ${productUrls.length} product URLs`);
-  }
-}
-
-// Merge and deduplicate (nav links take priority)
-const allUrls = [...new Set([...navFiltered, ...productUrls])];
-console.log(`[crawl-brand-site] Total unique URLs: ${allUrls.length}`);
-```
-
-## Expected Outcome
-
-For a typical e-commerce site with 200 products and 30 collections:
-
-| Scenario | Old (Single Call) | New (Two Calls) |
-|----------|-------------------|-----------------|
-| Collections found | ~10-20 | 30 (all) |
-| Products found | ~80-90 | 70 (fills quota) |
-| Total | 100 | 100 |
-| API Credits | 1 | 2 |
-
-## Files to Modify
+### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/crawl-brand-site/index.ts` | Add two-phase Map API calls: collections first, then products |
+| `supabase/functions/process-footer-queue/index.ts` | Fetch `domain` from brands table, pass to analyze-slices |
+| `supabase/functions/auto-slice-v2/index.ts` | Add Rule 6 to footer prompt about separating buttons by text content |
 
+### Code Changes
+
+**1. process-footer-queue/index.ts** - Fix domain passing:
+
+At line 586-587, add `domain` to the SELECT:
+```typescript
+const { data: brand } = await supabase
+  .from('brands')
+  .select('website_url, link_preferences, domain')
+  .eq('id', job.brand_id)
+  .single();
+```
+
+Store the domain after the query:
+```typescript
+let brandDomain: string | null = null;
+if (brand) {
+  defaultDestinationUrl = brand.website_url || null;
+  brandDomain = brand.domain || null;  // ADD THIS
+  const prefs = brand.link_preferences as any;
+  brandPreferenceRules = prefs?.rules || [];
+}
+```
+
+At line 787-791, pass the domain:
+```typescript
+body: JSON.stringify({
+  slices: sliceInputs,
+  brandDomain: brandDomain,  // Use actual domain
+  brandId: job.brand_id,
+  fullCampaignImage: resizedImageUrl
+})
+```
+
+**2. auto-slice-v2/index.ts** - Add button separation rule to footer prompt:
+
+In the `buildFooterPrompt` function (around line 754), add a new rule:
+
+```
+### RULE 6: SEPARATE BUTTONS BY TEXT CONTENT
+If there are multiple buttons with similar styling but DIFFERENT TEXT (e.g., "SHOP FOR HIM" and "SHOP FOR HER", or "SALE FOR HIM" and "SALE FOR HER"), each button MUST be a separate slice. 
+- Count the number of distinct button texts visible
+- Create one slice per unique button
+- Never merge buttons with different calls-to-action
+```
+
+Also update the checklist:
+```
+☐ Each distinct button text has its own slice (never merge "SHOP FOR HIM" with "SHOP FOR HER")
+```
+
+---
+
+## Technical Details
+
+### Why brandDomain is null
+
+In `process-footer-queue`, line 788:
+```typescript
+brandDomain: null, // Will be fetched inside analyze-slices
+```
+
+This comment is misleading - `analyze-slices` does NOT fetch the domain from the database. It only computes domain from passed `brandDomain` or `brandUrl`. Since both are null/undefined, the domain remains null.
+
+### Why Links Show https://null/
+
+In `analyze-slices` legacy web search mode (line 366-370):
+```typescript
+Brand: ${domain || 'Unknown'}
+...
+- Header logos -> brand homepage: https://${domain}/
+```
+
+When domain is null, this becomes `https://null/` and Claude returns paths like `/collections/mens` which get concatenated incorrectly.
+
+### Expected Outcome After Fix
+
+1. Links will use `oneillcanada.com` domain: `https://oneillcanada.com/collections/mens`
+2. All 7 CTA buttons will be detected as separate slices (including both SALE buttons)
+3. The footer will render correctly with all clickable sections
