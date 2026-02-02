@@ -92,7 +92,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: `https://${domain}`,
-        limit: 500,  // Max URLs to discover
+        limit: 100,  // Max URLs to discover
         includeSubdomains: false
       })
     });
