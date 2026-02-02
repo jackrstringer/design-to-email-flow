@@ -1,204 +1,148 @@
 
 
-# Fix Image-Based Footer Processing Issues
+# Fix Image-Based Footer Processing Pipeline
 
 ## Problem Summary
 
-Two issues were identified:
+The image-based footer processing is failing due to two bugs:
 
-1. **Figma images not uploaded to Cloudinary**: When using a Figma link, the exported image URL (from `figma-alpha-api.s3.us-west-2.amazonaws.com`) is passed directly to the processing pipeline. The `generateSliceCropUrls` function expects a Cloudinary URL to generate crop transformations, causing all slices to have `imageUrl: null`.
+1. **MIME Type Mismatch**: `process-footer-queue` hardcodes `image/png` when calling `auto-slice-v2`, but the actual image is a JPEG. Claude's API returns a 400 error.
 
-2. **UI stuck at 70%**: The realtime subscription is receiving updates, but the component is re-rendering and causing the subscription to close/reopen rapidly. The job actually completed successfully (database shows 100%, `pending_review` status), but the UI didn't receive the final update.
+2. **Missing Cloudinary Crop URLs**: When the image comes from Figma (S3 URL) without being uploaded to Cloudinary first, the `generateSliceCropUrls` function cannot parse the URL and returns `imageUrl: null` for all slices.
 
 ---
 
-## Root Cause Analysis
+## Root Causes
 
-```text
-CURRENT FLOW (Figma):
+### Bug 1: Hardcoded MIME Type
 
-┌────────────────┐     ┌────────────────┐     ┌─────────────────────┐
-│ Figma URL      │ ──► │ fetch-figma-   │ ──► │ S3 URL returned     │
-│ (user input)   │     │ design         │     │ (figma-alpha-api...) │
-└────────────────┘     └────────────────┘     └──────────┬──────────┘
-                                                         │
-                                                         ▼ WRONG!
-                                              ┌─────────────────────┐
-                                              │ Create job with     │
-                                              │ S3 URL as image_url │
-                                              └──────────┬──────────┘
-                                                         │
-                                                         ▼
-                                              ┌─────────────────────┐
-                                              │ process-footer-queue│
-                                              │ tries to parse      │
-                                              │ Cloudinary URL ──► ❌│
-                                              └─────────────────────┘
+In `supabase/functions/process-footer-queue/index.ts` line 115:
 
-CORRECT FLOW:
-
-┌────────────────┐     ┌────────────────┐     ┌─────────────────────┐
-│ Figma URL      │ ──► │ fetch-figma-   │ ──► │ S3 URL returned     │
-│ (user input)   │     │ design         │     │                     │
-└────────────────┘     └────────────────┘     └──────────┬──────────┘
-                                                         │
-                                                         ▼ NEW STEP
-                                              ┌─────────────────────┐
-                                              │ Upload S3 image to  │
-                                              │ Cloudinary          │
-                                              └──────────┬──────────┘
-                                                         │
-                                                         ▼
-                                              ┌─────────────────────┐
-                                              │ Create job with     │
-                                              │ Cloudinary URL      │
-                                              └──────────┬──────────┘
-                                                         │
-                                                         ▼
-                                              ┌─────────────────────┐
-                                              │ process-footer-queue│
-                                              │ parses Cloudinary   │
-                                              │ URL ──► ✓           │
-                                              └─────────────────────┘
+```typescript
+// WRONG: Always sends image/png regardless of actual format
+imageDataUrl: `data:image/png;base64,${imageBase64}`,
 ```
+
+The image is a JPEG (from Cloudinary URL `...jh0sr0mi1rxcfiez7atx.jpg`) but we're telling Claude it's a PNG. Claude validates this and returns:
+
+```
+"Image does not match the provided media type image/png"
+```
+
+### Bug 2: Figma S3 URLs Not Uploaded to Cloudinary
+
+When using a Figma link, the image URL is an S3 URL:
+```
+https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/...
+```
+
+The `generateSliceCropUrls` function tries to parse this as a Cloudinary URL and fails:
+```typescript
+const match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/...)/);
+// match === null for S3 URLs
+```
+
+Result: All slices have `imageUrl: null` and the Review step shows empty image placeholders.
 
 ---
 
 ## Fixes Required
 
-### Fix 1: Upload Figma Image to Cloudinary Before Processing
-
-**File: `src/components/FooterBuilderModal.tsx`**
-
-Update `handleImageFooterFigmaFetch` to upload the Figma image to Cloudinary:
-
-```typescript
-const handleImageFooterFigmaFetch = useCallback(async () => {
-  if (!figmaUrl.trim()) {
-    toast.error('Please enter a Figma URL');
-    return;
-  }
-
-  setIsFetchingFigma(true);
-  try {
-    // Step 1: Fetch Figma design (gets S3 URL)
-    const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
-      body: { figmaUrl }
-    });
-
-    if (error) throw error;
-    if (!data.success || !data.exportedImageUrl) {
-      throw new Error(data.error || 'Failed to fetch Figma design');
-    }
-
-    // Step 2: Upload to Cloudinary (NEW!)
-    toast.info('Uploading image...');
-    const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
-      body: { 
-        imageUrl: data.exportedImageUrl,  // Pass URL instead of base64
-        folder: `brands/${brand.domain}/footer-images`
-      }
-    });
-
-    if (uploadError || !uploadData?.url) {
-      throw new Error('Failed to upload image to Cloudinary');
-    }
-
-    // Step 3: Create job with Cloudinary URL
-    const jobId = await createFooterJob({
-      brandId: brand.id,
-      source: 'figma',
-      sourceUrl: figmaUrl,
-      imageUrl: uploadData.url,  // Cloudinary URL instead of S3
-      cloudinaryPublicId: uploadData.public_id,
-      imageWidth: data.dimensions?.width || 600,
-      imageHeight: data.dimensions?.height || 400,
-    });
-    
-    // ...rest of function
-  } catch (error) {
-    // ...error handling
-  }
-}, [...]);
-```
-
-### Fix 2: Update upload-to-cloudinary to Accept URL
-
-**File: `supabase/functions/upload-to-cloudinary/index.ts`**
-
-The function currently accepts `imageData` (base64). Add support for `imageUrl` parameter that fetches and uploads from a URL:
-
-```typescript
-// Add to existing function
-if (imageUrl) {
-  // Fetch the image and upload directly
-  const response = await fetch(imageUrl);
-  const arrayBuffer = await response.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-  // Upload to Cloudinary...
-}
-```
-
-### Fix 3: Stabilize Realtime Subscription
-
-**File: `src/hooks/useFooterProcessingJob.ts`**
-
-The subscription is being recreated on every render because `options.onComplete` and `options.onError` are in the dependency array but are not stable references. Fix by using refs:
-
-```typescript
-export function useFooterProcessingJob(options: UseFooterProcessingJobOptions = {}) {
-  // Store callbacks in refs to avoid re-subscribing
-  const onCompleteRef = useRef(options.onComplete);
-  const onErrorRef = useRef(options.onError);
-  
-  useEffect(() => {
-    onCompleteRef.current = options.onComplete;
-    onErrorRef.current = options.onError;
-  }, [options.onComplete, options.onError]);
-
-  useEffect(() => {
-    if (!jobId) return;
-
-    const channel = supabase
-      .channel(`footer-job-${jobId}`)
-      .on('postgres_changes', {...}, (payload) => {
-        // Use refs instead of direct references
-        if (updatedJob.status === 'pending_review') {
-          onCompleteRef.current?.(updatedJob);
-        }
-      })
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [jobId]);  // Remove options from dependencies
-}
-```
-
-### Fix 4: Handle Non-Cloudinary URLs in Edge Function
+### Fix 1: Detect MIME Type from Image Data
 
 **File: `supabase/functions/process-footer-queue/index.ts`**
 
-Add a fallback in `generateSliceCropUrls` to handle non-Cloudinary URLs by uploading them first or returning the original slices with a warning:
+Add a function to detect the image type from the base64 magic bytes:
 
 ```typescript
-function generateSliceCropUrls(...) {
-  // Try to parse Cloudinary URL
-  const match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/...)/);
-  
-  if (!match) {
-    // If not Cloudinary, we can't crop - need to upload first
-    // For now, mark slices as needing processing
-    console.warn('[process-footer] Image not on Cloudinary, crop URLs unavailable');
-    
-    // Return slices without crop URLs - frontend should handle this
-    return slices.map((slice, i) => ({
-      ...slice,
-      imageUrl: null,
-      needsUpload: true,  // Signal to frontend
-      // ... other fields
-    }));
+function detectMimeType(base64: string): string {
+  // Decode first few bytes to check magic bytes
+  const binaryStr = atob(base64.substring(0, 20));
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
   }
-  // ... existing logic
+  
+  // PNG: 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+    return 'image/png';
+  }
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+    return 'image/jpeg';
+  }
+  // WebP: 52 49 46 46 ... 57 45 42 50
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+    return 'image/webp';
+  }
+  
+  // Fallback: guess from Cloudinary URL extension
+  return 'image/jpeg';
+}
+```
+
+Then update the `autoSliceFooter` call:
+
+```typescript
+const mimeType = detectMimeType(imageBase64);
+console.log(`[process-footer] Detected MIME type: ${mimeType}`);
+
+body: JSON.stringify({
+  imageDataUrl: `data:${mimeType};base64,${imageBase64}`,
+  // ... rest unchanged
+})
+```
+
+### Fix 2: Ensure Figma Images Are Uploaded to Cloudinary First
+
+The frontend (`FooterBuilderModal.tsx`) must upload the Figma S3 URL to Cloudinary BEFORE creating the processing job. This was partially implemented but not consistently applied.
+
+**File: `src/components/FooterBuilderModal.tsx`**
+
+Update `handleImageFooterFigmaFetch`:
+
+```typescript
+const handleImageFooterFigmaFetch = async () => {
+  // Step 1: Fetch Figma design (gets S3 URL)
+  const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
+    body: { figmaUrl }
+  });
+  
+  // Step 2: Upload S3 URL to Cloudinary
+  const { data: uploadData } = await supabase.functions.invoke('upload-to-cloudinary', {
+    body: { 
+      imageUrl: data.exportedImageUrl,
+      folder: `brands/${brand.domain}/footer-images`
+    }
+  });
+  
+  // Step 3: Create job with Cloudinary URL
+  const jobId = await createFooterJob({
+    imageUrl: uploadData.url,  // Cloudinary URL, not S3
+    cloudinaryPublicId: uploadData.public_id,
+    // ...
+  });
+};
+```
+
+### Fix 3: Validate Cloudinary URL Before Processing
+
+**File: `supabase/functions/process-footer-queue/index.ts`**
+
+Add validation at the start:
+
+```typescript
+// Validate image is on Cloudinary (required for crop URLs)
+if (!job.image_url.includes('cloudinary.com')) {
+  console.error('[process-footer] Image must be hosted on Cloudinary');
+  await updateJob(supabase, jobId, {
+    status: 'failed',
+    error_message: 'Image must be uploaded to Cloudinary first'
+  });
+  return new Response(
+    JSON.stringify({ success: false, error: 'Image not on Cloudinary' }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 ```
 
@@ -208,19 +152,21 @@ function generateSliceCropUrls(...) {
 
 | File | Changes |
 |------|---------|
-| `src/components/FooterBuilderModal.tsx` | Upload Figma image to Cloudinary before creating job |
-| `src/hooks/useFooterProcessingJob.ts` | Stabilize subscription by using refs for callbacks |
-| `supabase/functions/upload-to-cloudinary/index.ts` | Add support for uploading from URL (not just base64) |
-| `supabase/functions/process-footer-queue/index.ts` | Add warning/fallback for non-Cloudinary URLs |
+| `supabase/functions/process-footer-queue/index.ts` | Add MIME type detection, validate Cloudinary URL |
+| `src/components/FooterBuilderModal.tsx` | Ensure Figma images are uploaded to Cloudinary before job creation |
 
 ---
 
-## Expected Outcome
+## Technical Summary
+
+The pipeline architecture is correct - the problem is two small bugs:
+
+1. **MIME type detection**: Detect from image bytes instead of hardcoding `image/png`
+2. **Cloudinary requirement**: Validate that the image URL is a Cloudinary URL (required for server-side cropping)
 
 After these fixes:
-
-1. Figma images will be uploaded to Cloudinary before processing
-2. Slice crop URLs will be generated correctly
-3. Realtime updates will be received reliably
-4. UI will properly transition to the review step at 100%
+- JPEGs will be sent to Claude with the correct MIME type
+- Figma images will be uploaded to Cloudinary before processing
+- Slice crop URLs will be generated correctly
+- The Review step will display the sliced images with editable links/alt text
 
