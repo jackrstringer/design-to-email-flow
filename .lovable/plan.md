@@ -1,229 +1,115 @@
 
-# Fix Footer Processing Pipeline - Proper Slicing, Links, and Alt-Text
+# Rich Text Legal Section for Image Footers
 
 ## Problem Summary
 
-The footer processing pipeline is broken:
+The current legal section handling is too rigid:
+1. It always appends a hardcoded template at the bottom
+2. It doesn't extract the ACTUAL text from the fine print section
+3. It doesn't allow users to customize layout, alignment, font sizes, etc.
+4. Fine print isn't always at the bottom (see One Sol example - it's in the middle)
 
-1. **Incorrect fine_print detection**: Claude is labeling early sections as "fine_print" even when there's no legal text in the image
-2. **Over-aggressive filtering**: The `legalCutoffY` filter removes valid slices (CTAs, social icons) because they're below the incorrectly-detected "legal" boundary
-3. **Missing link intelligence**: Footers don't use the same `analyze-slices` pipeline as campaigns, resulting in no proper link matching or alt-text generation
-4. **No social link prefilling**: Brand's saved social links aren't used to auto-populate social icon columns
+**User examples show:**
+- Eskiin: Dark background, org name + address + "UNSUBSCRIBE" centered
+- One Sol: White background, disclaimer paragraph + "Manage Preferences | Unsubscribe" in middle, then logo below
+- Earth Breeze: Light background, address filled in, "Unsubscribe" link, copyright notice
 
-**Evidence from logs:**
-```
-Sliced into 7 sections
-Found fine_print slice at Y=112-193  ← WRONG - no fine print in image!
-Filtered 6 -> 1 slices (excluding legal section)  ← Lost everything
-```
+## Solution Architecture
 
----
+### Phase 1: Extract Actual Fine Print Text via AI
 
-## Root Cause Analysis
+When Claude identifies a `fine_print` slice, have the AI also:
+1. **OCR the text content** from that slice region
+2. **Identify which parts should become Klaviyo merge tags**:
+   - Org name like "Eskiin Inc." → `{{ organization.name }}`
+   - Physical address → `{{ organization.address }}`
+   - "Unsubscribe" link → `{% unsubscribe_url %}`
+   - "Manage Preferences" link → `{% manage_preferences_url %}`
+3. **Preserve the rest of the text** (disclaimers, copyright, custom messaging)
+4. **Extract styling**: background color, text color, approximate font size, alignment
 
-### 1. Footer Prompt Misidentifies Fine Print
+### Phase 2: Enhanced LegalSectionData Type
 
-The `buildFooterPrompt` in `auto-slice-v2` instructs Claude to always find a "fine_print" section, but the O'Neill footer image has NO legal text. Claude still labels something as "fine_print" because the prompt says it "MUST be at the bottom."
+Expand the type to support rich content:
 
-### 2. Filtering Logic Breaks on Missing Fine Print
-
-In `process-footer-queue`, line 400:
 ```typescript
-const filteredSlices = legalCutoffY 
-  ? slices.filter(slice => slice.yBottom <= legalCutoffY)
-  : slices;
+interface LegalSectionData {
+  yStart: number;
+  backgroundColor: string;
+  textColor: string;
+  
+  // NEW: Editable rich text content with Klaviyo merge tags embedded
+  content: string; // HTML string with merge tags like {{ organization.name }}
+  
+  // NEW: Layout options
+  fontSize: number;       // e.g., 11, 12, 13
+  lineHeight: number;     // e.g., 1.4, 1.6
+  textAlign: 'left' | 'center' | 'right';
+  padding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+  
+  // Keep for reference (detected elements from OCR)
+  detectedElements: {
+    type: LegalElementType;
+    text: string;
+  }[];
+}
 ```
 
-This filters out everything below Y=112, leaving only the tiny logo slice.
+### Phase 3: Rich Text Editor Component
 
-### 3. Footer Skips Link Intelligence Pipeline
+Create `LegalContentEditor` that:
+1. Shows a contenteditable area or textarea with the HTML content
+2. Has a toolbar for: font size, alignment, colors
+3. Has quick-insert buttons for Klaviyo merge tags
+4. Shows live preview of how it will render
+5. Auto-inserts required elements if missing (org name, address, unsubscribe)
 
-Campaigns go through:
-1. `auto-slice-v2` (slicing + raw link hints)
-2. `analyze-slices` (embedding matching + AI link verification + alt-text)
+### Phase 4: AI Prompt Update for Fine Print Extraction
 
-Footers only do step 1 and skip `analyze-slices` entirely. The comment at line 683-685 says:
-```typescript
-// auto-slice-v2 should have already assigned altText and links when link intelligence was used
-// If not, we could call analyze-slices here, but for now we trust auto-slice-v2
-```
-
-But `auto-slice-v2` isn't doing proper link matching for footers!
-
----
-
-## Solution
-
-### Phase 1: Fix Fine Print Detection Logic
-
-**File: `supabase/functions/auto-slice-v2/index.ts`**
-
-Modify `buildFooterPrompt` to make fine_print OPTIONAL:
+Update the `buildFooterPrompt` in `auto-slice-v2` to also output extracted text when fine print is detected:
 
 ```text
-### FINE PRINT SECTION (may not be present)
-
-The **fine_print** section contains legal/compliance content. Look for ANY of these:
-- "Unsubscribe" or "Manage Preferences" text
-- Physical mailing address (city, state, zip code)
-- "© 2024 Brand Name" or "All rights reserved"
-
-**IMPORTANT**: Only create a "fine_print" slice if you actually see legal/compliance text.
-If no fine print is visible, DO NOT create a fine_print slice - the system will append
-a legal section automatically.
-```
-
-Update output rules:
-```text
-## Output Rules:
-- If fine print is detected → include "fine_print" as last section
-- If NO fine print detected → omit fine_print entirely, last visible section becomes final slice
-- footerStartY = imageHeight in all cases (entire image is footer)
-```
-
-### Phase 2: Fix Filtering Logic in process-footer-queue
-
-**File: `supabase/functions/process-footer-queue/index.ts`**
-
-Change the filtering approach:
-
-1. If `fine_print` slice exists → remove it and use its yTop for legalSection
-2. If NO `fine_print` slice → keep ALL slices, create default legalSection to append
-
-```typescript
-// Find the fine_print slice from Claude's output
-const finePrintSlice = sliceResult.slices.find((s: any) => 
-  s.name?.toLowerCase() === 'fine_print'
-);
-
-let legalSection: LegalSectionData | null = null;
-let imageSlices = sliceResult.slices;
-
-if (finePrintSlice) {
-  // Footer HAS fine print - remove it from image slices, convert to HTML
-  imageSlices = sliceResult.slices.filter((s: any) => s !== finePrintSlice);
-  legalSection = {
-    yStart: finePrintSlice.yTop,
-    backgroundColor: '#1a1a1a',
-    textColor: '#ffffff',
-    detectedElements: []
-  };
-  console.log(`[process-footer] Fine print detected, removed from ${sliceResult.slices.length} slices`);
-} else {
-  // NO fine print - keep ALL slices, append legal section at end
-  imageSlices = sliceResult.slices;
-  legalSection = {
-    yStart: sliceResult.imageHeight, // Appends AFTER all slices
-    backgroundColor: '#1a1a1a',
-    textColor: '#ffffff',
-    detectedElements: []
-  };
-  console.log(`[process-footer] No fine print detected, keeping all ${imageSlices.length} slices`);
-}
-```
-
-Remove the secondary filter in `generateSliceCropUrls`:
-```typescript
-// REMOVE this filtering - it's now handled above
-// const filteredSlices = legalCutoffY 
-//   ? slices.filter(slice => slice.yBottom <= legalCutoffY)
-//   : slices;
-```
-
-### Phase 3: Add analyze-slices Call for Link Intelligence
-
-**File: `supabase/functions/process-footer-queue/index.ts`**
-
-After generating crop URLs, call `analyze-slices` just like `process-campaign-queue` does:
-
-```typescript
-// === STEP 5: Analyze slices for links and alt-text (like campaigns) ===
-await updateJob(supabase, jobId, {
-  processing_step: 'analyzing_slices',
-  processing_percent: 75
-});
-
-const analyzeUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/analyze-slices';
-const resizedImageUrl = getResizedCloudinaryUrl(job.image_url, 600, 7900);
-
-const sliceInputs = processedSlices.map((slice, index) => ({
-  imageUrl: slice.imageUrl,
-  index,
-  column: slice.column,
-  totalColumns: slice.totalColumns,
-  rowIndex: slice.rowIndex
-}));
-
-const analyzeResponse = await fetch(analyzeUrl, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-  },
-  body: JSON.stringify({
-    slices: sliceInputs,
-    brandDomain: brand?.domain || null,
-    brandId: job.brand_id,
-    fullCampaignImage: resizedImageUrl
-  })
-});
-
-if (analyzeResponse.ok) {
-  const { analyses } = await analyzeResponse.json();
-  // Merge analysis back into slices
-  const analysisByIndex = new Map(analyses.map((a: any) => [a.index, a]));
-  processedSlices = processedSlices.map((slice, i) => {
-    const analysis = analysisByIndex.get(i);
-    return {
-      ...slice,
-      altText: analysis?.altText || slice.altText || `Footer section ${i + 1}`,
-      link: analysis?.suggestedLink || slice.link || null,
-      isClickable: analysis?.isClickable ?? slice.isClickable ?? true,
-      linkVerified: analysis?.linkVerified || false
-    };
-  });
-  console.log(`[process-footer] Analyzed ${analyses.length} slices for links/alt-text`);
-}
-```
-
-### Phase 4: Social Link Prefilling
-
-**File: `supabase/functions/process-footer-queue/index.ts`**
-
-After slice analysis, prefill social icon links from brand's saved social_links:
-
-```typescript
-// === STEP 5.5: Prefill social icon links from brand ===
-const { data: brandData } = await supabase
-  .from('brands')
-  .select('social_links')
-  .eq('id', job.brand_id)
-  .single();
-
-const socialLinks = brandData?.social_links || [];
-const socialPlatformUrls = new Map<string, string>();
-for (const social of socialLinks) {
-  if (social.platform && social.url) {
-    socialPlatformUrls.set(social.platform.toLowerCase(), social.url);
-  }
-}
-
-// Match social icon slices to platform URLs
-for (const slice of processedSlices) {
-  if (slice.name?.toLowerCase().includes('social')) {
-    // Try to match by alt text or position
-    const altLower = (slice.altText || '').toLowerCase();
-    for (const [platform, url] of socialPlatformUrls) {
-      if (altLower.includes(platform) && !slice.link) {
-        slice.link = url;
-        slice.linkSource = 'social_profile';
-        console.log(`[process-footer] Prefilled ${platform} link: ${url}`);
-        break;
-      }
-    }
+If you identify a fine_print section, also extract:
+{
+  "finePrintContent": {
+    "rawText": "<the actual text visible in this section>",
+    "detectedOrgName": "<if org name visible, e.g. 'Eskiin Inc.'>",
+    "detectedAddress": "<if address visible>",
+    "hasUnsubscribe": true/false,
+    "hasManagePreferences": true/false,
+    "estimatedFontSize": 11-14,
+    "textAlignment": "center" | "left",
+    "backgroundColor": "#hex",
+    "textColor": "#hex"
   }
 }
 ```
+
+### Phase 5: Process-Footer-Queue Conversion Logic
+
+When a fine_print slice is found:
+1. Take the AI-extracted `finePrintContent`
+2. Build initial HTML content, replacing:
+   - Detected org name → `{{ organization.name }}`
+   - Detected address → `{{ organization.address }}`
+   - "Unsubscribe" text → `<a href="{% unsubscribe_url %}">Unsubscribe</a>`
+   - Keep other text verbatim (disclaimers, copyright, etc.)
+3. Store this as `legalSection.content`
+
+### Phase 6: Handle Fine Print NOT at Bottom
+
+For cases like One Sol where fine print is in the middle:
+1. Claude labels it as `fine_print` with its actual yTop/yBottom
+2. It gets converted to HTML block
+3. The remaining slices BELOW it (like logo) stay as image slices
+4. In the final HTML, the order is preserved: image slices → HTML legal → more image slices
+
+This requires changing `generateImageFooterHtml` to insert the legal section at the correct position based on its `yStart`, not always at the end.
 
 ---
 
@@ -231,71 +117,239 @@ for (const slice of processedSlices) {
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/auto-slice-v2/index.ts` | Make fine_print detection optional in footer prompt |
-| `supabase/functions/process-footer-queue/index.ts` | Fix filtering logic, add analyze-slices call, add social link prefill |
+| `src/types/footer.ts` | Expand `LegalSectionData` with content, fontSize, textAlign, padding |
+| `src/components/footer/LegalSectionEditor.tsx` | Complete rewrite: rich text editor with toolbar, merge tag insertion, validation |
+| `supabase/functions/auto-slice-v2/index.ts` | Add `finePrintContent` extraction to footer prompt output |
+| `supabase/functions/process-footer-queue/index.ts` | Build HTML content from extracted text, convert org/address to merge tags |
+| `src/types/footer.ts` → `generateImageFooterHtml` | Insert legal section at correct Y position (not always at end) |
+| `src/pages/ImageFooterStudio.tsx` | Update to pass new props to LegalSectionEditor, show in correct position |
 
 ---
 
-## Expected Outcome After Fix
+## Implementation Details
 
-For the O'Neill footer image (no fine print):
+### Updated LegalSectionData Type
 
-**Before:**
-- 1 slice (logo only)
-- No links or alt-text
-- legal_cutoff_y: 112 (wrong)
+```typescript
+export interface LegalSectionData {
+  yStart: number;
+  yEnd?: number; // NEW: to know where it ends for positioning
+  backgroundColor: string;
+  textColor: string;
+  
+  // NEW: Editable content
+  content: string; // Raw HTML with Klaviyo merge tags
+  
+  // NEW: Typography
+  fontSize: number;
+  lineHeight: number;
+  textAlign: 'left' | 'center' | 'right';
+  
+  // NEW: Spacing
+  paddingTop: number;
+  paddingBottom: number;
+  paddingHorizontal: number;
+  
+  // Keep for validation
+  detectedElements: { type: LegalElementType; text: string }[];
+  
+  // NEW: Compliance flags
+  hasOrgName: boolean;
+  hasOrgAddress: boolean;
+  hasUnsubscribe: boolean;
+}
+```
 
-**After:**
-- 6-7 slices (logo, CTAs, social icons)
-- Proper alt-text from analyze-slices
-- Links matched via brand_link_index
-- Social icons linked to Instagram/Facebook from brand.social_links
-- Legal HTML appended at the end
+### LegalContentEditor Component
 
----
+```tsx
+function LegalContentEditor({ legalSection, onUpdate }) {
+  const [content, setContent] = useState(legalSection.content);
+  
+  // Check for required Klaviyo merge tags
+  const hasOrgName = content.includes('{{ organization.name }}');
+  const hasOrgAddress = content.includes('{{ organization.address }}');
+  const hasUnsubscribe = content.includes('{% unsubscribe_url %}');
+  const isCompliant = hasOrgName && hasOrgAddress && hasUnsubscribe;
+  
+  const insertTag = (tag: string) => {
+    setContent(prev => prev + '\n' + tag);
+  };
+  
+  return (
+    <div>
+      {/* Toolbar */}
+      <div className="flex gap-2 mb-2">
+        <Button onClick={() => insertTag('{{ organization.name }}')}>
+          + Org Name
+        </Button>
+        <Button onClick={() => insertTag('{{ organization.address }}')}>
+          + Address  
+        </Button>
+        <Button onClick={() => insertTag('<a href="{% unsubscribe_url %}">Unsubscribe</a>')}>
+          + Unsubscribe
+        </Button>
+      </div>
+      
+      {/* Color pickers */}
+      <div className="flex gap-4">
+        <ColorPicker label="Background" value={legalSection.backgroundColor} />
+        <ColorPicker label="Text" value={legalSection.textColor} />
+      </div>
+      
+      {/* Font size, alignment */}
+      <div className="flex gap-4">
+        <FontSizeSelect value={legalSection.fontSize} />
+        <AlignmentToggle value={legalSection.textAlign} />
+      </div>
+      
+      {/* Content editor */}
+      <Textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={6}
+        className="font-mono text-sm"
+      />
+      
+      {/* Compliance warnings */}
+      {!isCompliant && (
+        <Alert variant="warning">
+          Missing required elements:
+          {!hasOrgName && <Badge>Organization Name</Badge>}
+          {!hasOrgAddress && <Badge>Organization Address</Badge>}
+          {!hasUnsubscribe && <Badge>Unsubscribe Link</Badge>}
+        </Alert>
+      )}
+      
+      {/* Live preview */}
+      <div style={{ 
+        backgroundColor: legalSection.backgroundColor,
+        color: legalSection.textColor,
+        fontSize: legalSection.fontSize,
+        textAlign: legalSection.textAlign,
+        padding: '24px 20px'
+      }}>
+        <div dangerouslySetInnerHTML={{ __html: content }} />
+      </div>
+    </div>
+  );
+}
+```
 
-## Technical Details
+### AI Fine Print Extraction Prompt Addition
 
-### Process Flow After Fix
+Add to `buildFooterPrompt`:
 
 ```text
-1. Upload footer image
-2. process-footer-queue starts
-3. auto-slice-v2 (isFooterMode=true):
-   - Slices entire image
-   - If fine_print text visible → label it
-   - If no fine_print → don't force-create one
-4. process-footer-queue receives slices:
-   - If fine_print slice exists → remove it, set legalSection.yStart
-   - If no fine_print slice → keep all, append legalSection at end
-5. Generate crop URLs for all image slices
-6. Call analyze-slices:
-   - Embedding match against brand_link_index
-   - AI generates alt-text
-   - Links verified via HTTP 200
-7. Prefill social icon links from brand.social_links
-8. Save to footer_processing_jobs
-9. User reviews in ImageFooterStudio
+## FINE PRINT TEXT EXTRACTION
+
+When you identify a "fine_print" section, you must ALSO extract its content:
+
+In your output, add a "finePrintContent" object:
+{
+  "finePrintContent": {
+    "rawText": "Eskiin Inc. 9450 Southwest Gemini Drive, Beaverton, Oregon 97008, United States\n\nUNSUBSCRIBE",
+    "detectedOrgName": "Eskiin Inc.",
+    "detectedAddress": "9450 Southwest Gemini Drive, Beaverton, Oregon 97008, United States",
+    "hasUnsubscribeLink": true,
+    "hasManagePreferences": false,
+    "textAlignment": "center",
+    "estimatedFontSize": 12
+  }
+}
+
+This helps us convert the static image text into editable HTML with Klaviyo merge tags.
 ```
 
-### Footer Prompt Changes
+### Content Conversion Logic
 
-Key changes to `buildFooterPrompt`:
-
-```diff
-- ### FINE PRINT SECTION (will become HTML):
-+ ### FINE PRINT SECTION (may or may not be present):
-
-- **CRITICAL**: Name this slice exactly "fine_print" - it will be converted to editable HTML text with Klaviyo merge tags.
-+ If you detect legal/compliance content (unsubscribe, address, copyright), 
-+ name that slice "fine_print" and it will be converted to HTML.
-+ 
-+ If there is NO legal/compliance text visible, DO NOT create a fine_print slice.
-+ The system will automatically append a legal section after all image slices.
-
-## Output Rules:
-- - Last section (fine_print) yBottom MUST equal imageHeight
-+ - If fine_print detected: it should be the last slice
-+ - If NO fine_print: last visible section ends the slices array
-  - footerStartY = imageHeight (entire image is footer)
+```typescript
+function convertFinePrintToHtml(finePrintContent: FinePrintContent): string {
+  let html = finePrintContent.rawText;
+  
+  // Replace detected org name with merge tag
+  if (finePrintContent.detectedOrgName) {
+    html = html.replace(
+      finePrintContent.detectedOrgName,
+      '{{ organization.name }}'
+    );
+  }
+  
+  // Replace detected address with merge tag
+  if (finePrintContent.detectedAddress) {
+    html = html.replace(
+      finePrintContent.detectedAddress,
+      '{{ organization.address }}'
+    );
+  }
+  
+  // Wrap unsubscribe text in link
+  if (finePrintContent.hasUnsubscribeLink) {
+    html = html.replace(
+      /unsubscribe/i,
+      '<a href="{% unsubscribe_url %}" style="text-decoration: underline;">Unsubscribe</a>'
+    );
+  }
+  
+  // Wrap manage preferences in link
+  if (finePrintContent.hasManagePreferences) {
+    html = html.replace(
+      /manage preferences/i,
+      '<a href="{% manage_preferences_url %}" style="text-decoration: underline;">Manage Preferences</a>'
+    );
+  }
+  
+  // Convert newlines to <br>
+  html = html.replace(/\n/g, '<br>');
+  
+  return html;
+}
 ```
+
+---
+
+## Handling Fine Print in the Middle (One Sol Example)
+
+The current `generateImageFooterHtml` always puts legal at the end. We need to insert it at the correct position:
+
+```typescript
+function generateImageFooterHtml(
+  slices: ImageFooterSlice[],
+  legalSection: LegalSectionData | null,
+  footerWidth: number = 600
+): string {
+  // Sort slices by yTop
+  const sortedSlices = [...slices].sort((a, b) => a.yTop - b.yTop);
+  
+  // Find where to insert legal section based on yStart
+  const legalYStart = legalSection?.yStart ?? Infinity;
+  
+  const slicesBefore = sortedSlices.filter(s => s.yBottom <= legalYStart);
+  const slicesAfter = sortedSlices.filter(s => s.yTop >= (legalSection?.yEnd ?? legalYStart));
+  
+  // Build HTML:
+  // 1. Image slices before legal
+  // 2. Legal HTML section
+  // 3. Image slices after legal (if any)
+  
+  return [
+    renderImageSlices(slicesBefore),
+    legalSection ? renderLegalHtml(legalSection) : '',
+    renderImageSlices(slicesAfter)
+  ].join('\n');
+}
+```
+
+---
+
+## Expected Outcome
+
+1. **Eskiin footer**: AI extracts "Eskiin Inc.", address, and "UNSUBSCRIBE" → converted to merge tags, user sees editable text area with styling controls
+
+2. **One Sol footer**: AI detects fine print in MIDDLE, extracts disclaimer + links → converted to HTML, logo slice below stays as image
+
+3. **Earth Breeze footer**: AI detects address is already populated → replaces with `{{ organization.address }}`, preserves "Unsubscribe" and copyright
+
+4. **User editing**: Can change font size, colors, alignment, add/remove text while maintaining required Klaviyo merge tags
+
+5. **Compliance validation**: Warning if missing org name, address, or unsubscribe - quick buttons to insert them
