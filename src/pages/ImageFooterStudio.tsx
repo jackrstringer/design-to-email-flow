@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { LegalContentEditor } from '@/components/footer/LegalContentEditor';
+import { InlineLegalEditor } from '@/components/footer/InlineLegalEditor';
 import { HtmlPreviewFrame } from '@/components/HtmlPreviewFrame';
 import { generateImageFooterHtml } from '@/types/footer';
 import { cn } from '@/lib/utils';
@@ -595,37 +595,13 @@ export default function ImageFooterStudio() {
                 );
               })}
 
-              {/* Legal Section - Rendered inline as part of footer */}
+              {/* Legal Section - Inline Editable */}
               {legalSection && (
-                <div 
-                  className="flex-shrink-0" 
-                  style={{ width: scaledWidth }}
-                >
-                  {/* Live preview attached to footer */}
-                  <div
-                    style={{
-                      backgroundColor: legalSection.backgroundColor || '#ffffff',
-                      padding: `${legalSection.paddingTop ?? 24}px ${legalSection.paddingHorizontal ?? 20}px ${legalSection.paddingBottom ?? 24}px`,
-                      textAlign: legalSection.textAlign || 'center',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: `${legalSection.fontSize || 11}px`,
-                        lineHeight: legalSection.lineHeight || 1.6,
-                        color: legalSection.textColor || '#1a1a1a',
-                        fontFamily: 'Arial, Helvetica, sans-serif',
-                      }}
-                      dangerouslySetInnerHTML={{ 
-                        __html: (legalSection.content || '{{ organization.name }} | {{ organization.address }}<br><br><a href="#">Unsubscribe</a> | <a href="#">Manage Preferences</a>')
-                          .replace(/\{\{\s*organization\.name\s*\}\}/g, '<span style="background:rgba(0,0,0,0.1);padding:0 4px;border-radius:2px;">Acme Inc.</span>')
-                          .replace(/\{\{\s*organization\.address\s*\}\}/g, '<span style="background:rgba(0,0,0,0.1);padding:0 4px;border-radius:2px;">123 Main St, City, ST 12345</span>')
-                          .replace(/\{%\s*unsubscribe_url\s*%\}/g, '#')
-                          .replace(/\{%\s*manage_preferences_url\s*%\}/g, '#')
-                      }}
-                    />
-                  </div>
-                </div>
+                <InlineLegalEditor
+                  legalSection={legalSection}
+                  onUpdate={handleLegalUpdate}
+                  width={scaledWidth}
+                />
               )}
               
               {/* Missing legal section warning */}
