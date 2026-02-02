@@ -1,115 +1,287 @@
 
-# Rich Text Legal Section for Image Footers
+# Fix Link Crawling: Cancel, Retry, and Status Indicators
 
 ## Problem Summary
 
-The current legal section handling is too rigid:
-1. It always appends a hardcoded template at the bottom
-2. It doesn't extract the ACTUAL text from the fine print section
-3. It doesn't allow users to customize layout, alignment, font sizes, etc.
-4. Fine print isn't always at the bottom (see One Sol example - it's in the middle)
+The link crawling functionality has several critical issues:
 
-**User examples show:**
-- Eskiin: Dark background, org name + address + "UNSUBSCRIBE" centered
-- One Sol: White background, disclaimer paragraph + "Manage Preferences | Unsubscribe" in middle, then logo below
-- Earth Breeze: Light background, address filled in, "Unsubscribe" link, copyright notice
+1. **Jobs get permanently stuck**: Edge function timeouts leave jobs in "crawling" state forever
+2. **No cancel/retry**: Users can't restart a stuck job because the system blocks re-triggers
+3. **No real-time status**: Polling every 3 seconds, but no way to know if the backend actually died
+4. **Stale job detection**: Jobs from 2-3 days ago still show as "running"
 
-## Solution Architecture
+**Evidence from database:**
+```
+4 stuck jobs with no activity for 2-3 days:
+- b98b9493: status=crawling, 74/203 processed, last update Jan 31
+- cbdf5787: status=crawling, 26/62 processed, last update Jan 31
+- 108fa629: status=crawling, 48/172 processed, last update Jan 30
+- e6aa7580: status=fetching_titles, 244/402 processed, last update Jan 30
+```
 
-### Phase 1: Extract Actual Fine Print Text via AI
+---
 
-When Claude identifies a `fine_print` slice, have the AI also:
-1. **OCR the text content** from that slice region
-2. **Identify which parts should become Klaviyo merge tags**:
-   - Org name like "Eskiin Inc." → `{{ organization.name }}`
-   - Physical address → `{{ organization.address }}`
-   - "Unsubscribe" link → `{% unsubscribe_url %}`
-   - "Manage Preferences" link → `{% manage_preferences_url %}`
-3. **Preserve the rest of the text** (disclaimers, copyright, custom messaging)
-4. **Extract styling**: background color, text color, approximate font size, alignment
+## Root Cause Analysis
 
-### Phase 2: Enhanced LegalSectionData Type
+### 1. Edge Function Timeout
+The `crawl-brand-site` function:
+- Polls Firecrawl every 5 seconds for up to 5 minutes (line 103-139)
+- Then generates embeddings in batches (line 192-255)
+- Total runtime can exceed Supabase's 150-second idle timeout
 
-Expand the type to support rich content:
+When timeout occurs, the job stays stuck because no error is recorded.
 
+### 2. No Stale Job Detection
+The trigger function checks for "running" jobs but doesn't consider how OLD they are:
 ```typescript
-interface LegalSectionData {
-  yStart: number;
-  backgroundColor: string;
-  textColor: string;
-  
-  // NEW: Editable rich text content with Klaviyo merge tags embedded
-  content: string; // HTML string with merge tags like {{ organization.name }}
-  
-  // NEW: Layout options
-  fontSize: number;       // e.g., 11, 12, 13
-  lineHeight: number;     // e.g., 1.4, 1.6
-  textAlign: 'left' | 'center' | 'right';
-  padding: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-  };
-  
-  // Keep for reference (detected elements from OCR)
-  detectedElements: {
-    type: LegalElementType;
-    text: string;
-  }[];
+// Current check - blocks retry on ANY "running" job, even stale ones
+const { data: existingJob } = await supabase
+  .from('sitemap_import_jobs')
+  .select('id, status')
+  .eq('brand_id', brand_id)
+  .in('status', ['pending', 'parsing', 'crawling', ...])
+  .single();
+
+if (existingJob) {
+  throw new Error('An import is already in progress');
 }
 ```
 
-### Phase 3: Rich Text Editor Component
+### 3. No Cancel Mechanism
+There's no way for users to manually mark a stuck job as failed and restart.
 
-Create `LegalContentEditor` that:
-1. Shows a contenteditable area or textarea with the HTML content
-2. Has a toolbar for: font size, alignment, colors
-3. Has quick-insert buttons for Klaviyo merge tags
-4. Shows live preview of how it will render
-5. Auto-inserts required elements if missing (org name, address, unsubscribe)
+---
 
-### Phase 4: AI Prompt Update for Fine Print Extraction
+## Solution
 
-Update the `buildFooterPrompt` in `auto-slice-v2` to also output extracted text when fine print is detected:
+### Phase 1: Add Stale Job Detection and Auto-Cleanup
 
-```text
-If you identify a fine_print section, also extract:
-{
-  "finePrintContent": {
-    "rawText": "<the actual text visible in this section>",
-    "detectedOrgName": "<if org name visible, e.g. 'Eskiin Inc.'>",
-    "detectedAddress": "<if address visible>",
-    "hasUnsubscribe": true/false,
-    "hasManagePreferences": true/false,
-    "estimatedFontSize": 11-14,
-    "textAlignment": "center" | "left",
-    "backgroundColor": "#hex",
-    "textColor": "#hex"
+Jobs that haven't been updated in 10 minutes should be considered "stale" and auto-marked as failed.
+
+**Changes to `useSitemapImport.ts`:**
+- Add stale detection based on `updated_at` timestamp
+- If job is "running" but hasn't been updated in 10 minutes, mark it as stale
+
+**Changes to `trigger-sitemap-import`:**
+- Before blocking, check if existing "running" job is actually stale
+- If stale (updated_at > 10 minutes ago), mark it as failed and allow new trigger
+
+### Phase 2: Add Cancel Button
+
+**Changes to `SitemapImportCard.tsx`:**
+- Add "Cancel" button when job is running
+- Cancel sets status to "cancelled" (new status) with error message
+
+**Changes to `useSitemapImport.ts`:**
+- Add `cancelJob` mutation that updates job status to "cancelled"
+
+### Phase 3: Enhanced Status Indicators
+
+**Changes to `SitemapImportCard.tsx`:**
+- Show elapsed time since job started
+- Show warning if job hasn't progressed in 2+ minutes
+- Add visual indicator for potentially stuck jobs
+- Show "Retry" button for stale/stuck jobs
+
+### Phase 4: Self-Chaining for Long Crawls
+
+Implement the recommended pattern from Stack Overflow: break the crawl into smaller chunks that self-chain to avoid timeouts.
+
+**Changes to `crawl-brand-site`:**
+- Save incrementally after each batch of embeddings
+- If approaching timeout, record progress and trigger continuation
+- Use `EdgeRuntime.waitUntil()` for fire-and-forget completion
+
+---
+
+## Implementation Details
+
+### Updated Job Status Types
+
+```typescript
+// types/link-intelligence.ts
+export interface SitemapImportJob {
+  // ... existing fields ...
+  status: 'pending' | 'parsing' | 'crawling' | 'crawling_nav' | 
+          'fetching_titles' | 'generating_embeddings' | 
+          'complete' | 'failed' | 'cancelled' | 'stale'; // Add cancelled, stale
+}
+```
+
+### Stale Detection Hook
+
+```typescript
+// useSitemapImport.ts
+const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+export function useSitemapImport(brandId: string, domain?: string) {
+  // ... existing code ...
+
+  const job = jobQuery.data;
+  
+  // Calculate if job is stale
+  const isStale = useMemo(() => {
+    if (!job || !RUNNING_STATUSES.includes(job.status)) return false;
+    const lastUpdate = new Date(job.updated_at).getTime();
+    const now = Date.now();
+    return (now - lastUpdate) > STALE_THRESHOLD_MS;
+  }, [job]);
+
+  // Cancel mutation
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('sitemap_import_jobs')
+        .update({ 
+          status: 'cancelled',
+          error_message: 'Cancelled by user',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', job!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sitemap-import-job', brandId] });
+    },
+  });
+
+  return {
+    // ... existing returns ...
+    isStale,
+    cancelJob: cancelMutation.mutateAsync,
+    isCancelling: cancelMutation.isPending,
+  };
+}
+```
+
+### Updated SitemapImportCard UI
+
+```tsx
+// SitemapImportCard.tsx
+
+function SitemapImportCard({ ... }) {
+  const { 
+    job, isRunning, isComplete, isFailed, isStale,
+    triggerCrawl, isCrawling,
+    cancelJob, isCancelling
+  } = useSitemapImport(brandId, domain);
+
+  const getElapsedTime = () => {
+    if (!job?.started_at) return null;
+    return formatDistanceToNow(new Date(job.started_at), { addSuffix: false });
+  };
+
+  const getLastActivity = () => {
+    if (!job?.updated_at) return null;
+    return formatDistanceToNow(new Date(job.updated_at), { addSuffix: true });
+  };
+
+  // Enhanced status with stale warning
+  const getStatusMessage = () => {
+    if (isStale) {
+      return '⚠️ Job appears stuck - no activity in 10+ minutes';
+    }
+    // ... existing status messages ...
+  };
+
+  // In the running state UI:
+  {isRunning && (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm">Running for {getElapsedTime()}</span>
+        <Button 
+          size="sm" 
+          variant="ghost" 
+          onClick={cancelJob}
+          disabled={isCancelling}
+        >
+          {isCancelling ? <Loader2 className="animate-spin" /> : 'Cancel'}
+        </Button>
+      </div>
+      
+      {isStale && (
+        <Alert variant="warning">
+          <AlertTriangle className="w-4 h-4" />
+          <span>No progress in {getLastActivity()}. Try cancelling and restarting.</span>
+        </Alert>
+      )}
+      
+      <Progress value={getProgress()} />
+      <p className="text-xs text-muted-foreground">
+        {job.urls_processed} / {job.urls_found} pages
+        <span className="text-muted-foreground/60"> • Last activity {getLastActivity()}</span>
+      </p>
+    </div>
+  )}
+}
+```
+
+### Trigger Function: Allow Retry on Stale Jobs
+
+```typescript
+// trigger-sitemap-import/index.ts
+
+const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+// Check if there's already a running import for this brand
+const { data: existingJob } = await supabase
+  .from('sitemap_import_jobs')
+  .select('id, status, updated_at')
+  .eq('brand_id', brand_id)
+  .in('status', ['pending', 'parsing', 'crawling', 'crawling_nav', 'fetching_titles', 'generating_embeddings'])
+  .single();
+
+if (existingJob) {
+  // Check if job is stale
+  const lastUpdate = new Date(existingJob.updated_at).getTime();
+  const isStale = (Date.now() - lastUpdate) > STALE_THRESHOLD_MS;
+  
+  if (isStale) {
+    // Mark stale job as failed and allow new trigger
+    console.log(`[trigger-sitemap-import] Marking stale job ${existingJob.id} as failed`);
+    await supabase
+      .from('sitemap_import_jobs')
+      .update({ 
+        status: 'failed',
+        error_message: 'Job timed out - no activity for 10+ minutes'
+      })
+      .eq('id', existingJob.id);
+  } else {
+    throw new Error('An import is already in progress for this brand');
   }
 }
 ```
 
-### Phase 5: Process-Footer-Queue Conversion Logic
+### Crawl Function: Incremental Saves
 
-When a fine_print slice is found:
-1. Take the AI-extracted `finePrintContent`
-2. Build initial HTML content, replacing:
-   - Detected org name → `{{ organization.name }}`
-   - Detected address → `{{ organization.address }}`
-   - "Unsubscribe" text → `<a href="{% unsubscribe_url %}">Unsubscribe</a>`
-   - Keep other text verbatim (disclaimers, copyright, etc.)
-3. Store this as `legalSection.content`
+```typescript
+// crawl-brand-site/index.ts
 
-### Phase 6: Handle Fine Print NOT at Bottom
-
-For cases like One Sol where fine print is in the middle:
-1. Claude labels it as `fine_print` with its actual yTop/yBottom
-2. It gets converted to HTML block
-3. The remaining slices BELOW it (like logo) stay as image slices
-4. In the final HTML, the order is preserved: image slices → HTML legal → more image slices
-
-This requires changing `generateImageFooterHtml` to insert the legal section at the correct position based on its `yStart`, not always at the end.
+// Save each batch immediately after processing (not at the end)
+for (let i = 0; i < uniqueLinks.length; i += batchSize) {
+  const batch = uniqueLinks.slice(i, i + batchSize);
+  
+  // ... generate embeddings ...
+  
+  // IMMEDIATE SAVE after each batch
+  await supabase
+    .from('brand_link_index')
+    .upsert(insertData, { onConflict: 'brand_id,url', ignoreDuplicates: false });
+  
+  processedCount += batch.length;
+  
+  // Update progress so we know the job is alive
+  await supabase
+    .from('sitemap_import_jobs')
+    .update({ 
+      urls_processed: processedCount,
+      updated_at: new Date().toISOString() // Force update timestamp
+    })
+    .eq('id', job_id);
+  
+  console.log(`[crawl-brand-site] Saved batch ${Math.floor(i / batchSize) + 1}, ${processedCount}/${uniqueLinks.length}`);
+}
+```
 
 ---
 
@@ -117,239 +289,36 @@ This requires changing `generateImageFooterHtml` to insert the legal section at 
 
 | File | Changes |
 |------|---------|
-| `src/types/footer.ts` | Expand `LegalSectionData` with content, fontSize, textAlign, padding |
-| `src/components/footer/LegalSectionEditor.tsx` | Complete rewrite: rich text editor with toolbar, merge tag insertion, validation |
-| `supabase/functions/auto-slice-v2/index.ts` | Add `finePrintContent` extraction to footer prompt output |
-| `supabase/functions/process-footer-queue/index.ts` | Build HTML content from extracted text, convert org/address to merge tags |
-| `src/types/footer.ts` → `generateImageFooterHtml` | Insert legal section at correct Y position (not always at end) |
-| `src/pages/ImageFooterStudio.tsx` | Update to pass new props to LegalSectionEditor, show in correct position |
+| `src/types/link-intelligence.ts` | Add 'cancelled' and 'stale' status options |
+| `src/hooks/useSitemapImport.ts` | Add isStale detection, cancelJob mutation |
+| `src/components/brand/SitemapImportCard.tsx` | Add Cancel button, elapsed time, stale warning |
+| `supabase/functions/trigger-sitemap-import/index.ts` | Allow retry on stale jobs |
+| `supabase/functions/crawl-brand-site/index.ts` | Force update timestamp on each batch save |
 
 ---
 
-## Implementation Details
+## Database Cleanup
 
-### Updated LegalSectionData Type
+After deploying, run this SQL to clean up the 4 stuck jobs:
 
-```typescript
-export interface LegalSectionData {
-  yStart: number;
-  yEnd?: number; // NEW: to know where it ends for positioning
-  backgroundColor: string;
-  textColor: string;
-  
-  // NEW: Editable content
-  content: string; // Raw HTML with Klaviyo merge tags
-  
-  // NEW: Typography
-  fontSize: number;
-  lineHeight: number;
-  textAlign: 'left' | 'center' | 'right';
-  
-  // NEW: Spacing
-  paddingTop: number;
-  paddingBottom: number;
-  paddingHorizontal: number;
-  
-  // Keep for validation
-  detectedElements: { type: LegalElementType; text: string }[];
-  
-  // NEW: Compliance flags
-  hasOrgName: boolean;
-  hasOrgAddress: boolean;
-  hasUnsubscribe: boolean;
-}
-```
-
-### LegalContentEditor Component
-
-```tsx
-function LegalContentEditor({ legalSection, onUpdate }) {
-  const [content, setContent] = useState(legalSection.content);
-  
-  // Check for required Klaviyo merge tags
-  const hasOrgName = content.includes('{{ organization.name }}');
-  const hasOrgAddress = content.includes('{{ organization.address }}');
-  const hasUnsubscribe = content.includes('{% unsubscribe_url %}');
-  const isCompliant = hasOrgName && hasOrgAddress && hasUnsubscribe;
-  
-  const insertTag = (tag: string) => {
-    setContent(prev => prev + '\n' + tag);
-  };
-  
-  return (
-    <div>
-      {/* Toolbar */}
-      <div className="flex gap-2 mb-2">
-        <Button onClick={() => insertTag('{{ organization.name }}')}>
-          + Org Name
-        </Button>
-        <Button onClick={() => insertTag('{{ organization.address }}')}>
-          + Address  
-        </Button>
-        <Button onClick={() => insertTag('<a href="{% unsubscribe_url %}">Unsubscribe</a>')}>
-          + Unsubscribe
-        </Button>
-      </div>
-      
-      {/* Color pickers */}
-      <div className="flex gap-4">
-        <ColorPicker label="Background" value={legalSection.backgroundColor} />
-        <ColorPicker label="Text" value={legalSection.textColor} />
-      </div>
-      
-      {/* Font size, alignment */}
-      <div className="flex gap-4">
-        <FontSizeSelect value={legalSection.fontSize} />
-        <AlignmentToggle value={legalSection.textAlign} />
-      </div>
-      
-      {/* Content editor */}
-      <Textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        rows={6}
-        className="font-mono text-sm"
-      />
-      
-      {/* Compliance warnings */}
-      {!isCompliant && (
-        <Alert variant="warning">
-          Missing required elements:
-          {!hasOrgName && <Badge>Organization Name</Badge>}
-          {!hasOrgAddress && <Badge>Organization Address</Badge>}
-          {!hasUnsubscribe && <Badge>Unsubscribe Link</Badge>}
-        </Alert>
-      )}
-      
-      {/* Live preview */}
-      <div style={{ 
-        backgroundColor: legalSection.backgroundColor,
-        color: legalSection.textColor,
-        fontSize: legalSection.fontSize,
-        textAlign: legalSection.textAlign,
-        padding: '24px 20px'
-      }}>
-        <div dangerouslySetInnerHTML={{ __html: content }} />
-      </div>
-    </div>
-  );
-}
-```
-
-### AI Fine Print Extraction Prompt Addition
-
-Add to `buildFooterPrompt`:
-
-```text
-## FINE PRINT TEXT EXTRACTION
-
-When you identify a "fine_print" section, you must ALSO extract its content:
-
-In your output, add a "finePrintContent" object:
-{
-  "finePrintContent": {
-    "rawText": "Eskiin Inc. 9450 Southwest Gemini Drive, Beaverton, Oregon 97008, United States\n\nUNSUBSCRIBE",
-    "detectedOrgName": "Eskiin Inc.",
-    "detectedAddress": "9450 Southwest Gemini Drive, Beaverton, Oregon 97008, United States",
-    "hasUnsubscribeLink": true,
-    "hasManagePreferences": false,
-    "textAlignment": "center",
-    "estimatedFontSize": 12
-  }
-}
-
-This helps us convert the static image text into editable HTML with Klaviyo merge tags.
-```
-
-### Content Conversion Logic
-
-```typescript
-function convertFinePrintToHtml(finePrintContent: FinePrintContent): string {
-  let html = finePrintContent.rawText;
-  
-  // Replace detected org name with merge tag
-  if (finePrintContent.detectedOrgName) {
-    html = html.replace(
-      finePrintContent.detectedOrgName,
-      '{{ organization.name }}'
-    );
-  }
-  
-  // Replace detected address with merge tag
-  if (finePrintContent.detectedAddress) {
-    html = html.replace(
-      finePrintContent.detectedAddress,
-      '{{ organization.address }}'
-    );
-  }
-  
-  // Wrap unsubscribe text in link
-  if (finePrintContent.hasUnsubscribeLink) {
-    html = html.replace(
-      /unsubscribe/i,
-      '<a href="{% unsubscribe_url %}" style="text-decoration: underline;">Unsubscribe</a>'
-    );
-  }
-  
-  // Wrap manage preferences in link
-  if (finePrintContent.hasManagePreferences) {
-    html = html.replace(
-      /manage preferences/i,
-      '<a href="{% manage_preferences_url %}" style="text-decoration: underline;">Manage Preferences</a>'
-    );
-  }
-  
-  // Convert newlines to <br>
-  html = html.replace(/\n/g, '<br>');
-  
-  return html;
-}
-```
-
----
-
-## Handling Fine Print in the Middle (One Sol Example)
-
-The current `generateImageFooterHtml` always puts legal at the end. We need to insert it at the correct position:
-
-```typescript
-function generateImageFooterHtml(
-  slices: ImageFooterSlice[],
-  legalSection: LegalSectionData | null,
-  footerWidth: number = 600
-): string {
-  // Sort slices by yTop
-  const sortedSlices = [...slices].sort((a, b) => a.yTop - b.yTop);
-  
-  // Find where to insert legal section based on yStart
-  const legalYStart = legalSection?.yStart ?? Infinity;
-  
-  const slicesBefore = sortedSlices.filter(s => s.yBottom <= legalYStart);
-  const slicesAfter = sortedSlices.filter(s => s.yTop >= (legalSection?.yEnd ?? legalYStart));
-  
-  // Build HTML:
-  // 1. Image slices before legal
-  // 2. Legal HTML section
-  // 3. Image slices after legal (if any)
-  
-  return [
-    renderImageSlices(slicesBefore),
-    legalSection ? renderLegalHtml(legalSection) : '',
-    renderImageSlices(slicesAfter)
-  ].join('\n');
-}
+```sql
+UPDATE sitemap_import_jobs 
+SET status = 'failed', 
+    error_message = 'Job timed out - marked as stale during cleanup',
+    completed_at = NOW()
+WHERE status IN ('crawling', 'fetching_titles', 'generating_embeddings')
+  AND updated_at < NOW() - INTERVAL '10 minutes';
 ```
 
 ---
 
 ## Expected Outcome
 
-1. **Eskiin footer**: AI extracts "Eskiin Inc.", address, and "UNSUBSCRIBE" → converted to merge tags, user sees editable text area with styling controls
-
-2. **One Sol footer**: AI detects fine print in MIDDLE, extracts disclaimer + links → converted to HTML, logo slice below stays as image
-
-3. **Earth Breeze footer**: AI detects address is already populated → replaces with `{{ organization.address }}`, preserves "Unsubscribe" and copyright
-
-4. **User editing**: Can change font size, colors, alignment, add/remove text while maintaining required Klaviyo merge tags
-
-5. **Compliance validation**: Warning if missing org name, address, or unsubscribe - quick buttons to insert them
+1. **Stuck jobs auto-recover**: Jobs with no activity for 10+ minutes get auto-marked as failed
+2. **Cancel button**: Users can manually cancel running jobs
+3. **Retry works**: Stale/failed jobs don't block new crawl attempts
+4. **Status visibility**: 
+   - Shows elapsed time
+   - Shows last activity timestamp
+   - Warns when job appears stuck
+5. **Incremental progress**: Each batch saved immediately, so partial crawls aren't lost on timeout
