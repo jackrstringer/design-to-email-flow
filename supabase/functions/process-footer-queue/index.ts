@@ -23,12 +23,37 @@ interface BrandPreferenceRule {
 
 interface LegalSectionData {
   yStart: number;
+  yEnd?: number;
   backgroundColor: string;
   textColor: string;
+  content?: string;  // Rich text content with Klaviyo merge tags
+  fontSize?: number;
+  lineHeight?: number;
+  textAlign?: 'left' | 'center' | 'right';
+  paddingTop?: number;
+  paddingBottom?: number;
+  paddingHorizontal?: number;
   detectedElements: Array<{
     type: 'unsubscribe' | 'preferences' | 'address' | 'org_name' | 'copyright';
     text: string;
   }>;
+  hasOrgName?: boolean;
+  hasOrgAddress?: boolean;
+  hasUnsubscribe?: boolean;
+}
+
+// Fine print content extracted by Claude
+interface FinePrintContent {
+  rawText: string;
+  detectedOrgName?: string;
+  detectedAddress?: string;
+  hasUnsubscribeText: boolean;
+  hasManagePreferences: boolean;
+  hasCopyright: boolean;
+  textAlignment: 'left' | 'center' | 'right';
+  estimatedFontSize: number;
+  backgroundColor?: string;
+  textColor?: string;
 }
 
 // Detect MIME type from base64 magic bytes
@@ -133,6 +158,7 @@ async function autoSliceFooter(
   analyzedWidth: number;
   analyzedHeight: number;
   needsLinkSearch?: Array<{ sliceIndex: number; description: string }>;
+  finePrintContent?: FinePrintContent | null;
 } | null> {
   const hasLinkIndex = linkIndex && linkIndex.length > 0;
   console.log(`[process-footer] Step 2: Auto-slicing footer... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
@@ -182,7 +208,8 @@ async function autoSliceFooter(
       imageHeight: result.imageHeight,
       analyzedWidth: result.imageWidth || imageWidth,
       analyzedHeight: result.imageHeight || imageHeight,
-      needsLinkSearch: result.needsLinkSearch || []
+      needsLinkSearch: result.needsLinkSearch || [],
+      finePrintContent: result.finePrintContent || null
     };
 
   } catch (err) {
@@ -618,22 +645,77 @@ serve(async (req) => {
     if (finePrintSlice) {
       console.log(`[process-footer] Found fine_print slice at Y=${finePrintSlice.yTop}-${finePrintSlice.yBottom}`);
       
-      // Use OCR to extract metadata from the fine print section
-      legalSection = await detectLegalSection(imageBase64, sliceResult.imageHeight);
+      // Use Claude's extracted finePrintContent if available
+      const finePrintContent = sliceResult.finePrintContent;
       
-      // Override yStart with Claude's more accurate boundary
-      if (legalSection) {
-        legalSection.yStart = finePrintSlice.yTop;
-        console.log(`[process-footer] Set legal section yStart from fine_print slice: ${legalSection.yStart}`);
-      } else {
-        // Create a default legal section from the fine_print slice
-        console.log(`[process-footer] Creating default legal section from fine_print slice`);
+      if (finePrintContent && finePrintContent.rawText) {
+        console.log(`[process-footer] Using Claude's extracted fine print content`);
+        
+        // Convert raw text to HTML with Klaviyo merge tags
+        let htmlContent = finePrintContent.rawText;
+        
+        // Replace detected org name with merge tag
+        if (finePrintContent.detectedOrgName) {
+          htmlContent = htmlContent.replace(
+            new RegExp(finePrintContent.detectedOrgName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+            '{{ organization.name }}'
+          );
+        }
+        
+        // Replace detected address with merge tag
+        if (finePrintContent.detectedAddress) {
+          htmlContent = htmlContent.replace(
+            new RegExp(finePrintContent.detectedAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+            '{{ organization.address }}'
+          );
+        }
+        
+        // Wrap unsubscribe text in link
+        if (finePrintContent.hasUnsubscribeText) {
+          htmlContent = htmlContent.replace(
+            /unsubscribe/gi,
+            '<a href="{% unsubscribe_url %}">Unsubscribe</a>'
+          );
+        }
+        
+        // Wrap manage preferences in link
+        if (finePrintContent.hasManagePreferences) {
+          htmlContent = htmlContent.replace(
+            /manage\s*preferences/gi,
+            '<a href="{% manage_preferences_url %}">Manage Preferences</a>'
+          );
+        }
+        
+        // Convert newlines to <br>
+        htmlContent = htmlContent.replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
+        
         legalSection = {
           yStart: finePrintSlice.yTop,
-          backgroundColor: '#1a1a1a',
-          textColor: '#ffffff',
-          detectedElements: []
+          yEnd: finePrintSlice.yBottom,
+          backgroundColor: finePrintContent.backgroundColor || '#1a1a1a',
+          textColor: finePrintContent.textColor || '#ffffff',
+          content: htmlContent,
+          fontSize: finePrintContent.estimatedFontSize || 11,
+          textAlign: finePrintContent.textAlignment || 'center',
+          detectedElements: [],
+          hasOrgName: htmlContent.includes('{{ organization.name }}'),
+          hasOrgAddress: htmlContent.includes('{{ organization.address }}'),
+          hasUnsubscribe: htmlContent.includes('{% unsubscribe_url %}'),
         };
+        console.log(`[process-footer] Converted fine print to rich HTML content`);
+      } else {
+        // Fallback: Use OCR to extract metadata
+        legalSection = await detectLegalSection(imageBase64, sliceResult.imageHeight);
+        if (legalSection) {
+          legalSection.yStart = finePrintSlice.yTop;
+        } else {
+          legalSection = {
+            yStart: finePrintSlice.yTop,
+            backgroundColor: '#1a1a1a',
+            textColor: '#ffffff',
+            detectedElements: []
+          };
+        }
       }
       
       // Remove fine_print from image slices (it becomes HTML)
