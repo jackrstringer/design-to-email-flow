@@ -13,7 +13,7 @@ const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1';
 const SKIP_PATTERNS = [
   '/cart', '/account', '/login', '/checkout', '/search',
   '/policies', '/apps/', '/admin', '/password', '/register',
-  '/wishlist', '/compare', '/api/', '/sitemap',
+  '/wishlist', '/compare', '/api/', '/sitemap', '?', '#',
 ];
 
 function categorizeUrl(url: string): 'product' | 'collection' | 'page' {
@@ -26,6 +26,23 @@ function categorizeUrl(url: string): 'product' | 'collection' | 'page' {
 function shouldSkipUrl(url: string): boolean {
   const lowerUrl = url.toLowerCase();
   return SKIP_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+}
+
+// Extract title from URL path (fallback when we can't fetch)
+function titleFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] || '';
+    return lastSegment
+      .replace(/-/g, ' ')
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  } catch {
+    return url;
+  }
 }
 
 serve(async (req) => {
@@ -59,14 +76,15 @@ serve(async (req) => {
       .from('sitemap_import_jobs')
       .update({ 
         status: 'crawling', 
-        started_at: new Date().toISOString() 
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .eq('id', job_id);
 
-    // Start Firecrawl crawl
-    console.log(`[crawl-brand-site] Calling Firecrawl API for https://${domain}`);
+    // Use Map API instead of Crawl API - much faster and cheaper!
+    console.log(`[crawl-brand-site] Calling Firecrawl Map API for https://${domain}`);
     
-    const crawlResponse = await fetch(`${FIRECRAWL_API_URL}/crawl`, {
+    const mapResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
@@ -74,114 +92,94 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: `https://${domain}`,
-        limit: 200,  // Max pages to crawl
-        scrapeOptions: {
-          formats: ['markdown'],
-          onlyMainContent: true
-        }
+        limit: 500,  // Max URLs to discover
+        includeSubdomains: false
       })
     });
 
-    if (!crawlResponse.ok) {
-      const errorText = await crawlResponse.text();
-      console.error(`[crawl-brand-site] Firecrawl API error: ${crawlResponse.status}`, errorText);
-      throw new Error(`Firecrawl API error: ${crawlResponse.status}`);
-    }
-
-    const crawlData = await crawlResponse.json();
-    const crawlId = crawlData.id;
-
-    if (!crawlId) {
-      throw new Error('Firecrawl did not return a crawl ID');
-    }
-
-    console.log(`[crawl-brand-site] Crawl started with ID: ${crawlId}`);
-
-    // Poll for crawl completion
-    let crawlResult = null;
-    let attempts = 0;
-    const maxAttempts = 60;  // 5 minutes max (5s intervals)
-
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 5000));  // Wait 5 seconds
+    // Handle API errors with user-friendly messages
+    if (!mapResponse.ok) {
+      const errorText = await mapResponse.text();
+      console.error(`[crawl-brand-site] Firecrawl Map API error: ${mapResponse.status}`, errorText);
       
-      const statusResponse = await fetch(`${FIRECRAWL_API_URL}/crawl/${crawlId}`, {
-        headers: { 'Authorization': `Bearer ${FIRECRAWL_API_KEY}` }
-      });
-
-      if (!statusResponse.ok) {
-        console.warn(`[crawl-brand-site] Status check failed: ${statusResponse.status}`);
-        attempts++;
-        continue;
+      let userMessage = 'Failed to crawl site';
+      if (mapResponse.status === 402) {
+        userMessage = 'Firecrawl API credits exhausted. Please add credits at firecrawl.dev/pricing';
+      } else if (mapResponse.status === 429) {
+        userMessage = 'Rate limited by Firecrawl. Please try again in a few minutes.';
+      } else if (mapResponse.status === 401) {
+        userMessage = 'Firecrawl API key is invalid. Please check your configuration.';
+      } else {
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            userMessage = errorData.error;
+          }
+        } catch {
+          userMessage = `Firecrawl API error (${mapResponse.status})`;
+        }
       }
-
-      const statusData = await statusResponse.json();
       
-      console.log(`[crawl-brand-site] Crawl status: ${statusData.status}, completed: ${statusData.completed || 0}/${statusData.total || 0}`);
-
-      // Update progress in database
+      // Update job with user-friendly error message
       await supabase
         .from('sitemap_import_jobs')
         .update({ 
-          urls_found: statusData.total || 0,
-          urls_processed: statusData.completed || 0
+          status: 'failed',
+          error_message: userMessage,
+          updated_at: new Date().toISOString()
         })
         .eq('id', job_id);
-
-      if (statusData.status === 'completed') {
-        crawlResult = statusData;
-        break;
-      } else if (statusData.status === 'failed') {
-        throw new Error('Firecrawl crawl failed');
-      }
-
-      attempts++;
+      
+      throw new Error(userMessage);
     }
 
-    if (!crawlResult) {
-      throw new Error('Crawl timed out after 5 minutes');
-    }
+    const mapData = await mapResponse.json();
+    const allUrls: string[] = mapData.links || [];
 
-    console.log(`[crawl-brand-site] Crawl complete. Found ${crawlResult.data?.length || 0} pages`);
+    console.log(`[crawl-brand-site] Map API found ${allUrls.length} URLs`);
 
-    // Process crawled pages
-    const links: Array<{ url: string; title: string; link_type: string }> = [];
+    // Immediately update with URLs found count
+    await supabase
+      .from('sitemap_import_jobs')
+      .update({ 
+        urls_found: allUrls.length,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', job_id);
 
-    for (const page of crawlResult.data || []) {
-      const url = page.metadata?.sourceURL || page.url;
-      const title = page.metadata?.title || '';
-
-      if (!url) continue;
-
-      // Skip non-content pages
-      if (shouldSkipUrl(url)) {
-        continue;
-      }
-
+    // Filter URLs
+    const filteredUrls = allUrls.filter(url => {
+      if (!url) return false;
+      if (shouldSkipUrl(url)) return false;
       // Only include same-domain URLs
-      if (!url.includes(domain)) {
-        continue;
-      }
+      if (!url.includes(domain)) return false;
+      return true;
+    });
 
-      const linkType = categorizeUrl(url);
-      links.push({ url, title, link_type: linkType });
-    }
+    // Deduplicate
+    const uniqueUrls = [...new Set(filteredUrls)];
 
-    // Deduplicate by URL
-    const uniqueLinks = Array.from(
-      new Map(links.map(l => [l.url, l])).values()
-    );
+    console.log(`[crawl-brand-site] Filtered to ${uniqueUrls.length} unique content pages`);
 
-    console.log(`[crawl-brand-site] Filtered to ${uniqueLinks.length} unique content pages`);
+    // Build links with titles from URL
+    const links = uniqueUrls.map(url => ({
+      url,
+      title: titleFromUrl(url),
+      link_type: categorizeUrl(url)
+    }));
+
+    const productCount = links.filter(l => l.link_type === 'product').length;
+    const collectionCount = links.filter(l => l.link_type === 'collection').length;
 
     // Update job status to generating embeddings
     await supabase
       .from('sitemap_import_jobs')
       .update({ 
         status: 'generating_embeddings',
-        urls_found: uniqueLinks.length,
-        product_urls_count: uniqueLinks.filter(l => l.link_type === 'product').length,
-        collection_urls_count: uniqueLinks.filter(l => l.link_type === 'collection').length
+        urls_found: links.length,
+        product_urls_count: productCount,
+        collection_urls_count: collectionCount,
+        updated_at: new Date().toISOString()
       })
       .eq('id', job_id);
 
@@ -189,11 +187,11 @@ serve(async (req) => {
     const batchSize = 50;
     let processedCount = 0;
 
-    for (let i = 0; i < uniqueLinks.length; i += batchSize) {
-      const batch = uniqueLinks.slice(i, i + batchSize);
+    for (let i = 0; i < links.length; i += batchSize) {
+      const batch = links.slice(i, i + batchSize);
       const texts = batch.map(l => l.title || l.url);
 
-      console.log(`[crawl-brand-site] Generating embeddings for batch ${Math.floor(i / batchSize) + 1}`);
+      console.log(`[crawl-brand-site] Generating embeddings for batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(links.length / batchSize)}`);
 
       // Call our embedding function
       const embeddingResponse = await fetch(
@@ -208,56 +206,43 @@ serve(async (req) => {
         }
       );
 
-      if (!embeddingResponse.ok) {
-        console.error(`[crawl-brand-site] Embedding generation failed:`, await embeddingResponse.text());
-        // Continue without embeddings for this batch
-        const insertData = batch.map((link) => ({
-          brand_id,
-          url: link.url,
-          title: link.title || null,
-          link_type: link.link_type,
-          embedding: null,
-          source: 'firecrawl',
-          is_healthy: true,
-          last_verified_at: new Date().toISOString()
-        }));
-
-        await supabase
-          .from('brand_link_index')
-          .upsert(insertData, { onConflict: 'brand_id,url', ignoreDuplicates: false });
+      let embeddings: any[] | null = null;
+      if (embeddingResponse.ok) {
+        const embeddingData = await embeddingResponse.json();
+        embeddings = embeddingData.embeddings;
       } else {
-        const { embeddings } = await embeddingResponse.json();
+        console.error(`[crawl-brand-site] Embedding generation failed:`, await embeddingResponse.text());
+      }
 
-        // Insert links with embeddings
-        const insertData = batch.map((link, idx) => ({
-          brand_id,
-          url: link.url,
-          title: link.title || null,
-          link_type: link.link_type,
-          embedding: embeddings?.[idx] || null,
-          source: 'firecrawl',
-          is_healthy: true,
-          last_verified_at: new Date().toISOString()
-        }));
+      // Insert links with or without embeddings
+      const insertData = batch.map((link, idx) => ({
+        brand_id,
+        url: link.url,
+        title: link.title || null,
+        link_type: link.link_type,
+        embedding: embeddings?.[idx] || null,
+        source: 'firecrawl',
+        is_healthy: true,
+        last_verified_at: new Date().toISOString()
+      }));
 
       await supabase
         .from('brand_link_index')
         .upsert(insertData, { onConflict: 'brand_id,url', ignoreDuplicates: false });
+
+      processedCount += batch.length;
+
+      // Update progress AND updated_at to show job is alive
+      await supabase
+        .from('sitemap_import_jobs')
+        .update({ 
+          urls_processed: processedCount,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', job_id);
+
+      console.log(`[crawl-brand-site] Saved batch ${Math.floor(i / batchSize) + 1}, ${processedCount}/${links.length}`);
     }
-
-    processedCount += batch.length;
-
-    // Update progress AND updated_at to show job is alive
-    await supabase
-      .from('sitemap_import_jobs')
-      .update({ 
-        urls_processed: processedCount,
-        updated_at: new Date().toISOString() // Force update timestamp for stale detection
-      })
-      .eq('id', job_id);
-
-    console.log(`[crawl-brand-site] Saved batch ${Math.floor(i / batchSize) + 1}, ${processedCount}/${uniqueLinks.length}`);
-  }
 
     // Complete the job
     await supabase
@@ -265,15 +250,17 @@ serve(async (req) => {
       .update({ 
         status: 'complete',
         completed_at: new Date().toISOString(),
-        urls_found: uniqueLinks.length,
-        urls_processed: uniqueLinks.length
+        urls_found: links.length,
+        urls_processed: links.length,
+        product_urls_count: productCount,
+        collection_urls_count: collectionCount
       })
       .eq('id', job_id);
 
-    console.log(`[crawl-brand-site] Job complete. Imported ${uniqueLinks.length} links`);
+    console.log(`[crawl-brand-site] Job complete. Imported ${links.length} links`);
 
     return new Response(
-      JSON.stringify({ success: true, linksImported: uniqueLinks.length }),
+      JSON.stringify({ success: true, linksImported: links.length }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
@@ -281,11 +268,13 @@ serve(async (req) => {
     console.error('[crawl-brand-site] Error:', error);
 
     if (job_id) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       await supabase
         .from('sitemap_import_jobs')
         .update({ 
           status: 'failed',
-          error_message: error instanceof Error ? error.message : 'Unknown error'
+          error_message: errorMessage,
+          updated_at: new Date().toISOString()
         })
         .eq('id', job_id);
     }

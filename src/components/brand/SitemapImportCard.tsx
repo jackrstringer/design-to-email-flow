@@ -117,12 +117,17 @@ export function SitemapImportCard({
       case 'complete':
         return 'Import complete';
       case 'failed':
-        return `Import failed: ${job.error_message || 'Unknown error'}`;
+        return null; // We'll show error_message separately with special styling
       case 'cancelled':
         return 'Crawl was cancelled';
       default:
         return job.status;
     }
+  };
+
+  const getErrorMessage = () => {
+    if (!job || job.status !== 'failed') return null;
+    return job.error_message || 'Unknown error';
   };
 
   const getProgress = () => {
@@ -279,7 +284,18 @@ export function SitemapImportCard({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{getStatusMessage()}</p>
+      {getStatusMessage() && (
+        <p className="text-xs text-muted-foreground">{getStatusMessage()}</p>
+      )}
+
+      {getErrorMessage() && (
+        <Alert variant="destructive" className="py-2">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            {getErrorMessage()}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {isRunning && job && (
         <div className="space-y-2">
