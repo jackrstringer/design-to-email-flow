@@ -891,6 +891,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
     setIsFetchingFigma(true);
     try {
+      // Step 1: Fetch Figma design (gets S3 URL)
       const { data, error } = await supabase.functions.invoke('fetch-figma-design', {
         body: { figmaUrl }
       });
@@ -901,23 +902,42 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         throw new Error(data.error || 'Failed to fetch Figma design');
       }
 
-      // Set the image and start processing
-      setReferenceImageUrl(data.exportedImageUrl);
+      toast.info('Uploading to Cloudinary...');
+      
+      // Step 2: Upload Figma S3 image to Cloudinary
+      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+        body: { 
+          imageUrl: data.exportedImageUrl,  // Pass URL instead of base64
+          folder: `brands/${brand.domain}/footer-images`
+        }
+      });
+
+      if (uploadError || !uploadData?.url) {
+        console.error('Cloudinary upload failed:', uploadError);
+        throw new Error('Failed to upload image to Cloudinary');
+      }
+
+      console.log('[FooterBuilderModal] Uploaded to Cloudinary:', uploadData.url);
+
+      // Set the image and start processing with Cloudinary URL
+      setReferenceImageUrl(uploadData.url);
+      setCloudinaryPublicId(uploadData.publicId);
       setImageFooterDimensions({ 
-        width: data.dimensions?.width || 600, 
-        height: data.dimensions?.height || 400 
+        width: uploadData.width || data.dimensions?.width || 600, 
+        height: uploadData.height || data.dimensions?.height || 400 
       });
       
-      toast.success('Figma design fetched');
+      toast.success('Image ready, starting processing...');
       
-      // Create processing job
+      // Step 3: Create processing job with Cloudinary URL
       const jobId = await createFooterJob({
         brandId: brand.id,
         source: 'figma',
         sourceUrl: figmaUrl,
-        imageUrl: data.exportedImageUrl,
-        imageWidth: data.dimensions?.width || 600,
-        imageHeight: data.dimensions?.height || 400,
+        imageUrl: uploadData.url,  // Cloudinary URL instead of S3
+        cloudinaryPublicId: uploadData.publicId,
+        imageWidth: uploadData.width || data.dimensions?.width || 600,
+        imageHeight: uploadData.height || data.dimensions?.height || 400,
       });
       
       if (!jobId) {
@@ -930,7 +950,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     } finally {
       setIsFetchingFigma(false);
     }
-  }, [figmaUrl, brand.id, createFooterJob]);
+  }, [figmaUrl, brand.id, brand.domain, createFooterJob]);
 
   const handleImageFooterDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

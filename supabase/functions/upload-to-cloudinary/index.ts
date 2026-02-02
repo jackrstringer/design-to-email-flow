@@ -21,12 +21,41 @@ serve(async (req) => {
   }
 
   try {
-    const { imageData, folder } = await req.json();
+    const { imageData, imageUrl, folder } = await req.json();
 
-    if (!imageData) {
-      console.error('No image data provided');
+    // Support both base64 data and URL
+    let uploadData: string;
+    
+    if (imageUrl) {
+      // Fetch image from URL and convert to base64
+      console.log('Fetching image from URL:', imageUrl.substring(0, 80) + '...');
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        console.error('Failed to fetch image from URL:', response.status);
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch image from URL' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < uint8Array.length; i++) {
+        binary += String.fromCharCode(uint8Array[i]);
+      }
+      
+      // Determine content type from response or URL
+      const contentType = response.headers.get('content-type') || 'image/png';
+      const base64Data = btoa(binary);
+      uploadData = `data:${contentType};base64,${base64Data}`;
+      console.log('Converted URL image to base64, size:', base64Data.length);
+    } else if (imageData) {
+      uploadData = imageData;
+    } else {
+      console.error('No image data or URL provided');
       return new Response(
-        JSON.stringify({ error: 'No image data provided' }),
+        JSON.stringify({ error: 'No image data or URL provided' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -59,7 +88,7 @@ serve(async (req) => {
 
     // Upload to Cloudinary using base64 data URL directly
     const formData = new FormData();
-    formData.append('file', imageData);
+    formData.append('file', uploadData);
     formData.append('api_key', apiKey);
     formData.append('timestamp', timestamp.toString());
     formData.append('signature', signature);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { ImageFooterSlice, LegalSectionData } from '@/types/footer';
 
@@ -34,6 +34,16 @@ export function useFooterProcessingJob(options: UseFooterProcessingJobOptions = 
   const [job, setJob] = useState<FooterProcessingJob | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Store callbacks in refs to avoid re-subscribing on every render
+  const onCompleteRef = useRef(options.onComplete);
+  const onErrorRef = useRef(options.onError);
+  
+  // Keep refs updated with latest callbacks
+  useEffect(() => {
+    onCompleteRef.current = options.onComplete;
+    onErrorRef.current = options.onError;
+  }, [options.onComplete, options.onError]);
 
   // Subscribe to realtime updates for the job
   useEffect(() => {
@@ -57,11 +67,11 @@ export function useFooterProcessingJob(options: UseFooterProcessingJobOptions = 
           setJob(updatedJob);
 
           if (updatedJob.status === 'pending_review' || updatedJob.status === 'completed') {
-            options.onComplete?.(updatedJob);
+            onCompleteRef.current?.(updatedJob);
           } else if (updatedJob.status === 'failed') {
             const errorMsg = updatedJob.error_message || 'Processing failed';
             setError(errorMsg);
-            options.onError?.(errorMsg);
+            onErrorRef.current?.(errorMsg);
           }
         }
       )
@@ -73,7 +83,7 @@ export function useFooterProcessingJob(options: UseFooterProcessingJobOptions = 
       console.log('[useFooterProcessingJob] Unsubscribing from job:', jobId);
       supabase.removeChannel(channel);
     };
-  }, [jobId, options.onComplete, options.onError]);
+  }, [jobId]); // Only re-subscribe when jobId changes, not callbacks
 
   // Create a new processing job
   const createJob = useCallback(async (params: {
