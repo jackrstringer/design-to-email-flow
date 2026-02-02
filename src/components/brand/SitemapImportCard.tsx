@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Loader2, Globe, AlertCircle, CheckCircle, RefreshCw, ChevronDown } from 'lucide-react';
+import { Loader2, Globe, AlertCircle, CheckCircle, RefreshCw, ChevronDown, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
   DialogContent,
@@ -39,11 +40,15 @@ export function SitemapImportCard({
     job, 
     isRunning, 
     isComplete, 
-    isFailed, 
+    isFailed,
+    isCancelled,
+    isStale,
     triggerCrawl, 
     isCrawling,
     triggerImport,
-    isTriggering 
+    isTriggering,
+    cancelJob,
+    isCancelling,
   } = useSitemapImport(brandId, domain);
   
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -70,8 +75,31 @@ export function SitemapImportCard({
     }
   };
 
+  const handleCancel = async () => {
+    try {
+      await cancelJob();
+      toast.success('Crawl cancelled');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to cancel');
+    }
+  };
+
+  const getElapsedTime = () => {
+    if (!job?.started_at) return null;
+    return formatDistanceToNow(new Date(job.started_at), { addSuffix: false });
+  };
+
+  const getLastActivity = () => {
+    if (!job?.updated_at) return null;
+    return formatDistanceToNow(new Date(job.updated_at), { addSuffix: true });
+  };
+
   const getStatusMessage = () => {
     if (!job) return null;
+    
+    if (isStale) {
+      return '⚠️ Job appears stuck - no activity in 10+ minutes';
+    }
     
     switch (job.status) {
       case 'pending':
@@ -90,6 +118,8 @@ export function SitemapImportCard({
         return 'Import complete';
       case 'failed':
         return `Import failed: ${job.error_message || 'Unknown error'}`;
+      case 'cancelled':
+        return 'Crawl was cancelled';
       default:
         return job.status;
     }
@@ -108,23 +138,29 @@ export function SitemapImportCard({
   };
 
   const isProcessing = isCrawling || isTriggering;
+  const canRetry = isFailed || isCancelled || isStale;
 
   // Compact mode - just show button
   if (compact) {
     return (
       <>
-        <Button size="sm" variant="outline" onClick={() => setImportModalOpen(true)} disabled={isRunning}>
-          {isRunning ? (
+        <Button size="sm" variant="outline" onClick={() => setImportModalOpen(true)} disabled={isRunning && !isStale}>
+          {isRunning && !isStale ? (
             <>
               <Loader2 className="w-4 h-4 mr-1 animate-spin" />
               Crawling...
+            </>
+          ) : isStale ? (
+            <>
+              <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />
+              Stuck - Retry
             </>
           ) : isComplete ? (
             <>
               <CheckCircle className="w-4 h-4 mr-1 text-green-500" />
               Re-crawl
             </>
-          ) : isFailed ? (
+          ) : canRetry ? (
             <>
               <AlertCircle className="w-4 h-4 mr-1 text-destructive" />
               Retry
@@ -142,15 +178,20 @@ export function SitemapImportCard({
           onOpenChange={setImportModalOpen}
           domain={domain}
           isRunning={isRunning}
+          isStale={isStale}
           isProcessing={isProcessing}
+          isCancelling={isCancelling}
           job={job}
           getProgress={getProgress}
+          getElapsedTime={getElapsedTime}
+          getLastActivity={getLastActivity}
           showAdvanced={showAdvanced}
           setShowAdvanced={setShowAdvanced}
           sitemapUrl={sitemapUrl}
           setSitemapUrl={setSitemapUrl}
           onCrawl={handleCrawlSite}
           onSitemapImport={handleSitemapImport}
+          onCancel={handleCancel}
         />
       </>
     );
@@ -176,15 +217,20 @@ export function SitemapImportCard({
           onOpenChange={setImportModalOpen}
           domain={domain}
           isRunning={isRunning}
+          isStale={isStale}
           isProcessing={isProcessing}
+          isCancelling={isCancelling}
           job={job}
           getProgress={getProgress}
+          getElapsedTime={getElapsedTime}
+          getLastActivity={getLastActivity}
           showAdvanced={showAdvanced}
           setShowAdvanced={setShowAdvanced}
           sitemapUrl={sitemapUrl}
           setSitemapUrl={setSitemapUrl}
           onCrawl={handleCrawlSite}
           onSitemapImport={handleSitemapImport}
+          onCancel={handleCancel}
         />
       </div>
     );
@@ -195,32 +241,78 @@ export function SitemapImportCard({
     <div className="p-4 rounded-lg border border-border/50 bg-muted/30 space-y-3">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          {isRunning && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+          {isRunning && !isStale && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+          {isStale && <AlertTriangle className="w-4 h-4 text-amber-500" />}
           {isComplete && <CheckCircle className="w-4 h-4 text-green-500" />}
-          {isFailed && <AlertCircle className="w-4 h-4 text-destructive" />}
+          {(isFailed || isCancelled) && <AlertCircle className="w-4 h-4 text-destructive" />}
           <span className="text-sm font-medium">Site Crawl</span>
         </div>
-        {!isRunning && (
-          <Button 
-            size="sm" 
-            variant="ghost" 
-            onClick={() => setImportModalOpen(true)}
-          >
-            <RefreshCw className="w-4 h-4 mr-1" />
-            Re-crawl
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isRunning && (
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={handleCancel}
+              disabled={isCancelling}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              {isCancelling ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <XCircle className="w-4 h-4 mr-1" />
+                  Cancel
+                </>
+              )}
+            </Button>
+          )}
+          {!isRunning && (
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={() => setImportModalOpen(true)}
+            >
+              <RefreshCw className="w-4 h-4 mr-1" />
+              Re-crawl
+            </Button>
+          )}
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">{getStatusMessage()}</p>
 
-      {isRunning && job && job.urls_found > 0 && (
-        <>
-          <Progress value={getProgress()} className="h-2" />
-          <p className="text-xs text-muted-foreground">
-            {job.urls_processed} / {job.urls_found} pages processed
-          </p>
-        </>
+      {isRunning && job && (
+        <div className="space-y-2">
+          {job.urls_found > 0 && (
+            <>
+              <Progress value={getProgress()} className="h-2" />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{job.urls_processed} / {job.urls_found} pages</span>
+                <span className="text-muted-foreground/60">
+                  Running for {getElapsedTime()} • Last activity {getLastActivity()}
+                </span>
+              </div>
+            </>
+          )}
+          
+          {isStale && (
+            <Alert className="border-amber-500/50 bg-amber-500/10">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <AlertDescription className="text-xs">
+                No progress in {getLastActivity()}. The job may have timed out. 
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="h-auto p-0 ml-1 text-xs"
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                >
+                  Cancel and retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
       )}
 
       {isComplete && job && (
@@ -234,7 +326,7 @@ export function SitemapImportCard({
         </p>
       )}
 
-      {isFailed && (
+      {canRetry && (
         <Button 
           size="sm" 
           variant="outline" 
@@ -249,15 +341,20 @@ export function SitemapImportCard({
         onOpenChange={setImportModalOpen}
         domain={domain}
         isRunning={isRunning}
+        isStale={isStale}
         isProcessing={isProcessing}
+        isCancelling={isCancelling}
         job={job}
         getProgress={getProgress}
+        getElapsedTime={getElapsedTime}
+        getLastActivity={getLastActivity}
         showAdvanced={showAdvanced}
         setShowAdvanced={setShowAdvanced}
         sitemapUrl={sitemapUrl}
         setSitemapUrl={setSitemapUrl}
         onCrawl={handleCrawlSite}
         onSitemapImport={handleSitemapImport}
+        onCancel={handleCancel}
       />
     </div>
   );
@@ -269,15 +366,20 @@ interface CrawlDialogProps {
   onOpenChange: (open: boolean) => void;
   domain: string;
   isRunning: boolean;
+  isStale: boolean;
   isProcessing: boolean;
+  isCancelling: boolean;
   job: any;
   getProgress: () => number;
+  getElapsedTime: () => string | null;
+  getLastActivity: () => string | null;
   showAdvanced: boolean;
   setShowAdvanced: (show: boolean) => void;
   sitemapUrl: string;
   setSitemapUrl: (url: string) => void;
   onCrawl: () => void;
   onSitemapImport: () => void;
+  onCancel: () => void;
 }
 
 function CrawlDialog({
@@ -285,15 +387,20 @@ function CrawlDialog({
   onOpenChange,
   domain,
   isRunning,
+  isStale,
   isProcessing,
+  isCancelling,
   job,
   getProgress,
+  getElapsedTime,
+  getLastActivity,
   showAdvanced,
   setShowAdvanced,
   sitemapUrl,
   setSitemapUrl,
   onCrawl,
   onSitemapImport,
+  onCancel,
 }: CrawlDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -316,12 +423,46 @@ function CrawlDialog({
             <li>Navigation and footer links</li>
           </ul>
 
-          {isRunning && job && job.urls_found > 0 && (
-            <div className="space-y-2">
-              <Progress value={getProgress()} className="h-2" />
-              <p className="text-xs text-muted-foreground">
-                {job.urls_processed} / {job.urls_found} pages processed
-              </p>
+          {isRunning && job && (
+            <div className="space-y-2 p-3 rounded-lg bg-muted/50">
+              {job.urls_found > 0 && (
+                <>
+                  <Progress value={getProgress()} className="h-2" />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{job.urls_processed} / {job.urls_found} pages</span>
+                    <span>Running for {getElapsedTime()}</span>
+                  </div>
+                </>
+              )}
+              
+              {isStale && (
+                <Alert className="border-amber-500/50 bg-amber-500/10">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <AlertDescription className="text-xs">
+                    Job appears stuck. No activity {getLastActivity()}.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={onCancel}
+                disabled={isCancelling}
+                className="w-full"
+              >
+                {isCancelling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Cancelling...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Cancel Crawl
+                  </>
+                )}
+              </Button>
             </div>
           )}
 
@@ -345,7 +486,7 @@ function CrawlDialog({
                 variant="outline" 
                 size="sm" 
                 onClick={onSitemapImport} 
-                disabled={isProcessing || isRunning || !sitemapUrl}
+                disabled={isProcessing || (isRunning && !isStale) || !sitemapUrl}
                 className="w-full"
               >
                 {isProcessing ? (
@@ -363,13 +504,18 @@ function CrawlDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            Close
           </Button>
-          <Button onClick={onCrawl} disabled={isProcessing || isRunning}>
+          <Button onClick={onCrawl} disabled={isProcessing || (isRunning && !isStale)}>
             {isProcessing ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Starting...
+              </>
+            ) : isStale ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Restart Crawl
               </>
             ) : (
               <>

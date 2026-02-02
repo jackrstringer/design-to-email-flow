@@ -240,19 +240,24 @@ serve(async (req) => {
           last_verified_at: new Date().toISOString()
         }));
 
-        await supabase
-          .from('brand_link_index')
-          .upsert(insertData, { onConflict: 'brand_id,url', ignoreDuplicates: false });
-      }
-
-      processedCount += batch.length;
-
-      // Update progress
       await supabase
-        .from('sitemap_import_jobs')
-        .update({ urls_processed: processedCount })
-        .eq('id', job_id);
+        .from('brand_link_index')
+        .upsert(insertData, { onConflict: 'brand_id,url', ignoreDuplicates: false });
     }
+
+    processedCount += batch.length;
+
+    // Update progress AND updated_at to show job is alive
+    await supabase
+      .from('sitemap_import_jobs')
+      .update({ 
+        urls_processed: processedCount,
+        updated_at: new Date().toISOString() // Force update timestamp for stale detection
+      })
+      .eq('id', job_id);
+
+    console.log(`[crawl-brand-site] Saved batch ${Math.floor(i / batchSize) + 1}, ${processedCount}/${uniqueLinks.length}`);
+  }
 
     // Complete the job
     await supabase

@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { SitemapImportJob, TriggerSitemapImportResponse } from '@/types/link-intelligence';
 
 const RUNNING_STATUSES = ['pending', 'parsing', 'crawling', 'crawling_nav', 'fetching_titles', 'generating_embeddings'];
+const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
 export function useSitemapImport(brandId: string, domain?: string) {
   const queryClient = useQueryClient();
@@ -66,10 +68,40 @@ export function useSitemapImport(brandId: string, domain?: string) {
     },
   });
 
+  // Cancel job mutation
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const job = jobQuery.data;
+      if (!job) throw new Error('No job to cancel');
+      
+      const { error } = await supabase
+        .from('sitemap_import_jobs')
+        .update({ 
+          status: 'cancelled',
+          error_message: 'Cancelled by user',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', job.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sitemap-import-job', brandId] });
+    },
+  });
+
   const job = jobQuery.data;
   const isRunning = job && RUNNING_STATUSES.includes(job.status);
   const isComplete = job?.status === 'complete';
   const isFailed = job?.status === 'failed';
+  const isCancelled = job?.status === 'cancelled';
+
+  // Calculate if job is stale (no activity for 10+ minutes)
+  const isStale = useMemo(() => {
+    if (!job || !RUNNING_STATUSES.includes(job.status)) return false;
+    const lastUpdate = new Date(job.updated_at).getTime();
+    const now = Date.now();
+    return (now - lastUpdate) > STALE_THRESHOLD_MS;
+  }, [job]);
 
   return {
     job,
@@ -77,12 +109,17 @@ export function useSitemapImport(brandId: string, domain?: string) {
     isRunning,
     isComplete,
     isFailed,
+    isCancelled,
+    isStale,
     // Primary: domain-only crawl using Firecrawl
     triggerCrawl: triggerCrawlMutation.mutateAsync,
     isCrawling: triggerCrawlMutation.isPending,
     // Legacy: sitemap URL import
     triggerImport: triggerSitemapMutation.mutateAsync,
     isTriggering: triggerSitemapMutation.isPending,
+    // Cancel
+    cancelJob: cancelMutation.mutateAsync,
+    isCancelling: cancelMutation.isPending,
     refetch: jobQuery.refetch,
   };
 }
