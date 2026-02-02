@@ -31,6 +31,40 @@ interface LegalSectionData {
   }>;
 }
 
+// Detect MIME type from base64 magic bytes
+function detectMimeType(base64: string): string {
+  try {
+    // Decode first 12 bytes to check magic bytes
+    const binaryStr = atob(base64.substring(0, 16));
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      return 'image/png';
+    }
+    // JPEG: FF D8 FF
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+      return 'image/jpeg';
+    }
+    // WebP: 52 49 46 46 ... 57 45 42 50
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+      return 'image/webp';
+    }
+    // GIF: 47 49 46 38
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+      return 'image/gif';
+    }
+  } catch (e) {
+    console.warn('[process-footer] Failed to detect MIME type from bytes:', e);
+  }
+  
+  // Fallback
+  return 'image/jpeg';
+}
+
 // Transform Cloudinary URL to include resize parameters
 function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: number): string {
   if (!url || !url.includes('cloudinary.com/')) return url;
@@ -104,6 +138,10 @@ async function autoSliceFooter(
   console.log(`[process-footer] Step 2: Auto-slicing footer... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
 
   try {
+    // Detect MIME type from image data
+    const mimeType = detectMimeType(imageBase64);
+    console.log(`[process-footer] Detected MIME type: ${mimeType}`);
+    
     const sliceUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/auto-slice-v2';
     const response = await fetch(sliceUrl, {
       method: 'POST',
@@ -112,7 +150,7 @@ async function autoSliceFooter(
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
       },
       body: JSON.stringify({
-        imageDataUrl: `data:image/png;base64,${imageBase64}`,
+        imageDataUrl: `data:${mimeType};base64,${imageBase64}`,
         imageWidth,
         imageHeight,
         linkIndex: hasLinkIndex ? linkIndex : undefined,
@@ -464,6 +502,19 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Job not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate image is on Cloudinary (required for crop URLs)
+    if (!job.image_url.includes('cloudinary.com')) {
+      console.error('[process-footer] Image must be hosted on Cloudinary:', job.image_url.substring(0, 80));
+      await updateJob(supabase, jobId, {
+        status: 'failed',
+        error_message: 'Image must be uploaded to Cloudinary first. Please re-upload your image.'
+      });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Image not on Cloudinary' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
