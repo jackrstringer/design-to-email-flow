@@ -781,6 +781,13 @@ Example: "Shop | About | Contact | FAQ"
 - NEVER cut through text, logos, or icons
 - Maintain 30-50px padding from text bounding boxes
 
+### RULE 6: SEPARATE BUTTONS BY TEXT CONTENT
+If there are multiple buttons with similar styling but DIFFERENT TEXT (e.g., "SHOP FOR HIM" and "SHOP FOR HER", or "SALE FOR HIM" and "SALE FOR HER"), each button MUST be a separate slice.
+- Count the number of distinct button texts visible
+- Create one slice per unique button text
+- Never merge buttons with different calls-to-action into one slice
+- Even if buttons have identical styling (same color, size, font), they are SEPARATE SLICES if the text is different
+
 ---
 
 ## OUTPUT FORMAT
