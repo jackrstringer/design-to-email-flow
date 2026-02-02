@@ -32,16 +32,35 @@ serve(async (req) => {
 
     console.log(`[trigger-sitemap-import] ${useFirecrawl ? 'Firecrawl crawl' : 'Sitemap import'} for brand ${brand_id}: ${effectiveDomain}`);
 
+    const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
     // Check if there's already a running import for this brand
     const { data: existingJob } = await supabase
       .from('sitemap_import_jobs')
-      .select('id, status')
+      .select('id, status, updated_at')
       .eq('brand_id', brand_id)
       .in('status', ['pending', 'parsing', 'crawling', 'crawling_nav', 'fetching_titles', 'generating_embeddings'])
       .single();
 
     if (existingJob) {
-      throw new Error('An import is already in progress for this brand');
+      // Check if job is stale (no activity for 10+ minutes)
+      const lastUpdate = new Date(existingJob.updated_at).getTime();
+      const isStale = (Date.now() - lastUpdate) > STALE_THRESHOLD_MS;
+      
+      if (isStale) {
+        // Mark stale job as failed and allow new trigger
+        console.log(`[trigger-sitemap-import] Marking stale job ${existingJob.id} as failed (last update: ${existingJob.updated_at})`);
+        await supabase
+          .from('sitemap_import_jobs')
+          .update({ 
+            status: 'failed',
+            error_message: 'Job timed out - no activity for 10+ minutes',
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', existingJob.id);
+      } else {
+        throw new Error('An import is already in progress for this brand');
+      }
     }
 
     // Create job record
