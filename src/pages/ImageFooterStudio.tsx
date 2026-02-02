@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { LegalSectionEditor } from '@/components/footer/LegalSectionEditor';
+import { LegalContentEditor } from '@/components/footer/LegalContentEditor';
 import { HtmlPreviewFrame } from '@/components/HtmlPreviewFrame';
 import { generateImageFooterHtml } from '@/types/footer';
 import { cn } from '@/lib/utils';
@@ -144,12 +144,12 @@ export default function ImageFooterStudio() {
     setLegalSection(prev => prev ? { ...prev, ...updates } : null);
   }, []);
 
-  // Add default legal section
+  // Add default legal section - default to white bg / dark text which is most common
   const handleAddLegalSection = () => {
     setLegalSection({
-      yStart: 0,
-      backgroundColor: '#1a1a1a',
-      textColor: '#ffffff',
+      yStart: slices.length > 0 ? Math.max(...slices.map(s => s.yBottom)) : 0,
+      backgroundColor: '#ffffff',
+      textColor: '#1a1a1a',
       detectedElements: []
     });
   };
@@ -595,36 +595,74 @@ export default function ImageFooterStudio() {
                 );
               })}
 
-              {/* Legal Section */}
-              <div className="w-full mt-4 border-t pt-4">
-                {legalSection ? (
-                  <LegalSectionEditor
-                    legalSection={legalSection}
-                    onUpdate={handleLegalUpdate}
-                  />
-                ) : (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <h4 className="font-medium text-amber-800">Legal Section Required</h4>
-                        <p className="text-sm text-amber-700 mt-1">
-                          Email footers must include organization name, address, and unsubscribe links for compliance.
-                        </p>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100"
-                          onClick={handleAddLegalSection}
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Legal Section
-                        </Button>
-                      </div>
+              {/* Legal Section - Rendered inline as part of footer */}
+              {legalSection && (
+                <div 
+                  className="flex-shrink-0" 
+                  style={{ width: scaledWidth }}
+                >
+                  {/* Live preview attached to footer */}
+                  <div
+                    style={{
+                      backgroundColor: legalSection.backgroundColor || '#ffffff',
+                      padding: `${legalSection.paddingTop ?? 24}px ${legalSection.paddingHorizontal ?? 20}px ${legalSection.paddingBottom ?? 24}px`,
+                      textAlign: legalSection.textAlign || 'center',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: `${legalSection.fontSize || 11}px`,
+                        lineHeight: legalSection.lineHeight || 1.6,
+                        color: legalSection.textColor || '#1a1a1a',
+                        fontFamily: 'Arial, Helvetica, sans-serif',
+                      }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: (legalSection.content || '{{ organization.name }} | {{ organization.address }}<br><br><a href="#">Unsubscribe</a> | <a href="#">Manage Preferences</a>')
+                          .replace(/\{\{\s*organization\.name\s*\}\}/g, '<span style="background:rgba(0,0,0,0.1);padding:0 4px;border-radius:2px;">Acme Inc.</span>')
+                          .replace(/\{\{\s*organization\.address\s*\}\}/g, '<span style="background:rgba(0,0,0,0.1);padding:0 4px;border-radius:2px;">123 Main St, City, ST 12345</span>')
+                          .replace(/\{%\s*unsubscribe_url\s*%\}/g, '#')
+                          .replace(/\{%\s*manage_preferences_url\s*%\}/g, '#')
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Missing legal section warning */}
+              {!legalSection && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4" style={{ width: scaledWidth }}>
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="font-medium text-amber-800">Legal Section Required</h4>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Email footers must include organization name, address, and unsubscribe links.
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100"
+                        onClick={handleAddLegalSection}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Legal Section
+                      </Button>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+              
+              {/* Legal Section Editor - Below the preview */}
+              {legalSection && (
+                <div className="w-full mt-6 border-t pt-6">
+                  <h3 className="font-medium mb-4 text-sm">Legal Section Settings</h3>
+                  <LegalContentEditor
+                    legalSection={legalSection}
+                    onUpdate={handleLegalUpdate}
+                    footerWidth={600}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
