@@ -149,6 +149,3 @@ verify_jwt = false
 
 [functions.process-footer-queue]
 verify_jwt = false
-
-[functions.process-campaign]
-verify_jwt = false

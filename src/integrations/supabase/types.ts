@@ -132,53 +132,6 @@ export type Database = {
           },
         ]
       }
-      brand_profiles: {
-        Row: {
-          brand_id: string
-          color_palette: Json | null
-          created_at: string | null
-          design_patterns: Json | null
-          id: string
-          last_analyzed_at: string | null
-          layout_preferences: Json | null
-          module_count_at_analysis: number | null
-          typography_patterns: Json | null
-          updated_at: string | null
-        }
-        Insert: {
-          brand_id: string
-          color_palette?: Json | null
-          created_at?: string | null
-          design_patterns?: Json | null
-          id?: string
-          last_analyzed_at?: string | null
-          layout_preferences?: Json | null
-          module_count_at_analysis?: number | null
-          typography_patterns?: Json | null
-          updated_at?: string | null
-        }
-        Update: {
-          brand_id?: string
-          color_palette?: Json | null
-          created_at?: string | null
-          design_patterns?: Json | null
-          id?: string
-          last_analyzed_at?: string | null
-          layout_preferences?: Json | null
-          module_count_at_analysis?: number | null
-          typography_patterns?: Json | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "brand_profiles_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: true
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       brands: {
         Row: {
           accent_color: string | null
@@ -209,8 +162,6 @@ export type Database = {
           social_icons: Json | null
           social_links: Json
           text_primary_color: string | null
-          total_campaigns: number | null
-          total_modules: number | null
           typography: Json | null
           updated_at: string
           user_id: string | null
@@ -245,8 +196,6 @@ export type Database = {
           social_icons?: Json | null
           social_links?: Json
           text_primary_color?: string | null
-          total_campaigns?: number | null
-          total_modules?: number | null
           typography?: Json | null
           updated_at?: string
           user_id?: string | null
@@ -281,8 +230,6 @@ export type Database = {
           social_icons?: Json | null
           social_links?: Json
           text_primary_color?: string | null
-          total_campaigns?: number | null
-          total_modules?: number | null
           typography?: Json | null
           updated_at?: string
           user_id?: string | null
@@ -438,71 +385,44 @@ export type Database = {
         Row: {
           blocks: Json | null
           brand_id: string
-          campaign_analysis: Json | null
-          cloudinary_public_id: string | null
           created_at: string
-          error_message: string | null
           generated_copy: Json | null
           generated_html: string | null
           id: string
           klaviyo_template_id: string | null
-          module_boundaries: Json | null
           name: string
           original_image_url: string | null
-          processed_at: string | null
-          processing_percent: number | null
-          processing_step: string | null
-          raw_image_url: string | null
           status: string
           thumbnail_url: string | null
           updated_at: string
-          vision_data: Json | null
         }
         Insert: {
           blocks?: Json | null
           brand_id: string
-          campaign_analysis?: Json | null
-          cloudinary_public_id?: string | null
           created_at?: string
-          error_message?: string | null
           generated_copy?: Json | null
           generated_html?: string | null
           id?: string
           klaviyo_template_id?: string | null
-          module_boundaries?: Json | null
           name: string
           original_image_url?: string | null
-          processed_at?: string | null
-          processing_percent?: number | null
-          processing_step?: string | null
-          raw_image_url?: string | null
           status?: string
           thumbnail_url?: string | null
           updated_at?: string
-          vision_data?: Json | null
         }
         Update: {
           blocks?: Json | null
           brand_id?: string
-          campaign_analysis?: Json | null
-          cloudinary_public_id?: string | null
           created_at?: string
-          error_message?: string | null
           generated_copy?: Json | null
           generated_html?: string | null
           id?: string
           klaviyo_template_id?: string | null
-          module_boundaries?: Json | null
           name?: string
           original_image_url?: string | null
-          processed_at?: string | null
-          processing_percent?: number | null
-          processing_step?: string | null
-          raw_image_url?: string | null
           status?: string
           thumbnail_url?: string | null
           updated_at?: string
-          vision_data?: Json | null
         }
         Relationships: [
           {
@@ -712,93 +632,6 @@ export type Database = {
           },
         ]
       }
-      modules: {
-        Row: {
-          brand_id: string
-          campaign_id: string
-          composition_notes: string | null
-          content: Json | null
-          created_at: string | null
-          embedding: string | null
-          height: number
-          id: string
-          image_url: string
-          is_reference_quality: boolean | null
-          layout: Json | null
-          module_index: number
-          module_type: string
-          module_type_confidence: number | null
-          quality_score: number | null
-          thumbnail_url: string | null
-          updated_at: string | null
-          visuals: Json | null
-          width: number
-          y_end: number
-          y_start: number
-        }
-        Insert: {
-          brand_id: string
-          campaign_id: string
-          composition_notes?: string | null
-          content?: Json | null
-          created_at?: string | null
-          embedding?: string | null
-          height: number
-          id?: string
-          image_url: string
-          is_reference_quality?: boolean | null
-          layout?: Json | null
-          module_index: number
-          module_type: string
-          module_type_confidence?: number | null
-          quality_score?: number | null
-          thumbnail_url?: string | null
-          updated_at?: string | null
-          visuals?: Json | null
-          width: number
-          y_end: number
-          y_start: number
-        }
-        Update: {
-          brand_id?: string
-          campaign_id?: string
-          composition_notes?: string | null
-          content?: Json | null
-          created_at?: string | null
-          embedding?: string | null
-          height?: number
-          id?: string
-          image_url?: string
-          is_reference_quality?: boolean | null
-          layout?: Json | null
-          module_index?: number
-          module_type?: string
-          module_type_confidence?: number | null
-          quality_score?: number | null
-          thumbnail_url?: string | null
-          updated_at?: string | null
-          visuals?: Json | null
-          width?: number
-          y_end?: number
-          y_start?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "modules_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "modules_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaigns"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       plugin_tokens: {
         Row: {
           created_at: string | null
@@ -825,60 +658,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
-      }
-      processing_jobs: {
-        Row: {
-          brand_id: string | null
-          campaign_id: string | null
-          completed_at: string | null
-          created_at: string | null
-          error_message: string | null
-          id: string
-          job_type: string
-          priority: number | null
-          started_at: string | null
-          status: string | null
-        }
-        Insert: {
-          brand_id?: string | null
-          campaign_id?: string | null
-          completed_at?: string | null
-          created_at?: string | null
-          error_message?: string | null
-          id?: string
-          job_type: string
-          priority?: number | null
-          started_at?: string | null
-          status?: string | null
-        }
-        Update: {
-          brand_id?: string | null
-          campaign_id?: string | null
-          completed_at?: string | null
-          created_at?: string | null
-          error_message?: string | null
-          id?: string
-          job_type?: string
-          priority?: number | null
-          started_at?: string | null
-          status?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "processing_jobs_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "processing_jobs_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaigns"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       profiles: {
         Row: {
