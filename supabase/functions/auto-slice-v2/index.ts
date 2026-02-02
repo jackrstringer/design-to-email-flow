@@ -665,9 +665,9 @@ The ENTIRE image is footer content - there is no marketing content above it.
 This footer will be used as a reusable template appended to email campaigns.
 
 Your job is to:
-1. Slice ALL sections of the footer (logo, navigation, social icons, fine print)
-2. Each slice will become an IMAGE with a clickable link, EXCEPT for fine print
-3. The "fine_print" section will be converted to responsive HTML text after slicing
+1. Slice ALL sections of the footer (logo, navigation, social icons, CTAs)
+2. Each slice will become an IMAGE with a clickable link
+3. If legal/compliance text exists (fine print), label it as "fine_print" - it will be converted to HTML
 
 ## Image Dimensions
 ${rawData.imageWidth}x${rawData.imageHeight} pixels
@@ -710,25 +710,24 @@ ${JSON.stringify(edgeData, null, 2)}
    - Usually NOT clickable (decorative)
    - isClickable: false
 
-### FINE PRINT SECTION (will become HTML text):
+### FINE PRINT SECTION (may or may not be present):
 
-The **fine_print** section contains legal/compliance content. Look for ANY of these:
-- "Unsubscribe" or "Manage Preferences" text
-- "Update your preferences" or "opt out"
+**IMPORTANT**: Only create a "fine_print" slice if you ACTUALLY SEE legal/compliance text:
+- "Unsubscribe" or "Manage Preferences" or "opt out" text
 - Physical mailing address (city, state, zip code)
 - "© 2024 Brand Name" or "All rights reserved"
 - "You are receiving this email because..."
-- Contact email addresses
 
-**CRITICAL**: Name this slice exactly "fine_print" - it will be converted to editable HTML text with Klaviyo merge tags.
+**If you do NOT see any legal/compliance text, do NOT create a fine_print slice.**
+The system will automatically append a legal section after all image slices.
 
 ---
 
 ## SLICING RULES FOR FOOTERS
 
-### RULE 1: INCLUDE ALL SECTIONS
-Unlike campaign emails where footers are excluded, here you must slice the ENTIRE image.
-Every visible section from y=0 to y=imageHeight must be included.
+### RULE 1: INCLUDE ALL VISUAL SECTIONS
+Slice the ENTIRE image from y=0 to y=imageHeight.
+Every visible section must be included.
 
 ### RULE 2: SOCIAL ICONS ALWAYS NEED HORIZONTAL SPLIT
 Social icon rows have multiple clickable destinations (one per platform).
@@ -743,9 +742,10 @@ Text navigation links arranged horizontally need individual columns.
 Example: "Shop | About | Contact | FAQ"
 - horizontalSplit: { columns: 4, gutterPositions: [25, 50, 75] }
 
-### RULE 4: FINE PRINT IS ALWAYS AT THE BOTTOM
-The fine_print section should be the LAST slice, containing all legal/compliance text.
-It typically has a different background color (often darker) than sections above.
+### RULE 4: FINE PRINT IS OPTIONAL
+- If you see legal/compliance text → create a "fine_print" slice at the bottom
+- If you do NOT see legal/compliance text → do NOT create a fine_print slice
+- Never force-create a fine_print slice just because it's expected
 
 ### RULE 5: SLICE BOUNDARIES
 - Cut in the CENTER of visual gaps between sections
@@ -781,24 +781,35 @@ Return ONLY a valid JSON object:
 ### Output Rules:
 
 1. First section MUST have yTop: 0
-2. Last section (fine_print) yBottom MUST equal imageHeight
+2. Last section yBottom MUST equal imageHeight (whether or not it's fine_print)
 3. Sections MUST NOT overlap and MUST be contiguous (no gaps)
 4. footerStartY = imageHeight (entire image is footer)
 5. Social icons and horizontal nav links MUST have horizontalSplit
-6. fine_print section MUST be named exactly "fine_print"
-7. link: null for all slices (links are assigned later by the user)
+6. Only include "fine_print" if you ACTUALLY SEE legal/compliance text
+7. link: null for all slices (links are assigned later)
 8. altText: Describe what's in each section
 
-### Example Output for a typical footer:
+### Example Output (WITH fine print visible):
 
 {
   "footerStartY": 800,
   "needsLinkSearch": [],
   "sections": [
     { "name": "logo", "yTop": 0, "yBottom": 120, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": true, "link": null, "altText": "Brand logo", "linkSource": "default" },
-    { "name": "navigation_links", "yTop": 120, "yBottom": 200, "hasCTA": true, "ctaText": "Shop | About | Contact", "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] }, "isClickable": true, "link": null, "altText": "Footer navigation links", "linkSource": "default" },
-    { "name": "social_icons", "yTop": 200, "yBottom": 280, "hasCTA": false, "ctaText": null, "horizontalSplit": { "columns": 4, "gutterPositions": [25, 50, 75] }, "isClickable": true, "link": null, "altText": "Social media icons - Instagram, Facebook, TikTok, YouTube", "linkSource": "default" },
-    { "name": "fine_print", "yTop": 280, "yBottom": 800, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Legal fine print section with unsubscribe and address", "linkSource": "not_clickable" }
+    { "name": "social_icons", "yTop": 120, "yBottom": 200, "hasCTA": false, "ctaText": null, "horizontalSplit": { "columns": 4, "gutterPositions": [25, 50, 75] }, "isClickable": true, "link": null, "altText": "Social media icons", "linkSource": "default" },
+    { "name": "fine_print", "yTop": 200, "yBottom": 800, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": false, "link": null, "altText": "Legal fine print", "linkSource": "not_clickable" }
+  ]
+}
+
+### Example Output (NO fine print visible):
+
+{
+  "footerStartY": 500,
+  "needsLinkSearch": [],
+  "sections": [
+    { "name": "logo", "yTop": 0, "yBottom": 150, "hasCTA": false, "ctaText": null, "horizontalSplit": null, "isClickable": true, "link": null, "altText": "Brand logo", "linkSource": "default" },
+    { "name": "cta_button", "yTop": 150, "yBottom": 280, "hasCTA": true, "ctaText": "Join Our Community", "horizontalSplit": null, "isClickable": true, "link": null, "altText": "CTA button - Join Our Community", "linkSource": "default" },
+    { "name": "social_icons", "yTop": 280, "yBottom": 500, "hasCTA": false, "ctaText": null, "horizontalSplit": { "columns": 3, "gutterPositions": [33.33, 66.66] }, "isClickable": true, "link": null, "altText": "Social media icons", "linkSource": "default" }
   ]
 }
 
@@ -807,11 +818,11 @@ Return ONLY a valid JSON object:
 ## CHECKLIST BEFORE RESPONDING
 
 ☐ First section starts at yTop: 0
-☐ Last section (fine_print) ends at yBottom: imageHeight
+☐ Last section ends at yBottom: imageHeight
 ☐ footerStartY = imageHeight
 ☐ Social icon rows have horizontalSplit with correct column count
 ☐ Horizontal navigation has horizontalSplit with correct column count
-☐ fine_print section is named exactly "fine_print"
+☐ Only "fine_print" if legal/compliance text is ACTUALLY VISIBLE
 ☐ No gaps or overlaps between sections
 ☐ Slice boundaries are in visual gaps, not through content`;
 }

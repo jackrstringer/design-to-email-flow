@@ -351,20 +351,18 @@ async function detectLegalSection(
 }
 
 // Step 4: Generate Cloudinary crop URLs for slices
+// NOTE: No longer filters by legalCutoffY - filtering is done BEFORE this is called
 function generateSliceCropUrls(
   slices: any[],
   originalImageUrl: string,
   actualWidth: number,
   actualHeight: number,
   analyzedWidth: number,
-  analyzedHeight: number,
-  legalCutoffY?: number
+  analyzedHeight: number
 ): any[] {
   console.log('[process-footer] Step 4: Generating crop URLs...');
   console.log(`[process-footer] Dimensions: ${actualWidth}x${actualHeight}, analyzed: ${analyzedWidth}x${analyzedHeight}`);
-  if (legalCutoffY) {
-    console.log(`[process-footer] Legal cutoff at Y=${legalCutoffY}`);
-  }
+  console.log(`[process-footer] Processing ${slices.length} slices`);
 
   // Extract Cloudinary base URL and public ID - support both with and without transformations
   // Pattern 1: .../upload/v123456/path/to/image.png
@@ -396,17 +394,10 @@ function generateSliceCropUrls(
   const scaleX = actualWidth / analyzedWidth;
   const scaleY = actualHeight / analyzedHeight;
   
-  // Filter slices above legal section if detected
-  const filteredSlices = legalCutoffY 
-    ? slices.filter(slice => slice.yBottom <= legalCutoffY)
-    : slices;
-  
-  console.log(`[process-footer] Filtered ${slices.length} -> ${filteredSlices.length} slices (excluding legal section)`);
-  
   const results: any[] = [];
   
-  for (let i = 0; i < filteredSlices.length; i++) {
-    const slice = filteredSlices[i];
+  for (let i = 0; i < slices.length; i++) {
+    const slice = slices[i];
     
     // Scale coordinates
     const yTop = Math.round(slice.yTop * scaleY);
@@ -614,7 +605,7 @@ serve(async (req) => {
       processing_percent: 45
     });
 
-    // Find the fine_print slice from Claude's output
+    // Find the fine_print slice from Claude's output (only if Claude actually created one)
     const finePrintSlice = sliceResult.slices.find((s: any) => 
       s.name?.toLowerCase().includes('fine_print') || 
       s.name?.toLowerCase().includes('legal') ||
@@ -649,40 +640,143 @@ serve(async (req) => {
       imageSlices = sliceResult.slices.filter((s: any) => s !== finePrintSlice);
       console.log(`[process-footer] Removed fine_print from image slices. Remaining: ${imageSlices.length}`);
     } else {
-      // If no fine_print slice found, try OCR-based detection as fallback
-      console.log('[process-footer] No fine_print slice found, trying OCR detection...');
-      legalSection = await detectLegalSection(imageBase64, sliceResult.imageHeight);
+      // NO fine_print slice found - keep ALL slices, append legal section at end
+      console.log('[process-footer] No fine_print slice found - keeping ALL slices, will append legal section at end');
+      imageSlices = sliceResult.slices;
       
-      if (legalSection) {
-        // Filter slices above the legal section
-        imageSlices = sliceResult.slices.filter((s: any) => s.yBottom <= legalSection!.yStart);
-        console.log(`[process-footer] OCR detected legal section at Y=${legalSection.yStart}. Filtered to ${imageSlices.length} slices`);
-      }
+      // Create legal section to append AFTER all image slices
+      legalSection = {
+        yStart: sliceResult.imageHeight, // Appends at the very end
+        backgroundColor: '#1a1a1a',
+        textColor: '#ffffff',
+        detectedElements: []
+      };
     }
     
     await updateJob(supabase, jobId, { processing_percent: 50 });
 
-    // === STEP 4: Generate crop URLs (70%) ===
+    // === STEP 4: Generate crop URLs (60%) ===
     await updateJob(supabase, jobId, {
       processing_step: 'generating_crop_urls',
       processing_percent: 55
     });
 
-    const processedSlices = generateSliceCropUrls(
+    // NO filtering here - we already filtered above by removing fine_print only
+    let processedSlices = generateSliceCropUrls(
       imageSlices,
       job.image_url,
       job.image_width || 600,
       job.image_height || 800,
       sliceResult.analyzedWidth,
-      sliceResult.analyzedHeight,
-      legalSection?.yStart
+      sliceResult.analyzedHeight
     );
 
-    await updateJob(supabase, jobId, { processing_percent: 70 });
+    await updateJob(supabase, jobId, { processing_percent: 60 });
 
-    // === STEP 5: Analyze slices for alt text (if not already done by auto-slice-v2) ===
-    // auto-slice-v2 should have already assigned altText and links when link intelligence was used
-    // If not, we could call analyze-slices here, but for now we trust auto-slice-v2
+    // === STEP 5: Analyze slices for links and alt-text (like campaigns) ===
+    await updateJob(supabase, jobId, {
+      processing_step: 'analyzing_slices',
+      processing_percent: 65
+    });
+
+    const analyzeUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/analyze-slices';
+    const resizedImageUrl = getResizedCloudinaryUrl(job.image_url, 600, 7900);
+
+    const sliceInputs = processedSlices.map((slice: any, index: number) => ({
+      imageUrl: slice.imageUrl,
+      index,
+      column: slice.column,
+      totalColumns: slice.totalColumns,
+      rowIndex: slice.rowIndex
+    }));
+
+    try {
+      console.log(`[process-footer] Calling analyze-slices with ${sliceInputs.length} slices, brandId: ${job.brand_id}`);
+      
+      const analyzeResponse = await fetch(analyzeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        },
+        body: JSON.stringify({
+          slices: sliceInputs,
+          brandDomain: null, // Will be fetched inside analyze-slices
+          brandId: job.brand_id,
+          fullCampaignImage: resizedImageUrl
+        })
+      });
+
+      if (analyzeResponse.ok) {
+        const { analyses } = await analyzeResponse.json();
+        console.log(`[process-footer] Received ${analyses?.length || 0} slice analyses`);
+        
+        // Merge analysis back into slices
+        const analysisByIndex = new Map((analyses || []).map((a: any) => [a.index, a]));
+        processedSlices = processedSlices.map((slice: any, i: number) => {
+          const analysis = analysisByIndex.get(i) as { altText?: string; suggestedLink?: string; isClickable?: boolean; linkVerified?: boolean } | undefined;
+          if (analysis) {
+            return {
+              ...slice,
+              altText: analysis.altText || slice.altText || `Footer section ${i + 1}`,
+              link: analysis.suggestedLink || slice.link || null,
+              isClickable: analysis.isClickable ?? slice.isClickable ?? true,
+              linkVerified: analysis.linkVerified || false
+            };
+          }
+          return slice;
+        });
+        console.log(`[process-footer] Analyzed ${analyses?.length || 0} slices for links/alt-text`);
+      } else {
+        console.error('[process-footer] analyze-slices failed:', await analyzeResponse.text());
+      }
+    } catch (err) {
+      console.error('[process-footer] Failed to call analyze-slices:', err);
+    }
+
+    await updateJob(supabase, jobId, { processing_percent: 85 });
+
+    // === STEP 5.5: Prefill social icon links from brand's saved social_links ===
+    if (job.brand_id) {
+      try {
+        const { data: brandData } = await supabase
+          .from('brands')
+          .select('social_links')
+          .eq('id', job.brand_id)
+          .single();
+
+        const socialLinks = (brandData?.social_links as any[]) || [];
+        const socialPlatformUrls = new Map<string, string>();
+        
+        for (const social of socialLinks) {
+          if (social.platform && social.url) {
+            socialPlatformUrls.set(social.platform.toLowerCase(), social.url);
+          }
+        }
+
+        if (socialPlatformUrls.size > 0) {
+          console.log(`[process-footer] Found ${socialPlatformUrls.size} saved social links for brand`);
+          
+          // Match social icon slices to platform URLs
+          for (const slice of processedSlices) {
+            if (slice.name?.toLowerCase().includes('social')) {
+              // Try to match by alt text
+              const altLower = (slice.altText || '').toLowerCase();
+              for (const [platform, url] of socialPlatformUrls) {
+                if (altLower.includes(platform) && !slice.link) {
+                  slice.link = url;
+                  slice.linkSource = 'social_profile';
+                  console.log(`[process-footer] Prefilled ${platform} link: ${url}`);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[process-footer] Failed to fetch social links:', err);
+      }
+    }
     
     await updateJob(supabase, jobId, {
       processing_step: 'finalizing',
@@ -691,7 +785,7 @@ serve(async (req) => {
 
     // === STEP 6: Complete - save results ===
     const processingTimeMs = Date.now() - startTime;
-    console.log(`[process-footer] Processing complete in ${processingTimeMs}ms`);
+    console.log(`[process-footer] Processing complete in ${processingTimeMs}ms with ${processedSlices.length} slices`);
 
     await updateJob(supabase, jobId, {
       status: 'pending_review',
