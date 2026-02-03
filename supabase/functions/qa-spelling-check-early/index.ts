@@ -12,11 +12,11 @@ serve(async (req) => {
   }
 
   try {
-    const { sessionKey, imageUrl } = await req.json();
+    const { sessionKey, imageUrl, imageBase64 } = await req.json();
     
-    if (!sessionKey || !imageUrl) {
+    if (!sessionKey || (!imageUrl && !imageBase64)) {
       return new Response(
-        JSON.stringify({ error: 'sessionKey and imageUrl required' }),
+        JSON.stringify({ error: 'sessionKey and (imageUrl or imageBase64) required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -28,26 +28,35 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch image and convert to base64
-    console.log('[QA-Early] Fetching image:', imageUrl.substring(0, 80) + '...');
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error('Failed to fetch image');
-    }
+    // OPTIMIZATION: Use passed base64 directly if available, skip redundant Cloudinary download
+    let base64Data = imageBase64;
     
-    const imageBuffer = await imageResponse.arrayBuffer();
-    const uint8Array = new Uint8Array(imageBuffer);
-    
-    // Convert to base64 in chunks to avoid stack overflow on large images
-    const chunkSize = 32768;
-    let base64Data = '';
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.slice(i, i + chunkSize);
-      base64Data += String.fromCharCode(...chunk);
-    }
-    base64Data = btoa(base64Data);
+    if (base64Data) {
+      console.log('[QA-Early] Using provided base64, skipping fetch (saves ~20s!)');
+    } else if (imageUrl) {
+      // Fallback: fetch from URL only if base64 not provided
+      console.log('[QA-Early] No base64 provided, fetching image:', imageUrl.substring(0, 80) + '...');
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error('Failed to fetch image');
+      }
+      
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const uint8Array = new Uint8Array(imageBuffer);
+      
+      // Convert to base64 in chunks to avoid stack overflow on large images
+      const chunkSize = 32768;
+      let tempData = '';
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        tempData += String.fromCharCode(...chunk);
+      }
+      base64Data = btoa(tempData);
 
-    console.log('[QA-Early] Image fetched, base64 length:', base64Data.length);
+      console.log('[QA-Early] Image fetched, base64 length:', base64Data.length);
+    }
+
+    console.log('[QA-Early] Base64 ready, length:', base64Data?.length || 0);
 
     // Call Claude Haiku for fast spelling check
     const response = await fetch('https://api.anthropic.com/v1/messages', {

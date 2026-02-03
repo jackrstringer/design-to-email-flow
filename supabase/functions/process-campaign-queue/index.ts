@@ -46,21 +46,39 @@ async function fetchAndUploadImage(
   supabase: any,
   item: any
 ): Promise<{ imageUrl: string; imageBase64: string } | null> {
-  console.log('[process] Step 1: Fetching image...');
+  console.log('[process] Step 1: Starting image fetch...');
+  const step1Start = Date.now();
 
   // If image_url already exists (from figma plugin or upload), just fetch it as base64
   if (item.image_url) {
-    console.log('[process] Image already uploaded, fetching as base64...');
     try {
       // CRITICAL: Resize via Cloudinary URL transformation BEFORE fetching
       // This prevents memory issues with large images (e.g., 1200x8000)
       // Max 600px wide (email standard), max 4000px tall (leaves room for processing)
       const resizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 4000);
-      console.log('[process] Using resized URL:', resizedUrl.substring(0, 80) + '...');
       
+      // Log exact URLs for debugging slow fetches
+      console.log('[process] Fetching URL:', resizedUrl);
+      console.log('[process] Original URL:', item.image_url);
+      
+      const fetchStart = Date.now();
       const response = await fetch(resizedUrl);
+      console.log('[process] HTTP fetch completed:', {
+        status: response.status,
+        contentLength: response.headers.get('content-length'),
+        durationMs: Date.now() - fetchStart
+      });
+      
       if (!response.ok) throw new Error('Failed to fetch image');
+      
+      const bufferStart = Date.now();
       const buffer = await response.arrayBuffer();
+      console.log('[process] Buffer read:', {
+        size: buffer.byteLength,
+        durationMs: Date.now() - bufferStart
+      });
+      
+      const base64Start = Date.now();
       const uint8Array = new Uint8Array(buffer);
       // Use chunked conversion to avoid O(n²) string concatenation
       const CHUNK_SIZE = 32768;
@@ -70,6 +88,12 @@ async function fetchAndUploadImage(
         binary += String.fromCharCode(...chunk);
       }
       const base64 = btoa(binary);
+      console.log('[process] Base64 conversion:', {
+        outputLength: base64.length,
+        durationMs: Date.now() - base64Start
+      });
+      
+      console.log('[process] Step 1 TOTAL:', Date.now() - step1Start, 'ms');
       return { imageUrl: item.image_url, imageBase64: base64 };
     } catch (err) {
       console.error('[process] Failed to fetch image from URL:', err);
@@ -83,9 +107,11 @@ async function fetchAndUploadImage(
 }
 
 // Step 1.5: Start early SL/PT generation immediately (matches CampaignCreator.startEarlyGeneration)
+// OPTIMIZATION: Now passes imageBase64 directly to avoid redundant image downloads
 async function startEarlyGeneration(
   supabase: any,
   imageUrl: string,
+  imageBase64: string,  // NEW: Pass base64 directly, no re-download needed
   brandContext: { name: string; domain: string } | null,
   brandId: string | null,
   copyExamples: any
@@ -94,10 +120,6 @@ async function startEarlyGeneration(
   console.log('[process] Step 1.5: Starting early SL/PT generation, session:', sessionKey);
 
   try {
-    // CRITICAL: Resize image URL for Anthropic (max 600x7900 to stay under 8000px limit)
-    const resizedImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
-    console.log('[process] Early gen using resized URL:', resizedImageUrl.substring(0, 80) + '...');
-    
     // Fire and forget - matches manual flow exactly
     const earlyGenUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/generate-email-copy-early';
     fetch(earlyGenUrl, {
@@ -108,14 +130,15 @@ async function startEarlyGeneration(
       },
       body: JSON.stringify({
         sessionKey,
-        imageUrl: resizedImageUrl, // Use resized URL
+        imageUrl: imageUrl, // Keep URL as fallback
+        imageBase64: imageBase64, // NEW: Pass base64 directly - no re-download needed!
         brandContext: brandContext || { name: 'Unknown', domain: null },
         brandId: brandId || null,
         copyExamples: copyExamples || null
       })
     }).catch(err => console.log('[process] Early generation triggered:', err?.message || 'ok'));
 
-    console.log('[process] Early generation fired for session:', sessionKey);
+    console.log('[process] Early generation fired with base64 for session:', sessionKey);
   } catch (err) {
     console.error('[process] Error starting early generation:', err);
   }
@@ -704,18 +727,20 @@ serve(async (req) => {
     }
 
     // Fire early generation immediately (matches CampaignCreator.startEarlyGeneration)
+    // OPTIMIZATION: Pass imageBase64 directly to avoid redundant Cloudinary download
     const earlySessionKey = await startEarlyGeneration(
       supabase,
       imageResult.imageUrl,
+      imageResult.imageBase64,  // NEW: Pass base64 directly - saves 22s!
       brandContext,
       brandId,
       copyExamples
     );
 
     // === STEP 1.5c: Fire early spelling check (async, parallel with entire pipeline) ===
+    // OPTIMIZATION: Pass imageBase64 directly to avoid redundant Cloudinary download
     const spellingSessionKey = crypto.randomUUID();
     const spellingCheckUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/qa-spelling-check-early';
-    const resizedSpellingImageUrl = getResizedCloudinaryUrl(imageResult.imageUrl, 600, 7900);
     
     fetch(spellingCheckUrl, {
       method: 'POST',
@@ -725,11 +750,12 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         sessionKey: spellingSessionKey,
-        imageUrl: resizedSpellingImageUrl
+        imageUrl: imageResult.imageUrl, // Keep URL as fallback
+        imageBase64: imageResult.imageBase64  // NEW: Pass base64 directly - saves 20s!
       })
     }).catch(err => console.log('[process] Early spelling check triggered:', err?.message || 'ok'));
     
-    console.log('[process] Step 1.5c: Early spelling check fired for session:', spellingSessionKey);
+    console.log('[process] Step 1.5c: Early spelling check fired with base64 for session:', spellingSessionKey);
 
     // === STEP 1.5b: Fire ClickUp search ASYNC (non-blocking, parallel with auto-slice) ===
     // OPTIMIZATION: Previously this was awaited synchronously, blocking the pipeline for 20-40s
@@ -943,9 +969,10 @@ serve(async (req) => {
 
     console.log('[process] Step 5: Polling for early copy results (session:', earlySessionKey, ')...');
     
-    // Poll for early generation results (max 12 seconds, 2s intervals - reduced to fail fast)
+    // Poll for early generation results (max 20 seconds, 2s intervals)
+    // OPTIMIZATION: Increased from 12s because early copy now uses passed base64 and should complete in ~5-8s
     let copyResult: { subjectLines: string[]; previewTexts: string[] } | null = null;
-    const maxWaitMs = 12000;
+    const maxWaitMs = 20000;
     const pollIntervalMs = 2000;
     const pollStartTime = Date.now();
     
