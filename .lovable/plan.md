@@ -1,143 +1,138 @@
 
+# Fix Campaign Queue Processing Slowdown
 
-# Add Inline-Editable Legal Section to Image Footer Studio
+## Problem Identified
 
-## Summary
+The campaign queue is taking **54+ seconds** when it should take ~25 seconds. The bottleneck is the **ClickUp search running synchronously** before auto-slicing begins.
 
-Restore the ability to edit the footer fine print (legal section) with a compact, inline-editing experience similar to Klaviyo's drag-and-drop text blocks. Users can click directly on the legal text to edit it, with live HTML conversion.
-
-## Current Problem
-
-The previous `LegalContentEditor` component was removed from the page, and the legal section only shows a read-only preview. Users cannot edit the fine print content, colors, or settings.
-
-## Solution: Inline WYSIWYG Editing
-
-Replace the static legal section preview with a compact, inline-editable block:
-
-1. **Click to edit** - Clicking the legal section enables editing mode directly in the preview
-2. **Live HTML conversion** - Text changes convert to HTML in real-time
-3. **Compact floating toolbar** - Small toolbar appears on focus with essential controls:
-   - Text/background color pickers
-   - Alignment buttons
-   - Quick-insert buttons for Klaviyo merge tags
-4. **Compliance indicators** - Inline badges show if required tags are missing
-
-## UI Design
-
+### Current Flow (Slow)
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│  [Image Slices]                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │ ▾ Floating Toolbar (appears on focus)                       │    │
-│  │ [🎨 BG] [🎨 Text] [◀ ▢ ▶] [+ Org] [+ Addr] [+ Unsub]        │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │                                                              │   │
-│  │     Acme Inc. | 123 Main St, City, ST 12345                 │   │
-│  │                                                              │   │
-│  │        Unsubscribe | Manage Preferences                      │   │
-│  │                                                              │   │
-│  │  [Click anywhere to edit - contenteditable div]             │   │
-│  └─────────────────────────────────────────────────────────────┘    │
-│  [Missing: Org Name ⚠] [Missing: Address ⚠] (if not compliant)     │
-└─────────────────────────────────────────────────────────────────────┘
+figma-ingest (2.4s)
+    ↓
+fetch image (8s) 
+    ↓
+fire early copy (async) ✓
+fire spelling check (async) ✓
+    ↓
+await ClickUp search (blocking) ← BOTTLENECK
+    ↓
+auto-slice (18s)
+    ↓
+poll for results (12s)
 ```
+
+Total: **54+ seconds**
+
+### Timeline Evidence
+- figma-ingest completes at 22:28:12
+- ClickUp/auto-slice starts at 22:28:34  
+- **22 second unexplained gap!**
+
+The ClickUp search itself only takes 1.6s, but something is causing a massive delay before it even starts. Looking at the code, the issue is that the ClickUp search is awaited synchronously, blocking the pipeline.
+
+## Solution
+
+Make the ClickUp search **fire-and-forget async** like early copy generation, then merge results at the end:
+
+1. Fire ClickUp search as non-blocking (like early copy)
+2. Continue immediately to auto-slice
+3. Collect ClickUp results at the end when merging all copy sources
+
+### Fixed Flow (Fast)
+```text
+figma-ingest (2.4s)
+    ↓
+fetch image (8s)
+    ↓
+fire early copy (async) ✓
+fire spelling check (async) ✓
+fire ClickUp search (async) ← NEW: Non-blocking
+    ↓
+auto-slice (18s) ← Starts immediately
+    ↓
+poll/merge results (3s)
+```
+
+Total: **~30 seconds**
 
 ## Implementation
 
-### New Component: `InlineLegalEditor.tsx`
+### Changes to `supabase/functions/process-campaign-queue/index.ts`
 
-Create a compact inline editor component that:
-- Renders a `contentEditable` div styled to match the legal section
-- Shows a floating toolbar on focus with color pickers and merge tag buttons
-- Converts user input to HTML on blur/change
-- Validates compliance and shows inline warning badges
+**1. Add a new table or use existing early_generated_copy to store ClickUp results**
 
+Actually, simpler: store ClickUp result in a variable that will be populated by a callback, and check it at the end.
+
+**2. Change ClickUp search from blocking to async (lines 739-776)**
+
+Before:
 ```typescript
-interface InlineLegalEditorProps {
-  legalSection: LegalSectionData;
-  onUpdate: (updates: Partial<LegalSectionData>) => void;
-  width: number;
+if (clickupApiKey && clickupListId && item.source_url) {
+  const clickupResponse = await fetch(clickupUrl, { ... });  // BLOCKING
+  if (clickupResponse.ok) {
+    const result = await clickupResponse.json();
+    // ... process result
+  }
 }
 ```
 
-### Key Features
+After:
+```typescript
+// Store promise for later resolution
+let clickupPromise: Promise<{...}> | null = null;
 
-1. **ContentEditable div** - Directly edit the text in the preview
-2. **Floating toolbar** - Appears above the section when focused:
-   - Color pickers for background/text (compact square buttons)
-   - Alignment toggle (left/center/right)
-   - Insert buttons for `{{ organization.name }}`, `{{ organization.address }}`, `{% unsubscribe_url %}`
-3. **HTML extraction** - On blur, extract innerHTML and update `legalSection.content`
-4. **Merge tag placeholders** - Render merge tags as styled chips/badges in the editor
-5. **Compliance badges** - Show small warning badges if required tags are missing
+if (clickupApiKey && clickupListId && item.source_url) {
+  console.log('[process] Step 1.5b: Firing async ClickUp search...');
+  clickupPromise = (async () => {
+    try {
+      const response = await fetch(clickupUrl, { ... });
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (err) {
+      console.error('[process] ClickUp search error:', err);
+    }
+    return null;
+  })();  // Fire immediately, don't await
+}
 
-### ImageFooterStudio Changes
-
-Replace the static legal preview (lines 598-628) with the new `InlineLegalEditor`:
-
-```tsx
-{/* Legal Section - Inline Editable */}
-{legalSection && (
-  <InlineLegalEditor
-    legalSection={legalSection}
-    onUpdate={handleLegalUpdate}
-    width={scaledWidth}
-  />
-)}
+// Continue to auto-slice without waiting...
 ```
 
-## Files to Create/Modify
+**3. Await the ClickUp promise at the end (around line 1063)**
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/footer/InlineLegalEditor.tsx` | Create | New inline contentEditable editor with floating toolbar |
-| `src/pages/ImageFooterStudio.tsx` | Modify | Import and use InlineLegalEditor instead of static preview |
-
-## Technical Details
-
-### ContentEditable Approach
-
-```tsx
-const [isEditing, setIsEditing] = useState(false);
-const editorRef = useRef<HTMLDivElement>(null);
-
-// Render with contentEditable
-<div
-  ref={editorRef}
-  contentEditable={isEditing}
-  suppressContentEditableWarning
-  onFocus={() => setIsEditing(true)}
-  onBlur={handleBlur}
-  onClick={() => setIsEditing(true)}
-  dangerouslySetInnerHTML={{ __html: displayContent }}
-  style={{ ... legal section styles ... }}
-/>
+```typescript
+// Wait for ClickUp result before finalizing
+if (clickupPromise) {
+  console.log('[process] Awaiting ClickUp search result...');
+  const clickupResult = await clickupPromise;
+  if (clickupResult?.found) {
+    clickupCopy = {
+      subjectLine: clickupResult.subjectLine || null,
+      previewText: clickupResult.previewText || null,
+      taskId: clickupResult.taskId || null,
+      taskUrl: clickupResult.taskUrl || null
+    };
+  }
+}
 ```
 
-### Merge Tag Display
+## Files to Modify
 
-In the editor, merge tags are rendered as visible chips:
-- `{{ organization.name }}` → styled span showing "Org Name"
-- `{{ organization.address }}` → styled span showing "Address"
-- `{% unsubscribe_url %}` → styled span showing "Unsubscribe Link"
+| File | Changes |
+|------|---------|
+| `supabase/functions/process-campaign-queue/index.ts` | Make ClickUp search non-blocking, await at end |
 
-On save, these are converted back to the actual merge tag syntax.
+## Expected Performance Improvement
 
-### Floating Toolbar Positioning
+| Metric | Before | After |
+|--------|--------|-------|
+| Total processing time | 54s | ~28-32s |
+| Time to auto-slice start | 25s | 8s |
+| Bottleneck removed | ClickUp blocking | N/A |
 
-The toolbar uses absolute positioning relative to the editor container, appearing above the legal section when the editor receives focus.
+## Technical Notes
 
-### Compliance Validation
-
-Real-time checking for required Klaviyo tags with inline warning badges:
-```tsx
-{!hasOrgName && (
-  <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">
-    <AlertTriangle className="w-3 h-3" />
-    Missing org name
-  </span>
-)}
-```
-
+- The ClickUp search only takes 1.6s, but blocking means auto-slice can't start until it completes
+- Early copy generation is already 28s - by making ClickUp async, auto-slice runs in parallel with it
+- The final merge step already handles priority: ClickUp > Figma provided > AI generated
