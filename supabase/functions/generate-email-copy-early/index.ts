@@ -52,7 +52,7 @@ serve(async (req) => {
   }
 
   try {
-    const { sessionKey, imageUrl, brandContext, brandId, copyExamples } = await req.json();
+    const { sessionKey, imageUrl, imageBase64, brandContext, brandId, copyExamples } = await req.json();
 
     if (!sessionKey) {
       throw new Error('sessionKey is required');
@@ -358,9 +358,15 @@ Respond in JSON:
       { type: 'text', text: textPrompt },
     ];
 
-    if (imageUrl) {
-      // Pre-fetch image as base64 to avoid Anthropic download timeout issues
-      // Only resize if not already resized (avoid double transformation)
+    // OPTIMIZATION: Use passed base64 directly if available, skip redundant Cloudinary download
+    let base64Data = imageBase64;
+    let contentType = 'image/png';
+    
+    if (base64Data) {
+      console.log('[EARLY] Using provided base64, skipping fetch (saves ~22s!)');
+    } else if (imageUrl) {
+      // Fallback: fetch from URL only if base64 not provided
+      console.log('[EARLY] No base64 provided, fetching from URL...');
       let finalImageUrl = imageUrl;
       if (imageUrl.includes('cloudinary.com/') && !imageUrl.includes('/c_limit,')) {
         finalImageUrl = getResizedCloudinaryUrl(imageUrl, 600, 7900);
@@ -377,29 +383,31 @@ Respond in JSON:
         // Use chunked base64 conversion to avoid stack overflow on large images
         const uint8Array = new Uint8Array(imageBuffer);
         const CHUNK_SIZE = 32768; // Process 32KB at a time
-        let base64Data = '';
+        let tempData = '';
         for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
           const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
-          base64Data += String.fromCharCode(...chunk);
+          tempData += String.fromCharCode(...chunk);
         }
-        base64Data = btoa(base64Data);
+        base64Data = btoa(tempData);
         
-        const contentType = imageResponse.headers.get('content-type') || 'image/png';
+        contentType = imageResponse.headers.get('content-type') || 'image/png';
         
         console.log('[EARLY] Image fetched successfully, size:', imageBuffer.byteLength, 'bytes');
-        
-        messageContent.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: contentType,
-            data: base64Data
-          }
-        });
       } catch (imgErr) {
         console.error('[EARLY] Failed to fetch image, proceeding without it:', imgErr);
         // Continue without image rather than failing entirely
       }
+    }
+    
+    if (base64Data) {
+      messageContent.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: contentType,
+          data: base64Data
+        }
+      });
     }
 
     console.log(`[EARLY] Sending request to Anthropic with image: ${imageUrl ? 'yes' : 'no'}`);
