@@ -728,51 +728,51 @@ serve(async (req) => {
     
     console.log('[process] Step 1.5c: Early spelling check fired for session:', spellingSessionKey);
 
-    // === STEP 1.5b: Search ClickUp for copy ===
-    let clickupCopy: { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null } = {
-      subjectLine: null,
-      previewText: null,
-      taskId: null,
-      taskUrl: null
-    };
+    // === STEP 1.5b: Fire ClickUp search ASYNC (non-blocking, parallel with auto-slice) ===
+    // OPTIMIZATION: Previously this was awaited synchronously, blocking the pipeline for 20-40s
+    // Now we fire immediately and await results at the end when merging copy sources
+    type ClickUpCopyResult = { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null; found: boolean };
+    let clickupPromise: Promise<ClickUpCopyResult> | null = null;
 
     if (clickupApiKey && clickupListId && item.source_url) {
-      console.log('[process] Step 1.5b: Searching ClickUp for copy...');
-      try {
-        const clickupUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/search-clickup-for-copy';
-        const clickupResponse = await fetch(clickupUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-          },
-          body: JSON.stringify({
-            figmaUrl: item.source_url,
-            clickupApiKey: clickupApiKey,
-            listId: clickupListId,
-            workspaceId: clickupWorkspaceId
-          })
-        });
+      console.log('[process] Step 1.5b: Firing async ClickUp search (non-blocking)...');
+      const clickupUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/search-clickup-for-copy';
+      
+      // Fire immediately without await - runs in parallel with auto-slice
+      clickupPromise = (async (): Promise<ClickUpCopyResult> => {
+        try {
+          const clickupResponse = await fetch(clickupUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            body: JSON.stringify({
+              figmaUrl: item.source_url,
+              clickupApiKey: clickupApiKey,
+              listId: clickupListId,
+              workspaceId: clickupWorkspaceId
+            })
+          });
 
-        if (clickupResponse.ok) {
-          const result = await clickupResponse.json();
-          if (result.found) {
-            clickupCopy = {
+          if (clickupResponse.ok) {
+            const result = await clickupResponse.json();
+            console.log('[process] ClickUp async search completed - found:', result.found);
+            return {
               subjectLine: result.subjectLine || null,
               previewText: result.previewText || null,
               taskId: result.taskId || null,
-              taskUrl: result.taskUrl || null
+              taskUrl: result.taskUrl || null,
+              found: result.found || false
             };
-            console.log('[process] ClickUp found - SL:', !!clickupCopy.subjectLine, 'PT:', !!clickupCopy.previewText);
           } else {
-            console.log('[process] ClickUp search found no matching task');
+            console.error('[process] ClickUp search failed:', await clickupResponse.text());
           }
-        } else {
-          console.error('[process] ClickUp search failed:', await clickupResponse.text());
+        } catch (err) {
+          console.error('[process] ClickUp search error (non-fatal):', err);
         }
-      } catch (err) {
-        console.error('[process] ClickUp search error (non-fatal):', err);
-      }
+        return { subjectLine: null, previewText: null, taskId: null, taskUrl: null, found: false };
+      })();
     }
 
     // === STEP 3: Auto-slice image (35%) ===
@@ -1059,6 +1059,30 @@ serve(async (req) => {
     const uniqueSpellingErrors = allSpellingErrors.filter((e, i, arr) => 
       arr.findIndex(x => x.text === e.text && x.location === e.location) === i
     );
+
+    // === AWAIT ASYNC CLICKUP RESULT (now that auto-slice is done) ===
+    let clickupCopy: { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null } = {
+      subjectLine: null,
+      previewText: null,
+      taskId: null,
+      taskUrl: null
+    };
+    
+    if (clickupPromise) {
+      console.log('[process] Awaiting ClickUp search result...');
+      const clickupResult = await clickupPromise;
+      if (clickupResult.found) {
+        clickupCopy = {
+          subjectLine: clickupResult.subjectLine,
+          previewText: clickupResult.previewText,
+          taskId: clickupResult.taskId,
+          taskUrl: clickupResult.taskUrl
+        };
+        console.log('[process] ClickUp found - SL:', !!clickupCopy.subjectLine, 'PT:', !!clickupCopy.previewText);
+      } else {
+        console.log('[process] ClickUp search found no matching task');
+      }
+    }
 
     // Determine copy source and final selected values
     // Priority: ClickUp > Figma provided > AI generated
