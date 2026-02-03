@@ -62,9 +62,12 @@ async function fetchAndUploadImage(
       if (!response.ok) throw new Error('Failed to fetch image');
       const buffer = await response.arrayBuffer();
       const uint8Array = new Uint8Array(buffer);
+      // Use chunked conversion to avoid O(n²) string concatenation
+      const CHUNK_SIZE = 32768;
       let binary = '';
-      for (let i = 0; i < uint8Array.length; i++) {
-        binary += String.fromCharCode(uint8Array[i]);
+      for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+        const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+        binary += String.fromCharCode(...chunk);
       }
       const base64 = btoa(binary);
       return { imageUrl: item.image_url, imageBase64: base64 };
