@@ -1,138 +1,89 @@
 
-# Fix Campaign Queue Processing Slowdown
+# Fix Campaign Queue Processing Time (42s → ~25s)
 
 ## Problem Identified
 
-The campaign queue is taking **54+ seconds** when it should take ~25 seconds. The bottleneck is the **ClickUp search running synchronously** before auto-slicing begins.
+The campaign queue is taking **42+ seconds** when it was ~20 seconds on Jan 30th. The bottleneck is an **inefficient base64 conversion loop** in `process-campaign-queue`.
 
-### Current Flow (Slow)
+### Current Timeline
 ```text
-figma-ingest (2.4s)
-    ↓
-fetch image (8s) 
-    ↓
-fire early copy (async) ✓
-fire spelling check (async) ✓
-    ↓
-await ClickUp search (blocking) ← BOTTLENECK
-    ↓
-auto-slice (18s)
-    ↓
-poll for results (12s)
+0-12s    Fetch image + convert to base64 (SLOW - O(n²) loop!)
+12-13s   Fire early copy, ClickUp, spelling check
+13-32s   Auto-slice (19s - normal)
+32-42s   Poll for early copy (9s - waiting because copy started late)
 ```
 
-Total: **54+ seconds**
+### Root Cause
 
-### Timeline Evidence
-- figma-ingest completes at 22:28:12
-- ClickUp/auto-slice starts at 22:28:34  
-- **22 second unexplained gap!**
+The `fetchAndUploadImage` function uses an O(n²) string concatenation pattern:
 
-The ClickUp search itself only takes 1.6s, but something is causing a massive delay before it even starts. Looking at the code, the issue is that the ClickUp search is awaited synchronously, blocking the pipeline.
+```typescript
+// SLOW: O(n²) due to string += in loop
+let binary = '';
+for (let i = 0; i < uint8Array.length; i++) {
+  binary += String.fromCharCode(uint8Array[i]);  // Creates new string each iteration!
+}
+const base64 = btoa(binary);
+```
+
+For a 1MB+ image (1200x6116 at ~860KB), this loop runs ~860,000 times, creating a new string object each iteration. String concatenation in JavaScript is O(n), making this O(n²) overall.
+
+### Why Jan 30th Was Faster
+
+Other edge functions have been updated to use chunked conversion, but `process-campaign-queue` was missed. The optimized pattern (used in `generate-email-copy-early`, `auto-slice-v2`):
+
+```typescript
+// FAST: O(n) chunked approach
+const CHUNK_SIZE = 32768;
+let base64Data = '';
+for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+  const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+  base64Data += String.fromCharCode(...chunk);
+}
+const base64 = btoa(base64Data);
+```
 
 ## Solution
 
-Make the ClickUp search **fire-and-forget async** like early copy generation, then merge results at the end:
+### Change 1: Fix base64 conversion in `fetchAndUploadImage`
 
-1. Fire ClickUp search as non-blocking (like early copy)
-2. Continue immediately to auto-slice
-3. Collect ClickUp results at the end when merging all copy sources
-
-### Fixed Flow (Fast)
-```text
-figma-ingest (2.4s)
-    ↓
-fetch image (8s)
-    ↓
-fire early copy (async) ✓
-fire spelling check (async) ✓
-fire ClickUp search (async) ← NEW: Non-blocking
-    ↓
-auto-slice (18s) ← Starts immediately
-    ↓
-poll/merge results (3s)
-```
-
-Total: **~30 seconds**
-
-## Implementation
-
-### Changes to `supabase/functions/process-campaign-queue/index.ts`
-
-**1. Add a new table or use existing early_generated_copy to store ClickUp results**
-
-Actually, simpler: store ClickUp result in a variable that will be populated by a callback, and check it at the end.
-
-**2. Change ClickUp search from blocking to async (lines 739-776)**
-
-Before:
-```typescript
-if (clickupApiKey && clickupListId && item.source_url) {
-  const clickupResponse = await fetch(clickupUrl, { ... });  // BLOCKING
-  if (clickupResponse.ok) {
-    const result = await clickupResponse.json();
-    // ... process result
-  }
-}
-```
-
-After:
-```typescript
-// Store promise for later resolution
-let clickupPromise: Promise<{...}> | null = null;
-
-if (clickupApiKey && clickupListId && item.source_url) {
-  console.log('[process] Step 1.5b: Firing async ClickUp search...');
-  clickupPromise = (async () => {
-    try {
-      const response = await fetch(clickupUrl, { ... });
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch (err) {
-      console.error('[process] ClickUp search error:', err);
-    }
-    return null;
-  })();  // Fire immediately, don't await
-}
-
-// Continue to auto-slice without waiting...
-```
-
-**3. Await the ClickUp promise at the end (around line 1063)**
+Replace the slow loop with chunked conversion:
 
 ```typescript
-// Wait for ClickUp result before finalizing
-if (clickupPromise) {
-  console.log('[process] Awaiting ClickUp search result...');
-  const clickupResult = await clickupPromise;
-  if (clickupResult?.found) {
-    clickupCopy = {
-      subjectLine: clickupResult.subjectLine || null,
-      previewText: clickupResult.previewText || null,
-      taskId: clickupResult.taskId || null,
-      taskUrl: clickupResult.taskUrl || null
-    };
-  }
+// Replace lines 64-69 in fetchAndUploadImage
+const CHUNK_SIZE = 32768;
+let binary = '';
+for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+  const chunk = uint8Array.subarray(i, Math.min(i + CHUNK_SIZE, uint8Array.length));
+  binary += String.fromCharCode(...chunk);
 }
+const base64 = btoa(binary);
 ```
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/process-campaign-queue/index.ts` | Make ClickUp search non-blocking, await at end |
+| File | Change |
+|------|--------|
+| `supabase/functions/process-campaign-queue/index.ts` | Fix base64 conversion from O(n²) to O(n) |
 
 ## Expected Performance Improvement
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Total processing time | 54s | ~28-32s |
-| Time to auto-slice start | 25s | 8s |
-| Bottleneck removed | ClickUp blocking | N/A |
+| Image fetch + base64 | 12s | <1s |
+| Early copy fires at | 12s | <1s |
+| Total processing time | 42s | ~25s |
 
-## Technical Notes
+The 12-second delay was cascading through the entire pipeline. Early copy generation was firing 12 seconds late, meaning the 8.6 second polling was mostly waiting for a task that started late. With this fix:
 
-- The ClickUp search only takes 1.6s, but blocking means auto-slice can't start until it completes
-- Early copy generation is already 28s - by making ClickUp async, auto-slice runs in parallel with it
-- The final merge step already handles priority: ClickUp > Figma provided > AI generated
+1. Early copy fires immediately after image fetch (~1s)
+2. Auto-slice starts at ~1s instead of ~13s
+3. Both run in parallel for ~19 seconds
+4. Copy is ready when auto-slice completes (no polling delay)
+
+## Technical Details
+
+The chunked approach is faster because:
+- Spread operator `...chunk` converts the entire chunk at once
+- Only ~26 string concatenations for 860KB image vs 860,000
+- Each chunk creates one intermediate string, not 860,000
