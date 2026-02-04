@@ -199,6 +199,7 @@ export type Database = {
           html_formatting_rules: Json | null
           id: string
           klaviyo_api_key: string | null
+          last_crawled_at: string | null
           light_logo_public_id: string | null
           light_logo_url: string | null
           link_color: string | null
@@ -235,6 +236,7 @@ export type Database = {
           html_formatting_rules?: Json | null
           id?: string
           klaviyo_api_key?: string | null
+          last_crawled_at?: string | null
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           link_color?: string | null
@@ -271,6 +273,7 @@ export type Database = {
           html_formatting_rules?: Json | null
           id?: string
           klaviyo_api_key?: string | null
+          last_crawled_at?: string | null
           light_logo_public_id?: string | null
           light_logo_url?: string | null
           link_color?: string | null

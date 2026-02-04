@@ -237,14 +237,23 @@ ${linkList}
 Which link is the CORRECT match for what's shown in the slice?
 
 CRITICAL MATCHING RULES:
-- If the slice shows a SPECIFIC PRODUCT (e.g., "Cruz Snow Jacket"), you MUST find that exact product URL
-- A collection URL (e.g., "/collections/winter-jackets") is NOT a valid match for a specific product
-- Only match collection URLs when the slice promotes a COLLECTION (e.g., "Shop Our Winter Collection")
-- "Related" is NOT the same as "correct" - a jacket is not the winter-jackets collection
+1. If the slice shows a SPECIFIC PRODUCT (e.g., "Cruz Snow Jacket"), you MUST find that exact product URL
+2. A collection URL (e.g., "/collections/winter-jackets") is NOT a valid match for a specific product
+3. Only match collection URLs when the slice promotes a COLLECTION (e.g., "Shop Our Winter Collection")
+4. "Related" is NOT the same as "correct" - a jacket product is NOT the winter-jackets collection
+
+5. DATE/VERSION MATCHING IS CRITICAL:
+   - "Winter 2025" is NOT the same as "Winter 2024"
+   - If the slice says "2025" but the link says "2024", that is NOT a match
+   - If the slice mentions a specific year, season, or version, the link MUST match that EXACTLY
+   - A link for last year's collection is WRONG for this year's content
+   - Example: Slice shows "Shop Winter 2025" but link is "/collections/winter-2024" → NOT a match
+
+6. If the EXACT link isn't available (right product, right year, right version), respond "none"
 
 Response:
-- ONLY the number if you find the EXACT correct link
-- "none" if the specific product/page isn't in the list (even if a related collection exists)`;
+- ONLY the number if you find the EXACT correct link (matching product AND any dates/versions/years)
+- "none" if the specific product/page isn't in the list (even if a similar but outdated version exists)`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {

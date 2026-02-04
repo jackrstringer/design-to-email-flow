@@ -1475,28 +1475,38 @@ ${rulesFormatted}
    c. For generic CTAs (Shop Now, Learn More, Shop [Brand], etc.) → use the default destination
    d. If clickable but NO match found in the available links → set linkSource: 'needs_search' and add to needsLinkSearch array
 
-3. **altText**: Write concise, descriptive alt text (max 200 chars):
+3. **DATE/VERSION MATCHING IS CRITICAL**:
+   - "Winter 2025" is NOT the same as "Winter 2024" - years MUST match exactly
+   - "Fall 2024" collection is NOT valid for "Fall 2025" content
+   - If the slice mentions a specific year, season, or version, the link MUST match that EXACTLY
+   - A link for last year's collection/product is WRONG for this year's content
+   - Example: Slice shows "Shop Winter 2025" but available link is "/collections/winter-2024" → set linkSource: 'needs_search'
+   - When the exact dated version isn't available, set linkSource: 'needs_search' to trigger web search
+
+4. **altText**: Write concise, descriptive alt text (max 200 chars):
    - Capture the marketing message and visual content
    - Include any visible product names, prices, or promotional text
    - Be specific about what's shown (not generic like "image")
 
-4. **linkSource** values:
+5. **linkSource** values:
    - 'rule' → matched a brand routing rule
-   - 'index' → found a matching URL in the available brand links (EXACT match only)
+   - 'index' → found a matching URL in the available brand links (EXACT match only, including date/version)
    - 'default' → used the default destination URL (for generic CTAs)
    - 'needs_search' → clickable but no exact match found (add to needsLinkSearch)
    - 'not_clickable' → slice is not clickable
 
-5. **needsLinkSearch**: When a slice is clickable but you can't find the EXACT matching URL:
+6. **needsLinkSearch**: When a slice is clickable but you can't find the EXACT matching URL:
    - Add an entry with the sliceIndex (0-based) and a description of what product/collection is shown
    - This triggers a web search fallback to find the correct URL
    - Use this whenever a SPECIFIC PRODUCT is visible but its exact URL is not in the available links
    - A collection URL is NOT a substitute for a product URL
    - If you see "Product X" but only have "/collections/category", that's NOT a match - add to needsLinkSearch
+   - If the slice shows "Winter 2025" but you only have "Winter 2024" links, add to needsLinkSearch
 
 ### Link Matching Tips
 - Look at the OCR text for product names, collection names, promotional text
 - CRITICAL: "Related" is NOT the same as "correct" - a jacket product is NOT the winter-jackets collection
+- CRITICAL: Check for year/date mismatches - 2024 links are WRONG for 2025 content
 - For product grids, each column may need a different link (use the first/main product link for the whole slice if horizontal split)
 - Header logos typically link to homepage (use default destination)
 - When multiple products are visible, choose the most prominent/featured one
