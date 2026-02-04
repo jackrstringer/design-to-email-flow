@@ -811,27 +811,47 @@ serve(async (req) => {
       processing_percent: 15
     });
 
-    // === FETCH LINK INDEX FOR BRAND (if available) ===
+    // === FETCH LINK INDEX FOR BRAND (curated: products + collections) ===
     let linkIndex: LinkIndexEntry[] = [];
     let defaultDestinationUrl: string | null = null;
     let brandPreferenceRules: BrandPreferenceRule[] = [];
     
     if (brandId) {
       try {
-        // Fetch healthy links from brand_link_index
-        const { data: links } = await supabase
+        // FIX: Fetch products and collections separately to ensure products aren't starved out
+        // Previously: order by use_count limit 100 → resulted in 100 collections, 0 products
+        
+        // Fetch up to 100 product links (prioritized by verification recency)
+        const { data: productLinks } = await supabase
           .from('brand_link_index')
           .select('title, url, link_type')
           .eq('brand_id', brandId)
           .eq('is_healthy', true)
+          .eq('link_type', 'product')
+          .order('last_verified_at', { ascending: false, nullsFirst: false })
           .order('use_count', { ascending: false })
           .limit(100);
         
-        linkIndex = (links || []).map((l: any) => ({
+        // Fetch up to 50 collection/page links (for generic CTAs and navigation)
+        const { data: collectionLinks } = await supabase
+          .from('brand_link_index')
+          .select('title, url, link_type')
+          .eq('brand_id', brandId)
+          .eq('is_healthy', true)
+          .neq('link_type', 'product')
+          .order('use_count', { ascending: false })
+          .limit(50);
+        
+        // Combine: products first, then collections
+        const allLinks = [...(productLinks || []), ...(collectionLinks || [])];
+        
+        linkIndex = allLinks.map((l: any) => ({
           title: l.title || '',
           url: l.url,
           link_type: l.link_type
         }));
+        
+        console.log(`[process] Link index: ${productLinks?.length || 0} products + ${collectionLinks?.length || 0} collections = ${linkIndex.length} total`);
         
         // Fetch brand preferences
         const { data: brandPrefs } = await supabase
@@ -844,7 +864,6 @@ serve(async (req) => {
         defaultDestinationUrl = prefs.default_destination_url || `https://${brandPrefs?.domain || brandContext?.domain}`;
         brandPreferenceRules = prefs.rules || [];
         
-        console.log(`[process] Fetched ${linkIndex.length} links for brand ${brandId}`);
       } catch (err) {
         console.log('[process] Could not fetch link index (non-fatal):', err);
       }
@@ -926,12 +945,135 @@ serve(async (req) => {
       processing_percent: 45
     });
 
-    // === STEP 4: Analyze slices for alt text + links (SKIP if link intelligence enabled) ===
+    // === STEP 4: Validate and resolve links (deterministic guardrails) ===
     let currentSlices = uploadedSlices;
     
     if (sliceResult.hasLinkIntelligence) {
-      // Slices already have altText and links from auto-slice - skip analyze-slices entirely
-      console.log('[process] Step 4: SKIPPING analyze-slices (link intelligence already applied)');
+      console.log('[process] Step 4: Validating assigned links (deterministic guardrails)...');
+      await updateQueueItem(supabase, campaignQueueId, {
+        processing_step: 'validating_links',
+        processing_percent: 50
+      });
+      
+      // DETERMINISTIC LINK VALIDATOR
+      // Detect "imperfect" links that need resolution
+      const slicesNeedingResolution: Array<{ index: number; description: string; reason: string }> = [];
+      
+      for (let i = 0; i < currentSlices.length; i++) {
+        const slice = currentSlices[i];
+        const link = slice.link || '';
+        const altText = (slice.altText || '').toLowerCase();
+        const description = slice.description || slice.altText || '';
+        
+        // Rule 1: Product-specific content matched to collection URL
+        const looksLikeProduct = (
+          /\$\d/.test(description) ||  // Has price
+          /jacket|tee|shirt|pants|hoodie|dress|bag|shoe|boot|sneaker/i.test(description) ||
+          (slice.totalColumns && slice.totalColumns > 1)  // Multi-column = likely product grid
+        );
+        const isCollectionUrl = link && !link.includes('/products/') && (
+          link.includes('/collections/') || link.includes('/category/')
+        );
+        
+        if (looksLikeProduct && isCollectionUrl) {
+          console.log(`[process] Slice ${i}: product_slice_matched_collection - "${description.substring(0, 40)}..." → ${link}`);
+          slicesNeedingResolution.push({ 
+            index: i, 
+            description,
+            reason: 'product_slice_matched_collection'
+          });
+          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
+          continue;
+        }
+        
+        // Rule 2: Year/version mismatch (e.g., "Winter 2025" matched to "winter-2024")
+        const yearInContent = description.match(/20(2[4-9]|3[0-9])/);
+        const yearInUrl = link.match(/20(2[4-9]|3[0-9])/);
+        if (yearInContent && yearInUrl && yearInContent[0] !== yearInUrl[0]) {
+          console.log(`[process] Slice ${i}: year_mismatch - content has ${yearInContent[0]}, URL has ${yearInUrl[0]}`);
+          slicesNeedingResolution.push({ 
+            index: i, 
+            description,
+            reason: `year_mismatch_${yearInContent[0]}_vs_${yearInUrl[0]}`
+          });
+          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
+          continue;
+        }
+        
+        // Rule 3: Multi-column slice with shared collection link (each column should resolve separately)
+        if (slice.totalColumns && slice.totalColumns > 1 && isCollectionUrl) {
+          console.log(`[process] Slice ${i}: multi_column_shared_collection - column ${slice.column + 1}/${slice.totalColumns}`);
+          slicesNeedingResolution.push({ 
+            index: i, 
+            description,
+            reason: 'multi_column_shared_collection'
+          });
+          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
+        }
+      }
+      
+      // === STEP 4.5: Resolve imperfect links ===
+      if (slicesNeedingResolution.length > 0 && brandContext?.domain) {
+        console.log(`[process] Step 4.5: Resolving ${slicesNeedingResolution.length} imperfect links...`);
+        await updateQueueItem(supabase, campaignQueueId, {
+          processing_step: 'resolving_links',
+          processing_percent: 55
+        });
+        
+        try {
+          const resolveUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/resolve-slice-links';
+          const resolveResponse = await fetch(resolveUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            body: JSON.stringify({
+              brandId,
+              brandDomain: brandContext.domain,
+              slices: slicesNeedingResolution.map(s => ({
+                index: s.index,
+                description: s.description,
+                altText: currentSlices[s.index]?.altText,
+                imageUrl: currentSlices[s.index]?.imageUrl
+              }))
+            })
+          });
+          
+          if (resolveResponse.ok) {
+            const resolveResult = await resolveResponse.json();
+            const resolvedLinks = resolveResult.results || [];
+            
+            // Apply resolved links back to slices
+            for (const resolved of resolvedLinks) {
+              if (resolved.url) {
+                currentSlices[resolved.index] = {
+                  ...currentSlices[resolved.index],
+                  link: resolved.url,
+                  linkSource: `resolved_${resolved.source}`,
+                  linkVerified: resolved.confidence > 0.8
+                };
+                console.log(`[process] Slice ${resolved.index} resolved: ${resolved.source} → ${resolved.url}`);
+              } else {
+                // Use default destination if resolution failed
+                currentSlices[resolved.index] = {
+                  ...currentSlices[resolved.index],
+                  link: defaultDestinationUrl,
+                  linkSource: 'default_fallback',
+                  linkVerified: false
+                };
+              }
+            }
+            
+            console.log(`[process] Resolved ${resolvedLinks.filter((r: any) => r.url).length}/${slicesNeedingResolution.length} links`);
+          } else {
+            console.error('[process] Link resolution failed:', await resolveResponse.text());
+          }
+        } catch (err) {
+          console.error('[process] Link resolution error (non-fatal):', err);
+        }
+      }
+      
       await updateQueueItem(supabase, campaignQueueId, {
         processing_step: 'links_assigned',
         processing_percent: 60
