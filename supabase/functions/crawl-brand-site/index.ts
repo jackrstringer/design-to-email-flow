@@ -16,6 +16,10 @@ const SKIP_PATTERNS = [
   '/wishlist', '/compare', '/api/', '/sitemap', '?', '#',
 ];
 
+// Product cap - collections are uncapped
+const MAX_PRODUCTS = 100;
+const MAX_NAV_COLLECTIONS = 5000; // High limit to get all nav structure
+
 function categorizeUrl(url: string): 'product' | 'collection' | 'page' {
   const lowerUrl = url.toLowerCase();
   if (lowerUrl.includes('/products/')) return 'product';
@@ -26,6 +30,10 @@ function categorizeUrl(url: string): 'product' | 'collection' | 'page' {
 function shouldSkipUrl(url: string): boolean {
   const lowerUrl = url.toLowerCase();
   return SKIP_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+}
+
+function isProductUrl(url: string): boolean {
+  return url.toLowerCase().includes('/products/');
 }
 
 // Extract title from URL path (fallback when we can't fetch)
@@ -69,23 +77,23 @@ serve(async (req) => {
       throw new Error('FIRECRAWL_API_KEY not configured');
     }
 
-    console.log(`[crawl-brand-site] Starting crawl for ${domain}, job ${job_id}`);
+    console.log(`[crawl-brand-site] Starting TWO-CATEGORY crawl for ${domain}, job ${job_id}`);
 
     // Update job status to crawling
     await supabase
       .from('sitemap_import_jobs')
       .update({ 
-        status: 'crawling', 
+        status: 'crawling_nav', 
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('id', job_id);
 
-    // Two-phase discovery: collections first, then products
-    const MAX_TOTAL = 100;
-    
-    // Phase 1: Discover navigation/collection pages first
-    console.log(`[crawl-brand-site] Phase 1: Discovering collection/nav pages for https://${domain}`);
+    // =========================================================================
+    // PHASE 1: Navigation & Collections (UNCAPPED)
+    // Get all navigation structure - collections, categories, pages
+    // =========================================================================
+    console.log(`[crawl-brand-site] Phase 1: Discovering ALL nav/collection pages for https://${domain}`);
     
     const navResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
       method: 'POST',
@@ -95,8 +103,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: `https://${domain}`,
-        search: 'collections',
-        limit: MAX_TOTAL,
+        search: 'collections categories navigation menu',
+        limit: MAX_NAV_COLLECTIONS,
         includeSubdomains: false
       })
     });
@@ -137,87 +145,98 @@ serve(async (req) => {
     }
 
     const navData = await navResponse.json();
-    const navUrls: string[] = navData.links || [];
-    console.log(`[crawl-brand-site] Phase 1 found ${navUrls.length} collection/nav URLs`);
+    const allNavUrls: string[] = navData.links || [];
+    console.log(`[crawl-brand-site] Phase 1 found ${allNavUrls.length} total URLs`);
 
-    // Filter nav URLs
-    const navFiltered = navUrls.filter(url => {
+    // Filter nav URLs - EXCLUDE product URLs, only keep collections/pages
+    const navUrls = allNavUrls.filter(url => {
       if (!url) return false;
       if (shouldSkipUrl(url)) return false;
       if (!url.includes(domain)) return false;
+      // Exclude product URLs - we'll get those separately
+      if (isProductUrl(url)) return false;
       return true;
     });
+    
+    console.log(`[crawl-brand-site] Phase 1: ${navUrls.length} nav/collection URLs after filtering (uncapped)`);
 
-    // Phase 2: Fill remaining quota with products
-    const remainingQuota = Math.max(0, MAX_TOTAL - navFiltered.length);
-    let productUrls: string[] = [];
-
-    if (remainingQuota > 0) {
-      console.log(`[crawl-brand-site] Phase 2: Discovering up to ${remainingQuota} product pages`);
-      
-      const productResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          url: `https://${domain}`,
-          search: 'products',
-          limit: remainingQuota,
-          includeSubdomains: false
-        })
-      });
-
-      if (productResponse.ok) {
-        const productData = await productResponse.json();
-        productUrls = (productData.links || []).filter((url: string) => 
-          url && !shouldSkipUrl(url) && url.includes(domain)
-        );
-        console.log(`[crawl-brand-site] Phase 2 found ${productUrls.length} product URLs`);
-      } else {
-        console.warn(`[crawl-brand-site] Phase 2 product fetch failed, continuing with nav URLs only`);
-      }
-    } else {
-      console.log(`[crawl-brand-site] Phase 2 skipped - nav URLs already at quota`);
-    }
-
-    // Merge and deduplicate (nav links take priority)
-    const allUrls = [...new Set([...navFiltered, ...productUrls])];
-    console.log(`[crawl-brand-site] Total unique URLs after merge: ${allUrls.length}`);
-
-    // Immediately update with URLs found count
+    // Update job status
     await supabase
       .from('sitemap_import_jobs')
       .update({ 
-        urls_found: allUrls.length,
+        status: 'crawling',
+        urls_found: navUrls.length,
         updated_at: new Date().toISOString()
       })
       .eq('id', job_id);
 
-    // Build links with titles from URL (already filtered)
-    const links = allUrls.map(url => ({
-      url,
-      title: titleFromUrl(url),
-      link_type: categorizeUrl(url)
-    }));
+    // =========================================================================
+    // PHASE 2: Products (SMART CAPPED at 100)
+    // Prioritize best sellers, new arrivals, featured products
+    // =========================================================================
+    console.log(`[crawl-brand-site] Phase 2: Discovering priority products (max ${MAX_PRODUCTS})`);
+    
+    const productResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: `https://${domain}`,
+        // Priority search terms for relevant products
+        search: 'products best sellers new arrivals featured popular trending sale',
+        limit: MAX_PRODUCTS * 2, // Get more to filter down
+        includeSubdomains: false
+      })
+    });
 
-    const productCount = links.filter(l => l.link_type === 'product').length;
-    const collectionCount = links.filter(l => l.link_type === 'collection').length;
+    let productUrls: string[] = [];
+    if (productResponse.ok) {
+      const productData = await productResponse.json();
+      const allProductUrls: string[] = productData.links || [];
+      
+      // Filter to ONLY product URLs and cap at MAX_PRODUCTS
+      productUrls = allProductUrls
+        .filter(url => url && isProductUrl(url) && !shouldSkipUrl(url) && url.includes(domain))
+        .slice(0, MAX_PRODUCTS);
+      
+      console.log(`[crawl-brand-site] Phase 2: ${productUrls.length} product URLs (capped at ${MAX_PRODUCTS})`);
+    } else {
+      console.warn(`[crawl-brand-site] Phase 2 product fetch failed, continuing with nav URLs only`);
+    }
 
-    // Update job status to generating embeddings
+    // =========================================================================
+    // COMBINE AND DEDUPE
+    // =========================================================================
+    const allUrls = [...new Set([...navUrls, ...productUrls])];
+    const collectionCount = navUrls.length;
+    const productCount = productUrls.length;
+    
+    console.log(`[crawl-brand-site] Total unique URLs: ${allUrls.length} (${collectionCount} nav/collections + ${productCount} products)`);
+
+    // Update job with final counts
     await supabase
       .from('sitemap_import_jobs')
       .update({ 
         status: 'generating_embeddings',
-        urls_found: links.length,
+        urls_found: allUrls.length,
         product_urls_count: productCount,
         collection_urls_count: collectionCount,
         updated_at: new Date().toISOString()
       })
       .eq('id', job_id);
 
-    // Generate embeddings in batches
+    // Build links with titles from URL
+    const links = allUrls.map(url => ({
+      url,
+      title: titleFromUrl(url),
+      link_type: categorizeUrl(url)
+    }));
+
+    // =========================================================================
+    // GENERATE EMBEDDINGS AND SAVE
+    // =========================================================================
     const batchSize = 50;
     let processedCount = 0;
 
@@ -278,7 +297,9 @@ serve(async (req) => {
       console.log(`[crawl-brand-site] Saved batch ${Math.floor(i / batchSize) + 1}, ${processedCount}/${links.length}`);
     }
 
-    // Complete the job
+    // =========================================================================
+    // COMPLETE JOB AND UPDATE BRAND
+    // =========================================================================
     await supabase
       .from('sitemap_import_jobs')
       .update({ 
@@ -291,10 +312,23 @@ serve(async (req) => {
       })
       .eq('id', job_id);
 
-    console.log(`[crawl-brand-site] Job complete. Imported ${links.length} links`);
+    // Update brand's last_crawled_at timestamp
+    await supabase
+      .from('brands')
+      .update({ 
+        last_crawled_at: new Date().toISOString()
+      })
+      .eq('id', brand_id);
+
+    console.log(`[crawl-brand-site] Job complete. Imported ${links.length} links (${collectionCount} nav/collections + ${productCount} products)`);
 
     return new Response(
-      JSON.stringify({ success: true, linksImported: links.length }),
+      JSON.stringify({ 
+        success: true, 
+        linksImported: links.length,
+        collectionCount,
+        productCount
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
