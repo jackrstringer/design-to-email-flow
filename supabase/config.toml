@@ -149,3 +149,9 @@ verify_jwt = false
 
 [functions.process-footer-queue]
 verify_jwt = false
+
+[functions.resolve-slice-links]
+verify_jwt = false
+
+[functions.weekly-link-recrawl]
+verify_jwt = false
