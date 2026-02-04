@@ -1467,7 +1467,11 @@ ${rulesFormatted}
 
 2. **link** assignment priority (in order):
    a. Check brand routing rules first - if slice content matches a rule name, use that URL
-   b. Check available brand links - find the best matching product/collection based on visible text and imagery
+   b. Check available brand links - but ONLY match if the EXACT product/page exists:
+      - If slice shows a SPECIFIC PRODUCT (e.g., "FWC Cruz Snow Jacket"), you MUST find that exact product URL
+      - A collection URL (e.g., /collections/winter-jackets) is NOT a valid match for a specific product
+      - Only match collection URLs when the slice is promoting a COLLECTION (e.g., "Shop Our Winter Collection")
+      - When in doubt, set linkSource: 'needs_search' - it's better to trigger a web search than link to the wrong page
    c. For generic CTAs (Shop Now, Learn More, Shop [Brand], etc.) → use the default destination
    d. If clickable but NO match found in the available links → set linkSource: 'needs_search' and add to needsLinkSearch array
 
@@ -1478,22 +1482,25 @@ ${rulesFormatted}
 
 4. **linkSource** values:
    - 'rule' → matched a brand routing rule
-   - 'index' → found a matching URL in the available brand links
+   - 'index' → found a matching URL in the available brand links (EXACT match only)
    - 'default' → used the default destination URL (for generic CTAs)
-   - 'needs_search' → clickable but no match found (add to needsLinkSearch)
+   - 'needs_search' → clickable but no exact match found (add to needsLinkSearch)
    - 'not_clickable' → slice is not clickable
 
-5. **needsLinkSearch**: When a slice is clickable but you can't find a matching URL:
+5. **needsLinkSearch**: When a slice is clickable but you can't find the EXACT matching URL:
    - Add an entry with the sliceIndex (0-based) and a description of what product/collection is shown
    - This triggers a web search fallback to find the correct URL
-   - Only use this for specific products not in the available links, NOT for generic CTAs
+   - Use this whenever a SPECIFIC PRODUCT is visible but its exact URL is not in the available links
+   - A collection URL is NOT a substitute for a product URL
+   - If you see "Product X" but only have "/collections/category", that's NOT a match - add to needsLinkSearch
 
 ### Link Matching Tips
 - Look at the OCR text for product names, collection names, promotional text
-- Match text like "SHOP GOLDEN" to a link with "Golden" in the title
+- CRITICAL: "Related" is NOT the same as "correct" - a jacket product is NOT the winter-jackets collection
 - For product grids, each column may need a different link (use the first/main product link for the whole slice if horizontal split)
 - Header logos typically link to homepage (use default destination)
-- When multiple products are visible, choose the most prominent/featured one`;
+- When multiple products are visible, choose the most prominent/featured one
+- If you see a specific product but only have collection URLs, set linkSource: 'needs_search'`;
   }
 
   // Combine base prompt with link intelligence
