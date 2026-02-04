@@ -818,10 +818,8 @@ serve(async (req) => {
     
     if (brandId) {
       try {
-        // FIX: Fetch products and collections separately to ensure products aren't starved out
-        // Previously: order by use_count limit 100 → resulted in 100 collections, 0 products
-        
-        // Fetch up to 100 product links (prioritized by verification recency)
+        // MAXIMIZED CONTEXT: Claude's 200k tokens can easily handle 1000+ links
+        // Fetch up to 500 product links (prioritized by verification recency)
         const { data: productLinks } = await supabase
           .from('brand_link_index')
           .select('title, url, link_type')
@@ -830,9 +828,9 @@ serve(async (req) => {
           .eq('link_type', 'product')
           .order('last_verified_at', { ascending: false, nullsFirst: false })
           .order('use_count', { ascending: false })
-          .limit(100);
+          .limit(500);
         
-        // Fetch up to 50 collection/page links (for generic CTAs and navigation)
+        // Fetch up to 500 collection/page links (for generic CTAs and navigation)
         const { data: collectionLinks } = await supabase
           .from('brand_link_index')
           .select('title, url, link_type')
@@ -840,7 +838,7 @@ serve(async (req) => {
           .eq('is_healthy', true)
           .neq('link_type', 'product')
           .order('use_count', { ascending: false })
-          .limit(50);
+          .limit(500);
         
         // Combine: products first, then collections
         const allLinks = [...(productLinks || []), ...(collectionLinks || [])];
@@ -851,7 +849,7 @@ serve(async (req) => {
           link_type: l.link_type
         }));
         
-        console.log(`[process] Link index: ${productLinks?.length || 0} products + ${collectionLinks?.length || 0} collections = ${linkIndex.length} total`);
+        console.log(`[process] Link index: ${productLinks?.length || 0} products + ${collectionLinks?.length || 0} collections = ${linkIndex.length} total (max 1000)`);
         
         // Fetch brand preferences
         const { data: brandPrefs } = await supabase
