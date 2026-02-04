@@ -227,17 +227,24 @@ async function matchViaClaudeList(sliceDescription: string, links: LinkIndexEntr
     return { url: null, source: 'no_match', confidence: 0 };
   }
 
-  const linkList = links.map((l, i) => `${i + 1}. ${l.title || 'Untitled'} → ${l.url}`).join('\n');
+  const linkList = links.map((l, i) => `${i + 1}. [${l.link_type}] ${l.title || 'Untitled'} → ${l.url}`).join('\n');
 
   const prompt = `A slice of an email shows: "${sliceDescription}"
 
 Here are all known product/collection links for this brand:
 ${linkList}
 
-Which link best matches what's shown in the slice? 
-- Respond with ONLY the number (e.g., "3")
-- If nothing matches well, respond "none"
-- Be strict - only match if the product/collection name clearly relates to what's described`;
+Which link is the CORRECT match for what's shown in the slice?
+
+CRITICAL MATCHING RULES:
+- If the slice shows a SPECIFIC PRODUCT (e.g., "Cruz Snow Jacket"), you MUST find that exact product URL
+- A collection URL (e.g., "/collections/winter-jackets") is NOT a valid match for a specific product
+- Only match collection URLs when the slice promotes a COLLECTION (e.g., "Shop Our Winter Collection")
+- "Related" is NOT the same as "correct" - a jacket is not the winter-jackets collection
+
+Response:
+- ONLY the number if you find the EXACT correct link
+- "none" if the specific product/page isn't in the list (even if a related collection exists)`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
