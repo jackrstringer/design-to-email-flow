@@ -1,121 +1,201 @@
 
-# Fix Link Matching: Product Slices Need Product URLs
 
-## Problem Summary
+# Enhanced Link Intelligence System
 
-The link matching logic is fundamentally broken. When Claude sees a specific product (e.g., "FWC Cruz Snow Jacket"), it matches to a collection URL (`/collections/mens-winter-jackets`) because:
+## Problems Identified
 
-1. **No distinction between product vs collection matching** - The prompt says "find the best match" but doesn't tell Claude that a collection is NOT a valid match for a specific product
-2. **"Best match" ≠ "Correct match"** - A collection containing jackets is semantically related to a jacket, but it's the wrong link
-3. **No web search fallback trigger** - Because Claude "found a match", `needs_search` is never set
-
-### What Should Happen
-
-| Slice Shows | Index Has | Correct Behavior |
-|-------------|-----------|------------------|
-| "FWC Cruz Snow Jacket" | No product URL for that jacket | `linkSource: 'needs_search'` → triggers web search for exact product |
-| "FWC Cruz Snow Jacket" | Collection `mens-winter-jackets` | **NOT a match** - still set `needs_search` |
-| "Shop Our Winter Collection" | Collection `mens-winter-jackets` | Valid match - use collection URL |
-| Generic "SHOP NOW" | Default URL configured | Use default destination |
-
-### What's Currently Happening
-
-Claude matches "FWC Cruz Snow Jacket" to `mens-winter-jackets` collection because:
-- The prompt says "find the best matching product/collection"
-- Claude interprets "winter jacket" as related to "winter jackets collection"
-- Since there's "a match", `needs_search` is never triggered
-
-## Solution
-
-Fix the prompts in two places:
-
-### Fix 1: `auto-slice-v2/index.ts` - Link Assignment Section (lines 1445-1496)
-
-The current prompt at line 1471-1472:
+### 1. Single 100-Link Cap Problem
+**Current**: Both collections and products share a single 100-link cap
+```typescript
+const MAX_TOTAL = 100;
+// Phase 1: collections (takes first ~60-80)
+// Phase 2: products (only gets remaining 20-40)
 ```
-b. Check available brand links - find the best matching product/collection based on visible text and imagery
-```
+**Result**: O'Neill Canada has 100 collection URLs and 0 product URLs
 
-**Change to:**
-```
-b. Check available brand links - but ONLY match if the EXACT product/page exists:
-   - If slice shows a SPECIFIC PRODUCT (e.g., "FWC Cruz Snow Jacket"), you MUST find that exact product URL
-   - A collection URL (e.g., /collections/winter-jackets) is NOT a valid match for a specific product
-   - Only match collection URLs when the slice is promoting a COLLECTION (e.g., "Shop Our Winter Collection")
-   - When in doubt, set linkSource: 'needs_search' - it's better to trigger a web search than link to the wrong page
-```
+### 2. Random Product Selection
+**Current**: The `search: 'products'` query doesn't prioritize relevant products
+**Problem**: A brand with 2000 products gets random ones, not best sellers or new arrivals
 
-Also update line 1488-1489 from:
-```
-- Only use this for specific products not in the available links, NOT for generic CTAs
-```
+### 3. No Weekly Re-crawl
+**Current**: Links are only crawled once, manually triggered
+**Problem**: Seasonal links become stale - "Winter 2024" exists but "Winter 2025" doesn't
 
-**Change to:**
-```
-- Use this whenever a SPECIFIC PRODUCT is visible but its exact URL is not in the available links
-- A collection URL is NOT a substitute for a product URL
-- If you see "Product X" but only have "/collections/category", that's NOT a match - add to needsLinkSearch
-```
+### 4. AI Forcing Wrong Links
+**Current Example**: Button says "Shop Winter 2025" but AI matched to "Winter 2024" URL because that's what was indexed
+**Root Cause**: The prompts don't explicitly tell Claude to reject version/date mismatches
 
-### Fix 2: `match-slice-to-link/index.ts` - matchViaClaudeList prompt (lines 232-240)
+---
 
-Current prompt:
-```
-Which link best matches what's shown in the slice? 
-- Respond with ONLY the number (e.g., "3")
-- If nothing matches well, respond "none"
-- Be strict - only match if the product/collection name clearly relates to what's described
+## Solution: Two-Category Link Strategy
+
+### Category 1: Navigation & Collections (UNCAPPED)
+- All nav items, collections, category pages
+- These rarely change and are essential for proper routing
+- Crawl ALL of them without limit
+
+### Category 2: Products (Capped at 100, Smart Selection)
+- Prioritize from relevant collections: "best-sellers", "new-arrivals", "featured"
+- Cap at 100 to keep index manageable
+- Re-crawl weekly to stay current
+
+---
+
+## Implementation Plan
+
+### Fix 1: Restructure `crawl-brand-site/index.ts`
+
+**Phase 1 - Navigation/Collections (NO LIMIT)**
+```typescript
+// Crawl all navigation and collection pages
+const navResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
+  body: JSON.stringify({
+    url: `https://${domain}`,
+    search: 'collections categories navigation menu',
+    limit: 5000,  // High limit - get all nav structure
+    includeSubdomains: false
+  })
+});
+
+// Filter to only collections/pages (not products)
+const navUrls = navData.links.filter(url => 
+  !url.includes('/products/') && !shouldSkipUrl(url)
+);
 ```
 
-**Change to:**
+**Phase 2 - Products (Smart 100 cap)**
+```typescript
+// Priority collections for product discovery
+const PRIORITY_COLLECTIONS = [
+  'best-sellers', 'bestsellers', 'top-sellers',
+  'new-arrivals', 'new', 'just-in', 'latest',
+  'featured', 'popular', 'trending',
+  'sale', 'clearance'
+];
+
+// Search for products from priority collections first
+const productResponse = await fetch(`${FIRECRAWL_API_URL}/map`, {
+  body: JSON.stringify({
+    url: `https://${domain}`,
+    search: 'products best sellers new arrivals featured',
+    limit: 100,
+    includeSubdomains: false
+  })
+});
+
+// Only keep actual product URLs
+const productUrls = productData.links.filter(url => 
+  url.includes('/products/') && !shouldSkipUrl(url)
+).slice(0, 100);
 ```
+
+**Final Storage**
+- Store nav/collections with `link_type: 'collection'` or `'page'`
+- Store products with `link_type: 'product'`
+- Total: uncapped collections + 100 products
+
+### Fix 2: Weekly Re-crawl Automation
+
+**Add `last_crawled_at` column to brands table**
+```sql
+ALTER TABLE brands ADD COLUMN last_crawled_at TIMESTAMPTZ;
+```
+
+**Create `weekly-link-recrawl` edge function**
+```typescript
+// Triggered by Supabase cron job weekly
+serve(async (req) => {
+  // Find brands that need re-crawling (7+ days old or never crawled)
+  const { data: brands } = await supabase
+    .from('brands')
+    .select('id, domain')
+    .or('last_crawled_at.is.null,last_crawled_at.lt.' + sevenDaysAgo);
+  
+  for (const brand of brands) {
+    // Trigger crawl for each brand (stagger to avoid rate limits)
+    await supabase.functions.invoke('trigger-sitemap-import', {
+      body: { brand_id: brand.id, domain: brand.domain }
+    });
+  }
+});
+```
+
+**Add Supabase cron job**
+```sql
+SELECT cron.schedule(
+  'weekly-link-recrawl',
+  '0 3 * * 0',  -- Every Sunday at 3am
+  $$SELECT net.http_post(
+    url := 'https://esrimjavbjdtecszxudc.supabase.co/functions/v1/weekly-link-recrawl',
+    headers := '{"Authorization": "Bearer [service_key]"}'::jsonb
+  )$$
+);
+```
+
+### Fix 3: Stricter Date/Version Matching in Prompts
+
+**Update `match-slice-to-link/index.ts` prompt (lines 232-247)**
+```typescript
+const prompt = `A slice of an email shows: "${sliceDescription}"
+
+Here are all known product/collection links for this brand:
+${linkList}
+
 Which link is the CORRECT match for what's shown in the slice?
 
 CRITICAL MATCHING RULES:
-- If the slice shows a SPECIFIC PRODUCT (e.g., "Cruz Snow Jacket"), you MUST find that exact product URL
-- A collection URL (e.g., "/collections/winter-jackets") is NOT a valid match for a specific product
-- Only match collection URLs when the slice promotes a COLLECTION (e.g., "Shop Our Winter Collection")
-- "Related" is NOT the same as "correct" - a jacket is not the winter-jackets collection
+1. If the slice shows a SPECIFIC PRODUCT, you MUST find that exact product URL
+2. A collection URL is NOT a valid match for a specific product
+3. DATE/VERSION MATTERS: "Winter 2025" is NOT the same as "Winter 2024"
+   - If slice says "2025" but link says "2024", that is NOT a match
+   - If slice mentions a specific year/season, the link MUST match that year/season
+4. "Related" is NOT "correct" - a jacket is not the winter-jackets collection
+5. If the EXACT link isn't available (right product, right year), respond "none"
 
 Response:
-- ONLY the number if you find the EXACT correct link
-- "none" if the specific product/page isn't in the list (even if a related collection exists)
+- ONLY the number if you find the EXACT correct link (matching product AND any dates/versions)
+- "none" if the specific product/page isn't in the list (even if a similar but wrong version exists)`;
 ```
 
-### Fix 3: Include `link_type` in the matching context
-
-The current `matchViaClaudeList` doesn't show Claude whether each link is a `product` or `collection`. Add this context:
-
-```typescript
-const linkList = links.map((l, i) => 
-  `${i + 1}. [${l.link_type}] ${l.title || 'Untitled'} → ${l.url}`
-).join('\n');
+**Also update `auto-slice-v2/index.ts` link assignment rules (lines 1470-1503)**
+Add to the CRITICAL rules:
+```
+- DATE/VERSION MATCHING: If the slice mentions "Winter 2025", do NOT use a "Winter 2024" link
+- Years, seasons, and versions must match EXACTLY - a 2024 link is WRONG for 2025 content
+- When the exact dated version isn't available, set linkSource: 'needs_search'
 ```
 
-This helps Claude understand: "I see 'product_image' in the slice but all these are `[collection]` type links - none of them are the right match."
+---
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/auto-slice-v2/index.ts` | Update link assignment prompt (lines 1469-1496) |
-| `supabase/functions/match-slice-to-link/index.ts` | Fix matchViaClaudeList prompt (lines 232-240), add link_type to list |
+| `supabase/functions/crawl-brand-site/index.ts` | Restructure to uncapped nav + 100 smart products |
+| `supabase/functions/match-slice-to-link/index.ts` | Add date/version matching rules to prompts |
+| `supabase/functions/auto-slice-v2/index.ts` | Add date/version matching to link assignment |
+| NEW: `supabase/functions/weekly-link-recrawl/index.ts` | Weekly automation function |
+| Database migration | Add `last_crawled_at` to brands, add cron job |
 
-## Expected Behavior After Fix
+---
 
-| Slice Content | Index State | Result |
-|---------------|-------------|--------|
-| "FWC Cruz Snow Jacket" product image | Only collection URLs | `linkSource: 'needs_search'` → web search finds `/products/fwc-cruz-snow-jacket` |
-| "Shop Our Winter Collection" | Has `mens-winter-jackets` collection | `linkSource: 'index'` → uses collection URL |
-| Generic "SHOP NOW" button | Default URL configured | `linkSource: 'default'` → uses default destination |
-| Header logo | Default URL configured | `linkSource: 'default'` → uses homepage |
+## Expected Outcomes
 
-## Why This Works
+### Before
+- 100 total links (mostly collections, few products)
+- No date awareness - "2024" matches "2025"
+- Links become stale after initial crawl
+- AI forces through wrong links
 
-The key insight: **For brands with thousands of SKUs, we can't pre-index every product.** The system MUST:
+### After
+- Unlimited collections + 100 priority products
+- Strict date/version matching - mismatches trigger `needs_search`
+- Weekly automated refresh keeps links current
+- AI correctly rejects wrong links and triggers web search fallback
 
-1. Recognize when a specific product is shown
-2. Acknowledge that a collection URL is not the right match
-3. Trigger `needs_search` to find the exact product URL via web search
+### For O'Neill Canada Example
+1. "Shop Winter 2025" button would see "Winter 2024" in index
+2. Date mismatch detected → `linkSource: 'needs_search'`
+3. Web search finds actual `winter-2025` collection URL
+4. Correct link used in final HTML
 
-This way, even with an incomplete index (only collections), the system will still find correct product links on-demand.
