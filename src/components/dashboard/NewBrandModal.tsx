@@ -212,12 +212,11 @@ export function NewBrandModal({
 
       const domain = extractDomain(websiteUrl);
       
-      // Upload to Cloudinary
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload to ImageKit
+      const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
         body: {
           imageData: base64,
           folder: `brands/${domain}/logos`,
-          publicId: `${variant}-logo`,
         },
       });
 

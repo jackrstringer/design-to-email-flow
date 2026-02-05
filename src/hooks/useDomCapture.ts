@@ -85,8 +85,8 @@ export function useDomCapture({ targetRef }: UseDomCaptureOptions): UseDomCaptur
       // Convert labeled canvas to data URL
       const labeledDataUrl = canvas.toDataURL('image/png');
 
-      // Upload to Cloudinary
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload to ImageKit
+      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { 
           imageData: labeledDataUrl,
           folder: 'dom-captures'

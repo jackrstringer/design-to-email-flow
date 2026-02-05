@@ -138,8 +138,8 @@ export function useScreenCapture({ targetRef }: UseScreenCaptureOptions): UseScr
       // Convert to data URL
       const dataUrl = canvas.toDataURL('image/png');
 
-      // Upload to Cloudinary
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload to ImageKit
+      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { 
           imageData: dataUrl,
           folder: 'screen-captures'

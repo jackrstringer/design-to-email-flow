@@ -90,17 +90,37 @@ function detectMimeType(base64: string): string {
   return 'image/jpeg';
 }
 
-// Transform Cloudinary URL to include resize parameters
+// Transform image URL to include resize parameters (supports both CDNs)
+function getResizedImageUrl(url: string, maxWidth: number, maxHeight: number): string {
+  if (!url) return url;
+  
+  // Handle ImageKit URLs
+  if (url.includes('ik.imagekit.io')) {
+    const match = url.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)/);
+    if (match) {
+      const [, base, path] = match;
+      return `${base}/tr:w-${maxWidth},h-${maxHeight},c-at_max/${path}`;
+    }
+    return url;
+  }
+  
+  // Handle Cloudinary URLs (legacy)
+  if (url.includes('cloudinary.com/')) {
+    const uploadIndex = url.indexOf('/upload/');
+    if (uploadIndex === -1) return url;
+    
+    const before = url.substring(0, uploadIndex + 8);
+    const after = url.substring(uploadIndex + 8);
+    
+    return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+  }
+  
+  return url;
+}
+
+// Legacy alias
 function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: number): string {
-  if (!url || !url.includes('cloudinary.com/')) return url;
-  
-  const uploadIndex = url.indexOf('/upload/');
-  if (uploadIndex === -1) return url;
-  
-  const before = url.substring(0, uploadIndex + 8);
-  const after = url.substring(uploadIndex + 8);
-  
-  return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+  return getResizedImageUrl(url, maxWidth, maxHeight);
 }
 
 // Helper to update job status
@@ -377,7 +397,7 @@ async function detectLegalSection(
   }
 }
 
-// Step 4: Generate Cloudinary crop URLs for slices
+// Step 4: Generate crop URLs for slices (supports both Cloudinary and ImageKit)
 // NOTE: No longer filters by legalCutoffY - filtering is done BEFORE this is called
 function generateSliceCropUrls(
   slices: any[],
@@ -391,35 +411,60 @@ function generateSliceCropUrls(
   console.log(`[process-footer] Dimensions: ${actualWidth}x${actualHeight}, analyzed: ${analyzedWidth}x${analyzedHeight}`);
   console.log(`[process-footer] Processing ${slices.length} slices`);
 
-  // Extract Cloudinary base URL and public ID - support both with and without transformations
-  // Pattern 1: .../upload/v123456/path/to/image.png
-  // Pattern 2: .../upload/c_limit,w_600,h_4000/v123456/path/to/image.png
-  let match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/v][^/]*)*\/v\d+\/(.+)\.(png|jpg|jpeg|webp)/i);
-  
-  // Fallback pattern without version number
-  if (!match) {
-    match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/]+)*\/([^/]+)\.(png|jpg|jpeg|webp)/i);
-  }
-  
-  if (!match) {
-    console.error('[process-footer] Could not parse Cloudinary URL:', originalImageUrl);
-    console.warn('[process-footer] Expected Cloudinary URL format. Slices will not have crop URLs.');
+  const isImageKit = originalImageUrl.includes('ik.imagekit.io');
+  let baseUrl: string;
+  let publicId: string;
+
+  if (isImageKit) {
+    // ImageKit format: https://ik.imagekit.io/{id}/path/to/file.png
+    const ikMatch = originalImageUrl.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)\.(png|jpg|jpeg|webp)/i);
+    if (!ikMatch) {
+      console.error('[process-footer] Could not parse ImageKit URL:', originalImageUrl);
+      return slices.map((slice, i) => ({
+        ...slice,
+        imageUrl: null,
+        needsUpload: true,
+        width: actualWidth,
+        height: slice.yBottom - slice.yTop,
+      }));
+    }
+    baseUrl = ikMatch[1];
+    publicId = ikMatch[2];
+  } else {
+    // Cloudinary format
+    let match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/v][^/]*)*\/v\d+\/(.+)\.(png|jpg|jpeg|webp)/i);
+    if (!match) {
+      match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/]+)*\/([^/]+)\.(png|jpg|jpeg|webp)/i);
+    }
     
-    // Return slices without crop URLs - they can still be displayed but won't be cropped
-    return slices.map((slice, i) => ({
-      ...slice,
-      imageUrl: null,
-      needsCloudinaryUpload: true,  // Signal to frontend that image needs to be on Cloudinary
-      width: actualWidth,
-      height: slice.yBottom - slice.yTop,
-    }));
+    if (!match) {
+      console.error('[process-footer] Could not parse Cloudinary URL:', originalImageUrl);
+      console.warn('[process-footer] Expected Cloudinary or ImageKit URL format. Slices will not have crop URLs.');
+      
+      return slices.map((slice, i) => ({
+        ...slice,
+        imageUrl: null,
+        needsUpload: true,
+        width: actualWidth,
+        height: slice.yBottom - slice.yTop,
+      }));
+    }
+    baseUrl = match[1];
+    publicId = match[2];
   }
-  
-  const [, baseUrl, publicId] = match;
   
   // Calculate scale factor
   const scaleX = actualWidth / analyzedWidth;
   const scaleY = actualHeight / analyzedHeight;
+  
+  // Helper to generate crop URL for either CDN
+  function generateCropUrl(xLeft: number, yTop: number, width: number, height: number): string {
+    if (isImageKit) {
+      return `${baseUrl}/tr:x-${xLeft},y-${yTop},w-${width},h-${height},cm-extract,q-90,f-jpg/${publicId}`;
+    } else {
+      return `${baseUrl}/c_crop,x_${xLeft},y_${yTop},w_${width},h_${height},q_90,f_jpg/${publicId}`;
+    }
+  }
   
   const results: any[] = [];
   
@@ -449,7 +494,7 @@ function generateSliceCropUrls(
         const xRight = xBoundaries[col + 1];
         const colWidth = xRight - xLeft;
         
-        const cropUrl = `${baseUrl}/c_crop,x_${xLeft},y_${yTop},w_${colWidth},h_${sliceHeight},q_90,f_jpg/${publicId}`;
+        const cropUrl = generateCropUrl(xLeft, yTop, colWidth, sliceHeight);
         
         columnSlices.push({
           ...slice,
@@ -465,7 +510,7 @@ function generateSliceCropUrls(
       results.push(...columnSlices);
     } else {
       // Full-width slice
-      const cropUrl = `${baseUrl}/c_crop,x_0,y_${yTop},w_${actualWidth},h_${sliceHeight},q_90,f_jpg/${publicId}`;
+      const cropUrl = generateCropUrl(0, yTop, actualWidth, sliceHeight);
       
       results.push({
         ...slice,

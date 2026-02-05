@@ -723,7 +723,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
   const handleCropComplete = useCallback(async (croppedImageData: string) => {
     setIsUploadingCrop(true);
     try {
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { 
           imageData: croppedImageData,
           folder: `brands/${brand.domain}/footer-reference`
@@ -758,7 +758,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       reader.onload = async (e) => {
         const base64 = e.target?.result as string;
         
-        const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
           body: { 
             imageData: base64,
             folder: `brands/${brand.domain}/footer-reference`
@@ -845,8 +845,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       reader.onload = async (e) => {
         const base64 = e.target?.result as string;
         
-        // Upload to Cloudinary
-        const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+        // Upload to ImageKit
+        const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-imagekit', {
           body: { 
             imageData: base64,
             folder: `brands/${brand.domain}/footer-images`
@@ -905,10 +905,10 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
         throw new Error(data.error || 'Failed to fetch Figma design');
       }
 
-      toast.info('Uploading to Cloudinary...');
+      toast.info('Uploading image...');
       
-      // Step 2: Upload Figma S3 image to Cloudinary
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Step 2: Upload Figma S3 image to ImageKit
+      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { 
           imageUrl: data.exportedImageUrl,  // Pass URL instead of base64
           folder: `brands/${brand.domain}/footer-images`
@@ -916,8 +916,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
       });
 
       if (uploadError || !uploadData?.url) {
-        console.error('Cloudinary upload failed:', uploadError);
-        throw new Error('Failed to upload image to Cloudinary');
+        console.error('ImageKit upload failed:', uploadError);
+        throw new Error('Failed to upload image');
       }
 
       console.log('[FooterBuilderModal] Uploaded to Cloudinary:', uploadData.url);

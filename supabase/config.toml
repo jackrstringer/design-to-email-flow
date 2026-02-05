@@ -155,3 +155,6 @@ verify_jwt = false
 
 [functions.weekly-link-recrawl]
 verify_jwt = false
+
+[functions.upload-to-imagekit]
+verify_jwt = false

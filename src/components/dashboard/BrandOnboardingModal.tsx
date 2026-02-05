@@ -208,11 +208,10 @@ export function BrandOnboardingModal({
 
       const domain = extractDomain(websiteUrl);
       
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
         body: {
           imageData: base64,
           folder: `brands/${domain}/logos`,
-          publicId: `${variant}-logo`,
         },
       });
 
