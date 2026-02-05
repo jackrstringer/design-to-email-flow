@@ -158,3 +158,6 @@ verify_jwt = false
 
 [functions.upload-to-imagekit]
 verify_jwt = false
+
+[functions.get-segment-size]
+verify_jwt = false
