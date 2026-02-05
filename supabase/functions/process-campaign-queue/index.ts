@@ -216,15 +216,25 @@ async function autoSliceImage(
       return null;
     }
 
-    const footerStartY = result.footerStartY;
-    const footerStartPercent = footerStartY / result.imageHeight * 100;
+    let footerStartY = result.footerStartY;
+    let footerStartPercent = footerStartY / result.imageHeight * 100;
+    
+    // GUARDRAIL: If footer is detected in first 55% of image, it's likely a false positive
+    // Marketing content often has category headers (e.g., "FOR HER") that look like nav
+    // This prevents cutting off half the campaign when Claude mistakes a section header for footer
+    if (footerStartPercent < 55) {
+      console.log(`[process] WARNING: Footer detected at ${footerStartPercent.toFixed(1)}% - too early, likely false positive`);
+      console.log(`[process] Overriding footerStartY from ${footerStartY}px to ${result.imageHeight}px (full image)`);
+      footerStartY = result.imageHeight;
+      footerStartPercent = 100;
+    }
     
     // CRITICAL: Filter out slices that are at or below the footer boundary
     // Only keep slices that END before the footer starts (yBottom <= footerStartY)
     const allSlices = result.slices || [];
     const contentSlices = allSlices.filter((slice: any) => slice.yBottom <= footerStartY);
     
-    console.log(`[process] Filtered ${allSlices.length} -> ${contentSlices.length} slices (excluding footer at ${footerStartY}px)`);
+    console.log(`[process] Filtered ${allSlices.length} -> ${contentSlices.length} slices (footer at ${footerStartPercent.toFixed(1)}%, ${footerStartY}px)`);
     if (hasLinkIndex) {
       console.log(`[process] Link intelligence enabled: ${result.needsLinkSearch?.length || 0} slices need web search`);
     }
