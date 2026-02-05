@@ -123,8 +123,8 @@ export function CampaignCreator({
     console.log('[EARLY] Starting immediate SL/PT generation, session:', sessionKey);
 
     try {
-      // Upload to Cloudinary first (need a URL for the edge function)
-      const { data: uploadResult, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload to ImageKit first (need a URL for the edge function)
+      const { data: uploadResult, error: uploadError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { imageData: dataUrl }
       });
 
@@ -168,8 +168,8 @@ export function CampaignCreator({
     setStatus('Uploading original image...');
     
     try {
-      // Upload original image to Cloudinary
-      const { data: originalUpload, error: originalError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload original image to ImageKit
+      const { data: originalUpload, error: originalError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { imageData: uploadedImageDataUrl }
       });
 
@@ -186,7 +186,7 @@ export function CampaignCreator({
       const uploadedSlices = await Promise.all(
         slices.map(async (slice, index) => {
           setStatus(`Uploading slice ${index + 1} of ${slices.length}...`);
-          const { data: sliceUpload, error: sliceError } = await supabase.functions.invoke('upload-to-cloudinary', {
+          const { data: sliceUpload, error: sliceError } = await supabase.functions.invoke('upload-to-imagekit', {
             body: { imageData: slice.dataUrl }
           });
 

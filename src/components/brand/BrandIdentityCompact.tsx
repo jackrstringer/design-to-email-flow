@@ -37,11 +37,10 @@ export function BrandIdentityCompact({ brand, onBrandChange }: BrandIdentityComp
       });
       const base64 = await base64Promise;
 
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
         body: {
           imageData: base64,
           folder: `brands/${brand.domain}/logos`,
-          publicId: `${type}-logo`,
         },
       });
 

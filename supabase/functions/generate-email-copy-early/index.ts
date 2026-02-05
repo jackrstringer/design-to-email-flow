@@ -6,18 +6,37 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Transform Cloudinary URL to include resize parameters (server-side, zero memory)
+// Transform image URL to include resize parameters (supports both CDNs)
+function getResizedImageUrl(url: string, maxWidth: number, maxHeight: number): string {
+  if (!url) return url;
+  
+  // Handle ImageKit URLs
+  if (url.includes('ik.imagekit.io')) {
+    const match = url.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)/);
+    if (match) {
+      const [, base, path] = match;
+      return `${base}/tr:w-${maxWidth},h-${maxHeight},c-at_max/${path}`;
+    }
+    return url;
+  }
+  
+  // Handle Cloudinary URLs (legacy)
+  if (url.includes('cloudinary.com/')) {
+    const uploadIndex = url.indexOf('/upload/');
+    if (uploadIndex === -1) return url;
+    
+    const before = url.substring(0, uploadIndex + 8);
+    const after = url.substring(uploadIndex + 8);
+    
+    return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+  }
+  
+  return url;
+}
+
+// Legacy alias
 function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: number): string {
-  if (!url || !url.includes('cloudinary.com/')) return url;
-  
-  const uploadIndex = url.indexOf('/upload/');
-  if (uploadIndex === -1) return url;
-  
-  const before = url.substring(0, uploadIndex + 8); // includes '/upload/'
-  const after = url.substring(uploadIndex + 8);
-  
-  // c_limit preserves aspect ratio and only shrinks if larger than limits
-  return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+  return getResizedImageUrl(url, maxWidth, maxHeight);
 }
 
 // Retry with exponential backoff for rate limits

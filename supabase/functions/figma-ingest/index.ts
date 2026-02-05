@@ -115,8 +115,8 @@ serve(async (req) => {
 
         console.log('[figma-ingest] Uploading frame:', frame.name, 'Figma URL:', frame.figmaUrl || 'none');
 
-        // Upload image to Cloudinary
-        const uploadUrl = `${supabaseUrl}/functions/v1/upload-to-cloudinary`;
+        // Upload image to ImageKit (25MB limit vs Cloudinary's 10MB)
+        const uploadUrl = `${supabaseUrl}/functions/v1/upload-to-imagekit`;
         const uploadResponse = await fetch(uploadUrl, {
           method: 'POST',
           headers: {
@@ -131,7 +131,7 @@ serve(async (req) => {
 
         if (!uploadResponse.ok) {
           const errText = await uploadResponse.text();
-          console.error('[figma-ingest] Cloudinary upload failed:', errText);
+          console.error('[figma-ingest] ImageKit upload failed:', errText);
           errors.push({ frame: frame.name, error: 'Failed to upload image' });
           continue;
         }

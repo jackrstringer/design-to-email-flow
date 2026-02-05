@@ -135,32 +135,32 @@ async function uploadSliceToCloudinary(
   width: number,
   folder: string
 ): Promise<string> {
-  // Use Cloudinary URL transformation for cropping
-  // Format: /c_crop,h_HEIGHT,w_WIDTH,y_Y/
-  const cloudName = Deno.env.get('CLOUDINARY_CLOUD_NAME');
+  // Use URL transformation for cropping
+  const height = Math.round(yBottom - yTop);
   
-  if (!cloudName) {
-    throw new Error('Cloudinary not configured');
+  // Handle ImageKit URLs
+  if (imageUrl.includes('ik.imagekit.io')) {
+    const match = imageUrl.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)/);
+    if (match) {
+      const [, base, path] = match;
+      return `${base}/tr:x-0,y-${Math.round(yTop)},w-${Math.round(width)},h-${height},cm-extract/${path}`;
+    }
+    console.warn('Could not parse ImageKit URL for cropping:', imageUrl);
+    return imageUrl;
   }
   
-  // If the image is already on Cloudinary, add transformation
+  // Handle Cloudinary URLs
   if (imageUrl.includes('cloudinary.com')) {
-    // Extract the base URL and add crop transformation
-    const height = Math.round(yBottom - yTop);
     const cropTransform = `c_crop,h_${height},w_${Math.round(width)},y_${Math.round(yTop)},x_0`;
-    
-    // Insert transformation after /upload/
     const transformedUrl = imageUrl.replace(
       /\/upload\//,
       `/upload/${cropTransform}/`
     );
-    
     return transformedUrl;
   }
   
-  // If not on Cloudinary, we need to upload the cropped version
-  // For now, return the original URL with a note that cropping is needed
-  console.warn('Image not on Cloudinary, cropping not applied:', imageUrl);
+  // If not on either CDN, return original URL
+  console.warn('Image not on Cloudinary or ImageKit, cropping not applied:', imageUrl);
   return imageUrl;
 }
 

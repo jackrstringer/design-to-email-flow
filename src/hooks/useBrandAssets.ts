@@ -119,7 +119,7 @@ export function useBrandAssets() {
       
       const base64 = await base64Promise;
 
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { 
           imageData: base64,
           folder: 'brand-assets'

@@ -750,12 +750,11 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       });
       const base64 = await base64Promise;
 
-      // Upload to Cloudinary
-      const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload to ImageKit
+      const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
         body: {
           imageData: base64,
           folder: `brands/${brand.domain}/logos`,
-          publicId: `${type}-logo`,
         },
       });
 

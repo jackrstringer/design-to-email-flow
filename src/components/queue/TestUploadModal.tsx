@@ -67,8 +67,8 @@ export function TestUploadModal({ open, onClose, onSuccess }: TestUploadModalPro
       });
       const base64Data = await base64Promise;
 
-      // Upload to Cloudinary
-      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload to ImageKit
+      const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: {
           imageData: base64Data,
           folder: 'campaign-queue'

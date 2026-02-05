@@ -10,18 +10,41 @@ interface ProcessRequest {
   campaignQueueId: string;
 }
 
-// Transform Cloudinary URL to include resize parameters (server-side, zero memory)
+// Transform image URL to include resize parameters (server-side, zero memory)
+// Supports both Cloudinary and ImageKit URLs
+function getResizedImageUrl(url: string, maxWidth: number, maxHeight: number): string {
+  if (!url) return url;
+  
+  // Handle ImageKit URLs
+  if (url.includes('ik.imagekit.io')) {
+    // ImageKit format: https://ik.imagekit.io/{id}/path/to/file.png
+    // Transform: https://ik.imagekit.io/{id}/tr:w-600,h-7900,c-at_max/path/to/file.png
+    const match = url.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)/);
+    if (match) {
+      const [, base, path] = match;
+      return `${base}/tr:w-${maxWidth},h-${maxHeight},c-at_max/${path}`;
+    }
+    return url;
+  }
+  
+  // Handle Cloudinary URLs (legacy support)
+  if (url.includes('cloudinary.com/')) {
+    const uploadIndex = url.indexOf('/upload/');
+    if (uploadIndex === -1) return url;
+    
+    const before = url.substring(0, uploadIndex + 8); // includes '/upload/'
+    const after = url.substring(uploadIndex + 8);
+    
+    // c_limit preserves aspect ratio and only shrinks if larger than limits
+    return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+  }
+  
+  return url;
+}
+
+// Legacy alias for backward compatibility
 function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: number): string {
-  if (!url || !url.includes('cloudinary.com/')) return url;
-  
-  const uploadIndex = url.indexOf('/upload/');
-  if (uploadIndex === -1) return url;
-  
-  const before = url.substring(0, uploadIndex + 8); // includes '/upload/'
-  const after = url.substring(uploadIndex + 8);
-  
-  // c_limit preserves aspect ratio and only shrinks if larger than limits
-  return `${before}c_limit,w_${maxWidth},h_${maxHeight}/${after}`;
+  return getResizedImageUrl(url, maxWidth, maxHeight);
 }
 
 // Helper to update campaign queue status
@@ -256,8 +279,9 @@ async function autoSliceImage(
   }
 }
 
-// Step 3.5: Generate Cloudinary crop URLs (instant - no upload/decode needed)
+// Step 3.5: Generate crop URLs (instant - no upload/decode needed)
 // OPTIMIZATION: Replaced ImageScript cropping with server-side URL transformations
+// Supports both Cloudinary and ImageKit URLs
 function generateSliceCropUrls(
   slices: any[],
   originalImageUrl: string,
@@ -266,37 +290,75 @@ function generateSliceCropUrls(
   analyzedWidth: number,
   analyzedHeight: number
 ): any[] {
-  console.log('[process] Step 3.5: Generating Cloudinary crop URLs (instant)...');
+  console.log('[process] Step 3.5: Generating crop URLs (instant)...');
   console.log(`[process] Original dimensions: ${actualWidth}x${actualHeight}, analyzed: ${analyzedWidth}x${analyzedHeight}`);
 
-  // Extract Cloudinary base URL and public ID from original URL
-  // e.g., "https://res.cloudinary.com/cloud/image/upload/v123/folder/id.png"
-  const match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)\/[^/]+\/(.+)\.(png|jpg|jpeg|webp)/i);
-  if (!match) {
-    console.error('[process] Could not parse Cloudinary URL:', originalImageUrl);
-    // Fallback: return slices without imageUrl
-    return slices.map((slice, i) => ({
-      ...slice,
-      imageUrl: null,
-      dataUrl: null,
-      width: actualWidth,
-      height: slice.yBottom - slice.yTop,
-      startPercent: (slice.yTop / analyzedHeight) * 100,
-      endPercent: (slice.yBottom / analyzedHeight) * 100,
-      type: slice.hasCTA ? 'cta' : 'image',
-      column: 0,
-      totalColumns: 1,
-      rowIndex: i,
-    }));
-  }
+  // Check if it's an ImageKit URL
+  const isImageKit = originalImageUrl.includes('ik.imagekit.io');
   
-  const [, baseUrl, publicId] = match;
+  let baseUrl: string;
+  let publicId: string;
+  
+  if (isImageKit) {
+    // ImageKit format: https://ik.imagekit.io/{id}/path/to/file.png
+    const ikMatch = originalImageUrl.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)\.(png|jpg|jpeg|webp)/i);
+    if (!ikMatch) {
+      console.error('[process] Could not parse ImageKit URL:', originalImageUrl);
+      return slices.map((slice, i) => ({
+        ...slice,
+        imageUrl: null,
+        dataUrl: null,
+        width: actualWidth,
+        height: slice.yBottom - slice.yTop,
+        startPercent: (slice.yTop / analyzedHeight) * 100,
+        endPercent: (slice.yBottom / analyzedHeight) * 100,
+        type: slice.hasCTA ? 'cta' : 'image',
+        column: 0,
+        totalColumns: 1,
+        rowIndex: i,
+      }));
+    }
+    baseUrl = ikMatch[1];
+    publicId = ikMatch[2];
+  } else {
+    // Cloudinary format: https://res.cloudinary.com/cloud/image/upload/v123/folder/id.png
+    const clMatch = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)\/[^/]+\/(.+)\.(png|jpg|jpeg|webp)/i);
+    if (!clMatch) {
+      console.error('[process] Could not parse Cloudinary URL:', originalImageUrl);
+      return slices.map((slice, i) => ({
+        ...slice,
+        imageUrl: null,
+        dataUrl: null,
+        width: actualWidth,
+        height: slice.yBottom - slice.yTop,
+        startPercent: (slice.yTop / analyzedHeight) * 100,
+        endPercent: (slice.yBottom / analyzedHeight) * 100,
+        type: slice.hasCTA ? 'cta' : 'image',
+        column: 0,
+        totalColumns: 1,
+        rowIndex: i,
+      }));
+    }
+    baseUrl = clMatch[1];
+    publicId = clMatch[2];
+  }
   
   // Calculate scale factor from analyzed dimensions to actual dimensions
   const scaleX = actualWidth / analyzedWidth;
   const scaleY = actualHeight / analyzedHeight;
   
   console.log(`[process] Scale factors: X=${scaleX.toFixed(3)}, Y=${scaleY.toFixed(3)}`);
+  
+  // Helper to generate crop URL for either CDN
+  function generateCropUrl(xLeft: number, yTop: number, width: number, height: number): string {
+    if (isImageKit) {
+      // ImageKit crop: tr:x-X,y-Y,w-W,h-H,cm-extract,q-90,f-jpg
+      return `${baseUrl}/tr:x-${xLeft},y-${yTop},w-${width},h-${height},cm-extract,q-90,f-jpg/${publicId}`;
+    } else {
+      // Cloudinary crop: c_crop,x_X,y_Y,w_W,h_H,q_90,f_jpg
+      return `${baseUrl}/c_crop,x_${xLeft},y_${yTop},w_${width},h_${height},q_90,f_jpg/${publicId}`;
+    }
+  }
   
   let globalRowIndex = 0;
   const results: any[] = [];
@@ -328,8 +390,8 @@ function generateSliceCropUrls(
         const xRight = xBoundaries[col + 1];
         const colWidth = xRight - xLeft;
         
-        // Cloudinary crop transformation URL
-        const cropUrl = `${baseUrl}/c_crop,x_${xLeft},y_${yTop},w_${colWidth},h_${sliceHeight},q_90,f_jpg/${publicId}`;
+        // Generate crop URL for either CDN
+        const cropUrl = generateCropUrl(xLeft, yTop, colWidth, sliceHeight);
         columnUrls.push(cropUrl);
         
         console.log(`[process] Column ${col + 1}/${columns}: ${colWidth}x${sliceHeight} at (${xLeft}, ${yTop})`);
@@ -354,7 +416,7 @@ function generateSliceCropUrls(
       }
     } else {
       // Full-width slice
-      const cropUrl = `${baseUrl}/c_crop,x_0,y_${yTop},w_${actualWidth},h_${sliceHeight},q_90,f_jpg/${publicId}`;
+      const cropUrl = generateCropUrl(0, yTop, actualWidth, sliceHeight);
       
       console.log(`[process] Slice ${i + 1}: Full-width ${actualWidth}x${sliceHeight} at (0, ${yTop})`);
       

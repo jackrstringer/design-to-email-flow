@@ -163,8 +163,8 @@ export default function SimpleUpload() {
     setStatus('Uploading original image...');
 
     try {
-      // Upload original image to Cloudinary FIRST for AI reference
-      const { data: originalUpload, error: originalError } = await supabase.functions.invoke('upload-to-cloudinary', {
+      // Upload original image to ImageKit FIRST for AI reference
+      const { data: originalUpload, error: originalError } = await supabase.functions.invoke('upload-to-imagekit', {
         body: { imageData: uploadedImage.dataUrl, folder: 'klaviyo-originals' }
       });
 
@@ -179,13 +179,13 @@ export default function SimpleUpload() {
       const slices = await sliceImage(uploadedImage.dataUrl, slicePositions, columnConfigs);
       console.log(`Created ${slices.length} slices`);
 
-      // Upload each slice to Cloudinary
-      setStatus(`Uploading ${slices.length} slices to Cloudinary...`);
+      // Upload each slice to ImageKit
+      setStatus(`Uploading ${slices.length} slices...`);
       const uploadedSlices: { imageUrl: string; slice: ImageSlice }[] = [];
 
       for (let i = 0; i < slices.length; i++) {
         setStatus(`Uploading slice ${i + 1} of ${slices.length}...`);
-        const { data, error } = await supabase.functions.invoke('upload-to-cloudinary', {
+        const { data, error } = await supabase.functions.invoke('upload-to-imagekit', {
           body: { imageData: slices[i].dataUrl, folder: 'klaviyo-slices' }
         });
 
