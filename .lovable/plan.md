@@ -1,163 +1,148 @@
 
-## What’s actually going on (with concrete evidence)
+# Fix: Claude Incorrectly Detecting Campaign Content as Footer
 
-### 1) Those “needs_search” pills you’re seeing are not a status label — they are literally being saved as the link URL
-In the latest processed campaign row, slices are being stored like:
+## Problem Summary
 
-- `link: "needs_search"`
-- `linkSource: "needs_search"`
+Claude is detecting footer ~45% of the way through the email, cutting off more than half of the marketing content. The "FOR HER" section header (with products below it) is being misidentified as footer content.
 
-That’s why the UI renders “needs_search” as if it were a URL.
+**Evidence from logs:**
+- Original image: `601x6317` pixels
+- Analyzed image: `381x4000` pixels
+- Footer detected at: `1796px` in analyzed coordinates = **44.9%**
+- Only 9 slices stored, ending with "for_her_header"
+- Entire "FOR HER" product section + any actual footer content is lost
 
-This is happening because `auto-slice-v2` sometimes returns `"link": "needs_search"` (string) instead of `null`, and our current normalization logic accepts any string as a “link”.
+## Root Cause
 
-### 2) Even worse: the pipeline is **not** running web search for “needs_search” slices right now
-`process-campaign-queue` Step 4 only resolves “imperfect” links (e.g., product matched to collection, year mismatch) and ignores the core case:
+The footer detection prompt is too aggressive. It lists "section headers" like "For Him" / "For Her" as potential navigation, and Claude is treating "FOR HER" as a navigation element (footer start).
 
-- “Clickable slice, but no real URL (needs_search)”
+From the prompt:
+```
+### Footer Starts at the FIRST of These:
+...
+4. **Horizontal nav links** - "Shop | About | Contact"
+5. **Certification badges row** - B Corp, Vegan...
+```
 
-So web search never fires, and the slices remain stuck with placeholder links.
+Claude may be interpreting "FOR HER" as navigation since it appears after a batch of products and is followed by another product grid.
 
-### 3) Multi-column product rows need per-column resolution, but our current descriptions are row-level
-For a 2-column product row, both column slices share the same altText/description (often containing both products).
-Even if we did web search, we’d likely resolve one product URL and accidentally apply it to both columns unless we extract per-column product text.
+## Solution
 
-## Desired behavior (what we will make true)
+### 1. Strengthen "Marketing Content" Detection in Prompt
 
-1) If a slice link is missing/placeholder/invalid, the pipeline must immediately resolve it via web search.
-2) “needs_search” must never be stored in `link` (it should be `null`), and it must not leak into the UI.
-3) Multi-column blocks must resolve **per-column** product URLs (column 1 ≠ column 2).
-4) Injecting “more links” into Claude should actually matter (right now `auto-slice-v2` only formats the first 100).
+Update `auto-slice-v2/index.ts` to add explicit rules:
 
----
+**Add "NOT footer" clarifications:**
+```
+### THESE ARE NOT FOOTER (Marketing Content):
+- Section dividers like "FOR HIM", "FOR HER", "SHOP MEN", "SHOP WOMEN"
+- Any section followed by products with prices
+- Any section followed by "SHOP NOW" buttons
+- Category headers within the email body
+```
 
-## Implementation changes (exact files + what will change)
+**Add a sanity check rule:**
+```
+### FOOTER DETECTION SANITY CHECK - CRITICAL:
+- Footer should typically be in the LAST 30% of the image
+- If you identify footer before 60% of the image height, RECONSIDER
+- Look for actual footer signals: unsubscribe, address, social icons
+- "FOR HIM" / "FOR HER" followed by product grids = NOT footer
+```
 
-### A) Stop saving placeholder strings as links (sanitize link values)
-**File:** `supabase/functions/auto-slice-v2/index.ts`
+### 2. Add Server-Side Footer Position Guardrail
 
-**Change:** In the slice normalization mapping (where we currently do `link: s.link ?? null`), add strict URL validation:
-- If `link` is not an `http://` or `https://` URL, force it to `null`.
-- If `linkSource === 'needs_search'`, force `link = null` no matter what.
-- Treat strings like `"needs_search"`, `"none"`, `""`, `"null"` as `null`.
+In `process-campaign-queue/index.ts`, add a validation after receiving `auto-slice-v2` results:
 
-**Outcome:** UI will no longer show “needs_search” as a URL.
+```typescript
+// If footer is detected in first 60% of image, it's likely wrong
+const footerPercent = (footerStartY / analyzedHeight) * 100;
+if (footerPercent < 60) {
+  console.log(`[process] WARNING: Footer detected at ${footerPercent.toFixed(1)}% - seems too early`);
+  // Option A: Override to imageHeight (no footer filtering)
+  // Option B: Log warning but allow it
+  // For now, override to imageHeight to prevent content loss
+  footerStartY = result.imageHeight;
+  console.log(`[process] Overriding footerStartY to imageHeight (${footerStartY}px) to preserve content`);
+}
+```
 
----
+### 3. Better Section Context in Prompt
 
-### B) Always invoke web search for slices that need it (this is the main functional fix)
-**File:** `supabase/functions/process-campaign-queue/index.ts`
+Add more explicit context about what marketing emails look like:
 
-**Where:** Step 4 (currently “Validate and resolve links (deterministic guardrails)”)
+```
+## EMAIL STRUCTURE PATTERNS
 
-**Change:** Replace the current “resolve only imperfect links” approach with a unified resolver list:
+Typical marketing email structure:
+1. Hero section (0-15%) - Logo, main image, headline
+2. Product sections (15-70%) - Products with prices and "Shop Now" buttons
+   - Often organized by category: "FOR HIM" / "FOR HER", "NEW ARRIVALS" / "SALE"
+3. Footer (70-100%) - Social icons, navigation, legal text, unsubscribe
 
-Build `slicesToResolve` from `currentSlices` using rules:
-- `slice.isClickable === true`
-- AND (any of):
-  - `slice.link` is `null`/empty
-  - `slice.link` is not a valid URL
-  - `slice.linkSource === 'needs_search'`
-  - `slice.link === 'needs_search'` (legacy stored values)
-  - (optional but useful) looks-like-product AND link is a collection URL
+Category headers like "FOR HIM" or "FOR HER" are MARKETING CONTENT dividers,
+NOT footer navigation. If you see products with prices after a header, it's NOT footer.
+```
 
-Then call `resolve-slice-links` for **all** of those slices.
+## Files to Modify
 
-**Important detail:** This happens **after** `generateSliceCropUrls`, so the indices match the final per-column slices (solves the pre-split vs post-split indexing mismatch).
+| File | Change |
+|------|--------|
+| `supabase/functions/auto-slice-v2/index.ts` | Strengthen footer detection rules, add "NOT footer" examples |
+| `supabase/functions/process-campaign-queue/index.ts` | Add 60% guardrail for footer position |
 
-**Apply results:**
-- If resolved, set:
-  - `slice.link = resolved.url`
-  - `slice.linkSource = 'resolved_web_search'`
-  - `slice.linkVerified = true`
-  - clear any placeholder
-- If not resolved:
-  - set `slice.link = defaultDestinationUrl` (or homepage)
-  - set `slice.linkSource = 'default_fallback'`
-  - set `slice.linkVerified = false`
-  - optionally set `slice.linkWarning = 'Could not resolve product link; using fallback.'`
+## Technical Details
 
-**Outcome:** “If it can’t find it right away, it uses web search” becomes true, automatically.
+### Change 1: Update Footer Detection Prompt (auto-slice-v2)
 
----
+Add to the "FOOTER DETECTION - CRITICAL" section:
 
-### C) Make web search accurate for multi-column rows by extracting per-column product names via OCR
-**File:** `supabase/functions/resolve-slice-links/index.ts`
+```markdown
+### These are NOT footer (Keep in marketing content):
 
-Right now it uses only `slice.description`, which is often not column-specific.
+- **Category dividers**: "FOR HIM", "FOR HER", "SHOP MEN", "SHOP WOMEN", "NEW ARRIVALS", "SALE"
+- **Any section followed by products with prices** ($XX, $XX.XX)
+- **Any section followed by "SHOP NOW" or similar CTA buttons**
+- **Lifestyle imagery sections** with promotional content
 
-**Change:** If `slice.imageUrl` is provided:
-1) Call Google Vision OCR using `image.source.imageUri = slice.imageUrl` (no downloads, fast).
-2) Extract likely product name text:
-   - filter out noise: “SHOP NOW”, prices, sizes, brand-only text
-   - keep the best 1–2 lines as the query
-3) Use that OCR-derived query for Firecrawl Search:
-   - `query: "${ocrQuery} site:${domain}"`
+### Footer Position Sanity Check:
 
-Fallback order:
-- OCR query if available and non-trivial
-- else fall back to `slice.description` / `altText`
+- Footer is typically in the **last 25-35%** of email height
+- If you're identifying footer before 60% of the image, STOP and reconsider
+- Look for **definitive footer signals**:
+  - Unsubscribe / Manage Preferences text
+  - Physical address
+  - Social media icons (Instagram, Facebook, TikTok)
+  - Dense legal/compliance text
+  - Brand logo repeated at bottom
+```
 
-Also add URL cleanup:
-- Strip tracking params like `?srsltid=...` from returned URLs for cleaner final links.
+### Change 2: Add Server-Side Guardrail (process-campaign-queue)
 
-**Outcome:** Column 1 gets Column 1’s product URL; Column 2 gets Column 2’s product URL.
+After line ~219 where we get `footerStartY`:
 
----
+```typescript
+const footerStartY = result.footerStartY;
+const footerStartPercent = footerStartY / result.imageHeight * 100;
 
-### D) “Inject as many links as possible” — make it real in the prompt
-**File:** `supabase/functions/auto-slice-v2/index.ts`
+// GUARDRAIL: If footer is detected in first 55% of image, it's likely wrong
+// Marketing content often has category headers that look like nav
+if (footerStartPercent < 55) {
+  console.log(`[process] WARNING: Footer detected at ${footerStartPercent.toFixed(1)}% - too early, likely false positive`);
+  console.log(`[process] Overriding footerStartY from ${footerStartY} to ${result.imageHeight} (full image)`);
+  footerStartY = result.imageHeight;
+}
+```
 
-Right now the prompt formatting does:
-- `linkIndex.slice(0, 100)`
+## Expected Outcome
 
-So passing 1000 links doesn’t help beyond the first 100.
+After this fix:
+1. Claude will recognize "FOR HER" as a category divider, not footer navigation
+2. Even if Claude makes a mistake, the 55% guardrail will prevent content loss
+3. The full O'Neill campaign (including FOR HER products) will be processed
 
-**Change:**
-- Increase the formatted list to something like 400–800 entries, but token-efficient:
-  - show only pathname (`/products/...`) instead of full URL where possible
-  - truncate titles to ~60 chars
-- Keep products first, then collections/pages (already done in `process-campaign-queue`)
+## Verification
 
-**Outcome:** Claude actually sees “as many links as possible” within practical context limits, improving index matches and reducing how often we need web search.
-
----
-
-## Verification / Acceptance tests (end-to-end)
-
-1) Reprocess the same O’Neill campaign:
-   - The “needs_search” pills should disappear and become real `/products/...` URLs.
-   - Each 2-column row should have different product links per column.
-2) Confirm fallback behavior:
-   - If a product truly cannot be found, the slice should get the default destination (homepage/brand default), plus a warning.
-3) Confirm performance:
-   - Pipeline should still complete in a normal time window.
-   - If there are many unresolved slices, it should progress through “resolving_links” and finish, not hang at 0%.
-4) Spot-check URL quality:
-   - Ensure we’re not saving placeholder strings.
-   - Ensure tracking query params are removed.
-
----
-
-## Files that will be changed (summary)
-
-- `supabase/functions/process-campaign-queue/index.ts`
-  - Resolve *all* `needs_search`/missing/invalid links via `resolve-slice-links`
-  - Sanitize placeholder link strings
-  - Preserve per-column indices after splitting
-
-- `supabase/functions/resolve-slice-links/index.ts`
-  - Add per-slice OCR via Google Vision using `imageUri`
-  - Use OCR text to drive Firecrawl Search queries
-  - Strip tracking params from final URLs
-
-- `supabase/functions/auto-slice-v2/index.ts`
-  - Sanitize links (only valid URLs; force null when `needs_search`)
-  - Expand link list formatting beyond 100 entries (token-efficient)
-
----
-
-## Why this fixes what you’re seeing in the screenshot
-- The UI isn’t “broken”; it’s rendering exactly what we stored: `link: "needs_search"`.
-- We’ll stop storing placeholders as links, and we’ll actually run web search automatically any time a slice needs it.
-- We’ll use OCR on the per-column crops so product grids resolve correctly instead of guessing one link for the whole row.
+1. Reprocess the O'Neill campaign
+2. Confirm all product sections (FOR HIM + FOR HER) are included
+3. Check that actual footer (social icons, legal text) is still correctly excluded
