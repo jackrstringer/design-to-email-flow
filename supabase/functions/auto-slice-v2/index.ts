@@ -1182,12 +1182,37 @@ When placing slice boundaries near text blocks, you MUST maintain visual breathi
 
 ## FOOTER DETECTION - CRITICAL
 
-The footer is the "utility section" at the bottom of the email. It contains navigation, legal info, and social links - NOT marketing content.
+The footer is the "utility section" at the BOTTOM of the email. It contains navigation, legal info, and social links - NOT marketing content.
+
+### FOOTER POSITION SANITY CHECK - READ THIS FIRST:
+
+**Footer is typically in the LAST 25-35% of email height.** If you're identifying footer before 60% of the image height, STOP and reconsider.
+
+Marketing emails follow this structure:
+1. **Header (0-15%)** - Logo, maybe navigation
+2. **Marketing content (15-70%)** - Hero, products, promotions, category sections
+3. **Footer (70-100%)** - Social icons, navigation, legal text, unsubscribe
+
+If you think footer starts at 40% or 50% of the image, you're almost certainly wrong. Look again for the ACTUAL footer signals.
+
+### These are NOT Footer (Keep in Marketing Content):
+
+- **Category dividers**: "FOR HIM", "FOR HER", "SHOP MEN", "SHOP WOMEN", "NEW ARRIVALS", "SALE", "BEST SELLERS"
+- **Section headers within marketing content** - Any header followed by products with prices
+- **Any section followed by "SHOP NOW" or similar CTA buttons**
+- **Any section followed by product images with prices** ($XX, $XX.XX)
+- **Lifestyle imagery sections** with promotional content
+- **Product grids** organized by category
+- **Promotional banners** with percentage discounts
+
+**CRITICAL TEST**: If you see a section header like "FOR HER" or "NEW ARRIVALS" and there are products with prices or SHOP buttons BELOW it, that section is MARKETING CONTENT, not footer. Keep scrolling down to find the real footer.
 
 ### Footer Starts at the FIRST of These (whichever appears first):
 
-1. **Repeated brand logo** - The logo appearing again near the bottom
-2. **Social media icons row** - Instagram, Facebook, TikTok, YouTube, etc.
+**Look for these DEFINITIVE footer signals:**
+
+1. **Repeated brand logo** - The logo appearing again near the bottom (not the header logo)
+2. **Social media icons row** - Instagram, Facebook, TikTok, YouTube, etc. icons
 3. **Navigation link stack** - Vertical list like:
    - Shop
    - About Us  
@@ -1196,7 +1221,9 @@ The footer is the "utility section" at the bottom of the email. It contains navi
 4. **Horizontal nav links** - "Shop | About | Contact" or "Terms | Privacy | Unsubscribe"
 5. **Certification badges row** - B Corp, Vegan, Cruelty Free, Climate Neutral, etc.
 6. **"Follow us" or "Connect with us"** text
-7. **Dense utility text block** - Terms, copyright, address all grouped together
+7. **Unsubscribe / Manage Preferences** text
+8. **Physical mailing address** (street, city, state, zip)
+9. **Dense utility text block** - Terms, copyright, address all grouped together
 
 ### Footer Detection Examples:
 
@@ -1211,11 +1238,14 @@ The footer is the "utility section" at the bottom of the email. It contains navi
 
 ### Footer is NOT:
 
+- **Category headers like "FOR HIM" or "FOR HER"** - These are marketing section dividers!
+- **Section headers followed by products** - This is marketing content!
+- **Any section followed by "SHOP NOW" buttons** - This is marketing content!
 - Just the "Unsubscribe" link at the very bottom
 - Just the copyright text
 - Just the legal disclaimer
 
-The footer is the entire utility section. Look for where "marketing content" ends and "utility/navigation content" begins.
+The footer is the entire utility section. Look for where "marketing content" ends and "utility/navigation content" begins. The footer should be in the LAST 30% of the email, not the middle.
 
 ### FOOTER BOUNDARY POSITIONING - CRITICAL
 
