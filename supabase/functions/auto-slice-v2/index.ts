@@ -1083,6 +1083,42 @@ These are 3 nav items at nearly the same Y level → horizontalSplit: { columns:
 
 **NEVER output a navigation row as a single-column slice. Each nav link needs its own clickable column.**
 
+### RULE 0.5b: What is NOT Navigation (Do NOT Horizontal Split)
+
+**CRITICAL: These are SEPARATE VERTICAL SLICES, not horizontal columns:**
+
+- **Category SECTIONS** with images/products below them (e.g., "JACKETS" with jacket photos below)
+- **Section headers** like "SHOP MEN" / "SHOP WOMEN" when each has its own content below
+- **Stacked category blocks** like "JACKETS" then "SNOWPANTS" then "FLEECE"
+- **Any section where clicking leads to a DIFFERENT page than adjacent sections**
+- **Full-width hero images** - NEVER split horizontally, even with negative space on one side
+
+**Detection - When NOT to Horizontal Split:**
+- If each text block has DIFFERENT images or content directly below it → SEPARATE SLICES
+- If text blocks have equal height content extending far below them → SEPARATE SLICES
+- Only use horizontal split when items are truly in ONE ROW with NO distinct content below each
+
+**Example - WRONG (3-column split):**
+[JACKETS]  [SNOWPANTS]  [FLEECE]
+   ↓            ↓           ↓
+[photos]    [photos]    [photos]
+
+These are 3 separate category sections, not 3 columns of one row!
+
+**Example - CORRECT (3 separate vertical slices):**
+- Slice 1: JACKETS header + JACKETS photos
+- Slice 2: SNOWPANTS header + SNOWPANTS photos  
+- Slice 3: FLEECE header + FLEECE photos
+
+**Hero Images Are NEVER Split Horizontally:**
+A hero section is ONE slice:
+- Full-width image with text overlay
+- Even if there's negative space on one side
+- Even if the skier/model is only on part of the image
+
+WRONG: Splitting "GO BIG" hero into 2 columns
+CORRECT: One slice containing the entire hero
+
 ### RULE 0.6: What Counts as a "CTA" (Clickable Element)
 
 A CTA is ANY element the user would expect to click:

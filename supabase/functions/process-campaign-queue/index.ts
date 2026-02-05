@@ -64,21 +64,21 @@ async function updateQueueItem(
 }
 
 // Step 1: Fetch image from URL or use existing uploaded image
-// Uses Cloudinary URL transformation to resize large images BEFORE fetching
+// Uses CDN URL transformation to resize large images BEFORE fetching
 async function fetchAndUploadImage(
   supabase: any,
   item: any
-): Promise<{ imageUrl: string; imageBase64: string } | null> {
+): Promise<{ imageUrl: string; imageBase64: string; mimeType: string } | null> {
   console.log('[process] Step 1: Starting image fetch...');
   const step1Start = Date.now();
 
   // If image_url already exists (from figma plugin or upload), just fetch it as base64
   if (item.image_url) {
     try {
-      // CRITICAL: Resize via Cloudinary URL transformation BEFORE fetching
-      // This prevents memory issues with large images (e.g., 1200x8000)
-      // Max 600px wide (email standard), max 4000px tall (leaves room for processing)
-      const resizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 4000);
+      // CRITICAL: Resize via CDN URL transformation BEFORE fetching
+      // This prevents memory issues with large images (e.g., 1200x9000)
+      // Max 600px wide (email standard), max 7900px tall (just under Claude's 8000px limit)
+      const resizedUrl = getResizedCloudinaryUrl(item.image_url, 600, 7900);
       
       // Log exact URLs for debugging slow fetches
       console.log('[process] Fetching URL:', resizedUrl);
@@ -93,6 +93,11 @@ async function fetchAndUploadImage(
       });
       
       if (!response.ok) throw new Error('Failed to fetch image');
+      
+      // CRITICAL: Detect actual MIME type from response headers
+      // ImageKit may convert PNG to JPEG when resizing, causing Claude 400 errors if we assume PNG
+      const contentType = response.headers.get('content-type') || 'image/png';
+      console.log('[process] Image content-type:', contentType);
       
       const bufferStart = Date.now();
       const buffer = await response.arrayBuffer();
@@ -117,7 +122,7 @@ async function fetchAndUploadImage(
       });
       
       console.log('[process] Step 1 TOTAL:', Date.now() - step1Start, 'ms');
-      return { imageUrl: item.image_url, imageBase64: base64 };
+      return { imageUrl: item.image_url, imageBase64: base64, mimeType: contentType };
     } catch (err) {
       console.error('[process] Failed to fetch image from URL:', err);
       return null;
@@ -198,6 +203,7 @@ interface AutoSliceResult {
 
 async function autoSliceImage(
   imageBase64: string,
+  mimeType: string,  // NEW: Dynamic MIME type detection
   imageWidth: number,
   imageHeight: number,
   // Link intelligence params (optional)
@@ -206,7 +212,7 @@ async function autoSliceImage(
   brandPreferenceRules?: BrandPreferenceRule[]
 ): Promise<AutoSliceResult | null> {
   const hasLinkIndex = linkIndex && linkIndex.length > 0;
-  console.log(`[process] Step 3: Auto-slicing image... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
+  console.log(`[process] Step 3: Auto-slicing image (${mimeType})... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
 
   try {
     const sliceUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/auto-slice-v2';
@@ -217,7 +223,7 @@ async function autoSliceImage(
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
       },
       body: JSON.stringify({
-        imageDataUrl: `data:image/png;base64,${imageBase64}`,
+        imageDataUrl: `data:${mimeType};base64,${imageBase64}`,
         imageWidth,
         imageHeight,
         // Pass link intelligence if available
@@ -941,9 +947,10 @@ serve(async (req) => {
       }
     }
 
-    console.log('[process] Running auto-slice (brand:', brandId || 'none', ', links:', linkIndex.length, ')...');
+    console.log('[process] Running auto-slice (brand:', brandId || 'none', ', links:', linkIndex.length, ', mimeType:', imageResult.mimeType, ')...');
     const sliceResult = await autoSliceImage(
       imageResult.imageBase64,
+      imageResult.mimeType,  // NEW: Pass detected MIME type
       item.image_width || 600,
       item.image_height || 2000,
       linkIndex.length > 0 ? linkIndex : undefined,
@@ -1243,10 +1250,11 @@ serve(async (req) => {
 
     console.log('[process] Step 5: Polling for early copy results (session:', earlySessionKey, ')...');
     
-    // Poll for early generation results (max 20 seconds, 2s intervals)
-    // OPTIMIZATION: Increased from 12s because early copy now uses passed base64 and should complete in ~5-8s
+    // Poll for early generation results (max 30 seconds, 2s intervals)
+    // OPTIMIZATION: Increased from 20s to 30s because early copy usually completes in ~8-15s
+    // but sometimes takes longer due to network latency or API queues
     let copyResult: { subjectLines: string[]; previewTexts: string[] } | null = null;
-    const maxWaitMs = 20000;
+    const maxWaitMs = 30000;
     const pollIntervalMs = 2000;
     const pollStartTime = Date.now();
     
