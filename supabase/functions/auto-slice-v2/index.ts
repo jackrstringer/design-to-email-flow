@@ -1623,7 +1623,32 @@ ${rulesFormatted}
 - For product grids, each column may need a different link (use the first/main product link for the whole slice if horizontal split)
 - Header logos typically link to homepage (use default destination)
 - When multiple products are visible, choose the most prominent/featured one
-- If you see a specific product but only have collection URLs, set linkSource: 'needs_search'`;
+- If you see a specific product but only have collection URLs, set linkSource: 'needs_search'
+
+### CATEGORY SECTION LINK MATCHING (CRITICAL)
+
+When a slice shows a CATEGORY HEADER (e.g., "JACKETS", "SNOWPANTS", "FLEECE", "NEW ARRIVALS", "SHOP MEN"):
+
+1. This is a COLLECTION slice, NOT a product slice - it should link to a collection page
+2. Search the available links for collection URLs containing that category keyword:
+   - "JACKETS" → look for links with "jacket" in title or URL path
+   - "SNOWPANTS" → look for links with "snowpant" or "snow-pant"
+   - "FLEECE" → look for links with "fleece"
+   - "NEW ARRIVALS" → look for links with "new" or "arrivals"
+   - Category words often appear in URL slugs like /collections/mens-winter-jackets
+
+3. Prefer collection URLs (/collections/) over product URLs (/products/) for category sections
+
+4. If multiple collections match the keyword, prefer:
+   - Gender-neutral or "all" collections (unless gender is specified in the slice)
+   - Collections WITHOUT "sale" or "on-sale" prefix
+   - Shorter URL paths
+
+5. CRITICAL: If NO collection in the available links contains the category keyword:
+   - Set linkSource: 'needs_search' and add to needsLinkSearch
+   - Do NOT fall back to homepage - the homepage is NOT the jackets collection
+   - Do NOT use a random product URL - a product is NOT a collection
+   - Example: Slice shows "JACKETS" but no link has "jacket" in it → needs_search, NOT homepage`;
   }
 
   // Combine base prompt with link intelligence
