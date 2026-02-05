@@ -124,10 +124,22 @@ function cleanUrl(url: string): string {
 }
 
 /**
+ * Validate that a URL actually contains the category keyword
+ */
+function validateCategoryMatch(query: string, url: string): boolean {
+  const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  const urlLower = url.toLowerCase();
+  
+  // At least one keyword should appear in the URL
+  return keywords.some(keyword => urlLower.includes(keyword));
+}
+
+/**
  * SIMPLIFIED RESOLVER: OCR + Firecrawl Search
  * 1. If imageUrl provided, run OCR to extract product name
  * 2. Use OCR text (or fallback to description) for Firecrawl search
  * 3. Clean tracking params from result URLs
+ * 4. For category searches, prioritize collection URLs with keyword validation
  */
 async function searchForProductUrl(domain: string, query: string, imageUrl?: string): Promise<string | null> {
   const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
@@ -161,7 +173,18 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
     return null;
   }
   
-  console.log(`[resolve] Firecrawl search: "${cleanQuery}" site:${domain} (OCR: ${ocrQuery ? 'yes' : 'no'})`);
+  // Detect if this is a category search (short query, likely a section header)
+  const wordCount = cleanQuery.split(/\s+/).length;
+  const isCategorySearch = wordCount <= 2 && 
+                           cleanQuery.length < 20 &&
+                           !cleanQuery.toLowerCase().includes('product');
+  
+  // For category searches, explicitly search for collections
+  const searchQuery = isCategorySearch 
+    ? `${cleanQuery} collection site:${domain}`
+    : `${cleanQuery} site:${domain}`;
+  
+  console.log(`[resolve] Search type: ${isCategorySearch ? 'CATEGORY' : 'product'}, query: "${searchQuery}" (OCR: ${ocrQuery ? 'yes' : 'no'})`);
   
   try {
     const response = await fetch('https://api.firecrawl.dev/v1/search', {
@@ -171,8 +194,8 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        query: `${cleanQuery} site:${domain}`,
-        limit: 5
+        query: searchQuery,
+        limit: 10 // Increased to have more options for validation
       }),
       signal: AbortSignal.timeout(10000)
     });
@@ -185,27 +208,62 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
     const data = await response.json();
     const results = data.data || [];
     
-    // Find first product URL
+    // For category searches, ONLY accept collection URLs that contain the keyword
+    if (isCategorySearch) {
+      const primaryKeyword = cleanQuery.toLowerCase().split(/\s+/)[0];
+      
+      // First pass: Find collection URLs containing the keyword
+      for (const result of results) {
+        const url = result.url || '';
+        if (url.includes('/collections/') && 
+            url.toLowerCase().includes(primaryKeyword)) {
+          const cleaned = cleanUrl(url);
+          console.log(`[resolve] Found matching collection for category: ${cleaned}`);
+          return cleaned;
+        }
+      }
+      
+      // Second pass: Any URL on-domain containing the keyword (may be /category/ or other patterns)
+      for (const result of results) {
+        const url = result.url || '';
+        if (url.includes(domain) && 
+            !url.includes('/products/') && 
+            url.toLowerCase().includes(primaryKeyword)) {
+          const cleaned = cleanUrl(url);
+          console.log(`[resolve] Found keyword-matching URL for category: ${cleaned}`);
+          return cleaned;
+        }
+      }
+      
+      // If no collection found with keyword, return null - don't fall back to random product
+      console.log(`[resolve] No matching collection found for category "${cleanQuery}" (keyword: ${primaryKeyword})`);
+      return null;
+    }
+    
+    // For product searches, find product URLs first
     for (const result of results) {
       const url = result.url || '';
       if (url.includes('/products/') || url.includes('/product/')) {
-        const cleaned = cleanUrl(url);
-        console.log(`[resolve] Found product URL: ${cleaned}`);
-        return cleaned;
+        // Validate that the URL is actually relevant to the query
+        if (validateCategoryMatch(cleanQuery, url)) {
+          const cleaned = cleanUrl(url);
+          console.log(`[resolve] Found validated product URL: ${cleaned}`);
+          return cleaned;
+        }
       }
     }
     
-    // If no product URL, return first result that's on the domain
+    // Fallback: first result that's on the domain and passes validation
     for (const result of results) {
       const url = result.url || '';
-      if (url.includes(domain)) {
+      if (url.includes(domain) && validateCategoryMatch(cleanQuery, url)) {
         const cleaned = cleanUrl(url);
-        console.log(`[resolve] Found domain URL: ${cleaned}`);
+        console.log(`[resolve] Found validated domain URL: ${cleaned}`);
         return cleaned;
       }
     }
     
-    console.log(`[resolve] No matching URLs in search results`);
+    console.log(`[resolve] No matching URLs in search results for "${cleanQuery}"`);
     return null;
     
   } catch (err) {
