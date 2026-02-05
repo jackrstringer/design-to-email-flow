@@ -140,6 +140,14 @@ async function uploadSliceToCloudinary(
   
   // Handle ImageKit URLs
   if (imageUrl.includes('ik.imagekit.io')) {
+    // Parse ImageKit URL to extract base, path, and extension
+    const ikMatch = imageUrl.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)\.(png|jpg|jpeg|webp)/i);
+    if (ikMatch) {
+      const [, base, path, ext] = ikMatch;
+      // MUST include file extension for ImageKit!
+      return `${base}/tr:x-0,y-${Math.round(yTop)},w-${Math.round(width)},h-${height},cm-extract/${path}.${ext}`;
+    }
+    // Fallback for URLs without extension match
     const match = imageUrl.match(/(https:\/\/ik\.imagekit\.io\/[^/]+)\/(.+)/);
     if (match) {
       const [, base, path] = match;

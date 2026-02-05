@@ -414,6 +414,7 @@ function generateSliceCropUrls(
   const isImageKit = originalImageUrl.includes('ik.imagekit.io');
   let baseUrl: string;
   let publicId: string;
+  let fileExtension: string = 'png'; // Default extension
 
   if (isImageKit) {
     // ImageKit format: https://ik.imagekit.io/{id}/path/to/file.png
@@ -430,6 +431,7 @@ function generateSliceCropUrls(
     }
     baseUrl = ikMatch[1];
     publicId = ikMatch[2];
+    fileExtension = ikMatch[3]; // Capture the file extension!
   } else {
     // Cloudinary format
     let match = originalImageUrl.match(/(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload)(?:\/[^/v][^/]*)*\/v\d+\/(.+)\.(png|jpg|jpeg|webp)/i);
@@ -460,7 +462,8 @@ function generateSliceCropUrls(
   // Helper to generate crop URL for either CDN
   function generateCropUrl(xLeft: number, yTop: number, width: number, height: number): string {
     if (isImageKit) {
-      return `${baseUrl}/tr:x-${xLeft},y-${yTop},w-${width},h-${height},cm-extract,q-90,f-jpg/${publicId}`;
+      // MUST include file extension for ImageKit!
+      return `${baseUrl}/tr:x-${xLeft},y-${yTop},w-${width},h-${height},cm-extract,q-90,f-jpg/${publicId}.${fileExtension}`;
     } else {
       return `${baseUrl}/c_crop,x_${xLeft},y_${yTop},w_${width},h_${height},q_90,f_jpg/${publicId}`;
     }
