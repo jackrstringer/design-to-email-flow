@@ -946,24 +946,75 @@ serve(async (req) => {
     // === STEP 4: Validate and resolve links (deterministic guardrails) ===
     let currentSlices = uploadedSlices;
     
-    if (sliceResult.hasLinkIntelligence) {
-      console.log('[process] Step 4: Validating assigned links (deterministic guardrails)...');
+    // ALWAYS run link resolution for any slice that needs it
+    {
+      console.log('[process] Step 4: Resolving all missing/invalid links...');
       await updateQueueItem(supabase, campaignQueueId, {
-        processing_step: 'validating_links',
+        processing_step: 'resolving_links',
         processing_percent: 50
       });
       
-      // DETERMINISTIC LINK VALIDATOR
-      // Detect "imperfect" links that need resolution
-      const slicesNeedingResolution: Array<{ index: number; description: string; reason: string }> = [];
+      // Helper to check if a link is valid
+      const isValidUrl = (link: string | null | undefined): boolean => {
+        if (!link || typeof link !== 'string') return false;
+        const trimmed = link.trim().toLowerCase();
+        if (['needs_search', 'none', 'null', '', 'undefined', 'n/a'].includes(trimmed)) return false;
+        return link.startsWith('http://') || link.startsWith('https://');
+      };
+      
+      // Build list of ALL slices that need resolution
+      const slicesNeedingResolution: Array<{ index: number; description: string; imageUrl: string; reason: string }> = [];
       
       for (let i = 0; i < currentSlices.length; i++) {
         const slice = currentSlices[i];
-        const link = slice.link || '';
-        const altText = (slice.altText || '').toLowerCase();
-        const description = slice.description || slice.altText || '';
         
-        // Rule 1: Product-specific content matched to collection URL
+        // Skip non-clickable slices
+        if (slice.isClickable === false) continue;
+        
+        const link = slice.link;
+        const description = slice.description || slice.altText || '';
+        const imageUrl = slice.imageUrl || '';
+        
+        // Case 1: Link is null, empty, or invalid
+        if (!isValidUrl(link)) {
+          console.log(`[process] Slice ${i}: missing_or_invalid_link`);
+          slicesNeedingResolution.push({ 
+            index: i, 
+            description,
+            imageUrl,
+            reason: 'missing_or_invalid'
+          });
+          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
+          continue;
+        }
+        
+        // Case 2: linkSource explicitly says needs_search
+        if (slice.linkSource === 'needs_search') {
+          console.log(`[process] Slice ${i}: needs_search_flagged`);
+          slicesNeedingResolution.push({ 
+            index: i, 
+            description,
+            imageUrl,
+            reason: 'needs_search_flagged'
+          });
+          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
+          continue;
+        }
+        
+        // Case 3: Link contains placeholder string (legacy data)
+        if (link && link.toLowerCase().includes('needs_search')) {
+          console.log(`[process] Slice ${i}: legacy_needs_search_string`);
+          slicesNeedingResolution.push({ 
+            index: i, 
+            description,
+            imageUrl,
+            reason: 'legacy_placeholder'
+          });
+          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
+          continue;
+        }
+        
+        // Case 4: Product-specific content matched to collection URL (imperfect match)
         const looksLikeProduct = (
           /\$\d/.test(description) ||  // Has price
           /jacket|tee|shirt|pants|hoodie|dress|bag|shoe|boot|sneaker/i.test(description) ||
@@ -978,41 +1029,32 @@ serve(async (req) => {
           slicesNeedingResolution.push({ 
             index: i, 
             description,
+            imageUrl,
             reason: 'product_slice_matched_collection'
           });
           currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
           continue;
         }
         
-        // Rule 2: Year/version mismatch (e.g., "Winter 2025" matched to "winter-2024")
+        // Case 5: Year/version mismatch (e.g., "Winter 2025" matched to "winter-2024")
         const yearInContent = description.match(/20(2[4-9]|3[0-9])/);
-        const yearInUrl = link.match(/20(2[4-9]|3[0-9])/);
+        const yearInUrl = link ? link.match(/20(2[4-9]|3[0-9])/) : null;
         if (yearInContent && yearInUrl && yearInContent[0] !== yearInUrl[0]) {
           console.log(`[process] Slice ${i}: year_mismatch - content has ${yearInContent[0]}, URL has ${yearInUrl[0]}`);
           slicesNeedingResolution.push({ 
             index: i, 
             description,
+            imageUrl,
             reason: `year_mismatch_${yearInContent[0]}_vs_${yearInUrl[0]}`
           });
           currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
           continue;
         }
-        
-        // Rule 3: Multi-column slice with shared collection link (each column should resolve separately)
-        if (slice.totalColumns && slice.totalColumns > 1 && isCollectionUrl) {
-          console.log(`[process] Slice ${i}: multi_column_shared_collection - column ${slice.column + 1}/${slice.totalColumns}`);
-          slicesNeedingResolution.push({ 
-            index: i, 
-            description,
-            reason: 'multi_column_shared_collection'
-          });
-          currentSlices[i] = { ...slice, link: null, linkSource: 'needs_resolution' };
-        }
       }
       
-      // === STEP 4.5: Resolve imperfect links ===
+      // === STEP 4.5: Resolve ALL links that need it ===
       if (slicesNeedingResolution.length > 0 && brandContext?.domain) {
-        console.log(`[process] Step 4.5: Resolving ${slicesNeedingResolution.length} imperfect links...`);
+        console.log(`[process] Step 4.5: Resolving ${slicesNeedingResolution.length} links via web search...`);
         await updateQueueItem(supabase, campaignQueueId, {
           processing_step: 'resolving_links',
           processing_percent: 55
@@ -1048,8 +1090,9 @@ serve(async (req) => {
                 currentSlices[resolved.index] = {
                   ...currentSlices[resolved.index],
                   link: resolved.url,
-                  linkSource: `resolved_${resolved.source}`,
-                  linkVerified: resolved.confidence > 0.8
+                  linkSource: 'resolved_web_search',
+                  linkVerified: resolved.confidence > 0.8,
+                  linkWarning: null
                 };
                 console.log(`[process] Slice ${resolved.index} resolved: ${resolved.source} → ${resolved.url}`);
               } else {
@@ -1058,17 +1101,51 @@ serve(async (req) => {
                   ...currentSlices[resolved.index],
                   link: defaultDestinationUrl,
                   linkSource: 'default_fallback',
-                  linkVerified: false
+                  linkVerified: false,
+                  linkWarning: 'Could not resolve specific product link; using brand default.'
                 };
+                console.log(`[process] Slice ${resolved.index} fallback: using default ${defaultDestinationUrl}`);
               }
             }
             
             console.log(`[process] Resolved ${resolvedLinks.filter((r: any) => r.url).length}/${slicesNeedingResolution.length} links`);
           } else {
             console.error('[process] Link resolution failed:', await resolveResponse.text());
+            // Apply default fallback for all unresolved
+            for (const s of slicesNeedingResolution) {
+              currentSlices[s.index] = {
+                ...currentSlices[s.index],
+                link: defaultDestinationUrl,
+                linkSource: 'default_fallback',
+                linkVerified: false,
+                linkWarning: 'Link resolution service failed; using brand default.'
+              };
+            }
           }
         } catch (err) {
           console.error('[process] Link resolution error (non-fatal):', err);
+          // Apply default fallback for all unresolved
+          for (const s of slicesNeedingResolution) {
+            currentSlices[s.index] = {
+              ...currentSlices[s.index],
+              link: defaultDestinationUrl,
+              linkSource: 'default_fallback',
+              linkVerified: false,
+              linkWarning: 'Link resolution error; using brand default.'
+            };
+          }
+        }
+      } else if (slicesNeedingResolution.length > 0) {
+        // No brand domain available, use default for all
+        console.log(`[process] No brand domain, applying default to ${slicesNeedingResolution.length} slices`);
+        for (const s of slicesNeedingResolution) {
+          currentSlices[s.index] = {
+            ...currentSlices[s.index],
+            link: defaultDestinationUrl || null,
+            linkSource: 'default_fallback',
+            linkVerified: false,
+            linkWarning: 'No brand domain configured; using default.'
+          };
         }
       }
       
@@ -1076,23 +1153,6 @@ serve(async (req) => {
         processing_step: 'links_assigned',
         processing_percent: 60
       });
-    } else {
-      // Legacy path: No link index, use analyze-slices for alt text and links
-      console.log('[process] Step 4: Running analyze-slices (no link index)...');
-      await updateQueueItem(supabase, campaignQueueId, {
-        processing_step: 'analyzing_slices',
-        processing_percent: 50
-      });
-
-      const enrichedSlices = await analyzeSlices(
-        supabase,
-        uploadedSlices,
-        imageResult.imageUrl,
-        brandContext?.domain || null,
-        item.brand_id || null
-      );
-
-      currentSlices = enrichedSlices || uploadedSlices;
     }
 
     await updateQueueItem(supabase, campaignQueueId, {
