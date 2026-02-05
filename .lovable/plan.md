@@ -1,99 +1,67 @@
 
 
-# Emergency: Deploy All 46 Missing Edge Functions
+# Fix: Force-Deploy Remaining Functions via Code Edits
 
-## The Damage
+## Current Situation
 
-Out of 53 edge functions in this project, **46 are not deployed (404)**. Only the 7 functions that were edited in recent sessions are live. The entire backend is effectively down.
+The direct deployment tool is hitting consistent "Bundle generation timed out" errors for most functions. Only 3 out of 46 deployed via the direct tool. The bundler appears overloaded from the batch of 46 file edits.
 
-## What Needs to Deploy
+## New Approach
 
-Every function listed below is currently returning 404 and needs to be deployed:
+Since direct deployment is unreliable, we need to make meaningful code changes (not just comments) to force the build pipeline to pick up each function. The build pipeline deploys functions when it detects actual code changes.
 
-### Critical Pipeline (campaign processing)
-1. `process-campaign-queue` -- the main orchestrator, campaigns stuck at 0% because of this
-2. `detect-brand-from-image`
-3. `generate-email-copy-early`
-4. `generate-email-copy-background`
-5. `generate-email-copy`
-6. `qa-spelling-check-early`
-7. `qa-spelling-check`
-8. `search-clickup-for-copy`
-9. `match-slice-to-link`
-10. `generate-slice-html`
-11. `refine-slice-html`
-12. `analyze-slices`
+The previous `// deploy-trigger` comment only worked for a few functions. This time, the approach is to update the CORS headers to the full standard on every function that's still 404 -- this is a real, useful code change that also triggers deployment.
 
-### Footer pipeline
-13. `generate-footer-html`
-14. `generate-simple-footer`
-15. `process-footer-queue`
-16. `auto-slice-footer`
-17. `analyze-footer-reference`
-18. `analyze-footer-render`
-19. `detect-footer-links`
-20. `detect-footer-region`
-21. `detect-footer-socials`
-22. `footer-conversation`
-23. `refine-footer-html`
+## Priority Order
 
-### Brand and link intelligence
-24. `analyze-brand`
-25. `crawl-brand-site`
-26. `get-brand-link-index`
-27. `add-brand-link`
-28. `delete-brand-link`
-29. `update-brand-link-preferences`
-30. `import-sitemap`
-31. `trigger-sitemap-import`
-32. `weekly-link-recrawl`
-33. `generate-embedding`
+### Batch 1: Critical pipeline (do these first)
+1. `process-campaign-queue` -- update CORS headers (line 7)
+2. `generate-email-copy-early` -- update CORS headers (line 7)
+3. `match-slice-to-link` -- update CORS headers (line 7)
+4. `qa-spelling-check-early` -- update CORS headers (line 7)
+5. `generate-email-copy` -- update CORS headers
+6. `search-clickup-for-copy` -- update CORS headers
+7. `generate-email-copy-background` -- update CORS headers
 
-### Integrations and utilities
-34. `push-to-klaviyo`
-35. `scrape-klaviyo-copy`
-36. `get-clickup-hierarchy`
-37. `fetch-figma-design`
-38. `figma-to-email-html`
-39. `refine-campaign`
-40. `analyze-email-design`
-41. `extract-section-assets`
-42. `upload-to-cloudinary`
-43. `upload-social-icon`
-44. `process-brand-logo`
-45. `invert-logo`
-46. `auto-slice-email`
+### Batch 2: Supporting pipeline functions
+8-12: `analyze-slices`, `refine-slice-html`, `qa-spelling-check`, `auto-slice-email`, `refine-campaign`
 
-## The Plan
+### Batch 3: Footer pipeline
+13-23: All footer-related functions
 
-### Step 1: Batch deploy all 46 functions
+### Batch 4: Brand/link intelligence
+24-33: All brand and link functions
 
-Use the direct deployment tool to deploy all 46 at once. If the tool supports batching, do it in one call. If not, batch into groups of 10-12.
+### Batch 5: Integrations and utilities
+34-46: Remaining utility functions
 
-### Step 2: If any fail (bundler timeout)
+## The Change (same for all functions)
 
-For any function that times out on direct deploy, add a trivial whitespace or comment change to its `index.ts` to trigger the automatic build pipeline. This pattern has already been proven to work with `figma-ingest` and `upload-to-imagekit`.
+Update line 7 (CORS headers) in each `index.ts`:
 
-### Step 3: Verify the critical path
-
-After deployment, confirm these critical functions return non-404:
-- `process-campaign-queue` (the main one -- campaigns depend on this)
-- `generate-slice-html`
-- `detect-brand-from-image`
-- `generate-email-copy-early`
-
-### Step 4: Re-trigger the stuck campaign
-
-Call `process-campaign-queue` with:
-```text
-{ "campaignQueueId": "7c895a11-1866-48ad-9754-cd45697d133d" }
 ```
-to restart the campaign that has been sitting at 0%.
+// Before:
+'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 
-### Step 5: Verify campaign progresses
+// After:
+'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+```
 
-Check the database row for `7c895a11-1866-48ad-9754-cd45697d133d` to confirm `processing_percent` moves past 0% and `processing_step` advances.
+This is a real improvement (standardizes CORS across all functions) AND triggers the auto-build pipeline.
+
+## After Deployment
+
+Once `process-campaign-queue` comes online, re-trigger the stuck campaign:
+```
+POST /process-campaign-queue
+Body: { "campaignQueueId": "7c895a11-1866-48ad-9754-cd45697d133d" }
+```
+
+## Why This Should Work
+
+The `// deploy-trigger` comment worked for `auto-slice-v2`. The CORS header update worked for `upload-to-imagekit`. Real code changes reliably trigger the build pipeline. The key difference from last time: we'll do these in smaller batches (7-10 at a time) so the build pipeline isn't overwhelmed with 46 simultaneous deploys.
 
 ## Files Changed
 
-No code changes to any function. This is a pure deployment operation. If any functions fail to deploy via the direct tool, trivial whitespace edits will be made to force the build pipeline to pick them up.
+All 43 remaining undeployed `index.ts` files -- CORS header update only (one line each).
+
