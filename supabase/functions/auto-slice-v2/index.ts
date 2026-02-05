@@ -238,6 +238,46 @@ async function extractTextGeometry(imageBase64: string): Promise<{
 }
 
 // ============================================================================
+// UTILITY: SANITIZE LINK VALUES
+// ============================================================================
+
+/**
+ * Sanitize link values from Claude's response.
+ * - Only accept valid http/https URLs
+ * - Treat placeholder strings like "needs_search", "none", "", "null" as null
+ * - Force null if linkSource indicates no link should be stored
+ */
+function sanitizeLink(link: string | null | undefined, linkSource: string | undefined): string | null {
+  // Null/undefined → null
+  if (link === null || link === undefined) {
+    return null;
+  }
+  
+  // If linkSource explicitly says needs_search, force null
+  if (linkSource === 'needs_search') {
+    return null;
+  }
+  
+  // Convert to string and trim
+  const linkStr = String(link).trim().toLowerCase();
+  
+  // Placeholder strings that should NOT be stored as links
+  const placeholders = ['needs_search', 'none', 'null', '', 'undefined', 'n/a', 'tbd'];
+  if (placeholders.includes(linkStr)) {
+    return null;
+  }
+  
+  // Must be a valid URL (http or https)
+  const originalLink = String(link).trim();
+  if (!originalLink.startsWith('http://') && !originalLink.startsWith('https://')) {
+    console.log(`  → Sanitizing invalid link: "${originalLink.substring(0, 50)}..." → null`);
+    return null;
+  }
+  
+  return originalLink;
+}
+
+// ============================================================================
 // LAYER 2: GOOGLE CLOUD VISION OBJECT LOCALIZATION (Data Gathering Only)
 // ============================================================================
 
@@ -1434,9 +1474,16 @@ Before returning your response, verify:
   // Build link intelligence prompt section (only if link index is provided)
   let linkIntelligencePrompt = '';
   if (hasLinkIndex) {
-    const linkListFormatted = linkIndex!.slice(0, 100).map((l, i) => 
-      `${i + 1}. [${l.link_type}] "${l.title}" → ${l.url}`
-    ).join('\n');
+    // MAXIMIZED CONTEXT: Format up to 600 links token-efficiently
+    // Products first (most important for matching), then collections
+    const linkListFormatted = linkIndex!.slice(0, 600).map((l, i) => {
+      // Token-efficient format: use pathname only, truncate titles
+      const url = l.url || '';
+      const pathname = url.replace(/^https?:\/\/[^/]+/, ''); // Strip domain
+      const title = (l.title || '').substring(0, 60);
+      const typeTag = l.link_type === 'product' ? 'P' : 'C'; // Short tags
+      return `${i + 1}. [${typeTag}] "${title}" → ${pathname}`;
+    }).join('\n');
     
     const rulesFormatted = brandPreferenceRules && brandPreferenceRules.length > 0
       ? brandPreferenceRules.map(r => `- "${r.name}" → ${r.destination_url}`).join('\n')
@@ -1633,7 +1680,7 @@ async function askClaudeWithPrompt(
         } : undefined,
         // Parse link intelligence fields if present
         isClickable: s.isClickable ?? (s.hasCTA || false),
-        link: s.link ?? null,
+      link: sanitizeLink(s.link, s.linkSource),
         altText: s.altText ?? '',
         linkSource: s.linkSource ?? (s.isClickable === false ? 'not_clickable' : 'needs_search')
       }))
