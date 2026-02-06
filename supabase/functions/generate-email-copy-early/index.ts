@@ -72,7 +72,7 @@ serve(async (req) => {
   }
 
   try {
-    const { sessionKey, imageUrl, imageBase64, brandContext, brandId, copyExamples } = await req.json();
+    const { sessionKey, imageUrl, imageBase64, mimeType, brandContext, brandId, copyExamples } = await req.json();
 
     if (!sessionKey) {
       throw new Error('sessionKey is required');
@@ -380,7 +380,7 @@ Respond in JSON:
 
     // OPTIMIZATION: Use passed base64 directly if available, skip redundant Cloudinary download
     let base64Data = imageBase64;
-    let contentType = 'image/png';
+    let contentType = mimeType || 'image/png';
     
     if (base64Data) {
       console.log('[EARLY] Using provided base64, skipping fetch (saves ~22s!)');

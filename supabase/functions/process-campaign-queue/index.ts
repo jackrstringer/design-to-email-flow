@@ -141,6 +141,7 @@ async function startEarlyGeneration(
   supabase: any,
   imageUrl: string,
   imageBase64: string,  // NEW: Pass base64 directly, no re-download needed
+  mimeType: string,     // NEW: Pass correct MIME type to avoid Anthropic 400 errors
   brandContext: { name: string; domain: string } | null,
   brandId: string | null,
   copyExamples: any
@@ -161,6 +162,7 @@ async function startEarlyGeneration(
         sessionKey,
         imageUrl: imageUrl, // Keep URL as fallback
         imageBase64: imageBase64, // NEW: Pass base64 directly - no re-download needed!
+        mimeType: mimeType, // NEW: Pass correct MIME type (ImageKit returns JPEG, not PNG)
         brandContext: brandContext || { name: 'Unknown', domain: null },
         brandId: brandId || null,
         copyExamples: copyExamples || null
@@ -813,6 +815,7 @@ serve(async (req) => {
       supabase,
       imageResult.imageUrl,
       imageResult.imageBase64,  // NEW: Pass base64 directly - saves 22s!
+      imageResult.mimeType,     // NEW: Pass MIME type to fix Anthropic 400 errors
       brandContext,
       brandId,
       copyExamples
@@ -1255,7 +1258,7 @@ serve(async (req) => {
     // OPTIMIZATION: Increased from 20s to 30s because early copy usually completes in ~8-15s
     // but sometimes takes longer due to network latency or API queues
     let copyResult: { subjectLines: string[]; previewTexts: string[] } | null = null;
-    const maxWaitMs = 30000;
+    const maxWaitMs = 15000;
     const pollIntervalMs = 2000;
     const pollStartTime = Date.now();
     
