@@ -447,6 +447,8 @@ export function QueueTable({
           const presets = item.brand_id ? (presetsByBrand[item.brand_id] || []) : [];
           const klaviyoLists = item.brand_id ? (klaviyoListsByBrand[item.brand_id] || []) : [];
           const brandData = item.brand_id ? brandDataByBrand[item.brand_id] : undefined;
+          const liveSegmentIds = new Set(klaviyoLists.map((l: any) => l.id));
+          const liveSegmentsLoaded = item.brand_id ? item.brand_id in klaviyoListsByBrand : false;
           return (
             <React.Fragment key={item.id}>
               <QueueRow
@@ -456,6 +458,8 @@ export function QueueTable({
                 onUpdate={onUpdate}
                 columnWidths={columnWidths}
                 presets={presets}
+                liveSegmentIds={liveSegmentIds}
+                liveSegmentsLoaded={liveSegmentsLoaded}
                 isSelected={selectedIds.has(item.id)}
                 onSelect={onSelectItem}
                 showTimers={showTimers}

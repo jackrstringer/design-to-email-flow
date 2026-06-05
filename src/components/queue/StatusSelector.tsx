@@ -25,9 +25,12 @@ function normalizeSegmentIds(segments: unknown): string[] {
 interface StatusSelectorProps {
   item: CampaignQueueItem;
   onUpdate: () => void;
+  presets?: Array<{ id: string; name: string; included_segments: unknown; excluded_segments: unknown }>;
+  liveSegmentIds?: Set<string>;
+  liveSegmentsLoaded?: boolean;
 }
 
-export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
+export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSegmentsLoaded }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -143,6 +146,27 @@ export function StatusSelector({ item, onUpdate }: StatusSelectorProps) {
           setIsUpdating(false);
           return;
         }
+
+        // Pre-flight: verify every segment in the selected preset still exists in Klaviyo.
+        // Klaviyo rejects campaign creation with "inclusion group ids were not found" if any
+        // segment ID has been deleted on their side — fail fast with a clear message instead.
+        if (liveSegmentsLoaded && liveSegmentIds && liveSegmentIds.size > 0) {
+          const allIds = [...includedSegments, ...excludedSegments];
+          const missing = allIds.filter((id) => !liveSegmentIds.has(id));
+          if (missing.length > 0) {
+            const presetName =
+              presets?.find((p) => p.id === item.selected_segment_preset_id)?.name ||
+              'the selected segment set';
+            toast.error(
+              `Can't send: ${missing.length} segment(s) in "${presetName}" no longer exist in Klaviyo. ` +
+              `Open the segment set and remove or replace: ${missing.join(', ')}`,
+              { duration: 10000 }
+            );
+            setIsUpdating(false);
+            return;
+          }
+        }
+
 
         // First update to approved
         await supabase

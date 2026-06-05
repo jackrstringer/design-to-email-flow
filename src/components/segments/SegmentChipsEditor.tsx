@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Plus, Loader2, Check } from 'lucide-react';
+import { X, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { KlaviyoSegment } from '@/hooks/useSegmentPresets';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,12 +53,26 @@ export function SegmentChipsEditor({
         <Badge
           key={segment.id}
           variant="secondary"
-          className="flex items-center gap-1 pr-1 whitespace-nowrap bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
+          className={cn(
+            "flex items-center gap-1 pr-1 whitespace-nowrap",
+            segment.missing
+              ? "bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/15"
+              : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
+          )}
+          title={
+            segment.missing
+              ? `This segment no longer exists in Klaviyo (ID: ${segment.id}). Remove it or pick a replacement — campaigns using this segment set will fail to send.`
+              : undefined
+          }
         >
+          {segment.missing && <AlertTriangle className="h-3 w-3" />}
           <span>{segment.name}</span>
           <button
             onClick={() => handleRemove(segment.id)}
-            className="ml-0.5 hover:bg-primary/20 rounded-full p-0.5"
+            className={cn(
+              "ml-0.5 rounded-full p-0.5",
+              segment.missing ? "hover:bg-destructive/20" : "hover:bg-primary/20"
+            )}
           >
             <X className="h-3 w-3" />
           </button>
