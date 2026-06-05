@@ -198,7 +198,6 @@ async function searchForProductUrl(
   
   // If the query collapses to nothing useful and we have a campaign focus,
   // fall back to it so we don't issue a doomed "try" search.
-  let effectiveQuery = effectiveQuery;
   if ((!effectiveQuery || effectiveQuery.length < 3) && campaignFocus) {
     effectiveQuery = stripDiacritics(campaignFocus)
       .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
