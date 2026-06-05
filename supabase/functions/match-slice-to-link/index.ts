@@ -165,17 +165,34 @@ serve(async (req) => {
       );
     }
 
-    // 3. Size-based matching strategy
+    // 3. Size-based matching strategy.
+    // For generic CTAs, enrich the query with campaign primary_focus so a
+    // bare "Shop Now" still matches the campaign's featured product.
+    const matchQuery = is_generic_cta && campaign_context?.primary_focus
+      ? `${slice_description} (campaign featuring: ${campaign_context.primary_focus})`
+      : slice_description;
+
     let matchResult: MatchResult;
-    
+
     if (healthyLinks.length < 50) {
       // SMALL CATALOG: Pass full list to Claude for matching
       console.log('Using small catalog matching (Claude list)');
-      matchResult = await matchViaClaudeList(slice_description, healthyLinks);
+      matchResult = await matchViaClaudeList(matchQuery, healthyLinks);
     } else {
       // LARGE CATALOG: Use vector search + Claude confirmation
       console.log('Using large catalog matching (vector search)');
-      matchResult = await matchViaVectorSearch(supabase, brand_id, slice_description);
+      matchResult = await matchViaVectorSearch(supabase, brand_id, matchQuery);
+    }
+
+    // 3b. Generic-CTA fallback: if index matching found nothing, use the
+    // brand's default destination URL rather than returning no_match.
+    if (is_generic_cta && !matchResult.url && preferences.default_destination_url) {
+      console.log(`Generic CTA index miss - using brand default URL: ${preferences.default_destination_url}`);
+      matchResult = {
+        url: preferences.default_destination_url,
+        source: 'brand_default',
+        confidence: 1.0,
+      };
     }
 
     // 4. Update usage tracking if we found a match
