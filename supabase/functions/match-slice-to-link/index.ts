@@ -101,17 +101,22 @@ serve(async (req) => {
       rules: preferences?.rules?.map(r => r.name) || []
     });
 
-    // 1. Handle generic CTAs first
+    // 1. Handle generic CTAs - check brand rules first (user-defined explicit routing)
     if (is_generic_cta) {
       console.log('Handling generic CTA...');
-      
-      // Check if any product-specific rules match the campaign context
+
+      // Check rules against BOTH campaign context AND slice description
       if (preferences.rules && preferences.rules.length > 0) {
-        const contextText = `${campaign_context?.primary_focus || ''} ${(campaign_context?.detected_products || []).join(' ')} ${(campaign_context?.detected_collections || []).join(' ')}`.toLowerCase();
-        
+        const contextText = [
+          campaign_context?.primary_focus || '',
+          (campaign_context?.detected_products || []).join(' '),
+          (campaign_context?.detected_collections || []).join(' '),
+          slice_description || '',
+        ].join(' ').toLowerCase();
+
         for (const rule of preferences.rules) {
-          const ruleName = rule.name.toLowerCase();
-          if (contextText.includes(ruleName)) {
+          const ruleName = (rule.name || '').toLowerCase();
+          if (ruleName && contextText.includes(ruleName)) {
             console.log(`Generic CTA matched rule: "${rule.name}" → ${rule.destination_url}`);
             return new Response(
               JSON.stringify({
@@ -124,22 +129,12 @@ serve(async (req) => {
           }
         }
       }
-      
-      // No rule matched - use default destination
-      if (preferences.default_destination_url) {
-        console.log(`Generic CTA using default URL: ${preferences.default_destination_url}`);
-        return new Response(
-          JSON.stringify({
-            url: preferences.default_destination_url,
-            source: 'brand_default',
-            confidence: 1.0
-          } as MatchResult),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      console.log('No default URL set for generic CTA, will try to match from index');
-      // Fall through to index matching using campaign primary focus
+
+      // Fall through to index matching BEFORE defaulting to brand homepage.
+      // The slice description (e.g. "TRY Ü SLEEP") often names the actual product
+      // featured in the campaign, even when the CTA copy is "generic". We only
+      // use the default URL if the link index has no confident match.
+      console.log('No rule matched - trying index match before falling back to default URL');
     }
 
     // 2. Get the brand's link index
@@ -170,17 +165,34 @@ serve(async (req) => {
       );
     }
 
-    // 3. Size-based matching strategy
+    // 3. Size-based matching strategy.
+    // For generic CTAs, enrich the query with campaign primary_focus so a
+    // bare "Shop Now" still matches the campaign's featured product.
+    const matchQuery = is_generic_cta && campaign_context?.primary_focus
+      ? `${slice_description} (campaign featuring: ${campaign_context.primary_focus})`
+      : slice_description;
+
     let matchResult: MatchResult;
-    
+
     if (healthyLinks.length < 50) {
       // SMALL CATALOG: Pass full list to Claude for matching
       console.log('Using small catalog matching (Claude list)');
-      matchResult = await matchViaClaudeList(slice_description, healthyLinks);
+      matchResult = await matchViaClaudeList(matchQuery, healthyLinks);
     } else {
       // LARGE CATALOG: Use vector search + Claude confirmation
       console.log('Using large catalog matching (vector search)');
-      matchResult = await matchViaVectorSearch(supabase, brand_id, slice_description);
+      matchResult = await matchViaVectorSearch(supabase, brand_id, matchQuery);
+    }
+
+    // 3b. Generic-CTA fallback: if index matching found nothing, use the
+    // brand's default destination URL rather than returning no_match.
+    if (is_generic_cta && !matchResult.url && preferences.default_destination_url) {
+      console.log(`Generic CTA index miss - using brand default URL: ${preferences.default_destination_url}`);
+      matchResult = {
+        url: preferences.default_destination_url,
+        source: 'brand_default',
+        confidence: 1.0,
+      };
     }
 
     // 4. Update usage tracking if we found a match
