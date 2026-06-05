@@ -184,7 +184,7 @@ async function searchForProductUrl(
   
   // Strip diacritics first so "Ü" → "U" before \w filter drops it.
   // Use a Unicode-aware letter class so non-ASCII letters survive cleaning.
-  const cleanQuery = stripDiacritics(baseQuery)
+  const effectiveQuery = stripDiacritics(baseQuery)
     .replace(/shop\s*(now|the|our)?/gi, '')
     .replace(/click\s*to\s*/gi, '')
     .replace(/\b(try|discover|meet|experience|unlock|start|get|order|view|learn)\b/gi, '')
@@ -198,7 +198,7 @@ async function searchForProductUrl(
   
   // If the query collapses to nothing useful and we have a campaign focus,
   // fall back to it so we don't issue a doomed "try" search.
-  let effectiveQuery = cleanQuery;
+  let effectiveQuery = effectiveQuery;
   if ((!effectiveQuery || effectiveQuery.length < 3) && campaignFocus) {
     effectiveQuery = stripDiacritics(campaignFocus)
       .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
@@ -252,7 +252,7 @@ async function searchForProductUrl(
     
     // For category searches, ONLY accept collection URLs that contain the keyword
     if (isCategorySearch) {
-      const primaryKeyword = cleanQuery.toLowerCase().split(/\s+/)[0];
+      const primaryKeyword = effectiveQuery.toLowerCase().split(/\s+/)[0];
       
       // First pass: Find collection URLs containing the keyword
       for (const result of results) {
@@ -278,7 +278,7 @@ async function searchForProductUrl(
       }
       
       // If no collection found with keyword, return null - don't fall back to random product
-      console.log(`[resolve] No matching collection found for category "${cleanQuery}" (keyword: ${primaryKeyword})`);
+      console.log(`[resolve] No matching collection found for category "${effectiveQuery}" (keyword: ${primaryKeyword})`);
       return null;
     }
     
@@ -287,7 +287,7 @@ async function searchForProductUrl(
       const url = result.url || '';
       if (url.includes('/products/') || url.includes('/product/')) {
         // Validate that the URL is actually relevant to the query
-        if (validateCategoryMatch(cleanQuery, url)) {
+        if (validateCategoryMatch(effectiveQuery, url)) {
           const cleaned = cleanUrl(url);
           console.log(`[resolve] Found validated product URL: ${cleaned}`);
           return cleaned;
@@ -298,14 +298,14 @@ async function searchForProductUrl(
     // Fallback: first result that's on the domain and passes validation
     for (const result of results) {
       const url = result.url || '';
-      if (url.includes(domain) && validateCategoryMatch(cleanQuery, url)) {
+      if (url.includes(domain) && validateCategoryMatch(effectiveQuery, url)) {
         const cleaned = cleanUrl(url);
         console.log(`[resolve] Found validated domain URL: ${cleaned}`);
         return cleaned;
       }
     }
     
-    console.log(`[resolve] No matching URLs in search results for "${cleanQuery}"`);
+    console.log(`[resolve] No matching URLs in search results for "${effectiveQuery}"`);
     return null;
     
   } catch (err) {
