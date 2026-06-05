@@ -184,7 +184,7 @@ async function searchForProductUrl(
   
   // Strip diacritics first so "Ü" → "U" before \w filter drops it.
   // Use a Unicode-aware letter class so non-ASCII letters survive cleaning.
-  const effectiveQuery = stripDiacritics(baseQuery)
+  let effectiveQuery = stripDiacritics(baseQuery)
     .replace(/shop\s*(now|the|our)?/gi, '')
     .replace(/click\s*to\s*/gi, '')
     .replace(/\b(try|discover|meet|experience|unlock|start|get|order|view|learn)\b/gi, '')
