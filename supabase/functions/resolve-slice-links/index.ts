@@ -152,7 +152,13 @@ function validateCategoryMatch(query: string, url: string): boolean {
  * 3. Clean tracking params from result URLs
  * 4. For category searches, prioritize collection URLs with keyword validation
  */
-async function searchForProductUrl(domain: string, query: string, imageUrl?: string): Promise<string | null> {
+async function searchForProductUrl(
+  domain: string,
+  query: string,
+  imageUrl?: string,
+  campaignFocus?: string,
+  isGenericCta?: boolean,
+): Promise<string | null> {
   const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
   if (!FIRECRAWL_API_KEY) {
     console.log('[resolve] Firecrawl API key not configured');
@@ -165,37 +171,62 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
     ocrQuery = await extractProductNameFromImage(imageUrl);
   }
   
-  // Use OCR result if available and meaningful, otherwise clean the description
-  const baseQuery = ocrQuery || query;
+  // For generic CTAs, prefer the campaign focus over OCR text (OCR usually
+  // just re-reads the button verb like "TRY X", which isn't the product name).
+  // For non-generic slices, use OCR result if meaningful, otherwise fall back
+  // to description.
+  let baseQuery: string;
+  if (isGenericCta && campaignFocus) {
+    baseQuery = campaignFocus;
+  } else {
+    baseQuery = ocrQuery || query;
+  }
   
-  // Clean query - extract product-like terms
-  const cleanQuery = baseQuery
+  // Strip diacritics first so "Ü" → "U" before \w filter drops it.
+  // Use a Unicode-aware letter class so non-ASCII letters survive cleaning.
+  const cleanQuery = stripDiacritics(baseQuery)
     .replace(/shop\s*(now|the|our)?/gi, '')
     .replace(/click\s*to\s*/gi, '')
+    .replace(/\b(try|discover|meet|experience|unlock|start|get|order|view|learn)\b/gi, '')
     .replace(/\$[\d,.]+/g, '')
-    .replace(/[^\w\s-]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .trim()
     .split(/\s+/)
-    .slice(0, 6)  // First 6 words
+    .filter(w => w.length > 0)
+    .slice(0, 6)
     .join(' ');
   
-  if (!cleanQuery || cleanQuery.length < 3) {
-    console.log(`[resolve] Query too short after cleaning: "${cleanQuery}"`);
+  // If the query collapses to nothing useful and we have a campaign focus,
+  // fall back to it so we don't issue a doomed "try" search.
+  let effectiveQuery = cleanQuery;
+  if ((!effectiveQuery || effectiveQuery.length < 3) && campaignFocus) {
+    effectiveQuery = stripDiacritics(campaignFocus)
+      .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 6)
+      .join(' ');
+    console.log(`[resolve] Query collapsed - using campaign focus: "${effectiveQuery}"`);
+  }
+  
+  if (!effectiveQuery || effectiveQuery.length < 3) {
+    console.log(`[resolve] Query too short after cleaning: "${effectiveQuery}"`);
     return null;
   }
   
   // Detect if this is a category search (short query, likely a section header)
-  const wordCount = cleanQuery.split(/\s+/).length;
+  const wordCount = effectiveQuery.split(/\s+/).length;
   const isCategorySearch = wordCount <= 2 && 
-                           cleanQuery.length < 20 &&
-                           !cleanQuery.toLowerCase().includes('product');
+                           effectiveQuery.length < 20 &&
+                           !effectiveQuery.toLowerCase().includes('product');
   
   // For category searches, explicitly search for collections
   const searchQuery = isCategorySearch 
-    ? `${cleanQuery} collection site:${domain}`
-    : `${cleanQuery} site:${domain}`;
+    ? `${effectiveQuery} collection site:${domain}`
+    : `${effectiveQuery} site:${domain}`;
   
-  console.log(`[resolve] Search type: ${isCategorySearch ? 'CATEGORY' : 'product'}, query: "${searchQuery}" (OCR: ${ocrQuery ? 'yes' : 'no'})`);
+  console.log(`[resolve] Search type: ${isCategorySearch ? 'CATEGORY' : 'product'}, query: "${searchQuery}" (OCR: ${ocrQuery ? 'yes' : 'no'}, focus: ${campaignFocus || 'none'})`);
+
   
   try {
     const response = await fetch('https://api.firecrawl.dev/v1/search', {
