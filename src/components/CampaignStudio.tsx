@@ -107,7 +107,7 @@ function validateFooterHtml(html: string, previousHtml: string | undefined): { v
   
   // Must preserve Klaviyo tags if they existed in previous HTML
   if (previousHtml) {
-    const klaviyoTags = ['{% unsubscribe_url %}', '{% manage_preferences_url %}', '{{ organization.address }}'];
+    const klaviyoTags = ['{% unsubscribe_link %}', '{% manage_preferences_link %}', '{{ organization.address }}'];
     for (const tag of klaviyoTags) {
       if (previousHtml.includes(tag) && !html.includes(tag)) {
         return { valid: false, reason: `Missing Klaviyo tag: ${tag}` };

@@ -456,8 +456,8 @@ EPHEMERAL PATTERNS (NEVER use):
 - URLs with campaign IDs or dates
 
 EMAIL ACTION PLACEHOLDERS (use exactly as shown):
-- Unsubscribe: {{ unsubscribe_url }}
-- Manage Preferences: {{ manage_preferences_url }}
+- Unsubscribe: {{ unsubscribe_link }}
+- Manage Preferences: {{ manage_preferences_link }}
 - View in Browser: {{ view_in_browser_url }}
 - Forward: {{ forward_to_a_friend_url }}
 

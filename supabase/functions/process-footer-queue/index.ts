@@ -725,7 +725,7 @@ serve(async (req) => {
         if (finePrintContent.hasUnsubscribeText) {
           htmlContent = htmlContent.replace(
             /unsubscribe/gi,
-            '<a href="{% unsubscribe_url %}">Unsubscribe</a>'
+            '<a href="{% unsubscribe_link %}">Unsubscribe</a>'
           );
         }
         
@@ -733,7 +733,7 @@ serve(async (req) => {
         if (finePrintContent.hasManagePreferences) {
           htmlContent = htmlContent.replace(
             /manage\s*preferences/gi,
-            '<a href="{% manage_preferences_url %}">Manage Preferences</a>'
+            '<a href="{% manage_preferences_link %}">Manage Preferences</a>'
           );
         }
         
@@ -751,7 +751,7 @@ serve(async (req) => {
           detectedElements: [],
           hasOrgName: htmlContent.includes('{{ organization.name }}'),
           hasOrgAddress: htmlContent.includes('{{ organization.address }}'),
-          hasUnsubscribe: htmlContent.includes('{% unsubscribe_url %}'),
+          hasUnsubscribe: htmlContent.includes('{% unsubscribe_link %}'),
         };
         console.log(`[process-footer] Converted fine print to rich HTML content`);
       } else {

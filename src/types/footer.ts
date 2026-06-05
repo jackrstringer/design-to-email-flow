@@ -108,7 +108,7 @@ export interface StoredImageFooterData {
 
 // Generate default legal HTML content with Klaviyo merge tags
 export function generateDefaultLegalContent(): string {
-  return `{{ organization.name }} | {{ organization.address }}<br><br><a href="{% unsubscribe_url %}" style="text-decoration: underline;">Unsubscribe</a> | <a href="{% manage_preferences_url %}" style="text-decoration: underline;">Manage Preferences</a>`;
+  return `{{ organization.name }} | {{ organization.address }}<br><br><a href="{% unsubscribe_link %}" style="text-decoration: underline;">Unsubscribe</a> | <a href="{% manage_preferences_link %}" style="text-decoration: underline;">Manage Preferences</a>`;
 }
 
 // Generate legal HTML section with Klaviyo merge tags

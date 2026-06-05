@@ -22,13 +22,13 @@ function contentToDisplayHtml(content: string): string {
   let html = content;
   
   // First, strip anchor tags but keep their merge tag content
-  // e.g. <a href="{% unsubscribe_url %}" style="...">Unsubscribe</a> -> just the merge tag chip
+  // e.g. <a href="{% unsubscribe_link %}" style="...">Unsubscribe</a> -> just the merge tag chip
   html = html.replace(
-    /<a[^>]*href=["'][^"']*\{%\s*unsubscribe_url\s*%\}[^"']*["'][^>]*>.*?<\/a>/gi,
+    /<a[^>]*href=["'][^"']*\{%\s*unsubscribe_link\s*%\}[^"']*["'][^>]*>.*?<\/a>/gi,
     '<span class="merge-tag" data-tag="unsub" contenteditable="false">Unsubscribe</span>'
   );
   html = html.replace(
-    /<a[^>]*href=["'][^"']*\{%\s*manage_preferences_url\s*%\}[^"']*["'][^>]*>.*?<\/a>/gi,
+    /<a[^>]*href=["'][^"']*\{%\s*manage_preferences_link\s*%\}[^"']*["'][^>]*>.*?<\/a>/gi,
     '<span class="merge-tag" data-tag="prefs" contenteditable="false">Preferences</span>'
   );
   
@@ -42,11 +42,11 @@ function contentToDisplayHtml(content: string): string {
     '<span class="merge-tag" data-tag="org-address" contenteditable="false">Address</span>'
   );
   html = html.replace(
-    /\{%\s*unsubscribe_url\s*%\}/g,
+    /\{%\s*unsubscribe_link\s*%\}/g,
     '<span class="merge-tag" data-tag="unsub" contenteditable="false">Unsubscribe</span>'
   );
   html = html.replace(
-    /\{%\s*manage_preferences_url\s*%\}/g,
+    /\{%\s*manage_preferences_link\s*%\}/g,
     '<span class="merge-tag" data-tag="prefs" contenteditable="false">Preferences</span>'
   );
   
@@ -60,8 +60,8 @@ function displayHtmlToContent(html: string): string {
   // Replace chips back to merge tags (wrapped in anchor tags for links)
   content = content.replace(/<span[^>]*data-tag="org-name"[^>]*>.*?<\/span>/gi, '{{ organization.name }}');
   content = content.replace(/<span[^>]*data-tag="org-address"[^>]*>.*?<\/span>/gi, '{{ organization.address }}');
-  content = content.replace(/<span[^>]*data-tag="unsub"[^>]*>.*?<\/span>/gi, '<a href="{% unsubscribe_url %}">Unsubscribe</a>');
-  content = content.replace(/<span[^>]*data-tag="prefs"[^>]*>.*?<\/span>/gi, '<a href="{% manage_preferences_url %}">Manage Preferences</a>');
+  content = content.replace(/<span[^>]*data-tag="unsub"[^>]*>.*?<\/span>/gi, '<a href="{% unsubscribe_link %}">Unsubscribe</a>');
+  content = content.replace(/<span[^>]*data-tag="prefs"[^>]*>.*?<\/span>/gi, '<a href="{% manage_preferences_link %}">Manage Preferences</a>');
   
   return content;
 }
@@ -79,7 +79,7 @@ export function InlineLegalEditor({
   // Compliance validation
   const hasOrgName = content.includes('{{ organization.name }}');
   const hasOrgAddress = content.includes('{{ organization.address }}');
-  const hasUnsubscribe = content.includes('{% unsubscribe_url %}');
+  const hasUnsubscribe = content.includes('{% unsubscribe_link %}');
   const isCompliant = hasOrgName && hasOrgAddress && hasUnsubscribe;
   
   // Style values with defaults

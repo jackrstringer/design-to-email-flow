@@ -38,7 +38,7 @@ export function LegalContentEditor({
   // Compliance validation
   const hasOrgName = content.includes('{{ organization.name }}');
   const hasOrgAddress = content.includes('{{ organization.address }}');
-  const hasUnsubscribe = content.includes('{% unsubscribe_url %}');
+  const hasUnsubscribe = content.includes('{% unsubscribe_link %}');
   const isCompliant = hasOrgName && hasOrgAddress && hasUnsubscribe;
   
   // Missing elements
@@ -113,7 +113,7 @@ export function LegalContentEditor({
           type="button"
           variant={hasUnsubscribe ? "secondary" : "outline"}
           size="sm"
-          onClick={() => insertTag('<a href="{% unsubscribe_url %}">Unsubscribe</a>')}
+          onClick={() => insertTag('<a href="{% unsubscribe_link %}">Unsubscribe</a>')}
           className="text-xs"
         >
           <Plus className="w-3 h-3 mr-1" />
@@ -123,7 +123,7 @@ export function LegalContentEditor({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => insertTag('<a href="{% manage_preferences_url %}">Manage Preferences</a>')}
+          onClick={() => insertTag('<a href="{% manage_preferences_link %}">Manage Preferences</a>')}
           className="text-xs"
         >
           <Plus className="w-3 h-3 mr-1" />
@@ -256,8 +256,8 @@ export function LegalContentEditor({
                 __html: content
                   .replace(/\{\{\s*organization\.name\s*\}\}/g, '<span style="background:rgba(255,255,255,0.2);padding:0 4px;border-radius:2px;">Acme Inc.</span>')
                   .replace(/\{\{\s*organization\.address\s*\}\}/g, '<span style="background:rgba(255,255,255,0.2);padding:0 4px;border-radius:2px;">123 Main St, City, ST 12345</span>')
-                  .replace(/\{%\s*unsubscribe_url\s*%\}/g, '#')
-                  .replace(/\{%\s*manage_preferences_url\s*%\}/g, '#')
+                  .replace(/\{%\s*unsubscribe_link\s*%\}/g, '#')
+                  .replace(/\{%\s*manage_preferences_link\s*%\}/g, '#')
               }}
             />
           </div>
