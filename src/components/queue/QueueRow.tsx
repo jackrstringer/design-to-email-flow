@@ -33,6 +33,8 @@ interface QueueRowProps {
   onUpdate: () => void;
   columnWidths: ColumnWidths;
   presets: SegmentPreset[];
+  liveSegmentIds: Set<string>;
+  liveSegmentsLoaded: boolean;
   isSelected: boolean;
   onSelect: (id: string, selected: boolean, shiftKey?: boolean) => void;
   showTimers: boolean;
@@ -46,6 +48,8 @@ export function QueueRow({
   onUpdate, 
   columnWidths, 
   presets,
+  liveSegmentIds,
+  liveSegmentsLoaded,
   isSelected,
   onSelect,
   showTimers,
@@ -169,7 +173,13 @@ export function QueueRow({
         style={{ width: columnWidths.status }}
         onClick={(e) => e.stopPropagation()}
       >
-        <StatusSelector item={item} onUpdate={onUpdate} />
+        <StatusSelector
+          item={item}
+          onUpdate={onUpdate}
+          presets={presets}
+          liveSegmentIds={liveSegmentIds}
+          liveSegmentsLoaded={liveSegmentsLoaded}
+        />
       </div>
       
       {/* Thumbnail */}
@@ -263,6 +273,8 @@ export function QueueRow({
           presets={presets}
           selectedPresetId={selectedPresetId}
           brandId={item.brand_id}
+          liveSegmentIds={liveSegmentIds}
+          liveSegmentsLoaded={liveSegmentsLoaded}
           onSelect={handleSegmentPresetSelect}
           disabled={item.status === 'processing'}
         />
