@@ -80,7 +80,7 @@ The "cuts" array contains the ruler numbers (0-200) where you'd slice the email.
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1500,
       messages: [{
         role: "user",

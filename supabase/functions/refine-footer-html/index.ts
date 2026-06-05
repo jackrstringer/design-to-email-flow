@@ -334,7 +334,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-1-20250805',
+        model: 'claude-opus-4-8',
         max_tokens: 16000,
         thinking: {
           type: 'enabled',

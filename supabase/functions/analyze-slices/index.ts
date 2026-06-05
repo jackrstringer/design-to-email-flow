@@ -276,7 +276,7 @@ Respond ONLY in JSON:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022', // Fast model for context analysis
+        model: 'claude-haiku-4-5-20251001', // Fast model for context analysis
         max_tokens: 500,
         messages: [{ role: 'user', content }]
       }),
@@ -451,7 +451,7 @@ Return JSON with exactly ${slices.length} slices:
   }
 
   const requestBody: { model: string; max_tokens: number; messages: Array<{ role: string; content: typeof content }>; tools?: typeof tools } = {
-    model: useIndexMatching ? 'claude-3-5-haiku-20241022' : 'claude-sonnet-4-5', // Faster model for index matching
+    model: useIndexMatching ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-5', // Faster model for index matching
     max_tokens: useIndexMatching ? 3000 : 6000,
     messages: [{ role: 'user', content }]
   };

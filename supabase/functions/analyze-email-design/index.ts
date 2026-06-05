@@ -84,7 +84,7 @@ Return JSON only (no markdown):
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-1-20250805',
+        model: 'claude-opus-4-8',
         max_tokens: 4096,
         temperature: 0,
         messages: [
