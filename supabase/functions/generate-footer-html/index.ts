@@ -225,12 +225,9 @@ Create a professional dark footer with centered layout.`}`;
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
-            model: 'claude-opus-4-1-20250805',
+            model: 'claude-opus-4-8',
             max_tokens: 16000,
-            thinking: {
-              type: 'enabled',
-              budget_tokens: 10000,
-            },
+            thinking: { type: 'adaptive' },
             system: EMAIL_FOOTER_RULES,
             messages: conversationHistory,
           }),
@@ -297,12 +294,9 @@ Otherwise list ALL discrepancies with specific fixes needed.`;
                 'anthropic-version': '2023-06-01',
               },
               body: JSON.stringify({
-                model: 'claude-opus-4-1-20250805',
+                model: 'claude-opus-4-8',
                 max_tokens: 8000,
-                thinking: {
-                  type: 'enabled',
-                  budget_tokens: 6000,
-                },
+                thinking: { type: 'adaptive' },
                 system: EMAIL_FOOTER_RULES,
                 messages: conversationHistory,
               }),
@@ -369,12 +363,9 @@ Return only the corrected HTML.`;
                 'anthropic-version': '2023-06-01',
               },
               body: JSON.stringify({
-                model: 'claude-opus-4-1-20250805',
+                model: 'claude-opus-4-8',
                 max_tokens: 16000,
-                thinking: {
-                  type: 'enabled',
-                  budget_tokens: 10000,
-                },
+                thinking: { type: 'adaptive' },
                 system: EMAIL_FOOTER_RULES,
                 messages: conversationHistory,
               }),

@@ -76,7 +76,7 @@ Apply the requested change and return ONLY the updated HTML code. No explanation
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-3.5-flash',
         messages,
       }),
     });

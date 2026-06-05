@@ -315,7 +315,7 @@ async function webSearchMissingLinks(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 3000,
       tools: [
         {
@@ -484,7 +484,7 @@ After searching the website, return ONLY a valid JSON array with the ACTUAL URLs
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 16000,
         thinking: {
           type: "enabled",

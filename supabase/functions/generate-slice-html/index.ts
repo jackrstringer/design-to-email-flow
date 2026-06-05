@@ -236,7 +236,7 @@ Return ONLY the HTML code - no explanation, no markdown code fences, just raw HT
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'google/gemini-3.5-flash',
       messages: [
         {
           role: 'user',
@@ -301,7 +301,7 @@ Be strict about button width - buttons should be full-width using width="100%" o
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'google/gemini-3.5-flash',
       messages: [
         {
           role: 'user',
@@ -374,7 +374,7 @@ Return ONLY the corrected HTML code - no explanation, no markdown code fences.`;
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'google/gemini-3.5-flash',
       messages: [
         {
           role: 'user',
