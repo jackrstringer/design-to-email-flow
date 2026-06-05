@@ -181,7 +181,12 @@ serve(async (req) => {
     } else {
       // LARGE CATALOG: Use vector search + Claude confirmation
       console.log('Using large catalog matching (vector search)');
-      matchResult = await matchViaVectorSearch(supabase, brand_id, matchQuery);
+      matchResult = await matchViaVectorSearch(
+        supabase,
+        brand_id,
+        matchQuery,
+        is_generic_cta ? (campaign_context?.primary_focus || undefined) : undefined,
+      );
     }
 
     // 3b. Generic-CTA fallback: if index matching found nothing, use the
