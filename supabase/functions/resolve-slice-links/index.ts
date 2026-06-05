@@ -320,7 +320,7 @@ serve(async (req) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { brandId, brandDomain, slices } = body;
+    const { brandId, brandDomain, slices, campaignContext } = body;
 
     if (!brandId || !brandDomain || !slices || slices.length === 0) {
       return new Response(
@@ -329,9 +329,10 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[resolve] Resolving ${slices.length} slices for ${brandDomain}`);
+    console.log(`[resolve] Resolving ${slices.length} slices for ${brandDomain} (focus: ${campaignContext?.primary_focus || 'none'})`);
 
     const results: ResolvedLink[] = [];
+    const campaignFocus = campaignContext?.primary_focus;
 
     // Process slices in parallel (max 5 concurrent)
     const BATCH_SIZE = 5;
@@ -347,8 +348,14 @@ serve(async (req) => {
             return { index: slice.index, url: null, source: 'not_found', confidence: 0 };
           }
           
-          // Web search with OCR enhancement for per-column accuracy
-          const url = await searchForProductUrl(brandDomain, query, slice.imageUrl);
+          // Web search with OCR enhancement + optional campaign focus
+          const url = await searchForProductUrl(
+            brandDomain,
+            query,
+            slice.imageUrl,
+            campaignFocus,
+            slice.isGenericCta,
+          );
           
           if (url) {
             return { index: slice.index, url, source: 'web_search', confidence: 0.85 };
