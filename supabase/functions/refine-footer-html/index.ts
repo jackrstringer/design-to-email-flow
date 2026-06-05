@@ -336,10 +336,7 @@ Return the refined HTML code. Only output the HTML, no explanations.`;
       body: JSON.stringify({
         model: 'claude-opus-4-8',
         max_tokens: 16000,
-        thinking: {
-          type: 'enabled',
-          budget_tokens: 10000,
-        },
+        thinking: { type: 'adaptive' },
         system: FOOTER_REFINEMENT_RULES + figmaSpecsSection,
         messages: [
           {

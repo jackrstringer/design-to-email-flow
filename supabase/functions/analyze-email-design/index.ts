@@ -86,7 +86,6 @@ Return JSON only (no markdown):
       body: JSON.stringify({
         model: 'claude-opus-4-8',
         max_tokens: 4096,
-        temperature: 0,
         messages: [
           {
             role: 'user',

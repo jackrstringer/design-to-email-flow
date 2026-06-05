@@ -362,10 +362,7 @@ ${currentHtml}
     body: JSON.stringify({
       model: 'claude-opus-4-8',
       max_tokens: 16000,
-      thinking: {
-        type: 'enabled',
-        budget_tokens: 10000,
-      },
+      thinking: { type: 'adaptive' },
       system: `You're comparing email footer images. Look at both images carefully. 
 List what's visually different, then provide fixed HTML. 
 You can see your previous attempts in this conversation - learn from them.`,
@@ -426,10 +423,7 @@ async function callClaude(apiKey: string, systemPrompt: string, messages: any[])
     body: JSON.stringify({
       model: 'claude-opus-4-8',
       max_tokens: 16000,
-      thinking: {
-        type: 'enabled',
-        budget_tokens: 10000,
-      },
+      thinking: { type: 'adaptive' },
       system: systemPrompt,
       messages,
     }),
