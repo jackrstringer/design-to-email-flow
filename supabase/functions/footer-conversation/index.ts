@@ -225,8 +225,8 @@ CRITICAL RULES:
 
 ## KLAVIYO MERGE TAGS (REQUIRED FOR FINE PRINT)
 Every footer MUST include a fine print section with these Klaviyo dynamic tags:
-- Unsubscribe: <a href="{% unsubscribe_url %}">Unsubscribe</a>
-- Preferences: <a href="{% manage_preferences_url %}">Manage Preferences</a>
+- Unsubscribe: <a href="{% unsubscribe_link %}">Unsubscribe</a>
+- Preferences: <a href="{% manage_preferences_link %}">Manage Preferences</a>
 - Address: {{ organization.address }}
 - Organization: {{ organization.name }}
 
@@ -237,8 +237,8 @@ Example fine print row:
 <tr>
   <td style="padding: 20px; text-align: center; font-size: 11px; color: #888888;">
     {{ organization.name }} | {{ organization.address }}<br><br>
-    <a href="{% unsubscribe_url %}" style="color: #888888;">Unsubscribe</a> | 
-    <a href="{% manage_preferences_url %}" style="color: #888888;">Manage Preferences</a>
+    <a href="{% unsubscribe_link %}" style="color: #888888;">Unsubscribe</a> | 
+    <a href="{% manage_preferences_link %}" style="color: #888888;">Manage Preferences</a>
   </td>
 </tr>
 \`\`\`
@@ -324,7 +324,7 @@ CRITICAL: The above measurements are from automated Vision analysis. They are MO
 ⚠️ SURGICAL REFINEMENT RULES (CRITICAL):
 1. Make MINIMAL changes - fix only what's visually different
 2. PRESERVE all existing structure - do not rewrite the entire footer
-3. PRESERVE all Klaviyo tags exactly: {% unsubscribe_url %}, {% manage_preferences_url %}, {{ organization.address }}, {{ organization.name }}
+3. PRESERVE all Klaviyo tags exactly: {% unsubscribe_link %}, {% manage_preferences_link %}, {{ organization.address }}, {{ organization.name }}
 4. PRESERVE all href URLs exactly as they are
 5. Only adjust: padding, font-size, color values, spacing, element widths/heights
 6. If RIGHT looks correct, return the SAME HTML unchanged

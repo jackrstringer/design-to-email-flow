@@ -46,8 +46,8 @@ You are an expert email HTML developer refining footer templates for pixel-perfe
 
 ## KLAVIYO DYNAMIC PLACEHOLDERS (MUST PRESERVE)
 If the footer contains or should contain fine print, use these exact Klaviyo merge tags:
-- {% unsubscribe_url %} - for unsubscribe links
-- {% manage_preferences_url %} - for preference center links
+- {% unsubscribe_link %} - for unsubscribe links
+- {% manage_preferences_link %} - for preference center links
 - {{ organization.address }} - for physical address (legally required)
 - {{ organization.name }} - for organization name
 
@@ -59,8 +59,8 @@ Example fine print:
 <tr>
   <td style="padding: 20px; text-align: center; font-size: 11px; color: #888888;">
     {{ organization.name }} | {{ organization.address }}<br><br>
-    <a href="{% unsubscribe_url %}" style="color: #888888;">Unsubscribe</a> | 
-    <a href="{% manage_preferences_url %}" style="color: #888888;">Manage Preferences</a>
+    <a href="{% unsubscribe_link %}" style="color: #888888;">Unsubscribe</a> | 
+    <a href="{% manage_preferences_link %}" style="color: #888888;">Manage Preferences</a>
   </td>
 </tr>
 \`\`\`
