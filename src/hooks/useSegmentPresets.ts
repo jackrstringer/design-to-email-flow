@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 export interface KlaviyoSegment {
   id: string;
   name: string;
+  /** True when this segment ID no longer exists in the connected Klaviyo account. */
+  missing?: boolean;
 }
 
 export interface SegmentPreset {
@@ -20,22 +22,39 @@ export interface SegmentPreset {
   updated_at: string;
 }
 
-// Helper to hydrate segment IDs with names from Klaviyo segments list
+// Helper to hydrate segment IDs with names from Klaviyo segments list.
+// IMPORTANT: We KEEP entries whose IDs are no longer in Klaviyo and flag them
+// with `missing: true` so the UI can surface them as broken and block sends.
 const hydrateSegments = (
   segmentData: unknown[],
-  klaviyoList: KlaviyoSegment[]
+  klaviyoList: KlaviyoSegment[],
+  klaviyoLoaded: boolean
 ): KlaviyoSegment[] => {
   if (!Array.isArray(segmentData)) return [];
-  
-  return segmentData.map((seg) => {
-    if (typeof seg === 'object' && seg !== null && 'id' in seg && 'name' in seg) {
-      return seg as KlaviyoSegment;
+
+  return segmentData.map((seg): KlaviyoSegment | null => {
+    const id =
+      typeof seg === 'string'
+        ? seg
+        : typeof seg === 'object' && seg !== null && 'id' in seg
+        ? String((seg as { id: string }).id)
+        : null;
+    if (!id) return null;
+
+    const storedName =
+      typeof seg === 'object' && seg !== null && 'name' in seg
+        ? String((seg as { name: string }).name)
+        : null;
+
+    const live = klaviyoList.find((k) => k.id === id);
+    if (live) return { id: live.id, name: live.name };
+
+    // Live list hasn't loaded yet — trust stored data, don't flag as missing.
+    if (!klaviyoLoaded) {
+      return { id, name: storedName || id };
     }
-    const id = typeof seg === 'object' && seg !== null && 'id' in seg 
-      ? (seg as { id: string }).id 
-      : String(seg);
-    const found = klaviyoList.find((k) => k.id === id);
-    return found || null;
+
+    return { id, name: storedName || `Deleted segment (${id})`, missing: true };
   }).filter(Boolean) as KlaviyoSegment[];
 };
 
@@ -92,8 +111,8 @@ export function useSegmentPresets(brandId: string | null, klaviyoApiKey?: string
         brand_id: p.brand_id,
         name: p.name,
         description: p.description || null,
-        included_segments: hydrateSegments(p.included_segments as unknown[], klaviyoSegments),
-        excluded_segments: hydrateSegments(p.excluded_segments as unknown[], klaviyoSegments),
+        included_segments: hydrateSegments(p.included_segments as unknown[], klaviyoSegments, klaviyoLoaded),
+        excluded_segments: hydrateSegments(p.excluded_segments as unknown[], klaviyoSegments, klaviyoLoaded),
         is_default: p.is_default,
         created_at: p.created_at,
         updated_at: p.updated_at,
