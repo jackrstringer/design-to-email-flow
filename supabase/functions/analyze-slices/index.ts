@@ -206,7 +206,7 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ analyses, discoveredUrls }),
+      JSON.stringify({ analyses, discoveredUrls, campaignContext }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
