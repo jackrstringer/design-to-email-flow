@@ -144,15 +144,7 @@ serve(async (req) => {
   </style>` : '';
 
     // Footer section - inject directly since footerHtml contains proper <tr> elements
-    const footerSection = resolvedFooterHtml
-      ? `<tr>
-            <td align="center" data-klaviyo-region="true" data-klaviyo-region-width-pixels="600">
-              <div class="klaviyo-block klaviyo-text-block">
-                ${resolvedFooterHtml}
-              </div>
-            </td>
-          </tr>`
-      : '';
+    const footerSection = resolvedFooterHtml ? resolvedFooterHtml : '';
 
     // Build image content - either single image or multiple slices (with column support)
     let imageContent: string;
