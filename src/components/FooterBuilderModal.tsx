@@ -294,6 +294,8 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     return () => clearInterval(interval);
   }, [isProcessingReference, processingStartTime]);
 
+
+
   // Check for Figma plugin token on mount
   useEffect(() => {
     const checkFigmaToken = async () => {
@@ -960,6 +962,35 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
     const file = e.dataTransfer.files[0];
     if (file) handleImageFooterUpload(file);
   }, [handleImageFooterUpload]);
+
+  // Paste-to-upload: when modal is open on an upload step, accept clipboard images
+  useEffect(() => {
+    if (!open) return;
+    const isUploadStep = step === 'upload' || step === 'reference';
+    if (!isUploadStep) return;
+    if (referenceImageUrl || isUploadingReference) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          e.preventDefault();
+          if (step === 'upload') {
+            handleImageFooterUpload(file);
+          } else {
+            handleReferenceUpload(file);
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [open, step, referenceImageUrl, isUploadingReference, handleImageFooterUpload, handleReferenceUpload]);
+
 
   // Update slice alt text
   const updateSliceAltText = useCallback((index: number, altText: string) => {
