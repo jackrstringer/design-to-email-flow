@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageData, imageUrl, folder } = await req.json();
+    const { imageData, imageUrl, folder, fileName: providedFileName } = await req.json();
 
     const privateKey = Deno.env.get('IMAGEKIT_PRIVATE_KEY');
     const urlEndpoint = Deno.env.get('IMAGEKIT_URL_ENDPOINT');
@@ -44,7 +44,11 @@ serve(async (req) => {
     }
 
     const folderPath = folder || 'email-converter';
-    const fileName = `upload_${Date.now()}.png`;
+    // Preserve provided extension (important for GIFs) — fall back to .png
+    const sanitized = (providedFileName || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileName = sanitized
+      ? `${Date.now()}_${sanitized}`
+      : `upload_${Date.now()}.png`;
 
     console.log('Uploading to ImageKit folder:', folderPath);
 

@@ -14,6 +14,7 @@ import { SpellingErrorsPanel } from './SpellingErrorsPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { SliceImageDropZone } from './SliceImageDropZone';
 
 interface KlaviyoList {
   id: string;
@@ -962,20 +963,15 @@ export function ExpandedRowPanel({
                                 dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
                                 style={{ width: '100%' }}
                               />
-                            ) : slice.imageUrl ? (
-                              <img
-                                src={slice.imageUrl}
-                                alt={slice.altText || `Slice ${originalIndex + 1}`}
-                                style={{ width: '100%' }}
-                                className="block"
-                              />
                             ) : (
-                              <div 
-                                className="bg-muted flex items-center justify-center text-muted-foreground text-xs"
-                                style={{ width: '100%', height: 60 }}
-                              >
-                                No image
-                              </div>
+                              <SliceImageDropZone
+                                imageUrl={slice.imageUrl}
+                                altText={slice.altText}
+                                type={slice.type}
+                                htmlContent={slice.htmlContent}
+                                brandId={(item as any).brand_id}
+                                onUploaded={(newUrl) => updateSlice(originalIndex, { imageUrl: newUrl })}
+                              />
                             )}
                           </div>
                         );
