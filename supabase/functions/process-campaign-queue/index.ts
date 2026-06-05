@@ -1144,7 +1144,38 @@ serve(async (req) => {
           processing_step: 'resolving_links',
           processing_percent: 55
         });
-        
+
+        // Derive a "campaign primary product" from slices that already have
+        // a confident /products/ link. If the same product URL appears in
+        // multiple already-resolved slices (typically the hero product image
+        // and a product card), it's almost certainly what the campaign is
+        // promoting — use it as the focus for resolver disambiguation and as
+        // a smart fallback for generic CTAs.
+        const productUrlCounts = new Map<string, number>();
+        const productUrlTitles = new Map<string, string>();
+        for (const slice of currentSlices) {
+          const link = slice?.link;
+          if (typeof link === 'string' && link.includes('/products/')) {
+            const normalized = link.split('?')[0];
+            productUrlCounts.set(normalized, (productUrlCounts.get(normalized) || 0) + 1);
+            if (slice.description && !productUrlTitles.has(normalized)) {
+              productUrlTitles.set(normalized, slice.description);
+            }
+          }
+        }
+        let campaignProductUrl: string | null = null;
+        let campaignProductFocus: string | null = null;
+        if (productUrlCounts.size > 0) {
+          const sorted = [...productUrlCounts.entries()].sort((a, b) => b[1] - a[1]);
+          campaignProductUrl = sorted[0][0];
+          // Try to extract a focus phrase from the URL slug (e.g. "u-sleep" → "u sleep")
+          const slugMatch = campaignProductUrl.match(/\/products\/([^/?#]+)/);
+          if (slugMatch) {
+            campaignProductFocus = slugMatch[1].replace(/-/g, ' ');
+          }
+          console.log(`[process] Campaign primary product detected: ${campaignProductUrl} (focus: "${campaignProductFocus}", appears ${sorted[0][1]}x)`);
+        }
+
         try {
           const resolveUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/resolve-slice-links';
           const resolveResponse = await fetch(resolveUrl, {
@@ -1160,8 +1191,12 @@ serve(async (req) => {
                 index: s.index,
                 description: s.description,
                 altText: currentSlices[s.index]?.altText,
-                imageUrl: currentSlices[s.index]?.imageUrl
-              }))
+                imageUrl: currentSlices[s.index]?.imageUrl,
+                isGenericCta: currentSlices[s.index]?.isGenericCta ?? false,
+              })),
+              campaignContext: campaignProductFocus
+                ? { primary_focus: campaignProductFocus }
+                : undefined,
             })
           });
           
@@ -1181,19 +1216,30 @@ serve(async (req) => {
                 };
                 console.log(`[process] Slice ${resolved.index} resolved: ${resolved.source} → ${resolved.url}`);
               } else {
-                // Use default destination if resolution failed
+                // Prefer the detected campaign product URL over the brand
+                // homepage — if the campaign is clearly about one product,
+                // an unresolved generic CTA should go there, not /.
+                const slice = currentSlices[resolved.index];
+                const isGeneric = slice?.isGenericCta ?? false;
+                const fallbackUrl = (isGeneric && campaignProductUrl) || defaultDestinationUrl;
+                const fallbackSource = (isGeneric && campaignProductUrl)
+                  ? 'campaign_product_fallback'
+                  : 'default_fallback';
                 currentSlices[resolved.index] = {
-                  ...currentSlices[resolved.index],
-                  link: defaultDestinationUrl,
-                  linkSource: 'default_fallback',
+                  ...slice,
+                  link: fallbackUrl,
+                  linkSource: fallbackSource,
                   linkVerified: false,
-                  linkWarning: 'Could not resolve specific product link; using brand default.'
+                  linkWarning: fallbackSource === 'campaign_product_fallback'
+                    ? 'Generic CTA routed to detected campaign product.'
+                    : 'Could not resolve specific product link; using brand default.'
                 };
-                console.log(`[process] Slice ${resolved.index} fallback: using default ${defaultDestinationUrl}`);
+                console.log(`[process] Slice ${resolved.index} fallback (${fallbackSource}): ${fallbackUrl}`);
               }
             }
             
             console.log(`[process] Resolved ${resolvedLinks.filter((r: any) => r.url).length}/${slicesNeedingResolution.length} links`);
+
           } else {
             console.error('[process] Link resolution failed:', await resolveResponse.text());
             // Apply default fallback for all unresolved

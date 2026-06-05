@@ -181,7 +181,12 @@ serve(async (req) => {
     } else {
       // LARGE CATALOG: Use vector search + Claude confirmation
       console.log('Using large catalog matching (vector search)');
-      matchResult = await matchViaVectorSearch(supabase, brand_id, matchQuery);
+      matchResult = await matchViaVectorSearch(
+        supabase,
+        brand_id,
+        matchQuery,
+        is_generic_cta ? (campaign_context?.primary_focus || undefined) : undefined,
+      );
     }
 
     // 3b. Generic-CTA fallback: if index matching found nothing, use the
@@ -323,7 +328,8 @@ Response:
 async function matchViaVectorSearch(
   supabase: any,
   brandId: string,
-  sliceDescription: string
+  sliceDescription: string,
+  campaignFocus?: string,
 ): Promise<MatchResult> {
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -387,6 +393,34 @@ async function matchViaVectorSearch(
 
     const topMatch = candidates[0];
 
+    // Helper: normalize text (lowercase + strip diacritics) for token compare.
+    const normalize = (s: string) =>
+      (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+    // 2b. Campaign-focus boost: if a generic CTA was issued in a campaign
+    // with a known primary_focus, accept the top candidate when its title
+    // or URL clearly contains the focus tokens, regardless of similarity.
+    if (campaignFocus) {
+      const focusTokens = normalize(campaignFocus)
+        .split(/\s+/)
+        .filter(t => t.length >= 3);
+      if (focusTokens.length > 0) {
+        for (const cand of candidates) {
+          const hay = normalize(`${cand.title || ''} ${cand.url || ''}`);
+          const allMatch = focusTokens.every(t => hay.includes(t));
+          if (allMatch) {
+            console.log(`Campaign-focus match on "${campaignFocus}" → ${cand.url} (sim ${(cand.similarity * 100).toFixed(1)}%)`);
+            return {
+              url: cand.url,
+              source: 'vector_high_confidence',
+              confidence: Math.max(cand.similarity, 0.9),
+              link_id: cand.id,
+            };
+          }
+        }
+      }
+    }
+
     // 3. High confidence (>90%) - use directly
     if (topMatch.similarity > 0.90) {
       console.log(`High confidence match: ${topMatch.url}`);
@@ -398,9 +432,12 @@ async function matchViaVectorSearch(
       };
     }
 
-    // 4. Medium confidence (75-90%) - have Claude pick from candidates
-    if (topMatch.similarity > 0.75 && ANTHROPIC_API_KEY) {
-      console.log('Medium confidence - asking Claude to confirm...');
+    // 4. Medium confidence - have Claude pick from candidates.
+    // Floor is 0.55 when we have a campaign focus (generic CTA with strong
+    // context), otherwise 0.75.
+    const claudeFloor = campaignFocus ? 0.55 : 0.75;
+    if (topMatch.similarity > claudeFloor && ANTHROPIC_API_KEY) {
+      console.log(`Medium confidence (>${claudeFloor}) - asking Claude to confirm...`);
       
       const candidateList = candidates.map((c, i: number) => 
         `${i + 1}. ${c.title || 'Untitled'} (${Math.round(c.similarity * 100)}% match) → ${c.url}`

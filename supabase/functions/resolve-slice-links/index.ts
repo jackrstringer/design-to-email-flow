@@ -10,6 +10,7 @@ interface SliceToResolve {
   description: string;
   altText?: string;
   imageUrl?: string;
+  isGenericCta?: boolean;
 }
 
 interface ResolvedLink {
@@ -23,7 +24,17 @@ interface RequestBody {
   brandId: string;
   brandDomain: string;
   slices: SliceToResolve[];
+  campaignContext?: {
+    primary_focus?: string;
+    detected_products?: string[];
+  };
 }
+
+// Normalize text: strip diacritics so "Ü Sleep" → "U Sleep"
+function stripDiacritics(s: string): string {
+  return (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+}
+
 
 // ============================================================================
 // OCR: Extract product name from slice image using Google Cloud Vision
@@ -141,7 +152,13 @@ function validateCategoryMatch(query: string, url: string): boolean {
  * 3. Clean tracking params from result URLs
  * 4. For category searches, prioritize collection URLs with keyword validation
  */
-async function searchForProductUrl(domain: string, query: string, imageUrl?: string): Promise<string | null> {
+async function searchForProductUrl(
+  domain: string,
+  query: string,
+  imageUrl?: string,
+  campaignFocus?: string,
+  isGenericCta?: boolean,
+): Promise<string | null> {
   const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
   if (!FIRECRAWL_API_KEY) {
     console.log('[resolve] Firecrawl API key not configured');
@@ -154,37 +171,61 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
     ocrQuery = await extractProductNameFromImage(imageUrl);
   }
   
-  // Use OCR result if available and meaningful, otherwise clean the description
-  const baseQuery = ocrQuery || query;
+  // For generic CTAs, prefer the campaign focus over OCR text (OCR usually
+  // just re-reads the button verb like "TRY X", which isn't the product name).
+  // For non-generic slices, use OCR result if meaningful, otherwise fall back
+  // to description.
+  let baseQuery: string;
+  if (isGenericCta && campaignFocus) {
+    baseQuery = campaignFocus;
+  } else {
+    baseQuery = ocrQuery || query;
+  }
   
-  // Clean query - extract product-like terms
-  const cleanQuery = baseQuery
+  // Strip diacritics first so "Ü" → "U" before \w filter drops it.
+  // Use a Unicode-aware letter class so non-ASCII letters survive cleaning.
+  let effectiveQuery = stripDiacritics(baseQuery)
     .replace(/shop\s*(now|the|our)?/gi, '')
     .replace(/click\s*to\s*/gi, '')
+    .replace(/\b(try|discover|meet|experience|unlock|start|get|order|view|learn)\b/gi, '')
     .replace(/\$[\d,.]+/g, '')
-    .replace(/[^\w\s-]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .trim()
     .split(/\s+/)
-    .slice(0, 6)  // First 6 words
+    .filter(w => w.length > 0)
+    .slice(0, 6)
     .join(' ');
   
-  if (!cleanQuery || cleanQuery.length < 3) {
-    console.log(`[resolve] Query too short after cleaning: "${cleanQuery}"`);
+  // If the query collapses to nothing useful and we have a campaign focus,
+  // fall back to it so we don't issue a doomed "try" search.
+  if ((!effectiveQuery || effectiveQuery.length < 3) && campaignFocus) {
+    effectiveQuery = stripDiacritics(campaignFocus)
+      .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 6)
+      .join(' ');
+    console.log(`[resolve] Query collapsed - using campaign focus: "${effectiveQuery}"`);
+  }
+  
+  if (!effectiveQuery || effectiveQuery.length < 3) {
+    console.log(`[resolve] Query too short after cleaning: "${effectiveQuery}"`);
     return null;
   }
   
   // Detect if this is a category search (short query, likely a section header)
-  const wordCount = cleanQuery.split(/\s+/).length;
+  const wordCount = effectiveQuery.split(/\s+/).length;
   const isCategorySearch = wordCount <= 2 && 
-                           cleanQuery.length < 20 &&
-                           !cleanQuery.toLowerCase().includes('product');
+                           effectiveQuery.length < 20 &&
+                           !effectiveQuery.toLowerCase().includes('product');
   
   // For category searches, explicitly search for collections
   const searchQuery = isCategorySearch 
-    ? `${cleanQuery} collection site:${domain}`
-    : `${cleanQuery} site:${domain}`;
+    ? `${effectiveQuery} collection site:${domain}`
+    : `${effectiveQuery} site:${domain}`;
   
-  console.log(`[resolve] Search type: ${isCategorySearch ? 'CATEGORY' : 'product'}, query: "${searchQuery}" (OCR: ${ocrQuery ? 'yes' : 'no'})`);
+  console.log(`[resolve] Search type: ${isCategorySearch ? 'CATEGORY' : 'product'}, query: "${searchQuery}" (OCR: ${ocrQuery ? 'yes' : 'no'}, focus: ${campaignFocus || 'none'})`);
+
   
   try {
     const response = await fetch('https://api.firecrawl.dev/v1/search', {
@@ -210,7 +251,7 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
     
     // For category searches, ONLY accept collection URLs that contain the keyword
     if (isCategorySearch) {
-      const primaryKeyword = cleanQuery.toLowerCase().split(/\s+/)[0];
+      const primaryKeyword = effectiveQuery.toLowerCase().split(/\s+/)[0];
       
       // First pass: Find collection URLs containing the keyword
       for (const result of results) {
@@ -236,7 +277,7 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
       }
       
       // If no collection found with keyword, return null - don't fall back to random product
-      console.log(`[resolve] No matching collection found for category "${cleanQuery}" (keyword: ${primaryKeyword})`);
+      console.log(`[resolve] No matching collection found for category "${effectiveQuery}" (keyword: ${primaryKeyword})`);
       return null;
     }
     
@@ -245,7 +286,7 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
       const url = result.url || '';
       if (url.includes('/products/') || url.includes('/product/')) {
         // Validate that the URL is actually relevant to the query
-        if (validateCategoryMatch(cleanQuery, url)) {
+        if (validateCategoryMatch(effectiveQuery, url)) {
           const cleaned = cleanUrl(url);
           console.log(`[resolve] Found validated product URL: ${cleaned}`);
           return cleaned;
@@ -256,14 +297,14 @@ async function searchForProductUrl(domain: string, query: string, imageUrl?: str
     // Fallback: first result that's on the domain and passes validation
     for (const result of results) {
       const url = result.url || '';
-      if (url.includes(domain) && validateCategoryMatch(cleanQuery, url)) {
+      if (url.includes(domain) && validateCategoryMatch(effectiveQuery, url)) {
         const cleaned = cleanUrl(url);
         console.log(`[resolve] Found validated domain URL: ${cleaned}`);
         return cleaned;
       }
     }
     
-    console.log(`[resolve] No matching URLs in search results for "${cleanQuery}"`);
+    console.log(`[resolve] No matching URLs in search results for "${effectiveQuery}"`);
     return null;
     
   } catch (err) {
@@ -279,7 +320,7 @@ serve(async (req) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { brandId, brandDomain, slices } = body;
+    const { brandId, brandDomain, slices, campaignContext } = body;
 
     if (!brandId || !brandDomain || !slices || slices.length === 0) {
       return new Response(
@@ -288,9 +329,10 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[resolve] Resolving ${slices.length} slices for ${brandDomain}`);
+    console.log(`[resolve] Resolving ${slices.length} slices for ${brandDomain} (focus: ${campaignContext?.primary_focus || 'none'})`);
 
     const results: ResolvedLink[] = [];
+    const campaignFocus = campaignContext?.primary_focus;
 
     // Process slices in parallel (max 5 concurrent)
     const BATCH_SIZE = 5;
@@ -306,8 +348,14 @@ serve(async (req) => {
             return { index: slice.index, url: null, source: 'not_found', confidence: 0 };
           }
           
-          // Web search with OCR enhancement for per-column accuracy
-          const url = await searchForProductUrl(brandDomain, query, slice.imageUrl);
+          // Web search with OCR enhancement + optional campaign focus
+          const url = await searchForProductUrl(
+            brandDomain,
+            query,
+            slice.imageUrl,
+            campaignFocus,
+            slice.isGenericCta,
+          );
           
           if (url) {
             return { index: slice.index, url, source: 'web_search', confidence: 0.85 };
