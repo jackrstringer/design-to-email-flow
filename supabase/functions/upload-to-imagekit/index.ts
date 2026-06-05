@@ -43,7 +43,13 @@ serve(async (req) => {
       );
     }
 
-    const folderPath = folder || 'email-converter';
+    const rawFolder = folder || 'email-converter';
+    // ImageKit folder names allow only alphanumerics, _ and -. Sanitize each segment.
+    const folderPath = '/' + String(rawFolder)
+      .split('/')
+      .map((seg) => seg.replace(/[^a-zA-Z0-9_-]/g, '_'))
+      .filter(Boolean)
+      .join('/');
     // Preserve provided extension (important for GIFs) — fall back to .png
     const sanitized = (providedFileName || '').replace(/[^a-zA-Z0-9._-]/g, '_');
     const fileName = sanitized
