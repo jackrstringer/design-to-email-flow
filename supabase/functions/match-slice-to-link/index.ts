@@ -328,7 +328,8 @@ Response:
 async function matchViaVectorSearch(
   supabase: any,
   brandId: string,
-  sliceDescription: string
+  sliceDescription: string,
+  campaignFocus?: string,
 ): Promise<MatchResult> {
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
