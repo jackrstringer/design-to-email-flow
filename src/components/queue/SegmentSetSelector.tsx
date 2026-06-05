@@ -78,7 +78,7 @@ export function SegmentSetSelector({
   const handleManagePresets = () => {
     setOpen(false);
     if (brandId) {
-      navigate(`/brands/${brandId}#audience`);
+      navigate(`/segments?brand=${brandId}`);
     }
   };
 
