@@ -10,6 +10,7 @@ interface SliceToResolve {
   description: string;
   altText?: string;
   imageUrl?: string;
+  isGenericCta?: boolean;
 }
 
 interface ResolvedLink {
@@ -23,7 +24,17 @@ interface RequestBody {
   brandId: string;
   brandDomain: string;
   slices: SliceToResolve[];
+  campaignContext?: {
+    primary_focus?: string;
+    detected_products?: string[];
+  };
 }
+
+// Normalize text: strip diacritics so "Ü Sleep" → "U Sleep"
+function stripDiacritics(s: string): string {
+  return (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+}
+
 
 // ============================================================================
 // OCR: Extract product name from slice image using Google Cloud Vision
