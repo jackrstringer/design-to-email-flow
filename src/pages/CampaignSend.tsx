@@ -22,7 +22,6 @@ interface LocationState {
   brandDomain?: string;
   brandId?: string;
   brandLogo?: string; // Brand logo for inbox preview
-  klaviyoApiKey?: string;
   klaviyoLists?: Array<{ id: string; name: string }>;
   selectedListId?: string;
   earlyGenerationSessionKey?: string; // Session key for early SL/PT lookup
@@ -55,8 +54,7 @@ export default function CampaignSend() {
   const [brandDomain, setBrandDomain] = useState<string>('');
   const [brandId, setBrandId] = useState<string>('');
   const [brandLogo, setBrandLogo] = useState<string>('');
-  const [klaviyoApiKey, setKlaviyoApiKey] = useState<string>('');
-  
+
   // Segment state
   const [klaviyoLists, setKlaviyoLists] = useState<Array<{ id: string; name: string }>>([]);
   const [includedSegments, setIncludedSegments] = useState<string[]>([]);
@@ -219,7 +217,6 @@ export default function CampaignSend() {
       setBrandDomain(state.brandDomain || '');
       setBrandId(state.brandId || '');
       setBrandLogo(state.brandLogo || '');
-      setKlaviyoApiKey(state.klaviyoApiKey || '');
       setKlaviyoLists(state.klaviyoLists || []);
       
       if (state.selectedListId) {
@@ -673,8 +670,8 @@ export default function CampaignSend() {
       return;
     }
 
-    if (!klaviyoApiKey) {
-      toast.error('No Klaviyo API key configured');
+    if (!brandId) {
+      toast.error('No brand configured');
       return;
     }
 
@@ -683,7 +680,7 @@ export default function CampaignSend() {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           slices,
-          klaviyoApiKey,
+          brandId,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
           footerHtml,
           mode: 'campaign',

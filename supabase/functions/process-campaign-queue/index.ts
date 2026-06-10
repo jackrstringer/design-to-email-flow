@@ -801,8 +801,16 @@ serve(async (req) => {
           domain: brand.domain,
         };
         copyExamples = brand.copy_examples;
-        // Use profile's master API key, fallback to brand's if exists (legacy)
-        clickupApiKey = userProfile?.clickup_api_key || brand.clickup_api_key || null;
+        // Use profile's master API key; brand-level keys live in Vault now
+        let brandClickupKey: string | null = null;
+        if (brand.clickup_key_set) {
+          const { data: vaultKey } = await supabase.rpc('get_brand_secret', {
+            p_brand_id: brandId,
+            p_kind: 'clickup',
+          });
+          brandClickupKey = (vaultKey as string | null) || null;
+        }
+        clickupApiKey = userProfile?.clickup_api_key || brandClickupKey || null;
         clickupWorkspaceId = userProfile?.clickup_workspace_id || brand.clickup_workspace_id || null;
         // List ID still comes from brand (location-specific)
         clickupListId = brand.clickup_list_id || null;
@@ -1483,6 +1491,30 @@ serve(async (req) => {
       processing_completed_at: new Date().toISOString(),
       error_message: null
     });
+
+    // === STEP 9: Brand-knowledge QA (awaited — fire-and-forget dies with the isolate) ===
+    // Checks links server-side, validates against accumulated brand knowledge,
+    // and writes structured flags to qa_flags for the review UI.
+    if (item.brand_id) {
+      try {
+        const qaResponse = await fetch(Deno.env.get('SUPABASE_URL') + '/functions/v1/brand-agent-qa', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({ brandId: item.brand_id, queueId: campaignQueueId })
+        });
+        if (!qaResponse.ok) {
+          console.error('[process] brand-agent-qa failed:', qaResponse.status, await qaResponse.text());
+        } else {
+          const qaJson = await qaResponse.json();
+          console.log('[process] brand-agent-qa flags:', JSON.stringify(qaJson.summary));
+        }
+      } catch (qaErr) {
+        console.error('[process] brand-agent-qa error (non-fatal):', qaErr);
+      }
+    }
 
     return new Response(
       JSON.stringify({

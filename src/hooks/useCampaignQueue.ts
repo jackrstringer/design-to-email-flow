@@ -107,7 +107,7 @@ async function fetchCampaignQueueData(): Promise<CampaignQueueData> {
     // Fetch presets, brand data, and Klaviyo lists in parallel
     const [presetsResult, brandsResult, footersResult] = await Promise.all([
       supabase.from('segment_presets').select('*').in('brand_id', brandIds),
-      supabase.from('brands').select('id, klaviyo_api_key, footer_html, all_links, domain').in('id', brandIds),
+      supabase.from('brands').select('id, klaviyo_key_set, footer_html, all_links, domain').in('id', brandIds),
       supabase.from('brand_footers').select('brand_id, html, is_primary').in('brand_id', brandIds)
     ]);
 
@@ -156,13 +156,13 @@ async function fetchCampaignQueueData(): Promise<CampaignQueueData> {
         };
       }
 
-      // Prefetch Klaviyo lists for brands with API keys
-      const brandsWithKeys = brandsResult.data.filter(b => b.klaviyo_api_key);
+      // Prefetch Klaviyo lists for brands with API keys (resolved server-side)
+      const brandsWithKeys = brandsResult.data.filter(b => b.klaviyo_key_set);
       if (brandsWithKeys.length > 0) {
         const listFetchPromises = brandsWithKeys.map(async (brand) => {
           try {
             const { data } = await supabase.functions.invoke('get-klaviyo-lists', {
-              body: { klaviyoApiKey: brand.klaviyo_api_key }
+              body: { brandId: brand.id }
             });
             return { brandId: brand.id, lists: (data?.lists || []) as KlaviyoList[] };
           } catch {

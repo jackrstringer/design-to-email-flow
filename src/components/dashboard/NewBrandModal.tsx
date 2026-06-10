@@ -359,7 +359,6 @@ export function NewBrandModal({
           social_links: socialLinks as unknown as Json,
           all_links: allLinks as unknown as Json,
           typography: typography as unknown as Json,
-          klaviyo_api_key: klaviyoApiKey.trim(),
           // Add logo data if available
           dark_logo_url: logoData?.darkLogoUrl || null,
           dark_logo_public_id: logoData?.darkLogoPublicId || null,
@@ -370,6 +369,15 @@ export function NewBrandModal({
         .single();
 
       if (error) throw error;
+
+      // Store the API key server-side in Supabase Vault (never persisted in the brands row)
+      const { error: secretError } = await supabase.rpc('set_brand_secret', {
+        p_brand_id: data.id,
+        p_kind: 'klaviyo',
+        p_secret: klaviyoApiKey.trim(),
+      });
+
+      if (secretError) throw secretError;
 
       const newBrand: Brand = {
         id: data.id,
@@ -384,7 +392,7 @@ export function NewBrandModal({
         linkColor: data.link_color || undefined,
         socialLinks: socialLinks,
         allLinks: allLinks,
-        klaviyoApiKey: data.klaviyo_api_key || undefined,
+        klaviyoKeySet: true,
         footerConfigured: false,
         typography: typography || undefined,
         darkLogoUrl: data.dark_logo_url || undefined,

@@ -208,7 +208,7 @@ export function ExpandedRowPanel({
         if (!preloadedBrandData) {
           const { data: brand } = await supabase
             .from('brands')
-            .select('klaviyo_api_key, footer_html, all_links, domain')
+            .select('klaviyo_key_set, footer_html, all_links, domain')
             .eq('id', item.brand_id)
             .single();
 
@@ -246,10 +246,10 @@ export function ExpandedRowPanel({
             }
           }
 
-          // Load Klaviyo lists if not preloaded
-          if (!preloadedKlaviyoLists && brand?.klaviyo_api_key) {
+          // Load Klaviyo lists if not preloaded (key resolved server-side)
+          if (!preloadedKlaviyoLists && brand?.klaviyo_key_set) {
             const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
-              body: { klaviyoApiKey: brand.klaviyo_api_key }
+              body: { brandId: item.brand_id }
             });
             
             if (error) {
@@ -358,6 +358,7 @@ export function ExpandedRowPanel({
 
   // Update slice in local state and database
   const updateSlice = async (index: number, updates: Partial<SliceData>) => {
+    const before = slices[index];
     const newSlices = [...slices];
     newSlices[index] = { ...newSlices[index], ...updates };
     setSlices(newSlices);
@@ -367,6 +368,36 @@ export function ExpandedRowPanel({
       .from('campaign_queue')
       .update({ slices: JSON.parse(JSON.stringify(newSlices)) })
       .eq('id', item.id);
+
+    // Feed corrections to the brand knowledge layer (best-effort).
+    // The learning agent distills these into durable lessons after push.
+    if (item.brand_id && before) {
+      const eventType =
+        'link' in updates && updates.link !== before.link
+          ? 'link_corrected'
+          : 'altText' in updates && updates.altText !== before.altText
+            ? 'alt_text_corrected'
+            : null;
+      if (eventType) {
+        supabase
+          .from('knowledge_events')
+          .insert({
+            brand_id: item.brand_id,
+            user_id: item.user_id,
+            queue_id: item.id,
+            event_type: eventType,
+            before: JSON.parse(JSON.stringify({
+              link: before.link ?? null,
+              altText: before.altText ?? null,
+              imageUrl: before.imageUrl ?? null,
+            })),
+            after: JSON.parse(JSON.stringify(updates)),
+          })
+          .then(({ error }) => {
+            if (error) console.warn('knowledge_events insert failed:', error.message);
+          });
+      }
+    }
   };
 
   // Set slice link (CampaignStudio style)

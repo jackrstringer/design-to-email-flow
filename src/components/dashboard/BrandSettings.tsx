@@ -37,8 +37,9 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   const [footers, setFooters] = useState<BrandFooter[]>([]);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [editApiKey, setEditApiKey] = useState(false);
-  const [apiKeyValue, setApiKeyValue] = useState(brand.klaviyoApiKey || '');
+  const [apiKeyValue, setApiKeyValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isRemovingKey, setIsRemovingKey] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
@@ -267,21 +268,50 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   };
 
   const handleSaveApiKey = async () => {
+    if (!apiKeyValue.trim()) {
+      toast.error('Please enter an API key');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('brands')
-        .update({ klaviyo_api_key: apiKeyValue || null })
-        .eq('id', brand.id);
+      const { error } = await supabase.rpc('set_brand_secret', {
+        p_brand_id: brand.id,
+        p_kind: 'klaviyo',
+        p_secret: apiKeyValue.trim(),
+      });
 
       if (error) throw error;
       toast.success('API key updated');
       setEditApiKey(false);
+      setApiKeyValue('');
       onBrandChange();
     } catch (error) {
       toast.error('Failed to update API key');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRemoveApiKey = async () => {
+    if (!confirm('Remove the Klaviyo API key for this brand?')) return;
+
+    setIsRemovingKey(true);
+    try {
+      const { error } = await supabase.rpc('delete_brand_secret', {
+        p_brand_id: brand.id,
+        p_kind: 'klaviyo',
+      });
+
+      if (error) throw error;
+      toast.success('API key removed');
+      setEditApiKey(false);
+      setApiKeyValue('');
+      onBrandChange();
+    } catch (error) {
+      toast.error('Failed to remove API key');
+    } finally {
+      setIsRemovingKey(false);
     }
   };
 
@@ -497,7 +527,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
   };
 
   const handleSyncKlaviyoCopy = async () => {
-    if (!brand.klaviyoApiKey) {
+    if (!brand.klaviyoKeySet) {
       toast.error('Please add a Klaviyo API key first');
       return;
     }
@@ -507,7 +537,6 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
       const { data, error } = await supabase.functions.invoke('scrape-klaviyo-copy', {
         body: {
           brandId: brand.id,
-          klaviyoApiKey: brand.klaviyoApiKey,
         }
       });
 
@@ -802,9 +831,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
     }
   }, [brand.id, onBrandChange]);
 
-  const maskedApiKey = brand.klaviyoApiKey 
-    ? `pk_****${brand.klaviyoApiKey.slice(-4)}` 
-    : null;
+  const isKlaviyoConfigured = !!brand.klaviyoKeySet;
 
   // Collect all colors for display
   const allColors = [
@@ -1414,7 +1441,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           <div className="flex items-center gap-2">
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.api ? 'rotate-90' : ''}`} />
             <span className="text-sm font-medium">Klaviyo API Key</span>
-            {maskedApiKey ? (
+            {isKlaviyoConfigured ? (
               <span className="text-xs text-green-600">Connected</span>
             ) : (
               <span className="text-xs text-amber-600">Not configured</span>
@@ -1422,12 +1449,23 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent className="py-4">
-          {maskedApiKey ? (
+          {isKlaviyoConfigured ? (
             <div className="flex items-center justify-between">
-              <code className="text-sm text-muted-foreground">{maskedApiKey}</code>
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditApiKey(true)}>
-                Update
-              </Button>
+              <code className="text-sm text-muted-foreground">••••••••  (configured)</code>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditApiKey(true)}>
+                  Update
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-destructive hover:text-destructive"
+                  onClick={handleRemoveApiKey}
+                  disabled={isRemovingKey}
+                >
+                  {isRemovingKey ? 'Removing...' : 'Remove key'}
+                </Button>
+              </div>
             </div>
           ) : (
             <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setEditApiKey(true)}>
@@ -1465,7 +1503,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                 variant="outline"
                 size="sm"
                 onClick={handleSyncKlaviyoCopy}
-                disabled={isSyncingCopy || !brand.klaviyoApiKey}
+                disabled={isSyncingCopy || !brand.klaviyoKeySet}
                 className="text-xs"
               >
                 <RefreshCw className={`h-3 w-3 mr-2 ${isSyncingCopy ? 'animate-spin' : ''}`} />
@@ -1631,16 +1669,26 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
               <Label>Private API Key</Label>
               <Input
                 type="password"
-                placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx"
+                placeholder={isKlaviyoConfigured ? '••••••••  (configured)' : 'pk_xxxxxxxxxxxxxxxxxxxxxxxx'}
                 value={apiKeyValue}
                 onChange={(e) => setApiKeyValue(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Find this in Klaviyo → Settings → API Keys
+                Find this in Klaviyo → Settings → API Keys. Keys are stored securely and never displayed.
               </p>
             </div>
           </div>
           <DialogFooter>
+            {isKlaviyoConfigured && (
+              <Button
+                variant="ghost"
+                className="mr-auto text-destructive hover:text-destructive"
+                onClick={handleRemoveApiKey}
+                disabled={isRemovingKey}
+              >
+                {isRemovingKey ? 'Removing...' : 'Remove key'}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setEditApiKey(false)}>Cancel</Button>
             <Button onClick={handleSaveApiKey} disabled={isSaving}>
               {isSaving ? 'Saving...' : 'Save'}

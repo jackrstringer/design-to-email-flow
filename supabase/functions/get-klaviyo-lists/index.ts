@@ -1,10 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, requireBrandAccess, serviceClient, AuthError } from "../_shared/auth.ts";
+import { getBrandSecret } from "../_shared/secrets.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
   let lastError: Error | null = null;
@@ -36,17 +35,36 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 
 serve(async (req) => {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
+  const ctx = newTrace('get-klaviyo-lists', req);
 
   try {
-    const { klaviyoApiKey } = await req.json();
+    const auth = await requireAuth(req);
+    const { brandId, klaviyoApiKey: legacyKey } = await req.json();
 
+    if (!brandId) {
+      // Backward compat: old clients sent the raw key. Raw keys are no longer accepted.
+      if (legacyKey) {
+        return jsonResponse(
+          req,
+          { error: 'Raw API keys are no longer accepted. Send brandId instead; the Klaviyo key is resolved server-side.' },
+          400,
+        );
+      }
+      return jsonResponse(req, { error: 'brandId is required' }, 400);
+    }
+
+    const supabase = serviceClient();
+    await requireBrandAccess(supabase, brandId, auth);
+
+    const klaviyoApiKey = await getBrandSecret(supabase, brandId, 'klaviyo');
     if (!klaviyoApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Klaviyo API key is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      return jsonResponse(
+        req,
+        { error: 'Brand does not have a Klaviyo API key configured' },
+        400,
       );
     }
 
@@ -82,20 +100,14 @@ serve(async (req) => {
 
         // If Klaviyo is temporarily down (Cloudflare 5xx), don't bubble a 5xx to the client.
         if (response.status >= 502 && response.status <= 504) {
-          return new Response(
-            JSON.stringify({
-              lists: allSegments, // Return what we have so far
-              transientError: true,
-              error: `Klaviyo temporarily unavailable (${response.status}). Partial results returned.`,
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return jsonResponse(req, {
+            lists: allSegments, // Return what we have so far
+            transientError: true,
+            error: `Klaviyo temporarily unavailable (${response.status}). Partial results returned.`,
+          });
         }
 
-        return new Response(
-          JSON.stringify({ error: `Klaviyo API error: ${response.status}` }),
-          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(req, { error: `Klaviyo API error: ${response.status}` }, response.status);
       }
 
       const data = await response.json();
@@ -125,23 +137,17 @@ serve(async (req) => {
 
     console.log(`Finished fetching all segments: ${allSegments.length} total across ${pageCount} pages`);
 
-    return new Response(
-      JSON.stringify({ lists: allSegments }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, { lists: allSegments });
 
   } catch (error) {
-    console.error('Error fetching Klaviyo lists:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch lists';
-
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { error: error.message }, error.status);
+    }
     // Return a 200 so the client can handle transient failures without crashing.
-    return new Response(
-      JSON.stringify({
-        lists: [],
-        transientError: true,
-        error: errorMessage,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, {
+      lists: [],
+      transientError: true,
+      error: sanitizeError(ctx, error),
+    });
   }
 });

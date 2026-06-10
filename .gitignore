@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# local env + secrets
+.env.local
+supabase/functions/.env
+
+# supabase CLI artifacts
+supabase/.branches/
+supabase/.temp/

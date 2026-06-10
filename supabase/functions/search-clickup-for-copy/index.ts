@@ -1,10 +1,8 @@
 // deploy-trigger
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, AuthError } from "../_shared/auth.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 // Convert custom field value to searchable text
 function getCustomFieldText(field: any): string {
@@ -281,19 +279,22 @@ async function collectAllTaskText(task: any, clickupApiKey: string, workspaceId?
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
+  const ctx = newTrace('search-clickup-for-copy', req);
 
   try {
+    // The ClickUp key is the caller's own user-level key (profiles.clickup_api_key),
+    // forwarded by the authenticated frontend, or by process-campaign-queue calling
+    // with the service-role key. requireAuth permits both and rejects anonymous calls.
+    await requireAuth(req);
+
     const { figmaUrl, clickupApiKey, listId, workspaceId } = await req.json();
 
     if (!figmaUrl || !clickupApiKey || !listId) {
       console.log('[clickup] Missing required parameters');
-      return new Response(
-        JSON.stringify({ found: false, error: 'Missing required parameters' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { found: false, error: 'Missing required parameters' });
     }
 
     // Parse and log the target Figma URL for debugging
@@ -315,9 +316,10 @@ serve(async (req) => {
     if (!tasksResponse.ok) {
       const errorBody = await tasksResponse.text();
       console.error('[clickup] Task list fetch failed:', tasksResponse.status, errorBody);
-      return new Response(
-        JSON.stringify({ found: false, error: 'ClickUp API error', clickupStatus: tasksResponse.status, clickupError: errorBody }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      return jsonResponse(
+        req,
+        { found: false, error: 'ClickUp API error', clickupStatus: tasksResponse.status, clickupError: errorBody },
+        502,
       );
     }
 
@@ -384,10 +386,7 @@ serve(async (req) => {
 
     if (!matchedTask) {
       console.log('[clickup] No matching task found for Figma URL');
-      return new Response(
-        JSON.stringify({ found: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { found: false });
     }
 
     console.log(`[clickup] Found task: ${matchedTask.name} (${matchedTask.id})`);
@@ -404,22 +403,18 @@ serve(async (req) => {
 
     console.log(`[clickup] Final result - SL: ${subjectLine ? `"${subjectLine}"` : 'none'}, PT: ${previewText ? `"${previewText}"` : 'none'}`);
 
-    return new Response(
-      JSON.stringify({
-        found: true,
-        taskId: matchedTask.id,
-        taskUrl: matchedTask.url,
-        subjectLine,
-        previewText,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, {
+      found: true,
+      taskId: matchedTask.id,
+      taskUrl: matchedTask.url,
+      subjectLine,
+      previewText,
+    });
 
   } catch (error) {
-    console.error('[clickup] Error:', error);
-    return new Response(
-      JSON.stringify({ found: false, error: 'Internal error' }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { found: false, error: error.message }, error.status);
+    }
+    return jsonResponse(req, { found: false, error: sanitizeError(ctx, error) });
   }
 });

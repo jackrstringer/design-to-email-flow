@@ -58,34 +58,34 @@ const hydrateSegments = (
   }).filter(Boolean) as KlaviyoSegment[];
 };
 
-// Separate hook for Klaviyo segments - cached per API key
-export function useKlaviyoSegments(klaviyoApiKey: string | null | undefined) {
+// Separate hook for Klaviyo segments - cached per brand (key resolved server-side)
+export function useKlaviyoSegments(brandId: string | null | undefined, klaviyoKeySet?: boolean | null) {
   return useQuery({
-    queryKey: ['klaviyo-segments', klaviyoApiKey],
+    queryKey: ['klaviyo-segments', brandId],
     queryFn: async () => {
-      if (!klaviyoApiKey) return [];
-      
+      if (!brandId || !klaviyoKeySet) return [];
+
       const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
-        body: { klaviyoApiKey },
+        body: { brandId },
       });
 
       if (error) throw error;
       return (data.lists || []) as KlaviyoSegment[];
     },
-    enabled: !!klaviyoApiKey,
+    enabled: !!brandId && !!klaviyoKeySet,
     staleTime: 1000 * 60 * 5, // 5 minutes - segments rarely change
   });
 }
 
-export function useSegmentPresets(brandId: string | null, klaviyoApiKey?: string | null) {
+export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolean | null) {
   const queryClient = useQueryClient();
 
-  // Fetch Klaviyo segments (cached per API key)
+  // Fetch Klaviyo segments (cached per brand)
   const {
     data: klaviyoSegments = [],
     isLoading: loadingSegments,
     isFetched: klaviyoLoaded,
-  } = useKlaviyoSegments(klaviyoApiKey);
+  } = useKlaviyoSegments(brandId, klaviyoKeySet);
 
   // Fetch segment presets (cached per brand ID)
   const {
@@ -118,7 +118,7 @@ export function useSegmentPresets(brandId: string | null, klaviyoApiKey?: string
         updated_at: p.updated_at,
       }));
     },
-    enabled: !!brandId && (!!klaviyoApiKey ? klaviyoLoaded : true),
+    enabled: !!brandId && (klaviyoKeySet ? klaviyoLoaded : true),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
@@ -213,8 +213,8 @@ export function useSegmentPresets(brandId: string | null, klaviyoApiKey?: string
   }, [invalidatePresets]);
 
   // Determine loading state - only show loading on initial load with no data
-  const isInitialLoading = (loadingPresets && presets.length === 0) || 
-    (!!klaviyoApiKey && !klaviyoLoaded);
+  const isInitialLoading = (loadingPresets && presets.length === 0) ||
+    (!!klaviyoKeySet && !klaviyoLoaded);
 
   return {
     presets,

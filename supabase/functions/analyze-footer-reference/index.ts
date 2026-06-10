@@ -1,11 +1,9 @@
 // deploy-trigger
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, AuthError } from "../_shared/auth.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -526,17 +524,21 @@ function getImageDimensions(imageBase64: string): { width: number; height: numbe
 // ============================================================================
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
+  const ctx = newTrace('analyze-footer-reference', req);
   const startTime = Date.now();
 
   try {
+    // Called from the frontend (user JWT) and internally from orchestrators
+    // (service-role bearer) — requireAuth verifies both, rejects anonymous calls.
+    await requireAuth(req);
+
     const { imageUrl } = await req.json();
-    
+
     if (!imageUrl) {
-      throw new Error('imageUrl is required');
+      return jsonResponse(req, { success: false, error: 'imageUrl is required' }, 400);
     }
 
     console.log('Analyzing footer reference image...');
@@ -676,18 +678,12 @@ serve(async (req) => {
       processingTimeMs
     };
 
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return jsonResponse(req, result);
 
   } catch (error) {
-    console.error('Footer analysis error:', error);
-    return new Response(JSON.stringify({ 
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { success: false, error: error.message }, error.status);
+    }
+    return jsonResponse(req, { success: false, error: sanitizeError(ctx, error) }, 500);
   }
 });

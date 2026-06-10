@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { Upload, Key, CheckCircle, Loader2, ExternalLink, FileText, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useBrandsQuery } from '@/hooks/useBrandsQuery';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -83,7 +84,8 @@ type ViewState = 'upload' | 'slice-editor' | 'slice-results' | 'success';
 type CreationMode = 'template' | 'campaign';
 
 export default function SimpleUpload() {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('klaviyo_api_key') || '');
+  const { data: brands } = useBrandsQuery();
+  const [brandId, setBrandId] = useState(() => localStorage.getItem('simple_upload_brand_id') || '');
   const [includeFooter, setIncludeFooter] = useState(() => localStorage.getItem('include_footer') !== 'false');
   const [isDragActive, setIsDragActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -97,9 +99,9 @@ export default function SimpleUpload() {
   const [processedSlices, setProcessedSlices] = useState<ProcessedSlice[]>([]);
   const [originalCloudinaryUrl, setOriginalCloudinaryUrl] = useState<string | null>(null);
 
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('klaviyo_api_key', key);
+  const saveBrandId = (id: string) => {
+    setBrandId(id);
+    localStorage.setItem('simple_upload_brand_id', id);
   };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -118,8 +120,8 @@ export default function SimpleUpload() {
       return;
     }
 
-    if (!apiKey.trim()) {
-      toast.error('Please enter your Klaviyo API key first');
+    if (!brandId) {
+      toast.error('Please select a brand with a Klaviyo key configured first');
       return;
     }
 
@@ -147,7 +149,7 @@ export default function SimpleUpload() {
     if (files && files[0]) {
       handleFileSelect(files[0]);
     }
-  }, [apiKey]);
+  }, [brandId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -266,7 +268,7 @@ export default function SimpleUpload() {
             htmlContent: s.htmlContent
           })),
           templateName,
-          klaviyoApiKey: apiKey.trim(),
+          brandId,
           footerHtml: includeFooter ? ENHANCED_FOOTER_HTML : null,
           mode,
           listId: mode === 'campaign' ? DEFAULT_LIST_ID : undefined
@@ -361,20 +363,26 @@ export default function SimpleUpload() {
           </p>
         </div>
 
-        {/* API Key Section - always visible except on success */}
+        {/* Brand selection - keys are stored encrypted server-side per brand */}
         {viewState !== 'success' && (
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Key className="w-4 h-4" />
-              Klaviyo Private API Key
+              Brand (Klaviyo account)
             </label>
-            <Input
-              type="password"
-              placeholder="pk_xxxxxxxxxxxx"
-              value={apiKey}
-              onChange={(e) => saveApiKey(e.target.value)}
-              className="font-mono"
-            />
+            <Select value={brandId} onValueChange={saveBrandId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a brand…" />
+              </SelectTrigger>
+              <SelectContent>
+                {(brands ?? []).filter((b) => b.klaviyoKeySet).map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Only brands with a configured Klaviyo key are listed. Add keys in Brand Settings.
+            </p>
           </div>
         )}
 

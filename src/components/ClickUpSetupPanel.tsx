@@ -125,10 +125,20 @@ export function ClickUpSetupPanel({
     
     setIsSaving(true);
     try {
+      // Store the API key server-side in Supabase Vault (never persisted in the brands row)
+      if (clickupApiKey) {
+        const { error: secretError } = await supabase.rpc('set_brand_secret', {
+          p_brand_id: brandId,
+          p_kind: 'clickup',
+          p_secret: clickupApiKey,
+        });
+
+        if (secretError) throw secretError;
+      }
+
       const { error } = await supabase
         .from('brands')
         .update({
-          clickup_api_key: clickupApiKey || null,
           clickup_workspace_id: clickupWorkspaceId || null,
           clickup_list_id: clickupListId || null,
         })

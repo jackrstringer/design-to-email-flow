@@ -1,24 +1,24 @@
 // deploy-trigger
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, AuthError } from "../_shared/auth.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
+  const ctx = newTrace('get-clickup-hierarchy', req);
 
   try {
+    // The ClickUp key is the caller's own user-level key (profiles.clickup_api_key),
+    // forwarded by the authenticated frontend. requireAuth rejects anonymous calls.
+    await requireAuth(req);
+
     const { type, clickupApiKey, workspaceId, spaceId, folderId } = await req.json();
 
     if (!clickupApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'API key required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'API key required' }, 400);
     }
 
     const headers = { 'Authorization': clickupApiKey };
@@ -31,10 +31,7 @@ serve(async (req) => {
       if (!res.ok) {
         const errorText = await res.text();
         console.error('[clickup-hierarchy] Workspaces fetch failed:', errorText);
-        return new Response(
-          JSON.stringify({ error: 'Failed to fetch workspaces', details: errorText }),
-          { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(req, { error: 'Failed to fetch workspaces', details: errorText }, res.status);
       }
 
       const data = await res.json();
@@ -44,19 +41,13 @@ serve(async (req) => {
       }));
       
       console.log(`[clickup-hierarchy] Found ${workspaces.length} workspaces`);
-      return new Response(
-        JSON.stringify({ workspaces }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { workspaces });
     }
 
     // Get spaces in a workspace
     if (type === 'spaces') {
       if (!workspaceId) {
-        return new Response(
-          JSON.stringify({ error: 'workspaceId required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(req, { error: 'workspaceId required' }, 400);
       }
 
       console.log(`[clickup-hierarchy] Fetching spaces for workspace ${workspaceId}...`);
@@ -65,10 +56,7 @@ serve(async (req) => {
       if (!res.ok) {
         const errorText = await res.text();
         console.error('[clickup-hierarchy] Spaces fetch failed:', errorText);
-        return new Response(
-          JSON.stringify({ error: 'Failed to fetch spaces' }),
-          { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(req, { error: 'Failed to fetch spaces' }, res.status);
       }
 
       const data = await res.json();
@@ -78,19 +66,13 @@ serve(async (req) => {
       }));
       
       console.log(`[clickup-hierarchy] Found ${spaces.length} spaces`);
-      return new Response(
-        JSON.stringify({ spaces }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { spaces });
     }
 
     // Get folders in a space
     if (type === 'folders') {
       if (!spaceId) {
-        return new Response(
-          JSON.stringify({ error: 'spaceId required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(req, { error: 'spaceId required' }, 400);
       }
 
       console.log(`[clickup-hierarchy] Fetching folders for space ${spaceId}...`);
@@ -99,10 +81,7 @@ serve(async (req) => {
       if (!res.ok) {
         const errorText = await res.text();
         console.error('[clickup-hierarchy] Folders fetch failed:', errorText);
-        return new Response(
-          JSON.stringify({ error: 'Failed to fetch folders' }),
-          { status: res.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return jsonResponse(req, { error: 'Failed to fetch folders' }, res.status);
       }
 
       const data = await res.json();
@@ -112,10 +91,7 @@ serve(async (req) => {
       }));
       
       console.log(`[clickup-hierarchy] Found ${folders.length} folders`);
-      return new Response(
-        JSON.stringify({ folders }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { folders });
     }
 
     // Get lists in a folder or folderless lists in a space
@@ -153,22 +129,15 @@ serve(async (req) => {
       }
       
       console.log(`[clickup-hierarchy] Found ${lists.length} lists`);
-      return new Response(
-        JSON.stringify({ lists }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { lists });
     }
 
-    return new Response(
-      JSON.stringify({ error: 'Invalid type. Use: workspaces, spaces, folders, or lists' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, { error: 'Invalid type. Use: workspaces, spaces, folders, or lists' }, 400);
 
   } catch (error) {
-    console.error('[clickup-hierarchy] Error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { error: error.message }, error.status);
+    }
+    return jsonResponse(req, { error: sanitizeError(ctx, error) }, 500);
   }
 });

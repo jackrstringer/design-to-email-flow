@@ -136,13 +136,13 @@ export interface Brand {
   footerLogoPublicId?: string;
   socialIcons?: SocialIconAsset[];
   footerConfigured?: boolean;
-  // Per-brand Klaviyo API key
-  klaviyoApiKey?: string;
+  // Whether a Klaviyo API key is stored server-side (Supabase Vault)
+  klaviyoKeySet?: boolean;
   // Typography and formatting
   typography?: BrandTypography;
   htmlFormattingRules?: HtmlFormattingRule[];
-  // ClickUp integration
-  clickupApiKey?: string;
+  // ClickUp integration (key stored server-side in Supabase Vault)
+  clickupKeySet?: boolean;
   clickupWorkspaceId?: string;
   clickupListId?: string;
   // Link intelligence

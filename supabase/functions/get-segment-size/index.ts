@@ -1,33 +1,47 @@
 // deploy-trigger
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, requireBrandAccess, serviceClient, AuthError } from "../_shared/auth.ts";
+import { getBrandSecret } from "../_shared/secrets.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 serve(async (req) => {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
+  const ctx = newTrace('get-segment-size', req);
 
   try {
-    const { klaviyoApiKey, segmentIds } = await req.json();
+    const auth = await requireAuth(req);
+    const { brandId, klaviyoApiKey: legacyKey, segmentIds } = await req.json();
 
-    if (!klaviyoApiKey) {
-      console.error('Missing Klaviyo API key');
-      return new Response(
-        JSON.stringify({ error: 'Missing Klaviyo API key' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!brandId) {
+      // Backward compat: old clients sent the raw key. Raw keys are no longer accepted.
+      if (legacyKey) {
+        return jsonResponse(
+          req,
+          { error: 'Raw API keys are no longer accepted. Send brandId instead; the Klaviyo key is resolved server-side.' },
+          400,
+        );
+      }
+      return jsonResponse(req, { error: 'brandId is required' }, 400);
     }
 
     if (!segmentIds || !Array.isArray(segmentIds) || segmentIds.length === 0) {
       console.log('No segment IDs provided, returning 0');
-      return new Response(
-        JSON.stringify({ totalSize: 0, segments: [] }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      return jsonResponse(req, { totalSize: 0, segments: [] });
+    }
+
+    const supabase = serviceClient();
+    await requireBrandAccess(supabase, brandId, auth);
+
+    const klaviyoApiKey = await getBrandSecret(supabase, brandId, 'klaviyo');
+    if (!klaviyoApiKey) {
+      return jsonResponse(
+        req,
+        { error: 'Brand does not have a Klaviyo API key configured' },
+        400,
       );
     }
 
@@ -77,16 +91,11 @@ serve(async (req) => {
 
     console.log(`Total segment size: ${totalSize}`);
 
-    return new Response(
-      JSON.stringify({ totalSize, segments: segmentSizes }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, { totalSize, segments: segmentSizes });
   } catch (error) {
-    console.error('Error in get-segment-size:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { error: error.message }, error.status);
+    }
+    return jsonResponse(req, { error: sanitizeError(ctx, error) }, 500);
   }
 });

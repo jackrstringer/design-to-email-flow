@@ -47,7 +47,8 @@ export function useBrandsQuery() {
         socialLinks: parseSocialLinks(b.social_links),
         allLinks: parseAllLinks(b.all_links),
         footerConfigured: b.footer_configured || false,
-        klaviyoApiKey: b.klaviyo_api_key || undefined,
+        klaviyoKeySet: b.klaviyo_key_set,
+        clickupKeySet: b.clickup_key_set,
         createdAt: b.created_at,
         updatedAt: b.updated_at,
       }));

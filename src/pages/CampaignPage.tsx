@@ -126,12 +126,12 @@ export default function CampaignPage() {
     }
   };
 
-  // Fetch Klaviyo lists when brand loads
-  const fetchKlaviyoLists = async (apiKey: string) => {
+  // Fetch Klaviyo lists when brand loads (key resolved server-side)
+  const fetchKlaviyoLists = async (targetBrandId: string) => {
     setIsLoadingLists(true);
     try {
       const { data, error } = await supabase.functions.invoke('get-klaviyo-lists', {
-        body: { klaviyoApiKey: apiKey }
+        body: { brandId: targetBrandId }
       });
 
       if (error) throw error;
@@ -165,9 +165,9 @@ export default function CampaignPage() {
 
   // Fetch lists when brand is set
   useEffect(() => {
-    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
-    if (apiKey) {
-      fetchKlaviyoLists(apiKey);
+    const hasKlaviyoKey = (brand as any)?.klaviyoKeySet || (brand as any)?.klaviyo_key_set;
+    if (hasKlaviyoKey && brand?.id) {
+      fetchKlaviyoLists(brand.id);
     }
   }, [brand]);
 
@@ -278,8 +278,8 @@ export default function CampaignPage() {
   };
 
   const handleCreateTemplate = async (footer?: string) => {
-    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
-    if (!apiKey) {
+    const hasKlaviyoKey = (brand as any)?.klaviyoKeySet || (brand as any)?.klaviyo_key_set;
+    if (!hasKlaviyoKey || !brand?.id) {
       toast.error('No Klaviyo API key configured for this brand');
       return;
     }
@@ -289,7 +289,7 @@ export default function CampaignPage() {
       const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
         body: {
           slices,
-          klaviyoApiKey: apiKey,
+          brandId: brand.id,
           templateName: `Campaign ${new Date().toLocaleDateString()}`,
           footerHtml: footer,
         }
@@ -308,8 +308,8 @@ export default function CampaignPage() {
   };
 
   const handleCreateCampaign = async (footer?: string) => {
-    const apiKey = (brand as any)?.klaviyoApiKey || (brand as any)?.klaviyo_api_key;
-    if (!apiKey) {
+    const hasKlaviyoKey = (brand as any)?.klaviyoKeySet || (brand as any)?.klaviyo_key_set;
+    if (!hasKlaviyoKey || !brand?.id) {
       toast.error('No Klaviyo API key configured for this brand');
       return;
     }
@@ -327,7 +327,6 @@ export default function CampaignPage() {
         brandDomain: (brand as any)?.domain,
         brandId: (brand as any)?.id,
         brandLogo, // Pass brand logo for inbox preview
-        klaviyoApiKey: apiKey,
         klaviyoLists,
         selectedListId,
         earlyGenerationSessionKey, // Pass for early SL/PT lookup

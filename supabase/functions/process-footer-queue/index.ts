@@ -1,11 +1,8 @@
 // deploy-trigger
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, serviceClient, AuthError } from "../_shared/auth.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 interface ProcessRequest {
   jobId: string;
@@ -533,29 +530,28 @@ function generateSliceCropUrls(
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
+  const ctx = newTrace('process-footer-queue', req);
   const startTime = Date.now();
 
   try {
+    // Called from the frontend (user JWT) and internally (service-role bearer) —
+    // requireAuth verifies both, rejects anonymous calls.
+    const auth = await requireAuth(req);
+
     const body: ProcessRequest = await req.json();
     const { jobId } = body;
 
     if (!jobId) {
-      return new Response(
-        JSON.stringify({ error: 'jobId is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'jobId is required' }, 400);
     }
 
     console.log('[process-footer] Starting processing for job:', jobId);
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = serviceClient();
 
     // Fetch the job
     const { data: job, error: fetchError } = await supabase
@@ -566,10 +562,13 @@ serve(async (req) => {
 
     if (fetchError || !job) {
       console.error('[process-footer] Job not found:', fetchError);
-      return new Response(
-        JSON.stringify({ error: 'Job not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { error: 'Job not found' }, 404);
+    }
+
+    // User callers may only process their own jobs; service callers (orchestrators)
+    // act on the queue row itself.
+    if (!auth.isService && job.user_id && job.user_id !== auth.userId) {
+      return jsonResponse(req, { error: 'Not authorized for this job' }, 403);
     }
 
     // Validate image is on Cloudinary (required for crop URLs)
@@ -579,10 +578,7 @@ serve(async (req) => {
         status: 'failed',
         error_message: 'Image must be uploaded to Cloudinary first. Please re-upload your image.'
       });
-      return new Response(
-        JSON.stringify({ success: false, error: 'Image not on Cloudinary' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { success: false, error: 'Image not on Cloudinary' });
     }
 
     // === STEP 1: Fetch image (10%) ===
@@ -598,10 +594,7 @@ serve(async (req) => {
         status: 'failed',
         error_message: 'Failed to fetch image'
       });
-      return new Response(
-        JSON.stringify({ success: false, error: 'Failed to fetch image' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { success: false, error: 'Failed to fetch image' });
     }
 
     await updateJob(supabase, jobId, { processing_percent: 10 });
@@ -669,10 +662,7 @@ serve(async (req) => {
         status: 'failed',
         error_message: 'Failed to slice footer image'
       });
-      return new Response(
-        JSON.stringify({ success: false, error: 'Failed to slice footer' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse(req, { success: false, error: 'Failed to slice footer' });
     }
 
     await updateJob(supabase, jobId, { processing_percent: 40 });
@@ -932,22 +922,17 @@ serve(async (req) => {
       legal_cutoff_y: legalSection?.yStart || null
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        slices: processedSlices,
-        legalSection,
-        processingTimeMs
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, {
+      success: true,
+      slices: processedSlices,
+      legalSection,
+      processingTimeMs
+    });
 
   } catch (err: unknown) {
-    console.error('[process-footer] Unexpected error:', err);
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: 'Internal server error', details: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    if (err instanceof AuthError) {
+      return jsonResponse(req, { error: err.message }, err.status);
+    }
+    return jsonResponse(req, { error: sanitizeError(ctx, err) }, 500);
   }
 });

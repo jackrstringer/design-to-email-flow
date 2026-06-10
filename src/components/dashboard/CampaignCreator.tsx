@@ -107,7 +107,7 @@ export function CampaignCreator({
 
   // When pending campaign is set and brand has API key, show slice editor
   useEffect(() => {
-    if (pendingCampaign && selectedBrand?.klaviyoApiKey && viewState === 'upload') {
+    if (pendingCampaign && selectedBrand?.klaviyoKeySet && viewState === 'upload') {
       setUploadedImageDataUrl(pendingCampaign.dataUrl);
       setViewState('slice-editor');
     }
@@ -162,7 +162,7 @@ export function CampaignCreator({
   };
 
   const processSlices = async (slicePositions: number[], sliceTypes: SliceType[], columnConfigs: ColumnConfig[]) => {
-    if (!selectedBrand?.klaviyoApiKey || !uploadedImageDataUrl) return;
+    if (!selectedBrand?.klaviyoKeySet || !uploadedImageDataUrl) return;
     
     setIsProcessing(true);
     setStatus('Uploading original image...');
@@ -348,7 +348,7 @@ export function CampaignCreator({
       }
 
       // If we have a configured brand, go directly to slice editor
-      if (selectedBrand?.klaviyoApiKey) {
+      if (selectedBrand?.klaviyoKeySet) {
         setUploadedImageDataUrl(dataUrl);
         setViewState('slice-editor');
         toast.success('Figma design loaded! Add slice lines to continue.');
@@ -484,7 +484,7 @@ export function CampaignCreator({
         const dataUrl = e.target?.result as string;
 
         // If we already have a configured brand selected, skip detection
-        if (selectedBrand?.klaviyoApiKey) {
+        if (selectedBrand?.klaviyoKeySet) {
           // IMMEDIATELY start SL/PT generation - don't wait for slicing!
           startEarlyGeneration(dataUrl, selectedBrand);
           
@@ -579,7 +579,7 @@ export function CampaignCreator({
     setIsDragging(false);
   }, []);
 
-  const waitingForApiKey = pendingCampaign && selectedBrand && !selectedBrand.klaviyoApiKey;
+  const waitingForApiKey = pendingCampaign && selectedBrand && !selectedBrand.klaviyoKeySet;
 
   // Show slice editor when in that state
   if (viewState === 'slice-editor' && uploadedImageDataUrl) {
@@ -624,7 +624,7 @@ export function CampaignCreator({
                           style={{ backgroundColor: brand.primaryColor }}
                         />
                         <span>{brand.name}</span>
-                        {!brand.klaviyoApiKey && (
+                        {!brand.klaviyoKeySet && (
                           <span className="text-xs text-muted-foreground">(No API key)</span>
                         )}
                       </div>
@@ -669,7 +669,7 @@ export function CampaignCreator({
                 <p className="text-sm font-medium truncate">{selectedBrand.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{selectedBrand.domain}</p>
               </div>
-              {selectedBrand.klaviyoApiKey ? (
+              {selectedBrand.klaviyoKeySet ? (
                 <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                   API Connected
                 </span>

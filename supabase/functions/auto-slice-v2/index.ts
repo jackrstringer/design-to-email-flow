@@ -1,9 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, AuthError } from "../_shared/auth.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 // ============================================================================
 // TYPES AND INTERFACES
@@ -1792,14 +1790,18 @@ async function askClaudeWithPrompt(
 // ============================================================================
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
 
+  const ctx = newTrace('auto-slice-v2', req);
   const startTime = Date.now();
 
   try {
-    const { 
+    // Called from the frontend (user JWT) and internally from orchestrators
+    // (service-role bearer) — requireAuth verifies both, rejects anonymous calls.
+    await requireAuth(req);
+
+    const {
       imageDataUrl,
       // Link intelligence params (optional)
       linkIndex,
@@ -1810,7 +1812,7 @@ serve(async (req) => {
     } = await req.json();
     
     if (!imageDataUrl) {
-      return new Response(JSON.stringify({
+      return jsonResponse(req, {
         success: false,
         error: "imageDataUrl is required",
         footerStartY: 0,
@@ -1819,16 +1821,13 @@ serve(async (req) => {
         imageWidth: 0,
         processingTimeMs: Date.now() - startTime,
         confidence: { overall: 'low' }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
       });
     }
 
     // Parse the data URL
     const match = imageDataUrl.match(/^data:(image\/[a-z]+);base64,(.+)$/i);
     if (!match) {
-      return new Response(JSON.stringify({
+      return jsonResponse(req, {
         success: false,
         error: "Invalid image data URL format",
         footerStartY: 0,
@@ -1837,9 +1836,6 @@ serve(async (req) => {
         imageWidth: 0,
         processingTimeMs: Date.now() - startTime,
         confidence: { overall: 'low' }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
       });
     }
     
@@ -1856,7 +1852,7 @@ serve(async (req) => {
     const headerDimensions = getImageDimensions(imageBase64);
     
     if (!headerDimensions) {
-      return new Response(JSON.stringify({
+      return jsonResponse(req, {
         success: false,
         error: "Could not determine image dimensions",
         footerStartY: 0,
@@ -1865,9 +1861,6 @@ serve(async (req) => {
         imageWidth: 0,
         processingTimeMs: Date.now() - startTime,
         confidence: { overall: 'low' }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
       });
     }
     
@@ -1921,7 +1914,7 @@ serve(async (req) => {
 
     if (!claudeResult.success) {
       // If Claude fails, we fail - NO FALLBACK
-      return new Response(JSON.stringify({
+      return jsonResponse(req, {
         success: false,
         error: claudeResult.error,
         footerStartY: 0,
@@ -1938,9 +1931,6 @@ serve(async (req) => {
           originalDimensions: { width: imageWidth, height: imageHeight },
           claudeImageDimensions: { width: resized.newWidth, height: resized.newHeight }
         }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
       });
     }
 
@@ -2003,18 +1993,16 @@ serve(async (req) => {
     console.log(`Scale factor: ${scaleFactor} (original: ${imageWidth}x${imageHeight}, Claude saw: ${resized.newWidth}x${resized.newHeight})`);
     console.log(`Processing time: ${processingTimeMs}ms`);
 
-    return new Response(JSON.stringify(response), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200
-    });
+    return jsonResponse(req, response);
 
   } catch (error: unknown) {
-    console.error("Auto-slice v2 error:", error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { success: false, error: error.message }, error.status);
+    }
+
     const response: AutoSliceV2Response = {
       success: false,
-      error: errorMessage,
+      error: sanitizeError(ctx, error),
       footerStartY: 0,
       slices: [],
       imageHeight: 0,
@@ -2023,9 +2011,6 @@ serve(async (req) => {
       confidence: { overall: 'low' }
     };
 
-    return new Response(JSON.stringify(response), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200
-    });
+    return jsonResponse(req, response);
   }
 });

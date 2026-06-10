@@ -1,11 +1,9 @@
 // deploy-trigger
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { handlePreflight, jsonResponse } from "../_shared/cors.ts";
+import { requireAuth, requireBrandAccess, serviceClient, AuthError } from "../_shared/auth.ts";
+import { getBrandSecret } from "../_shared/secrets.ts";
+import { newTrace, sanitizeError } from "../_shared/log.ts";
 
 interface KlaviyoCampaign {
   id: string;
@@ -30,15 +28,29 @@ interface KlaviyoCampaignMessage {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handlePreflight(req);
+  if (preflight) return preflight;
+
+  const ctx = newTrace('scrape-klaviyo-copy', req);
 
   try {
-    const { brandId, klaviyoApiKey } = await req.json();
+    const auth = await requireAuth(req);
+    const { brandId } = await req.json();
 
-    if (!brandId || !klaviyoApiKey) {
-      throw new Error('brandId and klaviyoApiKey are required');
+    if (!brandId) {
+      return jsonResponse(req, { error: 'brandId is required' }, 400);
+    }
+
+    const supabase = serviceClient();
+    await requireBrandAccess(supabase, brandId, auth);
+
+    const klaviyoApiKey = await getBrandSecret(supabase, brandId, 'klaviyo');
+    if (!klaviyoApiKey) {
+      return jsonResponse(
+        req,
+        { error: 'Brand does not have a Klaviyo API key configured' },
+        400,
+      );
     }
 
     console.log(`Scraping Klaviyo copy for brand ${brandId}`);
@@ -149,10 +161,6 @@ serve(async (req) => {
     console.log(`Scraped ${subjectLines.length} subject lines, ${previewTexts.length} preview texts from ${totalFetched} campaigns (messages OK: ${messagesFetchedOk}, failed: ${messagesFailed})`);
 
     // Update brand in database
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     const copyExamples = {
       subjectLines,
       previewTexts,
@@ -169,25 +177,20 @@ serve(async (req) => {
       throw updateError;
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        subjectLinesCount: subjectLines.length,
-        previewTextsCount: previewTexts.length,
-        campaignsScanned: totalFetched,
-        messagesFetchedOk,
-        messagesFailed,
-        sampleSubjectLines: subjectLines.slice(0, 5),
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse(req, {
+      success: true,
+      subjectLinesCount: subjectLines.length,
+      previewTextsCount: previewTexts.length,
+      campaignsScanned: totalFetched,
+      messagesFetchedOk,
+      messagesFailed,
+      sampleSubjectLines: subjectLines.slice(0, 5),
+    });
 
   } catch (error: unknown) {
-    console.error('Error in scrape-klaviyo-copy:', error);
-    const message = error instanceof Error ? error.message : 'Internal server error';
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    if (error instanceof AuthError) {
+      return jsonResponse(req, { error: error.message }, error.status);
+    }
+    return jsonResponse(req, { error: sanitizeError(ctx, error) }, 500);
   }
 });

@@ -3,161 +3,170 @@ project_id = "esrimjavbjdtecszxudc"
 [api]
 enabled = true
 
-[functions.analyze-email-design]
-verify_jwt = false
-
-[functions.upload-to-cloudinary]
-verify_jwt = false
+[functions.add-brand-link]
+verify_jwt = true
 
 [functions.analyze-brand]
-verify_jwt = false
+verify_jwt = true
 
-[functions.push-to-klaviyo]
-verify_jwt = false
-
-[functions.analyze-slices]
-verify_jwt = false
-
-[functions.generate-slice-html]
-verify_jwt = false
-
-[functions.refine-slice-html]
-verify_jwt = false
-
-[functions.refine-campaign]
-verify_jwt = false
-
-[functions.generate-footer-html]
-verify_jwt = false
-
-[functions.detect-brand-from-image]
-verify_jwt = false
-
-[functions.refine-footer-html]
-verify_jwt = false
-
-[functions.get-klaviyo-lists]
-verify_jwt = false
-
-[functions.fetch-figma-design]
-verify_jwt = false
-
-[functions.figma-to-email-html]
-verify_jwt = false
-
-[functions.upload-social-icon]
-verify_jwt = false
-
-[functions.generate-email-copy]
-verify_jwt = false
-
-[functions.process-brand-logo]
-verify_jwt = false
-
-[functions.detect-footer-region]
-verify_jwt = false
-
-[functions.detect-footer-socials]
-verify_jwt = false
-
-[functions.generate-simple-footer]
-verify_jwt = false
-
-[functions.extract-section-assets]
-verify_jwt = false
-
-[functions.footer-conversation]
-verify_jwt = false
-
-[functions.detect-footer-links]
-verify_jwt = false
-
-[functions.scrape-klaviyo-copy]
-verify_jwt = false
-
-[functions.auto-slice-email]
-verify_jwt = false
-
-[functions.auto-slice-v2]
-verify_jwt = false
-
-[functions.generate-email-copy-early]
-verify_jwt = false
-
-[functions.invert-logo]
-verify_jwt = false
-
-[functions.generate-email-copy-background]
-verify_jwt = false
-
-[functions.qa-spelling-check]
-verify_jwt = false
-
-[functions.qa-spelling-check-early]
-verify_jwt = false
-
-[functions.figma-ingest]
-verify_jwt = false
-
-[functions.process-campaign-queue]
-verify_jwt = false
-
-[functions.get-plugin-brands]
-verify_jwt = false
-
-[functions.search-clickup-for-copy]
-verify_jwt = false
-
-[functions.get-clickup-hierarchy]
-verify_jwt = false
+[functions.analyze-email-design]
+verify_jwt = true
 
 [functions.analyze-footer-reference]
-verify_jwt = false
-
-[functions.generate-embedding]
-verify_jwt = false
-
-[functions.trigger-sitemap-import]
-verify_jwt = false
-
-[functions.import-sitemap]
-verify_jwt = false
-
-[functions.add-brand-link]
-verify_jwt = false
-
-[functions.delete-brand-link]
-verify_jwt = false
-
-[functions.get-brand-link-index]
-verify_jwt = false
-
-[functions.update-brand-link-preferences]
-verify_jwt = false
-
-[functions.match-slice-to-link]
-verify_jwt = false
-
-[functions.crawl-brand-site]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-footer-render]
-verify_jwt = false
+verify_jwt = true
+
+[functions.analyze-slices]
+verify_jwt = true
+
+[functions.auto-slice-email]
+verify_jwt = true
 
 [functions.auto-slice-footer]
-verify_jwt = false
+verify_jwt = true
 
-[functions.process-footer-queue]
-verify_jwt = false
+[functions.auto-slice-v2]
+verify_jwt = true
 
-[functions.resolve-slice-links]
-verify_jwt = false
+[functions.crawl-brand-site]
+verify_jwt = true
 
-[functions.weekly-link-recrawl]
-verify_jwt = false
+[functions.delete-brand-link]
+verify_jwt = true
 
-[functions.upload-to-imagekit]
-verify_jwt = false
+[functions.detect-brand-from-image]
+verify_jwt = true
+
+[functions.detect-footer-links]
+verify_jwt = true
+
+[functions.detect-footer-region]
+verify_jwt = true
+
+[functions.detect-footer-socials]
+verify_jwt = true
+
+[functions.extract-section-assets]
+verify_jwt = true
+
+[functions.fetch-figma-design]
+verify_jwt = true
+
+[functions.figma-ingest]
+verify_jwt = false  # plugin-token auth (validated in-function against plugin_tokens)
+
+[functions.figma-to-email-html]
+verify_jwt = true
+
+[functions.footer-conversation]
+verify_jwt = true
+
+[functions.generate-email-copy]
+verify_jwt = true
+
+[functions.generate-email-copy-background]
+verify_jwt = true
+
+[functions.generate-email-copy-early]
+verify_jwt = true
+
+[functions.generate-embedding]
+verify_jwt = true
+
+[functions.generate-footer-html]
+verify_jwt = true
+
+[functions.generate-simple-footer]
+verify_jwt = true
+
+[functions.generate-slice-html]
+verify_jwt = true
+
+[functions.get-brand-link-index]
+verify_jwt = true
+
+[functions.get-clickup-hierarchy]
+verify_jwt = true
+
+[functions.get-klaviyo-lists]
+verify_jwt = true
+
+[functions.get-plugin-brands]
+verify_jwt = false  # plugin-token auth (validated in-function against plugin_tokens)
 
 [functions.get-segment-size]
-verify_jwt = false
+verify_jwt = true
+
+[functions.import-sitemap]
+verify_jwt = true
+
+[functions.invert-logo]
+verify_jwt = true
+
+[functions.match-slice-to-link]
+verify_jwt = true
+
+[functions.process-brand-logo]
+verify_jwt = true
+
+[functions.process-campaign-queue]
+verify_jwt = true
+
+[functions.process-footer-queue]
+verify_jwt = true
+
+[functions.push-to-klaviyo]
+verify_jwt = true
+
+[functions.qa-spelling-check]
+verify_jwt = true
+
+[functions.qa-spelling-check-early]
+verify_jwt = true
+
+[functions.refine-campaign]
+verify_jwt = true
+
+[functions.refine-footer-html]
+verify_jwt = true
+
+[functions.refine-slice-html]
+verify_jwt = true
+
+[functions.resolve-slice-links]
+verify_jwt = true
+
+[functions.scrape-klaviyo-copy]
+verify_jwt = true
+
+[functions.search-clickup-for-copy]
+verify_jwt = true
+
+[functions.trigger-sitemap-import]
+verify_jwt = true
+
+[functions.update-brand-link-preferences]
+verify_jwt = true
+
+[functions.upload-social-icon]
+verify_jwt = true
+
+[functions.upload-to-cloudinary]
+verify_jwt = true
+
+[functions.upload-to-imagekit]
+verify_jwt = true
+
+[functions.weekly-link-recrawl]
+verify_jwt = true
+[functions.brand-agent-learn]
+verify_jwt = true
+
+[functions.brand-agent-qa]
+verify_jwt = true
+
+[functions.brand-agent-refresh]
+verify_jwt = true
+

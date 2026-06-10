@@ -51,7 +51,7 @@ export default function Segments() {
 
   const selectedBrand = brands.find((b) => b.id === selectedBrandId) || null;
 
-  // Pass klaviyoApiKey directly - hook handles caching internally
+  // Pass klaviyoKeySet flag - hook resolves the key server-side and handles caching internally
   const {
     presets,
     loading: loadingPresets,
@@ -60,7 +60,7 @@ export default function Segments() {
     createPreset,
     updatePreset,
     deletePreset,
-  } = useSegmentPresets(selectedBrandId, selectedBrand?.klaviyoApiKey);
+  } = useSegmentPresets(selectedBrandId, selectedBrand?.klaviyoKeySet);
 
   return (
     <div className="flex flex-col h-full">
@@ -126,7 +126,7 @@ export default function Segments() {
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             Select a brand to manage segment sets
           </div>
-        ) : !selectedBrand?.klaviyoApiKey ? (
+        ) : !selectedBrand?.klaviyoKeySet ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             This brand doesn't have a Klaviyo API key configured.
             <br />

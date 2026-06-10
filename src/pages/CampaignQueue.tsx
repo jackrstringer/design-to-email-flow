@@ -181,11 +181,11 @@ export default function CampaignQueue() {
         // Fetch brand data
         const { data: brand, error: brandError } = await supabase
           .from('brands')
-          .select('klaviyo_api_key, footer_html')
+          .select('klaviyo_key_set, footer_html')
           .eq('id', item.brand_id)
           .single();
 
-        if (brandError || !brand?.klaviyo_api_key) {
+        if (brandError || !brand?.klaviyo_key_set) {
           await supabase
             .from('campaign_queue')
             .update({ 
@@ -267,7 +267,8 @@ export default function CampaignQueue() {
         const { data, error } = await supabase.functions.invoke('push-to-klaviyo', {
           body: {
             templateName: item.name,
-            klaviyoApiKey: brand.klaviyo_api_key,
+            brandId: item.brand_id,
+            queueId: item.id,
             subjectLine: item.selected_subject_line,
             previewText: item.selected_preview_text,
             slices: item.slices,

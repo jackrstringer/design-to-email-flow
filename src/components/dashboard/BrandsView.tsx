@@ -33,6 +33,7 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
   const [editApiKeyBrand, setEditApiKeyBrand] = useState<Brand | null>(null);
   const [apiKeyValue, setApiKeyValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isRemovingKey, setIsRemovingKey] = useState(false);
 
   useEffect(() => {
     // Fetch campaign counts for each brand
@@ -69,13 +70,19 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
 
   const handleSaveApiKey = async () => {
     if (!editApiKeyBrand) return;
-    
+
+    if (!apiKeyValue.trim()) {
+      toast.error('Please enter an API key');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('brands')
-        .update({ klaviyo_api_key: apiKeyValue || null })
-        .eq('id', editApiKeyBrand.id);
+      const { error } = await supabase.rpc('set_brand_secret', {
+        p_brand_id: editApiKeyBrand.id,
+        p_kind: 'klaviyo',
+        p_secret: apiKeyValue.trim(),
+      });
 
       if (error) throw error;
 
@@ -87,6 +94,30 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
       toast.error('Failed to update API key');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRemoveApiKey = async () => {
+    if (!editApiKeyBrand) return;
+    if (!confirm(`Remove the Klaviyo API key for ${editApiKeyBrand.name}?`)) return;
+
+    setIsRemovingKey(true);
+    try {
+      const { error } = await supabase.rpc('delete_brand_secret', {
+        p_brand_id: editApiKeyBrand.id,
+        p_kind: 'klaviyo',
+      });
+
+      if (error) throw error;
+
+      toast.success('API key removed');
+      setEditApiKeyBrand(null);
+      setApiKeyValue('');
+      onBrandsChange();
+    } catch (error) {
+      toast.error('Failed to remove API key');
+    } finally {
+      setIsRemovingKey(false);
     }
   };
 
@@ -143,10 +174,10 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
                     <DropdownMenuItem onClick={(e) => {
                       e.stopPropagation();
                       setEditApiKeyBrand(brand);
-                      setApiKeyValue(brand.klaviyoApiKey || '');
+                      setApiKeyValue('');
                     }}>
                       <Key className="w-4 h-4 mr-2" />
-                      {brand.klaviyoApiKey ? 'Update' : 'Add'} API Key
+                      {brand.klaviyoKeySet ? 'Update' : 'Add'} API Key
                     </DropdownMenuItem>
                     <DropdownMenuItem 
                       className="text-destructive"
@@ -164,7 +195,7 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
 
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span>{campaignCounts[brand.id] || 0} campaigns</span>
-                {brand.klaviyoApiKey ? (
+                {brand.klaviyoKeySet ? (
                   <span className="text-green-600">API Connected</span>
                 ) : (
                   <span className="text-amber-600">No API Key</span>
@@ -201,7 +232,7 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editApiKeyBrand?.klaviyoApiKey ? 'Update' : 'Add'} Klaviyo API Key
+              {editApiKeyBrand?.klaviyoKeySet ? 'Update' : 'Add'} Klaviyo API Key
             </DialogTitle>
             <DialogDescription>
               Enter the private API key for {editApiKeyBrand?.name}. This will be used to create templates and campaigns.
@@ -213,16 +244,26 @@ export function BrandsView({ brands, onBrandSelect, onAddBrand, onBrandsChange }
               <Input
                 id="api-key"
                 type="password"
-                placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx"
+                placeholder={editApiKeyBrand?.klaviyoKeySet ? '••••••••  (configured)' : 'pk_xxxxxxxxxxxxxxxxxxxxxxxx'}
                 value={apiKeyValue}
                 onChange={(e) => setApiKeyValue(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Find this in Klaviyo → Settings → API Keys
+                Find this in Klaviyo → Settings → API Keys. Keys are stored securely and never displayed.
               </p>
             </div>
           </div>
           <DialogFooter>
+            {editApiKeyBrand?.klaviyoKeySet && (
+              <Button
+                variant="ghost"
+                className="mr-auto text-destructive hover:text-destructive"
+                onClick={handleRemoveApiKey}
+                disabled={isRemovingKey}
+              >
+                {isRemovingKey ? 'Removing...' : 'Remove key'}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setEditApiKeyBrand(null)}>
               Cancel
             </Button>

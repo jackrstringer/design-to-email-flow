@@ -112,7 +112,7 @@ export default function FooterEditor() {
       lightLogoUrl: data.light_logo_url || undefined,
       socialLinks: Array.isArray(data.social_links) ? data.social_links as any : [],
       allLinks: Array.isArray(data.all_links) ? data.all_links as string[] : [],
-      klaviyoApiKey: data.klaviyo_api_key || undefined,
+      klaviyoKeySet: data.klaviyo_key_set,
       footerConfigured: data.footer_configured || false,
       footerHtml: data.footer_html || undefined,
       typography: data.typography as any,
