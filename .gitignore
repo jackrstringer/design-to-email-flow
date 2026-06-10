@@ -30,3 +30,4 @@ supabase/functions/.env
 # supabase CLI artifacts
 supabase/.branches/
 supabase/.temp/
+*.tsbuildinfo
