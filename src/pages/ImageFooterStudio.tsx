@@ -401,12 +401,12 @@ export default function ImageFooterStudio() {
                     key={groupIndex} 
                     className={cn(
                       "relative flex justify-center items-stretch group/row w-full",
-                      isMultiColumnRow ? "border-l-4 border-blue-400 bg-blue-50/30 hover:bg-blue-50/50" : "hover:bg-muted/10"
+                      isMultiColumnRow ? "border-l-4 border-border bg-secondary hover:bg-secondary" : "hover:bg-muted/10"
                     )}
                   >
                     {/* Multi-column indicator badge */}
                     {isMultiColumnRow && (
-                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-blue-500 text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
+                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-foreground text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
                         <Columns className="w-3 h-3" />
                         {columnCount}-Column Block
                       </div>
@@ -415,7 +415,7 @@ export default function ImageFooterStudio() {
                     {/* Slice separator line */}
                     {groupIndex > 0 && (
                       <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
-                        <div className={cn("h-px flex-1", isMultiColumnRow ? "bg-blue-300" : "bg-border")} />
+                        <div className={cn("h-px flex-1", isMultiColumnRow ? "bg-foreground" : "bg-border")} />
                       </div>
                     )}
                     
@@ -439,26 +439,26 @@ export default function ImageFooterStudio() {
                               <button className={cn(
                                 "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
                                 isMultiColumnRow 
-                                  ? "bg-blue-50 border border-blue-200 hover:bg-blue-100" 
+                                  ? "bg-foreground border border-border hover:bg-foreground" 
                                   : "bg-muted/50 border border-border/50 hover:bg-muted"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
-                                <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-blue-500" : "text-muted-foreground")} />
+                                <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-muted-foreground" : "text-muted-foreground")} />
                                 <span className="text-muted-foreground truncate">{slice.link}</span>
                               </button>
                             ) : (
                               <button className={cn(
                                 "flex items-center gap-1.5 px-2 py-0.5 border border-dashed rounded transition-colors text-[9px] whitespace-nowrap",
                                 isMultiColumnRow 
-                                  ? "border-blue-300 text-blue-500 hover:border-blue-500" 
+                                  ? "border-border text-muted-foreground hover:border-border" 
                                   : "border-muted-foreground/30 text-muted-foreground/50 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
@@ -532,13 +532,13 @@ export default function ImageFooterStudio() {
                             key={originalIndex} 
                             className={cn(
                               "relative",
-                              isMultiColumnRow && colIdx > 0 && "border-l-2 border-blue-300"
+                              isMultiColumnRow && colIdx > 0 && "border-l-2 border-border"
                             )}
                             style={{ width: colWidth }}
                           >
                             {/* Column number badge on image */}
                             {isMultiColumnRow && (
-                              <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
+                              <div className="absolute top-2 right-2 bg-foreground text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
                                 {colIdx + 1}
                               </div>
                             )}
@@ -568,7 +568,7 @@ export default function ImageFooterStudio() {
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
                           {isMultiColumnRow && (
-                            <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                               {colIdx + 1}
                             </span>
                           )}
@@ -623,18 +623,18 @@ export default function ImageFooterStudio() {
               
               {/* Missing legal section warning */}
               {!legalSection && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4" style={{ width: scaledWidth }}>
+                <div className="bg-foreground border border-border rounded-lg p-4" style={{ width: scaledWidth }}>
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-5 h-5 text-foreground flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <h4 className="font-medium text-amber-800">Legal Section Required</h4>
-                      <p className="text-sm text-amber-700 mt-1">
+                      <h4 className="font-medium text-foreground">Legal Section Required</h4>
+                      <p className="text-sm text-foreground mt-1">
                         Email footers must include organization name, address, and unsubscribe links.
                       </p>
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100"
+                        className="mt-3 border-border text-foreground hover:bg-foreground"
                         onClick={handleAddLegalSection}
                       >
                         <Plus className="w-4 h-4 mr-2" />

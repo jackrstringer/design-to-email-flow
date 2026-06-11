@@ -636,11 +636,11 @@ export function BrandOnboardingModal({
                     
                     {/* Missing variant warning */}
                     {logoData?.hasOnlyOneVariant && logoData?.missingVariant && (
-                      <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-xs text-amber-800">
+                      <div className="flex items-start gap-2 p-2 bg-foreground border border-border rounded-md">
+                        <AlertTriangle className="w-4 h-4 text-foreground flex-shrink-0 mt-0.5" />
+                        <div className="text-xs text-foreground">
                           <p className="font-medium">Missing {logoData.missingVariant === 'light' ? 'light' : 'dark'} logo</p>
-                          <p className="text-amber-700">
+                          <p className="text-foreground">
                             {logoData.missingVariant === 'light' 
                               ? 'Upload a light version for dark backgrounds (like footers)' 
                               : 'Upload a dark version for light backgrounds'}

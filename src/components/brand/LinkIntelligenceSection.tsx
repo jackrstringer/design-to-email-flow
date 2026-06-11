@@ -60,9 +60,9 @@ export function LinkIntelligenceSection({ brandId, domain }: LinkIntelligenceSec
             </div>
             <div className="flex items-center gap-2">
               {stats.unhealthy > 0 ? (
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <AlertTriangle className="w-4 h-4 text-foreground" />
               ) : (
-                <CheckCircle className="w-4 h-4 text-green-500" />
+                <CheckCircle className="w-4 h-4 text-foreground" />
               )}
               <span className="text-muted-foreground">Health:</span>
               <span className="font-medium">

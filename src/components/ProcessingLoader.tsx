@@ -58,7 +58,7 @@ export function ProcessingLoader({ currentStatus }: ProcessingLoaderProps) {
             return (
               <div key={stage.id} className="flex items-center gap-1">
                 {status === 'complete' ? (
-                  <Check className="w-4 h-4 text-green-500" />
+                  <Check className="w-4 h-4 text-foreground" />
                 ) : status === 'active' ? (
                   <Loader2 className="w-4 h-4 text-primary animate-spin" />
                 ) : (

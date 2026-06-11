@@ -18,9 +18,9 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
         <TooltipTrigger>
           <div 
             className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-            style={{ backgroundColor: '#E8F4FD', color: '#2563EB' }}
+            style={{ backgroundColor: 'hsl(0 0% 95%)', color: 'hsl(0 0% 25%)' }}
           >
-            <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#2563EB' }} />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'hsl(0 0% 40%)' }} />
             {processingPercent}%
           </div>
         </TooltipTrigger>
@@ -40,7 +40,7 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
           <TooltipTrigger>
             <div 
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-              style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
+              style={{ backgroundColor: 'hsl(0 0% 100%)', color: 'hsl(0 0% 4%)', boxShadow: 'inset 0 0 0 1px hsl(0 0% 4%)' }}
             >
               <AlertTriangle className="h-3 w-3 flex-shrink-0" />
               {issueCount} {issueCount === 1 ? 'issue' : 'issues'}
@@ -57,7 +57,7 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-        style={{ backgroundColor: '#FEF3C7', color: '#D97706' }}
+        style={{ backgroundColor: 'hsl(0 0% 100%)', color: 'hsl(0 0% 4%)', boxShadow: 'inset 0 0 0 1px hsl(0 0% 4%)' }}
       >
         Ready for Review
       </div>
@@ -68,7 +68,7 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-        style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
+        style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
       >
         Approve & Build
       </div>
@@ -79,7 +79,7 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-        style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
+        style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
       >
         Built in Klaviyo
       </div>
@@ -90,7 +90,7 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-        style={{ backgroundColor: '#F3E8FF', color: '#9333EA' }}
+        style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
       >
         <Archive className="h-3 w-3 flex-shrink-0" />
         Closed
@@ -102,7 +102,7 @@ export function StatusBadge({ status, processingStep, processingPercent = 0, qaF
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-        style={{ backgroundColor: '#FEE2E2', color: '#DC2626' }}
+        style={{ backgroundColor: 'hsl(0 72% 45% / 0.08)', color: 'hsl(0 72% 40%)' }}
       >
         <XCircle className="h-3 w-3 flex-shrink-0" />
         Failed

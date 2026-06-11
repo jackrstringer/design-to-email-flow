@@ -182,9 +182,9 @@ export function BrandLinkTable({ brandId }: BrandLinkTableProps) {
                   </TableCell>
                   <TableCell>
                     {link.is_healthy ? (
-                      <Check className="w-4 h-4 text-green-500" />
+                      <Check className="w-4 h-4 text-foreground" />
                     ) : (
-                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      <AlertTriangle className="w-4 h-4 text-foreground" />
                     )}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">

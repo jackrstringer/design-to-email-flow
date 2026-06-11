@@ -483,8 +483,8 @@ export default function SimpleUpload() {
 
         {/* Success State - Campaign Mode */}
         {viewState === 'success' && templateId && campaignId && (
-          <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 space-y-3">
-            <div className="flex items-center gap-2 text-green-600">
+          <div className="p-4 rounded-lg bg-secondary border border-border space-y-3">
+            <div className="flex items-center gap-2 text-foreground">
               <CheckCircle className="w-5 h-5" />
               <span className="font-medium">Campaign created with {processedSlices.length} slices!</span>
             </div>
@@ -514,8 +514,8 @@ export default function SimpleUpload() {
 
         {/* Success State - Template Mode */}
         {viewState === 'success' && templateId && !campaignId && (
-          <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 space-y-3">
-            <div className="flex items-center gap-2 text-green-600">
+          <div className="p-4 rounded-lg bg-secondary border border-border space-y-3">
+            <div className="flex items-center gap-2 text-foreground">
               <CheckCircle className="w-5 h-5" />
               <span className="font-medium">Template created with {processedSlices.length} slices!</span>
             </div>

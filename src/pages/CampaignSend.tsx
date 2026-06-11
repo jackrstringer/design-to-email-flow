@@ -737,8 +737,8 @@ export default function CampaignSend() {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-            <Check className="w-8 h-8 text-green-600" />
+          <div className="w-16 h-16 rounded-full bg-foreground flex items-center justify-center mx-auto">
+            <Check className="w-8 h-8 text-foreground" />
           </div>
           <h1 className="text-2xl font-semibold">Campaign Created!</h1>
           <p className="text-muted-foreground">Your campaign is ready to review in Klaviyo</p>
@@ -1056,14 +1056,14 @@ export default function CampaignSend() {
                     <span>Checking for spelling errors...</span>
                   </div>
                 ) : spellingErrors.length === 0 ? (
-                  <div className="flex items-center gap-2 text-sm text-green-600">
+                  <div className="flex items-center gap-2 text-sm text-foreground">
                     <Check className="w-4 h-4" />
                     <span>No spelling errors detected</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {spellingErrors.map((error, i) => (
-                      <div key={i} className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 p-2 rounded">
+                      <div key={i} className="flex items-start gap-2 text-sm text-foreground bg-foreground p-2 rounded">
                         <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                         <div>
                           <span className="font-medium">"{error.text}"</span>
@@ -1261,8 +1261,8 @@ function CopyItemCard({
         className={cn(
           "flex-shrink-0 p-0.5 rounded transition-colors",
           item.isFavorite
-            ? "text-red-500"
-            : "text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100"
+            ? "text-destructive"
+            : "text-muted-foreground/30 hover:text-destructive opacity-0 group-hover:opacity-100"
         )}
         title={item.isFavorite ? "Remove from favorites" : "Add to favorites"}
       >

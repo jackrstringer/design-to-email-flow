@@ -1233,13 +1233,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   </div>
                   <ul className="text-xs text-left space-y-1 text-muted-foreground">
                     <li className="flex items-center gap-2">
-                      <Check className="w-3 h-3 text-green-600" /> Best practice for email
+                      <Check className="w-3 h-3 text-foreground" /> Best practice for email
                     </li>
                     <li className="flex items-center gap-2">
-                      <Check className="w-3 h-3 text-green-600" /> Fully customizable text
+                      <Check className="w-3 h-3 text-foreground" /> Fully customizable text
                     </li>
                     <li className="flex items-center gap-2">
-                      <Clock className="w-3 h-3 text-amber-600" /> Takes longer to set up
+                      <Clock className="w-3 h-3 text-foreground" /> Takes longer to set up
                     </li>
                   </ul>
                 </CardContent>
@@ -1262,13 +1262,13 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   </div>
                   <ul className="text-xs text-left space-y-1 text-muted-foreground">
                     <li className="flex items-center gap-2">
-                      <Check className="w-3 h-3 text-green-600" /> Quick 2-minute setup
+                      <Check className="w-3 h-3 text-foreground" /> Quick 2-minute setup
                     </li>
                     <li className="flex items-center gap-2">
-                      <Check className="w-3 h-3 text-green-600" /> Exact design match
+                      <Check className="w-3 h-3 text-foreground" /> Exact design match
                     </li>
                     <li className="flex items-center gap-2">
-                      <AlertCircle className="w-3 h-3 text-amber-600" /> Fixed visual layout
+                      <AlertCircle className="w-3 h-3 text-foreground" /> Fixed visual layout
                     </li>
                   </ul>
                 </CardContent>
@@ -1419,7 +1419,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     </div>
                   </div>
                 ) : imageFooterSlices.length > 0 ? (
-                  <div className="flex items-center gap-2 text-sm text-green-600">
+                  <div className="flex items-center gap-2 text-sm text-foreground">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Found {imageFooterSlices.length} clickable section(s)</span>
                     {imageFooterLegalSection && <Badge variant="secondary" className="text-xs">+ Legal section</Badge>}
@@ -1478,7 +1478,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
             {imageFooterLegalSection && (
               <div className="border rounded-lg p-4 bg-muted/30">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  <CheckCircle2 className="w-4 h-4 text-foreground" />
                   <span className="font-medium text-sm">Legal Section (Auto-generated HTML)</span>
                 </div>
                 <div 
@@ -1518,7 +1518,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
               </>
             ) : (
               <>
-                <CheckCircle2 className="w-12 h-12 mx-auto text-green-600" />
+                <CheckCircle2 className="w-12 h-12 mx-auto text-foreground" />
                 <div>
                   <h3 className="font-medium">Ready to save</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
@@ -1624,12 +1624,12 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {/* Check if Figma token exists */}
                 {hasFigmaToken === false ? (
                   <div className="space-y-3">
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-950 dark:border-amber-800">
+                    <div className="p-3 bg-foreground border border-border rounded-md dark:bg-foreground dark:border-border">
                       <div className="flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <AlertTriangle className="w-4 h-4 text-foreground shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Figma not connected</p>
-                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                          <p className="text-sm font-medium text-foreground">Figma not connected</p>
+                          <p className="text-xs text-foreground mt-1">
                             Set up your Figma Plugin Token in Integrations to use Figma designs.
                           </p>
                         </div>
@@ -1770,7 +1770,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     {isUploadingReference || isUploadingCrop ? (
                       <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
                     ) : (
-                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-foreground flex-shrink-0" />
                     )}
                     <span className={isUploadingReference || isUploadingCrop ? 'text-foreground' : 'text-muted-foreground'}>
                       Uploading image
@@ -1781,7 +1781,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     {isExtractingAssets ? (
                       <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
                     ) : !isUploadingReference && !isUploadingCrop && !isExtractingAssets ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-foreground flex-shrink-0" />
                     ) : (
                       <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     )}
@@ -1794,7 +1794,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     {isDetectingLinks ? (
                       <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
                     ) : clickableElements.length > 0 && !isDetectingLinks && !isExtractingAssets ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-foreground flex-shrink-0" />
                     ) : (
                       <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     )}
@@ -1807,7 +1807,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     {isDetectingSocials ? (
                       <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
                     ) : socialPlatforms.length > 0 && !isDetectingSocials && !isExtractingAssets ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-foreground flex-shrink-0" />
                     ) : (
                       <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     )}
@@ -1825,7 +1825,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 {/* Force continue after 30s */}
                 {canForceSkip && (
                   <div className="text-center space-y-2">
-                    <p className="text-xs text-amber-600">Taking longer than expected...</p>
+                    <p className="text-xs text-foreground">Taking longer than expected...</p>
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -1928,9 +1928,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
 
             {/* Logo variant mismatch warning */}
             {logoConversionNeeded && !isProcessingReference && (
-              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 space-y-3">
+              <div className="bg-foreground dark:bg-secondary border border-border dark:border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-5 h-5 text-foreground flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-sm">Logo variant mismatch</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -2009,9 +2009,9 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                   <div key={link.id} className="flex items-center gap-3 py-1.5 border-b border-border/50 last:border-0">
                     <div className="w-5 flex-shrink-0">
                       {link.needsManualUrl ? (
-                        <AlertCircle className="w-4 h-4 text-amber-500" />
+                        <AlertCircle className="w-4 h-4 text-foreground" />
                       ) : link.verified ? (
-                        <Check className="w-4 h-4 text-green-600" />
+                        <Check className="w-4 h-4 text-foreground" />
                       ) : null}
                     </div>
                     <span className="w-32 flex-shrink-0 font-medium text-sm truncate" title={link.text}>
@@ -2020,7 +2020,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                     <Input
                       value={link.searchedUrl}
                       onChange={(e) => updateLinkUrl(link.id, e.target.value)}
-                      className={`flex-1 text-xs font-mono h-8 ${link.needsManualUrl ? 'border-amber-400 bg-amber-50/50' : ''}`}
+                      className={`flex-1 text-xs font-mono h-8 ${link.needsManualUrl ? 'border-border bg-secondary' : ''}`}
                       placeholder="Enter URL..."
                     />
                     {link.searchedUrl && !link.searchedUrl.startsWith('{{') && (
@@ -2046,7 +2046,7 @@ export function FooterBuilderModal({ open, onOpenChange, brand, onFooterSaved, o
                 <div className="bg-muted/30 rounded-lg px-3 py-2 space-y-0.5">
                   {emailActionLinks.map((link) => (
                     <div key={link.id} className="flex items-center gap-3 text-xs py-0.5">
-                      <Check className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                      <Check className="w-3.5 h-3.5 text-foreground flex-shrink-0" />
                       <span className="w-32 flex-shrink-0 text-muted-foreground">{link.text}</span>
                       <code className="font-mono text-[10px] text-muted-foreground">
                         {link.searchedUrl}

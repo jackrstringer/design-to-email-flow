@@ -144,10 +144,10 @@ export function SegmentRow({
               {preset.name}
             </span>
             {preset.is_default ? (
-              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+              <Star className="h-4 w-4 fill-foreground text-foreground flex-shrink-0" />
             ) : (
               <Star 
-                className="h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-yellow-400 hover:fill-yellow-400 cursor-pointer transition-all flex-shrink-0"
+                className="h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-foreground hover:fill-foreground cursor-pointer transition-all flex-shrink-0"
                 onClick={handleSetDefault}
               />
             )}

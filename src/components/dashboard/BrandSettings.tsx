@@ -975,11 +975,11 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
         
         {/* Missing logo warning */}
         {(!brand.lightLogoUrl || !brand.darkLogoUrl) && (
-          <div className="flex items-start gap-2 p-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <Image className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-amber-800">
+          <div className="flex items-start gap-2 p-3 mb-4 bg-foreground border border-border rounded-lg">
+            <Image className="w-4 h-4 text-foreground flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-foreground">
               <p className="font-medium">Missing logo variant</p>
-              <p className="text-amber-700 text-xs mt-0.5">
+              <p className="text-foreground text-xs mt-0.5">
                 {!brand.lightLogoUrl && !brand.darkLogoUrl 
                   ? 'Upload both dark and light logo versions for best results'
                   : !brand.lightLogoUrl 
@@ -1009,7 +1009,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                     onClick={() => copyLink(brand.darkLogoUrl!)}
                   >
                     {copiedLink === brand.darkLogoUrl ? (
-                      <Check className="h-3 w-3 text-green-600" />
+                      <Check className="h-3 w-3 text-foreground" />
                     ) : (
                       <Copy className="h-3 w-3" />
                     )}
@@ -1025,13 +1025,13 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                 </div>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
+              <label className="flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed border-border bg-foreground cursor-pointer hover:bg-foreground transition-colors">
                 {uploadingLogo === 'dark' ? (
-                  <span className="text-xs text-amber-700">Uploading...</span>
+                  <span className="text-xs text-foreground">Uploading...</span>
                 ) : (
                   <>
-                    <Upload className="h-5 w-5 text-amber-600 mb-1" />
-                    <span className="text-xs text-amber-700 font-medium">Upload dark logo</span>
+                    <Upload className="h-5 w-5 text-foreground mb-1" />
+                    <span className="text-xs text-foreground font-medium">Upload dark logo</span>
                   </>
                 )}
                 <input
@@ -1067,7 +1067,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                     onClick={() => copyLink(brand.lightLogoUrl!)}
                   >
                     {copiedLink === brand.lightLogoUrl ? (
-                      <Check className="h-3 w-3 text-green-600" />
+                      <Check className="h-3 w-3 text-foreground" />
                     ) : (
                       <Copy className="h-3 w-3" />
                     )}
@@ -1083,13 +1083,13 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                 </div>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed border-amber-300 bg-zinc-900 cursor-pointer hover:bg-zinc-800 transition-colors">
+              <label className="flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed border-border bg-zinc-900 cursor-pointer hover:bg-zinc-800 transition-colors">
                 {uploadingLogo === 'light' ? (
-                  <span className="text-xs text-amber-400">Uploading...</span>
+                  <span className="text-xs text-foreground">Uploading...</span>
                 ) : (
                   <>
-                    <Upload className="h-5 w-5 text-amber-400 mb-1" />
-                    <span className="text-xs text-amber-400 font-medium">Upload light logo</span>
+                    <Upload className="h-5 w-5 text-foreground mb-1" />
+                    <span className="text-xs text-foreground font-medium">Upload light logo</span>
                   </>
                 )}
                 <input
@@ -1176,7 +1176,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                     onClick={() => copyLink(link)}
                   >
                     {copiedLink === link ? (
-                      <Check className="h-3 w-3 text-green-600" />
+                      <Check className="h-3 w-3 text-foreground" />
                     ) : (
                       <Copy className="h-3 w-3" />
                     )}
@@ -1270,7 +1270,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.clickup ? 'rotate-90' : ''}`} />
             <span className="text-sm font-medium">ClickUp Integration</span>
             {clickupListId ? (
-              <span className="text-xs text-green-600">Connected</span>
+              <span className="text-xs text-foreground">Connected</span>
             ) : (
               <span className="text-xs text-muted-foreground">Optional</span>
             )}
@@ -1282,9 +1282,9 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             {!masterClickupApiKey ? (
               /* No master connection - prompt to set up in Integrations */
               <div className="space-y-3">
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md dark:bg-amber-950 dark:border-amber-800">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">ClickUp not connected</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <div className="p-3 bg-foreground border border-border rounded-md dark:bg-foreground dark:border-border">
+                  <p className="text-sm font-medium text-foreground">ClickUp not connected</p>
+                  <p className="text-xs text-foreground mt-1">
                     Set up your ClickUp connection in Integrations to enable automatic copy fetching.
                   </p>
                 </div>
@@ -1301,11 +1301,11 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             ) : clickupListId && clickupConnectedInfo && !isReconfiguring ? (
               /* Connected state view */
               <div className="space-y-3">
-                <div className="p-3 bg-green-50 border border-green-200 rounded-md dark:bg-green-950 dark:border-green-800">
+                <div className="p-3 bg-foreground border border-border rounded-md dark:bg-foreground dark:border-border">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-green-800 dark:text-green-200">Connected to ClickUp</p>
-                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      <p className="text-sm font-medium text-foreground">Connected to ClickUp</p>
+                      <p className="text-xs text-foreground mt-1">
                         {clickupConnectedInfo.workspaceName}<br/>
                         {clickupConnectedInfo.listName}
                       </p>
@@ -1328,7 +1328,7 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                        className="h-7 text-xs text-destructive hover:text-destructive"
                         onClick={handleDisconnectClickup}
                         disabled={isSavingClickup}
                       >
@@ -1442,9 +1442,9 @@ export function BrandSettings({ brand, onBack, onBrandChange }: BrandSettingsPro
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${openSections.api ? 'rotate-90' : ''}`} />
             <span className="text-sm font-medium">Klaviyo API Key</span>
             {isKlaviyoConfigured ? (
-              <span className="text-xs text-green-600">Connected</span>
+              <span className="text-xs text-foreground">Connected</span>
             ) : (
-              <span className="text-xs text-amber-600">Not configured</span>
+              <span className="text-xs text-foreground">Not configured</span>
             )}
           </div>
         </CollapsibleTrigger>

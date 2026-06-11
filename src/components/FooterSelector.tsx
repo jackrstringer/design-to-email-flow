@@ -72,7 +72,7 @@ export function FooterSelector({
             <FileText className="w-3.5 h-3.5" />
             <span className="max-w-[100px] truncate">{displayName}</span>
             {isModified && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Modified" />
+              <span className="w-1.5 h-1.5 rounded-full bg-foreground" title="Modified" />
             )}
             <ChevronDown className="w-3 h-3" />
           </button>

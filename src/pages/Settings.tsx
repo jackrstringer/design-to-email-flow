@@ -169,7 +169,7 @@ export default function Settings() {
                         onClick={handleCopyServerUrl}
                       >
                         {serverUrlCopied ? (
-                          <Check className="h-3.5 w-3.5 text-green-600" />
+                          <Check className="h-3.5 w-3.5 text-foreground" />
                         ) : (
                           <Copy className="h-3.5 w-3.5" />
                         )}
@@ -202,8 +202,8 @@ export default function Settings() {
 
               {/* Newly Generated Token (show once) */}
               {newlyGeneratedToken && (
-                <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
-                  <p className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                <div className="p-4 bg-foreground dark:bg-foreground border border-border dark:border-border rounded-lg">
+                  <p className="text-sm font-medium text-foreground mb-2">
                     ✓ New token generated! Copy it now - this is the only time you'll see it.
                   </p>
                   <div className="flex items-center gap-2">
@@ -218,7 +218,7 @@ export default function Settings() {
                       onClick={() => handleCopyToken(newlyGeneratedToken)}
                     >
                       {copied ? (
-                        <Check className="h-4 w-4 text-green-600" />
+                        <Check className="h-4 w-4 text-foreground" />
                       ) : (
                         <Copy className="h-4 w-4" />
                       )}

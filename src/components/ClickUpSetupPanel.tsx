@@ -158,8 +158,8 @@ export function ClickUpSetupPanel({
 
   if (isSaved) {
     return (
-      <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
-        <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+      <div className="p-4 bg-foreground dark:bg-foreground border border-border dark:border-border rounded-lg">
+        <div className="flex items-center gap-2 text-foreground">
           <Check className="h-4 w-4" />
           <span className="text-sm font-medium">ClickUp connected!</span>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueueRow } from './QueueRow';
@@ -164,11 +164,25 @@ export function QueueTable({
   const allSelected = items.length > 0 && items.every(item => selectedIds.has(item.id));
   const someSelected = items.some(item => selectedIds.has(item.id));
 
+  // Visible width of the scroll viewport — the expanded panel pins to this
+  // so horizontal table scrolling never clips the review surface.
+  const scrollWrapRef = useRef<HTMLDivElement>(null);
+  const [visibleWidth, setVisibleWidth] = useState(0);
+  useEffect(() => {
+    const el = scrollWrapRef.current;
+    if (!el) return;
+    const update = () => setVisibleWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (loading) {
     return (
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         {/* Header */}
-        <div className="flex h-8 items-center bg-white border-b border-gray-200 text-[13px] text-gray-500 font-normal">
+        <div className="flex h-8 items-center bg-white border-b border-border text-[13px] text-gray-500 font-normal">
           <div className="w-8 flex-shrink-0 px-2" />
           <div className="w-10 flex-shrink-0" /> {/* Timer column placeholder */}
           <div className="px-2" style={{ width: 100 }}>Status</div>
@@ -205,9 +219,9 @@ export function QueueTable({
 
   if (items.length === 0) {
     return (
-      <div className="border border-gray-200 rounded p-12 text-center">
+      <div className="border border-border rounded p-12 text-center">
         <p className="text-gray-500 text-sm">No campaigns in queue</p>
-        <p className="text-gray-400 text-xs mt-1">
+        <p className="text-muted-foreground text-xs mt-1">
           Upload a campaign or send one from Figma to get started
         </p>
       </div>
@@ -218,10 +232,11 @@ export function QueueTable({
   const minTableWidth = Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + 32 + 40; // +32 for checkbox + 40 for timer column
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ minWidth: `${minTableWidth}px` }}>
+    <div ref={scrollWrapRef} className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-hidden" style={{ minWidth: `${minTableWidth}px` }}>
       {/* Header - Airtable style */}
       <div 
-        className="flex h-8 items-center bg-white border-b border-gray-200 select-none"
+        className="flex h-8 items-center bg-white border-b border-border select-none"
         style={{ cursor: resizing ? 'col-resize' : 'default' }}
       >
         {/* Checkbox column */}
@@ -238,7 +253,7 @@ export function QueueTable({
 
         {/* Timer column - matches ProcessingTimer width */}
         <div 
-          className="w-10 flex-shrink-0 flex items-center justify-center cursor-pointer text-[10px] text-gray-400"
+          className="w-10 flex-shrink-0 flex items-center justify-center cursor-pointer text-[10px] text-muted-foreground"
           onClick={(e) => {
             e.stopPropagation();
             onToggleTimers();
@@ -259,7 +274,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('status')}
           />
@@ -276,7 +291,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('thumbnail')}
           />
@@ -294,7 +309,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('name')}
           />
@@ -312,7 +327,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('client')}
           />
@@ -330,7 +345,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('segmentSet')}
           />
@@ -348,7 +363,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('subject')}
           />
@@ -366,7 +381,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('previewText')}
           />
@@ -384,7 +399,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('links')}
           />
@@ -402,7 +417,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('external')}
           />
@@ -420,7 +435,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('spelling')}
           />
@@ -435,7 +450,7 @@ export function QueueTable({
           <div 
             className={cn(
               "absolute right-0 top-0 bottom-0 w-2 cursor-col-resize -translate-x-0.5",
-              "hover:bg-blue-500/20"
+              "hover:bg-secondary"
             )}
             onMouseDown={handleResizeStart('klaviyo')}
           />
@@ -466,6 +481,7 @@ export function QueueTable({
                 onToggleTimers={onToggleTimers}
               />
               {expandedId === item.id && (
+                <div className="sticky left-0" style={{ width: visibleWidth ? `${visibleWidth}px` : '100%' }}>
                 <ExpandedRowPanel
                   key={item.id}
                   item={item}
@@ -476,11 +492,13 @@ export function QueueTable({
                   preloadedBrandData={brandData}
                   initialZoomLevel={userZoomLevel}
                 />
+                </div>
               )}
             </React.Fragment>
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

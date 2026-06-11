@@ -168,8 +168,8 @@ export function InlineDropdownSelector({
         <div 
           className={cn(
             "group flex items-center gap-0.5 rounded-sm transition-shadow cursor-pointer w-full",
-            isEditing && "ring-2 ring-blue-500 ring-inset",
-            open && "ring-2 ring-blue-500 ring-inset"
+            isEditing && "ring-2 ring-foreground ring-inset",
+            open && "ring-2 ring-foreground ring-inset"
           )}
           onClick={handleCellClick}
           onDoubleClick={handleDoubleClick}
@@ -261,11 +261,11 @@ export function InlineDropdownSelector({
                   className={cn(
                     "w-full flex items-start gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-900",
                     "hover:bg-gray-100",
-                    isSelected && "bg-blue-50"
+                    isSelected && "bg-foreground"
                   )}
                 >
                   <div className="w-4 shrink-0 pt-0.5">
-                    {isSelected && <Check className="h-4 w-4 text-blue-600" />}
+                    {isSelected && <Check className="h-4 w-4 text-muted-foreground" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="leading-snug break-words">{opt.value}</p>

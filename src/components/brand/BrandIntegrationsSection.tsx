@@ -290,7 +290,7 @@ export function BrandIntegrationsSection({ brand, onBrandChange }: BrandIntegrat
           {isKlaviyoConfigured ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-600" />
+                <Check className="h-4 w-4 text-foreground" />
                 <span className="text-sm font-mono">Configured</span>
               </div>
               <div className="flex items-center gap-1">
@@ -346,7 +346,7 @@ export function BrandIntegrationsSection({ brand, onBrandChange }: BrandIntegrat
           ) : clickupListId && clickupConnectedInfo && !isReconfiguring ? (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-600" />
+                <Check className="h-4 w-4 text-foreground" />
                 <span className="text-xs">{clickupConnectedInfo.listName}</span>
               </div>
               <div className="flex gap-2">

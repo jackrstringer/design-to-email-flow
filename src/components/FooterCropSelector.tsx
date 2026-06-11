@@ -172,7 +172,7 @@ export function FooterCropSelector({ imageUrl, onCrop, onCancel }: FooterCropSel
             "text-xs font-medium whitespace-nowrap",
             "shadow-lg transition-transform hover:scale-105",
             wasAutoDetected 
-              ? "bg-gradient-to-r from-primary to-purple-500 text-primary-foreground" 
+              ? "bg-primary text-primary-foreground" 
               : "bg-primary text-primary-foreground"
           )}>
             {wasAutoDetected ? (

@@ -64,12 +64,12 @@ export function LegalContentEditor({
     <div className="space-y-4">
       {/* Compliance Warning */}
       {!isCompliant && (
-        <Alert variant="destructive" className="border-amber-500 bg-amber-50 text-amber-900">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
+        <Alert variant="destructive" className="border-border bg-foreground text-foreground">
+          <AlertTriangle className="h-4 w-4 text-foreground" />
           <AlertDescription className="flex items-center gap-2 flex-wrap">
             <span className="font-medium">Missing required elements:</span>
             {missingElements.map((el) => (
-              <Badge key={el} variant="outline" className="text-amber-700 border-amber-300">
+              <Badge key={el} variant="outline" className="text-foreground border-border">
                 {el}
               </Badge>
             ))}
@@ -78,8 +78,8 @@ export function LegalContentEditor({
       )}
       
       {isCompliant && (
-        <Alert className="border-green-500 bg-green-50 text-green-900">
-          <Check className="h-4 w-4 text-green-600" />
+        <Alert className="border-border bg-foreground text-foreground">
+          <Check className="h-4 w-4 text-foreground" />
           <AlertDescription>
             All required Klaviyo merge tags are present. Footer is compliant!
           </AlertDescription>

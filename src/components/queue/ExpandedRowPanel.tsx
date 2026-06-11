@@ -688,7 +688,7 @@ export function ExpandedRowPanel({
   ` : '';
 
   return (
-    <div className="bg-muted/20 border-t animate-in slide-in-from-top-2 duration-200">
+    <div className="border-t bg-background animate-in slide-in-from-top-2 duration-200">
       <div className="flex items-start">
         {/* LEFT SIDE - Campaign Preview - fills available space, scrollable */}
         <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto overflow-x-visible">
@@ -802,12 +802,12 @@ export function ExpandedRowPanel({
                     key={groupIndex} 
                     className={cn(
                       "relative flex justify-center items-stretch group/row",
-                      isMultiColumnRow ? "border-l-4 border-blue-400 bg-blue-50/30 hover:bg-blue-50/50" : "hover:bg-muted/10"
+                      isMultiColumnRow ? "border-l-4 border-border bg-secondary hover:bg-secondary" : "hover:bg-muted/10"
                     )}
                   >
                     {/* Multi-column indicator badge */}
                     {isMultiColumnRow && (
-                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-blue-500 text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
+                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-foreground text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
                         <Columns className="w-3 h-3" />
                         {columnCount}-Column Block
                       </div>
@@ -816,13 +816,13 @@ export function ExpandedRowPanel({
                     {/* Slice separator line */}
                     {groupIndex > 0 && (
                       <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
-                        <div className={cn("h-px flex-1", isMultiColumnRow ? "bg-blue-300" : "bg-border")} />
+                        <div className={cn("h-px flex-1", isMultiColumnRow ? "bg-foreground" : "bg-border")} />
                       </div>
                     )}
                     
                     {/* Left: Link Column - only show if displayMode !== 'none' */}
                     {displayMode !== 'none' && (
-                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-[280px]">
+                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-56">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
                           if (open) {
@@ -837,26 +837,26 @@ export function ExpandedRowPanel({
                               <button className={cn(
                                 "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
                                 isMultiColumnRow 
-                                  ? "bg-blue-50 border border-blue-200 hover:bg-blue-100" 
+                                  ? "bg-foreground border border-border hover:bg-foreground" 
                                   : "bg-muted/50 border border-border/50 hover:bg-muted"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
-                                <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-blue-500" : "text-muted-foreground")} />
+                                <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-muted-foreground" : "text-muted-foreground")} />
                                 <span className="text-muted-foreground truncate">{slice.link}</span>
                               </button>
                             ) : (
                               <button className={cn(
                                 "flex items-center gap-1.5 px-2 py-0.5 border border-dashed rounded transition-colors text-[9px] whitespace-nowrap",
                                 isMultiColumnRow 
-                                  ? "border-blue-300 text-blue-500 hover:border-blue-500 opacity-100" 
+                                  ? "border-border text-muted-foreground hover:border-border opacity-100" 
                                   : "border-muted-foreground/30 text-muted-foreground/50 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
@@ -931,7 +931,7 @@ export function ExpandedRowPanel({
                             key={originalIndex} 
                             className={cn(
                               "relative",
-                              isMultiColumnRow && colIdx > 0 && "border-l-2 border-blue-300"
+                              isMultiColumnRow && colIdx > 0 && "border-l-2 border-border"
                             )}
                             style={{ width: colWidth }}
                             onMouseEnter={() => displayMode === 'none' && setHoveredSliceIndex(originalIndex)}
@@ -939,7 +939,7 @@ export function ExpandedRowPanel({
                           >
                             {/* Column number badge on image */}
                             {isMultiColumnRow && (
-                              <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
+                              <div className="absolute top-2 right-2 bg-foreground text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
                                 {colIdx + 1}
                               </div>
                             )}
@@ -1040,11 +1040,11 @@ export function ExpandedRowPanel({
                     
                     {/* Right: Alt Text Column - only show if displayMode === 'all' */}
                     {displayMode === 'all' && (
-                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 w-[280px]">
+                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 w-56">
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
                           {isMultiColumnRow && (
-                            <span className="bg-blue-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                               {colIdx + 1}
                             </span>
                           )}
@@ -1112,7 +1112,7 @@ export function ExpandedRowPanel({
         </div>
 
         {/* RIGHT SIDE - Fixed width - Controls & QA - Sticky */}
-        <div className="w-[560px] flex-shrink-0 p-4 space-y-4 sticky top-0 self-start max-h-[80vh] overflow-y-auto">
+        <div className="w-[400px] flex-shrink-0 p-4 space-y-4 sticky top-0 self-start max-h-[80vh] overflow-y-auto border-l -ml-px">
           {/* QA flags from the autonomous QA agent - errors first, visible without scrolling */}
           <QAFlagsPanel
             flags={item.qa_flags}
@@ -1230,15 +1230,15 @@ export function ExpandedRowPanel({
               <div className="flex items-center gap-2">
                 {hasExternalLinks ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    <span className="text-sm font-medium text-amber-700">
+                    <AlertTriangle className="h-4 w-4 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">
                       {slicesWithLinks.length} Links | {externalLinkCount} External
                     </span>
                   </>
                 ) : (
                   <>
-                    <Check className="h-4 w-4 text-green-500" />
-                    <span className="text-sm font-medium text-green-700">
+                    <Check className="h-4 w-4 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">
                       {slicesWithLinks.length} Links | All in brand domain
                     </span>
                   </>
@@ -1255,7 +1255,7 @@ export function ExpandedRowPanel({
                         key={i} 
                         className={cn(
                           "text-[11px] truncate flex items-center gap-1.5",
-                          isExternal ? "text-amber-600" : "text-muted-foreground"
+                          isExternal ? "text-foreground" : "text-muted-foreground"
                         )}
                       >
                         {isExternal && <AlertTriangle className="h-3 w-3 flex-shrink-0" />}
@@ -1272,15 +1272,15 @@ export function ExpandedRowPanel({
               <div className="flex items-center gap-2">
                 {spellingErrors.length > 0 ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    <span className="text-sm font-medium text-amber-700">
+                    <AlertTriangle className="h-4 w-4 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">
                       {spellingErrors.length} Spelling Error{spellingErrors.length > 1 ? 's' : ''}
                     </span>
                   </>
                 ) : (
                   <>
-                    <Check className="h-4 w-4 text-green-500" />
-                    <span className="text-sm font-medium text-green-700">No Spelling Errors</span>
+                    <Check className="h-4 w-4 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">No Spelling Errors</span>
                   </>
                 )}
               </div>
@@ -1290,9 +1290,9 @@ export function ExpandedRowPanel({
                 <div className="space-y-1 pt-2 border-t">
                   {spellingErrors.slice(0, 5).map((error, i) => (
                     <div key={i} className="text-[11px] flex items-center gap-2">
-                      <span className="text-red-600 line-through">{error.text}</span>
+                      <span className="text-destructive line-through">{error.text}</span>
                       <span className="text-muted-foreground">→</span>
-                      <span className="text-green-600 font-medium">{error.correction}</span>
+                      <span className="text-foreground font-medium">{error.correction}</span>
                     </div>
                   ))}
                   {spellingErrors.length > 5 && (
@@ -1317,7 +1317,7 @@ export function ExpandedRowPanel({
                     href={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] text-blue-600 hover:text-blue-800 underline truncate max-w-[280px]"
+                    className="text-[11px] text-muted-foreground hover:text-muted-foreground underline truncate max-w-56"
                     title={item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}
                   >
                     {item.klaviyo_campaign_url || `klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`}

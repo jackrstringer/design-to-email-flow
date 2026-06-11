@@ -81,11 +81,11 @@ export function EditableSliceRow({ slice, index, onUpdate }: EditableSliceRowPro
                 <>
                   {slice.linkVerified ? (
                     <span title="Verified">
-                      <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                      <CheckCircle className="w-4 h-4 text-foreground flex-shrink-0" />
                     </span>
                   ) : (
                     <span title={slice.linkWarning || "Unverified"}>
-                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                      <AlertTriangle className="w-4 h-4 text-foreground flex-shrink-0" />
                     </span>
                   )}
                   <a
@@ -123,7 +123,7 @@ export function EditableSliceRow({ slice, index, onUpdate }: EditableSliceRowPro
               onClick={() => setEditingAlt(true)}
               className={cn(
                 "text-xs text-left truncate flex-1 min-w-0 hover:underline cursor-pointer",
-                hasPlaceholderAlt ? "text-amber-500 italic" : "text-muted-foreground"
+                hasPlaceholderAlt ? "text-foreground italic" : "text-muted-foreground"
               )}
             >
               {slice.altText || 'Click to add alt text'}

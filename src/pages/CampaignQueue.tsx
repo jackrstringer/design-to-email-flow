@@ -475,7 +475,7 @@ export default function CampaignQueue() {
               {canBulkApprove && (
                 <Button 
                   size="sm" 
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
+                  className="bg-foreground hover:bg-foreground text-white h-8"
                   onClick={handleBulkApprove}
                   disabled={isBulkProcessing}
                 >
@@ -503,7 +503,7 @@ export default function CampaignQueue() {
                 size="sm" 
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isBulkProcessing}
-                className="text-red-400 hover:text-red-300 hover:bg-gray-700 h-8"
+                className="text-destructive hover:text-destructive hover:bg-gray-700 h-8"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                 Delete
@@ -514,7 +514,7 @@ export default function CampaignQueue() {
       )}
 
       {/* Main Content - horizontal scroll for table */}
-      <main className="px-4 py-4 overflow-x-auto">
+      <main className="px-4 py-4">
         {showChecklist ? (
           /* New user: queue is empty and setup is incomplete — guide them */
           <div className="mx-auto max-w-xl py-8">
@@ -581,7 +581,7 @@ export default function CampaignQueue() {
             <AlertDialogAction 
               onClick={handleBulkDelete}
               disabled={isBulkProcessing}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive"
             >
               {isBulkProcessing ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

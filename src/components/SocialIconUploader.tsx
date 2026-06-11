@@ -125,7 +125,7 @@ const IconUploadSlot = ({
         className={cn(
           'relative flex items-center justify-center w-full aspect-square rounded cursor-pointer',
           'border-2 border-dashed transition-colors',
-          isUploaded ? 'border-green-500' : 'border-muted-foreground/30 hover:border-muted-foreground/50',
+          isUploaded ? 'border-border' : 'border-muted-foreground/30 hover:border-muted-foreground/50',
           bgClass
         )}
       >
@@ -142,7 +142,7 @@ const IconUploadSlot = ({
               alt={`${label} icon`}
               className="w-6 h-6 object-contain"
             />
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-foreground rounded-full flex items-center justify-center">
               <Check className="w-2.5 h-2.5 text-white" />
             </div>
           </>

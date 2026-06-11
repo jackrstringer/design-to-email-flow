@@ -34,7 +34,7 @@ export function SpellingErrorsPanel({
 
   if (!spellingErrors || spellingErrors.length === 0) {
     return (
-      <div className="flex items-center gap-2 text-sm text-green-600">
+      <div className="flex items-center gap-2 text-sm text-foreground">
         <Check className="h-4 w-4" />
         <span>No spelling errors detected</span>
       </div>
@@ -103,7 +103,7 @@ export function SpellingErrorsPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-sm text-yellow-600">
+      <div className="flex items-center gap-2 text-sm text-foreground">
         <AlertTriangle className="h-4 w-4" />
         <span>{spellingErrors.length} spelling error{spellingErrors.length > 1 ? 's' : ''} detected</span>
       </div>
@@ -125,20 +125,20 @@ export function SpellingErrorsPanel({
                     key={i}
                     className={cn(
                       "flex items-center justify-between gap-2 text-sm py-1.5 px-2 rounded",
-                      isFixed ? "bg-green-50 dark:bg-green-950/20" : "bg-background"
+                      isFixed ? "bg-foreground dark:bg-secondary" : "bg-background"
                     )}
                   >
                     <div className="flex-1 min-w-0">
                       {isFixed ? (
-                        <span className="text-green-600 flex items-center gap-1">
+                        <span className="text-foreground flex items-center gap-1">
                           <Check className="h-3 w-3" />
                           Fixed
                         </span>
                       ) : (
                         <>
-                          <span className="text-red-600 line-through">{error.text}</span>
+                          <span className="text-destructive line-through">{error.text}</span>
                           <span className="text-muted-foreground mx-1">→</span>
-                          <span className="text-green-600">{error.correction}</span>
+                          <span className="text-foreground">{error.correction}</span>
                         </>
                       )}
                     </div>

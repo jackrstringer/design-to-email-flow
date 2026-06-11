@@ -20,7 +20,7 @@ export function LinksTooltip({ slices, linkCount, missingLinks }: LinksTooltipPr
           <LinkIcon className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-sm">{linkCount} links</span>
           {missingLinks > 0 && (
-            <span className="flex items-center gap-0.5 text-yellow-600">
+            <span className="flex items-center gap-0.5 text-foreground">
               <AlertTriangle className="h-3 w-3" />
               <span className="text-xs">{missingLinks}</span>
             </span>
@@ -37,7 +37,7 @@ export function LinksTooltip({ slices, linkCount, missingLinks }: LinksTooltipPr
               {slice.link ? (
                 <span className="truncate">{slice.link}</span>
               ) : (
-                <span className="text-yellow-600 flex items-center gap-1">
+                <span className="text-foreground flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3" />
                   Missing link
                 </span>

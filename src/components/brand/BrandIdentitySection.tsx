@@ -227,9 +227,9 @@ export function BrandIdentitySection({ brand, onBrandChange }: BrandIdentitySect
 
           {/* Missing logo warning */}
           {(!brand.lightLogoUrl || !brand.darkLogoUrl) && (
-            <div className="flex items-start gap-2 p-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <Image className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-800">
+            <div className="flex items-start gap-2 p-3 mb-4 bg-foreground border border-border rounded-lg">
+              <Image className="w-4 h-4 text-foreground flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-foreground">
                 {!brand.lightLogoUrl && !brand.darkLogoUrl 
                   ? 'Upload both dark and light logo versions'
                   : !brand.lightLogoUrl 
@@ -258,7 +258,7 @@ export function BrandIdentitySection({ brand, onBrandChange }: BrandIdentitySect
                       onClick={() => copyLink(brand.darkLogoUrl!)}
                     >
                       {copiedLink === brand.darkLogoUrl ? (
-                        <Check className="h-3 w-3 text-green-600" />
+                        <Check className="h-3 w-3 text-foreground" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
@@ -274,13 +274,13 @@ export function BrandIdentitySection({ brand, onBrandChange }: BrandIdentitySect
                   </div>
                 </div>
               ) : (
-                <label className="flex flex-col items-center justify-center h-20 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
+                <label className="flex flex-col items-center justify-center h-20 rounded-lg border-2 border-dashed border-border bg-foreground cursor-pointer hover:bg-foreground transition-colors">
                   {uploadingLogo === 'dark' ? (
-                    <span className="text-xs text-amber-700">Uploading...</span>
+                    <span className="text-xs text-foreground">Uploading...</span>
                   ) : (
                     <>
-                      <Upload className="h-4 w-4 text-amber-600 mb-1" />
-                      <span className="text-xs text-amber-700">Upload</span>
+                      <Upload className="h-4 w-4 text-foreground mb-1" />
+                      <span className="text-xs text-foreground">Upload</span>
                     </>
                   )}
                   <input
@@ -316,7 +316,7 @@ export function BrandIdentitySection({ brand, onBrandChange }: BrandIdentitySect
                       onClick={() => copyLink(brand.lightLogoUrl!)}
                     >
                       {copiedLink === brand.lightLogoUrl ? (
-                        <Check className="h-3 w-3 text-green-600" />
+                        <Check className="h-3 w-3 text-foreground" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
@@ -332,13 +332,13 @@ export function BrandIdentitySection({ brand, onBrandChange }: BrandIdentitySect
                   </div>
                 </div>
               ) : (
-                <label className="flex flex-col items-center justify-center h-20 rounded-lg border-2 border-dashed border-amber-300 bg-zinc-900 cursor-pointer hover:bg-zinc-800 transition-colors">
+                <label className="flex flex-col items-center justify-center h-20 rounded-lg border-2 border-dashed border-border bg-zinc-900 cursor-pointer hover:bg-zinc-800 transition-colors">
                   {uploadingLogo === 'light' ? (
-                    <span className="text-xs text-amber-400">Uploading...</span>
+                    <span className="text-xs text-foreground">Uploading...</span>
                   ) : (
                     <>
-                      <Upload className="h-4 w-4 text-amber-400 mb-1" />
-                      <span className="text-xs text-amber-400">Upload</span>
+                      <Upload className="h-4 w-4 text-foreground mb-1" />
+                      <span className="text-xs text-foreground">Upload</span>
                     </>
                   )}
                   <input

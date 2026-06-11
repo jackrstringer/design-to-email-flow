@@ -273,7 +273,7 @@ export function InlineLegalEditor({
             }}
             className={cn(
               "flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border transition-colors",
-              hasOrgName ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+              hasOrgName ? "bg-foreground border-border text-foreground" : "bg-foreground border-border text-foreground hover:bg-foreground"
             )}
             title="Insert Organization Name"
           >
@@ -288,7 +288,7 @@ export function InlineLegalEditor({
             }}
             className={cn(
               "flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border transition-colors",
-              hasOrgAddress ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+              hasOrgAddress ? "bg-foreground border-border text-foreground" : "bg-foreground border-border text-foreground hover:bg-foreground"
             )}
             title="Insert Organization Address"
           >
@@ -303,7 +303,7 @@ export function InlineLegalEditor({
             }}
             className={cn(
               "flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border transition-colors",
-              hasUnsubscribe ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+              hasUnsubscribe ? "bg-foreground border-border text-foreground" : "bg-foreground border-border text-foreground hover:bg-foreground"
             )}
             title="Insert Unsubscribe Link"
           >
@@ -372,19 +372,19 @@ export function InlineLegalEditor({
       {!isCompliant && (
         <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
           {!hasOrgName && (
-            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-[10px] bg-foreground text-foreground px-2 py-0.5 rounded-full">
               <AlertTriangle className="w-3 h-3" />
               Missing org name
             </span>
           )}
           {!hasOrgAddress && (
-            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-[10px] bg-foreground text-foreground px-2 py-0.5 rounded-full">
               <AlertTriangle className="w-3 h-3" />
               Missing address
             </span>
           )}
           {!hasUnsubscribe && (
-            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-[10px] bg-foreground text-foreground px-2 py-0.5 rounded-full">
               <AlertTriangle className="w-3 h-3" />
               Missing unsubscribe
             </span>

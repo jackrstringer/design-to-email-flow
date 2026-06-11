@@ -66,7 +66,7 @@ export function InlineEditableText({
         onClick={(e) => e.stopPropagation()}
         className={cn(
           "w-full bg-white text-[13px] text-gray-900 outline-none px-1 py-0.5",
-          "ring-2 ring-blue-500 ring-inset rounded-sm",
+          "ring-2 ring-foreground ring-inset rounded-sm",
           className
         )}
       />

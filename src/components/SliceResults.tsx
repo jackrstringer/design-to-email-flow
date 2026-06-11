@@ -87,7 +87,7 @@ export function SliceResults({
             key={index}
             className={cn(
               'p-3 rounded-lg border bg-muted/30',
-              slice.type === 'html' ? 'border-blue-500/50' : 'border-border'
+              slice.type === 'html' ? 'border-border' : 'border-border'
             )}
           >
             <div className="flex gap-3">
@@ -114,7 +114,7 @@ export function SliceResults({
                     className={cn(
                       'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
                       slice.type === 'html'
-                        ? 'bg-blue-500/20 text-blue-600 hover:bg-blue-500/30'
+                        ? 'bg-secondary text-muted-foreground hover:bg-secondary'
                         : 'bg-muted text-muted-foreground hover:bg-muted/80'
                     )}
                   >
@@ -172,15 +172,15 @@ export function SliceResults({
                         <>
                           {/* Link verification status */}
                           {slice.linkVerified ? (
-                            <div className="flex items-center gap-1 text-green-500" title="Verified via web search">
+                            <div className="flex items-center gap-1 text-foreground" title="Verified via web search">
                               <CheckCircle className="w-3.5 h-3.5" />
                             </div>
                           ) : slice.linkWarning ? (
-                            <div className="flex items-center gap-1 text-amber-500" title={slice.linkWarning}>
+                            <div className="flex items-center gap-1 text-foreground" title={slice.linkWarning}>
                               <AlertTriangle className="w-3.5 h-3.5" />
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1 text-amber-500" title="Unverified link">
+                            <div className="flex items-center gap-1 text-foreground" title="Unverified link">
                               <AlertTriangle className="w-3.5 h-3.5" />
                             </div>
                           )}
@@ -197,7 +197,7 @@ export function SliceResults({
                     </div>
                     {/* Link warning message */}
                     {slice.link && slice.linkWarning && (
-                      <div className="flex items-center gap-1 text-xs text-amber-500">
+                      <div className="flex items-center gap-1 text-xs text-foreground">
                         <AlertTriangle className="w-3 h-3 flex-shrink-0" />
                         <span>{slice.linkWarning}</span>
                       </div>

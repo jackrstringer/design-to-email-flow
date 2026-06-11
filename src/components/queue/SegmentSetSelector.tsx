@@ -154,7 +154,7 @@ export function SegmentSetSelector({
                 >
                   <div className="w-4 flex-shrink-0">
                     {selectedPresetId === preset.id && (
-                      <Check className="h-3.5 w-3.5 text-blue-600" />
+                      <Check className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
                   </div>
                   <span className={cn("truncate flex-1", missingCount > 0 && "text-destructive")}>
@@ -167,7 +167,7 @@ export function SegmentSetSelector({
                     </span>
                   )}
                   {preset.is_default && missingCount === 0 && (
-                    <Star className="h-3 w-3 text-amber-500 fill-amber-500 flex-shrink-0" />
+                    <Star className="h-3 w-3 text-foreground fill-foreground flex-shrink-0" />
                   )}
                 </button>
               );

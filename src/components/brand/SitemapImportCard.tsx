@@ -157,12 +157,12 @@ export function SitemapImportCard({
             </>
           ) : isStale ? (
             <>
-              <AlertTriangle className="w-4 h-4 mr-1 text-amber-500" />
+              <AlertTriangle className="w-4 h-4 mr-1 text-foreground" />
               Stuck - Retry
             </>
           ) : isComplete ? (
             <>
-              <CheckCircle className="w-4 h-4 mr-1 text-green-500" />
+              <CheckCircle className="w-4 h-4 mr-1 text-foreground" />
               Re-crawl
             </>
           ) : canRetry ? (
@@ -247,8 +247,8 @@ export function SitemapImportCard({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           {isRunning && !isStale && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-          {isStale && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-          {isComplete && <CheckCircle className="w-4 h-4 text-green-500" />}
+          {isStale && <AlertTriangle className="w-4 h-4 text-foreground" />}
+          {isComplete && <CheckCircle className="w-4 h-4 text-foreground" />}
           {(isFailed || isCancelled) && <AlertCircle className="w-4 h-4 text-destructive" />}
           <span className="text-sm font-medium">Site Crawl</span>
         </div>
@@ -312,8 +312,8 @@ export function SitemapImportCard({
           )}
           
           {isStale && (
-            <Alert className="border-amber-500/50 bg-amber-500/10">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+            <Alert className="border-border bg-secondary">
+              <AlertTriangle className="w-4 h-4 text-foreground" />
               <AlertDescription className="text-xs">
                 No progress in {getLastActivity()}. The job may have timed out. 
                 <Button 
@@ -452,8 +452,8 @@ function CrawlDialog({
               )}
               
               {isStale && (
-                <Alert className="border-amber-500/50 bg-amber-500/10">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                <Alert className="border-border bg-secondary">
+                  <AlertTriangle className="w-4 h-4 text-foreground" />
                   <AlertDescription className="text-xs">
                     Job appears stuck. No activity {getLastActivity()}.
                   </AlertDescription>

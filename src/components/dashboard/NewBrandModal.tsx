@@ -454,7 +454,7 @@ export function NewBrandModal({
           )}
 
           {initialDomain && analyzed && !isAnalyzing && (
-            <div className="flex items-center gap-2 text-sm text-green-600">
+            <div className="flex items-center gap-2 text-sm text-foreground">
               <Check className="w-4 h-4" />
               <span>Brand info detected</span>
             </div>
@@ -540,8 +540,8 @@ export function NewBrandModal({
                               />
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-amber-300 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
-                              <span className="text-xs text-amber-700">Upload dark logo</span>
+                            <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-border bg-foreground cursor-pointer hover:bg-foreground transition-colors">
+                              <span className="text-xs text-foreground">Upload dark logo</span>
                               <input
                                 type="file"
                                 accept="image/*"
@@ -563,8 +563,8 @@ export function NewBrandModal({
                               />
                             </div>
                           ) : (
-                            <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-amber-300 bg-gray-900 cursor-pointer hover:bg-gray-800 transition-colors">
-                              <span className="text-xs text-amber-400">Upload light logo</span>
+                            <label className="flex flex-col items-center justify-center h-12 rounded-md border border-dashed border-border bg-gray-900 cursor-pointer hover:bg-gray-800 transition-colors">
+                              <span className="text-xs text-foreground">Upload light logo</span>
                               <input
                                 type="file"
                                 accept="image/*"
@@ -578,11 +578,11 @@ export function NewBrandModal({
                       
                       {/* Missing variant warning */}
                       {logoData.hasOnlyOneVariant && logoData.missingVariant && (
-                        <div className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
-                          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                          <div className="text-xs text-amber-800">
+                        <div className="flex items-start gap-2 p-2 bg-foreground border border-border rounded-md">
+                          <AlertTriangle className="w-4 h-4 text-foreground flex-shrink-0 mt-0.5" />
+                          <div className="text-xs text-foreground">
                             <p className="font-medium">Missing {logoData.missingVariant === 'light' ? 'light' : 'dark'} logo</p>
-                            <p className="text-amber-700">
+                            <p className="text-foreground">
                               {logoData.missingVariant === 'light' 
                                 ? 'Upload a light version for dark backgrounds (like footers)' 
                                 : 'Upload a dark version for light backgrounds'}

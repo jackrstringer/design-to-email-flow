@@ -224,10 +224,10 @@ export function BrandClickUpLocationSelector({
   if (isSaved) {
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-3">
-        <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-          <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
+        <div className="w-12 h-12 rounded-full bg-foreground dark:bg-foreground flex items-center justify-center">
+          <Check className="h-6 w-6 text-foreground" />
         </div>
-        <p className="font-medium text-green-700 dark:text-green-300">ClickUp connected!</p>
+        <p className="font-medium text-foreground">ClickUp connected!</p>
       </div>
     );
   }

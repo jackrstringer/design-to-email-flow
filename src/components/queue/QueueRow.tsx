@@ -135,8 +135,8 @@ export function QueueRow({
       className={cn(
         "group flex h-10 items-center bg-white border-b border-gray-100 text-[13px] text-gray-900",
         "hover:bg-gray-50 transition-colors cursor-pointer",
-        isExpanded && "bg-blue-50/50 border-b-blue-100",
-        isSelected && "bg-blue-50"
+        isExpanded && "bg-secondary",
+        isSelected && "bg-foreground"
       )}
       onClick={onToggleExpand}
     >
@@ -188,7 +188,7 @@ export function QueueRow({
         {hasMultiCtaWarning && (
           <Badge 
             variant="outline" 
-            className="absolute -top-1 -right-1 bg-orange-50 text-orange-700 border-orange-200 text-[8px] px-1 py-0 h-4 z-10"
+            className="absolute -top-1 -right-1 bg-foreground text-foreground border-border text-[8px] px-1 py-0 h-4 z-10"
             title="This campaign may have slices with multiple CTAs that need splitting"
           >
             <AlertTriangle className="w-2.5 h-2.5" />
@@ -196,7 +196,7 @@ export function QueueRow({
         )}
         {/* Multi-column badge - only show if no warning */}
         {!hasMultiCtaWarning && hasMultiColumnBlocks && (
-          <Badge variant="outline" className="absolute -top-1 -right-1 bg-blue-50 text-blue-700 border-blue-200 text-[8px] px-1 py-0 h-4 z-10">
+          <Badge variant="outline" className="absolute -top-1 -right-1 bg-foreground text-muted-foreground border-border text-[8px] px-1 py-0 h-4 z-10">
             <Columns className="w-2.5 h-2.5" />
           </Badge>
         )}
@@ -229,7 +229,7 @@ export function QueueRow({
             "absolute right-0 top-0 bottom-0 flex items-center",
             "pl-4 pr-2 text-[11px] text-gray-500 hover:text-gray-700",
             "opacity-0 group-hover:opacity-100 transition-opacity",
-            isExpanded ? "bg-blue-50/50" : isSelected ? "bg-blue-50" : "bg-white"
+            isExpanded ? "bg-secondary" : isSelected ? "bg-foreground" : "bg-white"
           )}
           onClick={(e) => {
             e.stopPropagation();
@@ -359,7 +359,7 @@ export function QueueRow({
                 href={klaviyoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-gray-500 hover:text-blue-600 flex-shrink-0"
+                className="text-gray-500 hover:text-muted-foreground flex-shrink-0"
                 title="Open in Klaviyo"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -368,7 +368,7 @@ export function QueueRow({
                 href={klaviyoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline truncate flex-1 min-w-0"
+                className="text-[11px] text-muted-foreground hover:text-muted-foreground hover:underline truncate flex-1 min-w-0"
                 title={klaviyoUrl}
               >
                 {displayText}

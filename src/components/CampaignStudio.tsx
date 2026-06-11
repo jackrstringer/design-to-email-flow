@@ -892,7 +892,7 @@ export function CampaignStudio({
                         "h-7 px-2 flex items-center gap-1.5 text-xs rounded-md transition-colors",
                         selectedListId 
                           ? "text-muted-foreground/70 hover:text-foreground hover:bg-muted/30" 
-                          : "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                          : "text-foreground bg-foreground hover:bg-foreground"
                       )}
                       disabled={isCreating || isLoadingLists}
                     >
@@ -960,7 +960,7 @@ export function CampaignStudio({
           {isFooterMode ? (
             footerSaved ? (
               <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 text-xs text-green-600">
+                <span className="flex items-center gap-1 text-xs text-foreground">
                   <CheckCircle className="w-3 h-3" />
                   Saved
                 </span>
@@ -993,7 +993,7 @@ export function CampaignStudio({
             )
           ) : templateId ? (
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-xs text-green-600">
+              <span className="flex items-center gap-1 text-xs text-foreground">
                 <CheckCircle className="w-3 h-3" />
                 {campaignId ? 'Campaign' : 'Template'} Created
               </span>
@@ -1300,7 +1300,7 @@ export function CampaignStudio({
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-medium text-primary/60 uppercase tracking-wider">Footer</span>
                                     {isFooterModified && (
-                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">Modified</span>
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-secondary text-foreground">Modified</span>
                                     )}
                                   </div>
                                   <p className="text-[11px] text-muted-foreground/60 mt-1">Modify via chat: "change footer background to..."</p>
