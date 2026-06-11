@@ -190,7 +190,7 @@ export function ClickUpIntegrationCard() {
             <CardTitle>ClickUp Integration</CardTitle>
           </div>
           {isConnected && (
-            <Badge variant="secondary" className="bg-foreground text-foreground dark:bg-foreground dark:text-foreground">
+            <Badge variant="secondary" className="border-transparent" style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}>
               <Check className="h-3 w-3 mr-1" />
               Connected
             </Badge>
