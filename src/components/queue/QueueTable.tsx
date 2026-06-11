@@ -196,7 +196,11 @@ export function QueueTable({
     const fixedSum = FIXED_COLS.reduce((sum, c) => sum + w[c], 0) + CHROME_W + 24;
     const flexSum = FLEX_COLS.reduce((sum, c) => sum + w[c], 0);
     const avail = visibleWidth - fixedSum;
-    if (flexSum <= 0 || avail <= 0) return w;
+    // Stretch-to-fill only: when there's spare room, content columns grow to
+    // use it. When there isn't, columns KEEP their comfortable widths and the
+    // rows scroll sideways inside the table — never squished, never clipping
+    // the page.
+    if (flexSum <= 0 || avail <= flexSum) return w;
     const k = avail / flexSum;
     FLEX_COLS.forEach((c) => {
       w[c] = Math.max(FLEX_FLOOR, Math.floor(w[c] * k));

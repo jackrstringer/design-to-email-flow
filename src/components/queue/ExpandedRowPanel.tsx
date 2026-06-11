@@ -7,7 +7,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy, Columns, Flag } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy, Columns, Flag, ChevronDown } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -1112,7 +1112,7 @@ export function ExpandedRowPanel({
         </div>
 
         {/* RIGHT SIDE - Fixed width - Controls & QA - Sticky */}
-        <div className="w-[400px] flex-shrink-0 p-4 space-y-4 sticky top-0 self-start max-h-[80vh] overflow-y-auto border-l -ml-px">
+        <div className="w-[400px] flex-shrink-0 p-3 space-y-3 sticky top-0 self-start max-h-[80vh] overflow-y-auto border-l -ml-px">
           {/* QA flags from the autonomous QA agent - errors first, visible without scrolling */}
           <QAFlagsPanel
             flags={item.qa_flags}
@@ -1226,28 +1226,30 @@ export function ExpandedRowPanel({
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QA Checks</h4>
             
             {/* Links Summary - Detailed */}
-            <div className="bg-white rounded-lg border p-3 space-y-2">
-              <div className="flex items-center gap-2">
+            <div className="bg-white rounded-lg border px-3 py-2.5 space-y-2">
+              <details className="group/links">
+              <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
                 {hasExternalLinks ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-foreground" />
+                    <AlertTriangle className="h-4 w-4 text-warning" />
                     <span className="text-sm font-medium text-foreground">
-                      {slicesWithLinks.length} Links | {externalLinkCount} External
+                      {slicesWithLinks.length} links · {externalLinkCount} external
                     </span>
                   </>
                 ) : (
                   <>
-                    <Check className="h-4 w-4 text-foreground" />
+                    <Check className="h-4 w-4 text-success" />
                     <span className="text-sm font-medium text-foreground">
-                      {slicesWithLinks.length} Links | All in brand domain
+                      {slicesWithLinks.length} links · all on brand domain
                     </span>
                   </>
                 )}
-              </div>
+                <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open/links:rotate-180" />
+              </summary>
               
-              {/* Compact link list */}
+              {/* Compact link list (collapsed by default) */}
               {slicesWithLinks.length > 0 && (
-                <div className="space-y-1 pt-2 border-t">
+                <div className="space-y-1 pt-2 mt-2 border-t">
                   {slicesWithLinks.map((slice, i) => {
                     const isExternal = slice.link && brandDomain && !slice.link.includes(brandDomain);
                     return (
@@ -1265,22 +1267,23 @@ export function ExpandedRowPanel({
                   })}
                 </div>
               )}
+              </details>
             </div>
 
             {/* Spelling Status with details */}
-            <div className="bg-white rounded-lg border p-3 space-y-2">
+            <div className="bg-white rounded-lg border px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-2">
                 {spellingErrors.length > 0 ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-foreground" />
+                    <AlertTriangle className="h-4 w-4 text-warning" />
                     <span className="text-sm font-medium text-foreground">
                       {spellingErrors.length} Spelling Error{spellingErrors.length > 1 ? 's' : ''}
                     </span>
                   </>
                 ) : (
                   <>
-                    <Check className="h-4 w-4 text-foreground" />
-                    <span className="text-sm font-medium text-foreground">No Spelling Errors</span>
+                    <Check className="h-4 w-4 text-success" />
+                    <span className="text-sm font-medium text-foreground">No spelling errors</span>
                   </>
                 )}
               </div>
@@ -1306,7 +1309,7 @@ export function ExpandedRowPanel({
 
 
             {/* Klaviyo Campaign URL */}
-            <div className="bg-white rounded-lg border p-3 space-y-2">
+            <div className="bg-white rounded-lg border px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-2">
                 <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Klaviyo Campaign</span>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Loader2, Bot } from 'lucide-react';
+import { Pencil, ChevronDown, Check, Loader2, Bot } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -168,8 +168,8 @@ export function InlineDropdownSelector({
         <div 
           className={cn(
             "group flex items-center gap-0.5 rounded-sm transition-shadow cursor-pointer w-full",
-            isEditing && "ring-2 ring-foreground ring-inset",
-            open && "ring-2 ring-foreground ring-inset"
+            isEditing && "ring-2 ring-brand/60 ring-inset",
+            open && "ring-2 ring-brand/60 ring-inset"
           )}
           onClick={handleCellClick}
           onDoubleClick={handleDoubleClick}
@@ -248,7 +248,7 @@ export function InlineDropdownSelector({
         >
           <div className="px-3 py-2 border-b bg-gray-50">
             <p className="text-[11px] text-gray-500 font-medium">
-              {allOptions.length} AI-generated option{allOptions.length !== 1 ? 's' : ''}
+              {allOptions.length} suggestion{allOptions.length !== 1 ? 's' : ''} — or write your own
             </p>
           </div>
           <div className="p-1">
@@ -260,12 +260,12 @@ export function InlineDropdownSelector({
                   onClick={() => handleSelect(opt.value)}
                   className={cn(
                     "w-full flex items-start gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-900",
-                    "hover:bg-gray-100",
-                    isSelected && "bg-foreground"
+                    "hover:bg-secondary",
+                    isSelected && "bg-brand/10"
                   )}
                 >
                   <div className="w-4 shrink-0 pt-0.5">
-                    {isSelected && <Check className="h-4 w-4 text-muted-foreground" />}
+                    {isSelected && <Check className="h-4 w-4 text-brand" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="leading-snug break-words">{opt.value}</p>
@@ -283,10 +283,10 @@ export function InlineDropdownSelector({
                 setOpen(false);
                 setIsEditing(true);
               }}
-              className="w-full flex items-center gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-gray-500 hover:bg-gray-100 border-t mt-1 pt-2"
+              className="w-full flex items-center gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-brand hover:bg-brand/5 border-t mt-1 pt-2 font-medium"
             >
-              <div className="w-4 shrink-0" />
-              <span className="italic">Edit custom...</span>
+              <div className="w-4 shrink-0 flex justify-center"><Pencil className="h-3.5 w-3.5" /></div>
+              <span>Write your own…</span>
             </button>
           </div>
         </PopoverContent>
