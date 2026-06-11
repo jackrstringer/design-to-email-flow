@@ -11,7 +11,7 @@ export function SetupChecklist() {
 
   if (isLoading || !status) {
     return (
-      <Card className="rounded-xl shadow-sm">
+      <Card className="rounded-lg shadow-sm">
         <CardHeader>
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-4 w-56" />
@@ -34,7 +34,7 @@ export function SetupChecklist() {
   const nextKey = status.nextStep?.key ?? null;
 
   return (
-    <Card className="rounded-xl shadow-sm">
+    <Card className="rounded-lg shadow-sm">
       <CardHeader className="space-y-3">
         <div>
           <CardTitle className="text-xl font-semibold tracking-tight">Get set up</CardTitle>

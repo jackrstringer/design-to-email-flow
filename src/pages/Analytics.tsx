@@ -78,12 +78,12 @@ function useTeamAnalytics() {
 
 function Stat({ icon: Icon, label, value, sub }: { icon: typeof Clock; label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-lg border bg-card p-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <p className="mt-1.5 text-2xl font-bold tracking-tight">{value}</p>
+      <p className="mt-1.5 text-lg font-semibold tracking-tight">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
     </div>
   );
@@ -97,9 +97,9 @@ export default function Analytics() {
       <div className="mx-auto max-w-5xl space-y-4 p-6">
         <Skeleton className="h-8 w-40" />
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
         </div>
-        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-48 rounded-lg" />
       </div>
     );
   }
@@ -109,19 +109,19 @@ export default function Analytics() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div>
-        <h1 className="text-xl font-bold tracking-tight">Analytics</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Analytics</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
           What the team got back by not hand-building emails.
         </p>
       </div>
 
       {/* Hero: time saved */}
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-lg border bg-card p-6">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5" /> Time saved
         </div>
-        <p className="mt-1 text-5xl font-extrabold tracking-tight">
-          {data.hoursSaved}<span className="ml-1 text-2xl font-semibold text-muted-foreground">hours</span>
+        <p className="mt-1 text-3xl font-semibold tracking-tight">
+          {data.hoursSaved}<span className="ml-1 text-base font-medium text-muted-foreground">hours</span>
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           ≈ {MINUTES_SAVED_PER_CAMPAIGN} min saved per campaign vs slicing, linking, QA-ing and building by hand.
@@ -136,7 +136,7 @@ export default function Analytics() {
       </div>
 
       {/* Weekly throughput */}
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-lg border bg-card p-4">
         <p className="text-sm font-medium">Campaigns per week</p>
         <div className="mt-3 flex h-28 items-end gap-2">
           {data.weeks.map((w) => (
@@ -153,7 +153,7 @@ export default function Analytics() {
       </div>
 
       {/* Power users */}
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-lg border bg-card p-4">
         <p className="text-sm font-medium">Power users</p>
         <p className="text-xs text-muted-foreground">Most campaigns shipped — and the hours that earned back.</p>
         <div className="mt-3 divide-y">

@@ -372,8 +372,8 @@ export default function CampaignPage() {
         <div className="flex-1 p-6 space-y-4">
           <Skeleton className="h-8 w-64" />
           <div className="flex gap-6 h-full">
-            <Skeleton className="h-3/4 flex-1 rounded-xl" />
-            <Skeleton className="h-3/4 w-80 rounded-xl" />
+            <Skeleton className="h-3/4 flex-1 rounded-lg" />
+            <Skeleton className="h-3/4 w-80 rounded-lg" />
           </div>
         </div>
       </div>

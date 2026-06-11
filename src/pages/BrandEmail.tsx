@@ -6,7 +6,7 @@ import type { BrandContextData } from '@/layouts/BrandLayout';
 function EmailSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div className="rounded-lg border bg-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="space-y-2">
             <Skeleton className="h-4 w-24" />

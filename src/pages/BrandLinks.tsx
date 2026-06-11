@@ -12,12 +12,12 @@ import type { BrandContextData } from '@/layouts/BrandLayout';
 function LinksSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-6 space-y-3">
+      <div className="rounded-lg border bg-card p-6 space-y-3">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-64" />
         <Skeleton className="h-10 w-full rounded-md" />
       </div>
-      <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div className="rounded-lg border bg-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="space-y-2">
             <Skeleton className="h-4 w-24" />
@@ -67,7 +67,7 @@ export default function BrandLinks() {
 
   if (stats.total === 0) {
     return (
-      <div className="rounded-xl border bg-card flex flex-col items-center justify-center text-center px-6 py-16">
+      <div className="rounded-lg border bg-card flex flex-col items-center justify-center text-center px-6 py-16">
         <Link2 className="w-10 h-10 text-muted-foreground/50 mb-4" />
         <p className="text-sm font-medium">No links indexed yet</p>
         <p className="text-sm text-muted-foreground mt-1 max-w-sm">

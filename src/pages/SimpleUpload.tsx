@@ -354,7 +354,7 @@ export default function SimpleUpload() {
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-xl mx-auto space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-foreground">PNG → Klaviyo</h1>
+          <h1 className="text-xl font-semibold text-foreground">PNG → Klaviyo</h1>
           <p className="text-muted-foreground mt-2">
             {viewState === 'upload' && 'Upload a PNG or JPG to slice and push to Klaviyo'}
             {viewState === 'slice-editor' && 'Click to add slice lines, drag to adjust'}
@@ -415,7 +415,7 @@ export default function SimpleUpload() {
             onDrop={handleDrop}
             className={cn(
               'relative flex flex-col items-center justify-center',
-              'h-64 border-2 border-dashed rounded-xl transition-all duration-200',
+              'h-64 border-2 border-dashed rounded-lg transition-all duration-200',
               'cursor-pointer hover:border-primary/50 hover:bg-muted/50',
               isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border'
             )}

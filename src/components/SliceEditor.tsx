@@ -579,7 +579,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
         {/* Right side: Slice count and reset */}
         <div className="flex flex-col items-center gap-3 py-4 min-w-[80px] shrink-0">
           <div className="text-center">
-            <div className="text-2xl font-bold text-foreground">{sliceCount}</div>
+            <div className="text-lg font-semibold text-foreground">{sliceCount}</div>
             <div className="text-xs text-muted-foreground">slice{sliceCount !== 1 ? 's' : ''}</div>
           </div>
           

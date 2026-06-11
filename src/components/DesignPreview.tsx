@@ -64,7 +64,7 @@ export const DesignPreview = ({
   const codeCount = blocks.filter((b) => b.type === 'code').length;
 
   return (
-    <div className="flex-1 bg-muted/30 rounded-xl p-4 overflow-auto">
+    <div className="flex-1 bg-muted/30 rounded-lg p-4 overflow-auto">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-sm font-medium text-foreground">Original Design</h2>

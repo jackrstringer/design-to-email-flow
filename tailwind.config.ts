@@ -68,7 +68,6 @@ export default {
       },
       fontFamily: {
         sans: [
-          "Plus Jakarta Sans",
           "Inter",
           "system-ui",
           "-apple-system",
@@ -76,7 +75,7 @@ export default {
           "Segoe UI",
           "sans-serif",
         ],
-        mono: ["Sometype Mono", "ui-monospace", "SF Mono", "monospace"],
+        mono: ["ui-monospace", "SFMono-Regular", "SF Mono", "Menlo", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",

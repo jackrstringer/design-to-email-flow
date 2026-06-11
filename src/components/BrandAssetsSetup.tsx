@@ -210,7 +210,7 @@ export function BrandAssetsSetup({
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-2xl mx-auto space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Brand Assets Setup</h1>
+          <h1 className="text-xl font-semibold">Brand Assets Setup</h1>
           <p className="text-muted-foreground">
             Configure your brand identity for email campaigns
           </p>

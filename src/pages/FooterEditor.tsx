@@ -192,7 +192,7 @@ export default function FooterEditor() {
         </div>
         <div className="flex-1 p-6 space-y-4">
           <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-3/4 w-full rounded-xl" />
+          <Skeleton className="h-3/4 w-full rounded-lg" />
         </div>
       </div>
     );

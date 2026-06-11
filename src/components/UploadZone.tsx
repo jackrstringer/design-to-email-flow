@@ -59,7 +59,7 @@ export const UploadZone = ({ onFileUpload, isLoading }: UploadZoneProps) => {
       onDrop={handleDrop}
       className={cn(
         'relative flex flex-col items-center justify-center w-full max-w-2xl mx-auto',
-        'h-80 border-2 border-dashed rounded-xl transition-all duration-200',
+        'h-80 border-2 border-dashed rounded-lg transition-all duration-200',
         'cursor-pointer hover:border-primary/50 hover:bg-muted/50',
         isDragActive ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border',
         isLoading && 'pointer-events-none opacity-60'

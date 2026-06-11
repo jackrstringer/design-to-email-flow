@@ -3,115 +3,103 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Sendr design system — violet-lit productivity cockpit on white
-   White canvas, carbon primary actions, ONE brand violet (#7b68ee) for
-   identity moments (logo, active states, signature checkmarks), and quiet
-   functional color for statuses and alerts. Blue-tinted micro-shadows,
-   never dramatic elevation. Dense, confident, fast.
+   Sendr design system — stock shadcn/ui, light, zinc.
+   White canvas, near-black primary actions, quiet zinc grays everywhere
+   else, small dense type (13px Inter). Functional color (green/amber/red/
+   blue) is reserved for status meaning only. No decorative chroma.
    ───────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;            /* pure white canvas */
-    --foreground: 228 53% 7%;           /* midnight ink #090c1d */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
 
     --card: 0 0% 100%;
-    --card-foreground: 228 53% 7%;
+    --card-foreground: 240 10% 3.9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 228 53% 7%;
+    --popover-foreground: 240 10% 3.9%;
 
-    /* Primary action is deliberately neutral carbon — violet is for brand. */
-    --primary: 240 5% 13%;              /* carbon #202023 */
-    --primary-foreground: 0 0% 100%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
 
-    /* The single chromatic voice. */
-    --brand: 248 79% 67%;               /* brand violet #7b68ee */
-    --brand-foreground: 0 0% 100%;
+    /* Legacy alias — identity accents now follow primary (monochrome). */
+    --brand: 240 5.9% 10%;
+    --brand-foreground: 0 0% 98%;
 
-    --secondary: 210 17% 98%;           /* paper #f8f9fa */
-    --secondary-foreground: 220 9% 18%; /* charcoal */
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 210 17% 98%;
-    --muted-foreground: 0 0% 39%;       /* slate #646464 */
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
 
-    --accent: 248 79% 67% / 0.08;       /* violet wash for hover/active */
-    --accent-foreground: 248 60% 40%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
 
     /* Functional color — quiet tints, real meaning. */
     --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 98%;
     --success: 152 60% 34%;
-    --success-foreground: 0 0% 100%;
+    --success-foreground: 0 0% 98%;
     --warning: 32 95% 44%;
-    --warning-foreground: 0 0% 100%;
+    --warning-foreground: 0 0% 98%;
 
-    --border: 0 0% 91%;                 /* cloud #e8e8e8 */
-    --input: 0 0% 85%;                  /* mist */
-    --ring: 248 79% 67%;                /* violet focus */
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
 
-    --radius: 0.5625rem;                /* 9px — buttons/inputs; cards take 12 */
+    --radius: 0.375rem; /* 6px — buttons/inputs 4px via rounded-md */
 
-    --sidebar-background: 210 17% 98%;  /* paper rail against white canvas */
-    --sidebar-foreground: 220 9% 30%;
-    --sidebar-primary: 248 79% 67%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 248 79% 67% / 0.09;
-    --sidebar-accent-foreground: 248 60% 38%;
-    --sidebar-border: 0 0% 91%;
-    --sidebar-ring: 248 79% 67%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 240 5.9% 90%;
+    --sidebar-ring: 240 5.9% 10%;
 
-    --inverted: 240 5% 13%;
-    --inverted-foreground: 0 0% 100%;
+    --inverted: 240 5.9% 10%;
+    --inverted-foreground: 0 0% 98%;
   }
 
+  /* App is light-only; kept for component compatibility. */
   .dark {
-    --background: 228 30% 7%;
-    --foreground: 220 20% 95%;
-
-    --card: 228 25% 10%;
-    --card-foreground: 220 20% 95%;
-
-    --popover: 228 25% 10%;
-    --popover-foreground: 220 20% 95%;
-
-    --primary: 220 20% 95%;
-    --primary-foreground: 228 30% 8%;
-
-    --brand: 248 82% 72%;
-    --brand-foreground: 228 30% 8%;
-
-    --secondary: 228 20% 14%;
-    --secondary-foreground: 220 20% 95%;
-
-    --muted: 228 20% 14%;
-    --muted-foreground: 220 10% 60%;
-
-    --accent: 248 82% 72% / 0.12;
-    --accent-foreground: 248 82% 80%;
-
-    --destructive: 0 62% 52%;
-    --destructive-foreground: 0 0% 100%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --brand: 0 0% 98%;
+    --brand-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
     --success: 152 50% 45%;
-    --success-foreground: 228 30% 8%;
+    --success-foreground: 240 10% 3.9%;
     --warning: 36 90% 55%;
-    --warning-foreground: 228 30% 8%;
-
-    --border: 228 15% 17%;
-    --input: 228 15% 20%;
-    --ring: 248 82% 72%;
-
-    --sidebar-background: 228 25% 9%;
-    --sidebar-foreground: 220 10% 70%;
-    --sidebar-primary: 248 82% 72%;
-    --sidebar-primary-foreground: 228 30% 8%;
-    --sidebar-accent: 248 82% 72% / 0.12;
-    --sidebar-accent-foreground: 248 82% 80%;
-    --sidebar-border: 228 15% 15%;
-    --sidebar-ring: 248 82% 72%;
-
-    --inverted: 220 20% 95%;
-    --inverted-foreground: 228 30% 8%;
+    --warning-foreground: 240 10% 3.9%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 240 5.9% 10%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 240 4.9% 83.9%;
+    --inverted: 0 0% 98%;
+    --inverted-foreground: 240 5.9% 10%;
   }
 }
 
@@ -130,17 +118,16 @@
     @apply bg-background text-foreground font-sans;
     font-size: 13px;
     line-height: 1.45;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.006em;
   }
 
-  /* Headlines carry the brand's confident density: 700+, tight tracking. */
   h1, h2 {
-    @apply font-bold;
-    letter-spacing: -0.03em;
+    @apply font-semibold;
+    letter-spacing: -0.02em;
   }
 
   ::selection {
-    background: hsl(248 79% 67% / 0.22);
+    background: hsl(240 5.9% 10% / 0.1);
   }
 
   * {
@@ -167,18 +154,18 @@
   }
 
   :focus-visible {
-    outline: 2px solid hsl(var(--ring) / 0.65);
+    outline: 2px solid hsl(var(--ring) / 0.4);
     outline-offset: 2px;
   }
 }
 
 @layer utilities {
   .drop-zone-active {
-    @apply border-brand bg-brand/5;
+    @apply border-primary bg-muted/60;
   }
 
   .hero-gradient {
-    background: linear-gradient(135deg, hsl(248 79% 67%) 0%, hsl(255 84% 60%) 100%);
+    background: linear-gradient(135deg, hsl(240 5.9% 10%) 0%, hsl(240 5% 26%) 100%);
   }
 
   .scrollbar-hide {
@@ -196,17 +183,13 @@
     animation: page-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1) both;
   }
 
-  /* Card surface: 12px radius + the blue-tinted micro-shadow stack. */
+  /* Card surface — hairline border, barely-there elevation. */
   .surface-hairline {
-    @apply rounded-xl border bg-card;
-    box-shadow:
-      rgba(18, 43, 165, 0.04) 0px 1px 1px -0.5px,
-      rgba(18, 43, 165, 0.04) 0px 3px 3px -1.5px,
-      rgba(18, 43, 165, 0.04) 0px 6px 6px -3px;
+    @apply rounded-lg border bg-card shadow-sm;
   }
 
   .shadow-button {
-    box-shadow: rgba(13, 21, 48, 0.04) 0px 4px 4px 0px;
+    @apply shadow-sm;
   }
 
   /* Tracked-out mono micro-label (category tags, technical chips). */

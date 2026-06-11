@@ -740,7 +740,7 @@ export default function CampaignSend() {
           <div className="w-16 h-16 rounded-full bg-foreground flex items-center justify-center mx-auto">
             <Check className="w-8 h-8 text-foreground" />
           </div>
-          <h1 className="text-2xl font-semibold">Campaign Created!</h1>
+          <h1 className="text-lg font-semibold">Campaign Created!</h1>
           <p className="text-muted-foreground">Your campaign is ready to review in Klaviyo</p>
           <div className="flex items-center justify-center gap-3 pt-4">
             <Button

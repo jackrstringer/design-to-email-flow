@@ -220,7 +220,7 @@ export function BrandLayout() {
           <Skeleton className="h-4 w-28" />
 
           <div className="flex items-center gap-4 mt-6">
-            <Skeleton className="w-12 h-12 rounded-xl" />
+            <Skeleton className="w-12 h-12 rounded-lg" />
             <div className="space-y-2">
               <Skeleton className="h-5 w-44" />
               <Skeleton className="h-4 w-28" />
@@ -236,8 +236,8 @@ export function BrandLayout() {
           </div>
 
           <div className="mt-8 space-y-4">
-            <Skeleton className="h-32 w-full rounded-xl" />
-            <Skeleton className="h-48 w-full rounded-xl" />
+            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-48 w-full rounded-lg" />
           </div>
         </div>
       </div>
@@ -294,7 +294,7 @@ export function BrandLayout() {
         <div className="flex items-center justify-between mt-6">
           <div className="flex items-center gap-4">
             <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-semibold text-lg"
+              className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-semibold text-lg"
               style={{ backgroundColor: brand.primaryColor }}
             >
               {brand.name.charAt(0)}

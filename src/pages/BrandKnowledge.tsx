@@ -247,7 +247,7 @@ export default function BrandKnowledge() {
       {questions.length > 0 && (
         <button
           onClick={() => setSurveyOpen(true)}
-          className="flex w-full items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.05] px-4 py-3 text-left transition-colors hover:bg-brand/[0.09]"
+          className="flex w-full items-center gap-3 rounded-lg border border-brand/25 bg-brand/[0.05] px-4 py-3 text-left transition-colors hover:bg-brand/[0.09]"
         >
           <MessageCircleQuestion className="h-4 w-4 shrink-0 text-brand" />
           <span className="flex-1 text-sm">
@@ -284,7 +284,7 @@ export default function BrandKnowledge() {
 
           {knowledgeQuery.isLoading ? (
             <div className="space-y-2">
-              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
             </div>
           ) : knowledgeQuery.isError ? (
             <Alert variant="destructive">
@@ -294,7 +294,7 @@ export default function BrandKnowledge() {
               </AlertDescription>
             </Alert>
           ) : wikiEntries.length === 0 ? (
-            <div className="rounded-xl border bg-card p-8 text-center">
+            <div className="rounded-lg border bg-card p-8 text-center">
               <Brain className="mx-auto h-7 w-7 text-muted-foreground/40" />
               <p className="mx-auto mt-3 max-w-sm text-sm text-muted-foreground">
                 Nothing here yet. Sendr learns from every correction you make — or let it study
@@ -312,7 +312,7 @@ export default function BrandKnowledge() {
                   <h3 className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {KNOWLEDGE_KIND_META[kind]?.label ?? 'Other'}
                   </h3>
-                  <div className="divide-y rounded-xl border bg-card">
+                  <div className="divide-y rounded-lg border bg-card">
                     {items.map((entry) => {
                       const isOpen = expanded === entry.id;
                       return (
@@ -363,7 +363,7 @@ export default function BrandKnowledge() {
         <aside className="space-y-2">
           <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Activity</h3>
           {runsQuery.isLoading ? (
-            <Skeleton className="h-32 w-full rounded-xl" />
+            <Skeleton className="h-32 w-full rounded-lg" />
           ) : (
             <div className="space-y-2.5">
               {(runsQuery.data ?? []).slice(0, 10).map((run) => {

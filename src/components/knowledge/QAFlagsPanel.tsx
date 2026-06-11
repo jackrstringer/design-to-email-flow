@@ -82,7 +82,7 @@ export function QAFlagsPanel({ flags, onJumpToSlice, brandId, queueId, className
     .filter(g => g.items.length > 0);
 
   return (
-    <div className={cn('rounded-xl border bg-card p-3 space-y-3', className)}>
+    <div className={cn('rounded-lg border bg-card p-3 space-y-3', className)}>
       <h4 className="text-sm font-medium">QA flags</h4>
       {grouped.map(({ severity, items }) => (
         <div key={severity} className="space-y-1.5">
