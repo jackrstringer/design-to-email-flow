@@ -1,4 +1,4 @@
-import { List, Building2, Users, Settings, LogOut, Send } from "lucide-react";
+import { List, Building2, Users, Settings, LogOut, Send, BarChart3 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -27,6 +27,7 @@ const navItems = [
   { title: "Queue", url: "/queue", icon: List },
   { title: "Brands", url: "/brands", icon: Building2 },
   { title: "Segments", url: "/segments", icon: Users },
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

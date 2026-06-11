@@ -173,3 +173,6 @@ verify_jwt = true
 [functions.brand-agent-research]
 verify_jwt = true
 
+[functions.invite-user]
+verify_jwt = true
+

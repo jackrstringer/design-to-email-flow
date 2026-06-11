@@ -24,6 +24,7 @@ const CampaignPage = lazy(() => import("./pages/CampaignPage"));
 const CampaignSend = lazy(() => import("./pages/CampaignSend"));
 const CampaignQueue = lazy(() => import("./pages/CampaignQueue"));
 const Segments = lazy(() => import("./pages/Segments"));
+const Analytics = lazy(() => import("./pages/Analytics"));
 const Settings = lazy(() => import("./pages/Settings"));
 const FooterEditor = lazy(() => import("./pages/FooterEditor"));
 const ImageFooterStudio = lazy(() => import("./pages/ImageFooterStudio"));
@@ -72,6 +73,7 @@ const App = () => (
                 <Route path="integrations" element={<BrandIntegrations />} />
               </Route>
               <Route path="/segments" element={<AuthGuard><AppLayout><Segments /></AppLayout></AuthGuard>} />
+              <Route path="/analytics" element={<AuthGuard><AppLayout><Analytics /></AppLayout></AuthGuard>} />
               <Route path="/upload" element={<AuthGuard><AppLayout><SimpleUpload /></AppLayout></AuthGuard>} />
               <Route path="/settings" element={<AuthGuard><AppLayout><Settings /></AppLayout></AuthGuard>} />
 

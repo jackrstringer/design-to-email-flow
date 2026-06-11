@@ -693,9 +693,35 @@ export function ExpandedRowPanel({
       <div className="flex items-start">
         {/* LEFT SIDE - Campaign Preview - fills available space, scrollable */}
         <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto overflow-x-visible">
-          {/* Inbox Preview - full width */}
+          {/* Inbox Preview - full width, subject/preview editable in place */}
           <div className="mb-3">
             <div className="bg-white rounded-lg border shadow-sm">
+              <div className="flex gap-2 border-b px-3 py-2">
+                <input
+                  value={selectedSubject}
+                  onChange={(e) => setSelectedSubject(e.target.value)}
+                  onBlur={async () => {
+                    if (selectedSubject !== item.selected_subject_line) {
+                      await supabase.from('campaign_queue').update({ selected_subject_line: selectedSubject }).eq('id', item.id);
+                      onUpdate();
+                    }
+                  }}
+                  placeholder="Subject line"
+                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] font-medium outline-none transition-colors hover:border-border focus:border-brand/50"
+                />
+                <input
+                  value={selectedPreview}
+                  onChange={(e) => setSelectedPreview(e.target.value)}
+                  onBlur={async () => {
+                    if (selectedPreview !== item.selected_preview_text) {
+                      await supabase.from('campaign_queue').update({ selected_preview_text: selectedPreview }).eq('id', item.id);
+                      onUpdate();
+                    }
+                  }}
+                  placeholder="Preview text"
+                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] text-muted-foreground outline-none transition-colors hover:border-border focus:border-brand/50"
+                />
+              </div>
               <InboxPreview
                 senderName={brandName}
                 subjectLine={selectedSubject || 'Select a subject line...'}
@@ -808,7 +834,7 @@ export function ExpandedRowPanel({
                   >
                     {/* Multi-column indicator badge */}
                     {isMultiColumnRow && (
-                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-foreground text-white text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
+                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
                         <Columns className="w-3 h-3" />
                         {columnCount}-Column Block
                       </div>
@@ -836,18 +862,15 @@ export function ExpandedRowPanel({
                           <PopoverTrigger asChild>
                             {slice.link ? (
                               <button className={cn(
-                                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] transition-colors text-left max-w-full overflow-hidden",
-                                isMultiColumnRow 
-                                  ? "bg-foreground border border-border hover:bg-foreground" 
-                                  : "bg-muted/50 border border-border/50 hover:bg-muted"
-                              )}>
+                                "flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors text-left max-w-full overflow-hidden bg-card border hover:border-brand/40 hover:bg-brand/5"
+                              )} title={slice.link ?? undefined}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-brand text-brand-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
-                                <Link className={cn("w-3 h-3 flex-shrink-0", isMultiColumnRow ? "text-muted-foreground" : "text-muted-foreground")} />
-                                <span className="text-muted-foreground truncate">{slice.link}</span>
+                                <Link className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
+                                <span className="text-foreground truncate" style={{ direction: 'rtl', textAlign: 'left' }}>{slice.link}</span>
                               </button>
                             ) : (
                               <button className={cn(
@@ -857,7 +880,7 @@ export function ExpandedRowPanel({
                                   : "border-muted-foreground/30 text-muted-foreground/50 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
                               )}>
                                 {isMultiColumnRow && (
-                                  <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="bg-brand text-brand-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
                                     {colIdx + 1}
                                   </span>
                                 )}
@@ -940,7 +963,7 @@ export function ExpandedRowPanel({
                           >
                             {/* Column number badge on image */}
                             {isMultiColumnRow && (
-                              <div className="absolute top-2 right-2 bg-foreground text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
+                              <div className="absolute top-2 right-2 bg-primary text-primary-foreground text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
                                 {colIdx + 1}
                               </div>
                             )}
@@ -1045,7 +1068,7 @@ export function ExpandedRowPanel({
                       {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
                         <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
                           {isMultiColumnRow && (
-                            <span className="bg-foreground text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="bg-brand text-brand-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                               {colIdx + 1}
                             </span>
                           )}

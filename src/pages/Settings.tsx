@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ClickUpIntegrationCard } from '@/components/integrations/ClickUpIntegrationCard';
+import { TeamCard } from '@/components/settings/TeamCard';
 
 interface PluginToken {
   id: string;
@@ -269,6 +270,8 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+
+          <TeamCard />
         </div>
       </main>
     </div>

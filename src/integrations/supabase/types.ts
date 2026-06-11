@@ -896,6 +896,7 @@ export type Database = {
           id: string
           queue_column_widths: Json | null
           queue_zoom_level: number | null
+          role: string
           updated_at: string | null
         }
         Insert: {
@@ -907,6 +908,7 @@ export type Database = {
           id: string
           queue_column_widths?: Json | null
           queue_zoom_level?: number | null
+          role?: string
           updated_at?: string | null
         }
         Update: {
@@ -918,6 +920,7 @@ export type Database = {
           id?: string
           queue_column_widths?: Json | null
           queue_zoom_level?: number | null
+          role?: string
           updated_at?: string | null
         }
         Relationships: []
@@ -1046,6 +1049,33 @@ export type Database = {
           },
         ]
       }
+      team_invites: {
+        Row: {
+          accepted_user_id: string | null
+          created_at: string
+          email: string
+          id: string
+          inviter_user_id: string
+          role: string
+        }
+        Insert: {
+          accepted_user_id?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          inviter_user_id: string
+          role?: string
+        }
+        Update: {
+          accepted_user_id?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          inviter_user_id?: string
+          role?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1068,6 +1098,7 @@ export type Database = {
         Args: { p_brand_id: string; p_kind: string }
         Returns: string
       }
+      is_admin: { Args: never; Returns: boolean }
       match_brand_knowledge: {
         Args: {
           match_count?: number
