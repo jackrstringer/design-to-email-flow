@@ -134,10 +134,15 @@ ${messages.map((m: { subject: string; preview: string }, i: number) => `${i + 1}
     }
 
     const validKinds = new Set(['voice', 'style', 'product', 'promo', 'link_rule', 'fact', 'question']);
+    const existingTitles = new Set((existing ?? []).map((k) => k.title.toLowerCase().trim()));
     let inserted = 0;
     let questions = 0;
     for (const entry of entries) {
       if (!validKinds.has(entry.kind) || !entry.title || !entry.content) continue;
+      // Dedupe by title — re-running research must never double the wiki.
+      const titleKey = entry.title.toLowerCase().trim();
+      if (existingTitles.has(titleKey)) continue;
+      existingTitles.add(titleKey);
       const { error } = await supabase.from('brand_knowledge').insert({
         brand_id: brandId,
         user_id: brand.user_id,
@@ -153,7 +158,13 @@ ${messages.map((m: { subject: string; preview: string }, i: number) => `${i + 1}
       }
     }
 
-    // Always keep the raw evidence available to other agents as one entry.
+    // Keep ONE raw-evidence digest: drop any previous digest, then insert.
+    await supabase
+      .from('brand_knowledge')
+      .delete()
+      .eq('brand_id', brandId)
+      .eq('source', 'crawl')
+      .like('title', 'Recent subject lines%');
     await supabase.from('brand_knowledge').insert({
       brand_id: brandId,
       user_id: brand.user_id,
