@@ -60,15 +60,15 @@ export default {
       },
       fontFamily: {
         sans: [
+          "Geist",
           "Inter",
+          "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",
-          "Roboto",
-          "Helvetica Neue",
-          "Arial",
           "sans-serif",
         ],
+        mono: ["Geist Mono", "ui-monospace", "SF Mono", "Cascadia Code", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",

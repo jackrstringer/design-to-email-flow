@@ -19,31 +19,34 @@ interface BlockOverlayClasses {
   swatch: string;
 }
 
-/** Overlay styling per detected block type (image slice / coded block / footer). */
+/**
+ * Overlay styling per detected block type. Monochrome by design: kinds are
+ * differentiated by line STYLE (solid / dashed / dotted), drafting-table
+ * style, never by hue.
+ */
 export const blockOverlayClasses: Record<BlockKind, BlockOverlayClasses> = {
   image: {
-    base: 'bg-red-500/20 border-red-500 hover:bg-red-500/30',
-    selected: 'ring-2 ring-offset-2 ring-red-500 border-red-500 bg-red-500/25',
-    label: 'bg-red-600',
-    swatch: 'bg-red-500',
+    base: 'bg-foreground/10 border-foreground border-solid hover:bg-foreground/15',
+    selected: 'ring-2 ring-offset-2 ring-foreground border-foreground bg-foreground/15',
+    label: 'bg-foreground',
+    swatch: 'bg-foreground',
   },
   code: {
-    base: 'bg-blue-500/20 border-blue-500 hover:bg-blue-500/30',
-    selected: 'ring-2 ring-offset-2 ring-blue-500 border-blue-500 bg-blue-500/25',
-    label: 'bg-blue-600',
-    swatch: 'bg-blue-500',
+    base: 'bg-foreground/5 border-foreground border-dashed hover:bg-foreground/10',
+    selected: 'ring-2 ring-offset-2 ring-foreground border-foreground border-dashed bg-foreground/10',
+    label: 'bg-foreground/80',
+    swatch: 'bg-foreground/60',
   },
   footer: {
-    base: 'bg-purple-500/20 border-purple-500 hover:bg-purple-500/30',
-    selected: 'ring-2 ring-offset-2 ring-purple-500 border-purple-500 bg-purple-500/25',
-    label: 'bg-purple-600',
-    swatch: 'bg-purple-500',
+    base: 'bg-foreground/5 border-foreground/60 border-dotted hover:bg-foreground/10',
+    selected: 'ring-2 ring-offset-2 ring-foreground border-foreground border-dotted bg-foreground/10',
+    label: 'bg-foreground/60',
+    swatch: 'bg-foreground/30',
   },
 };
 
-/** Quiet success chip (e.g. "N sections detected"). */
-export const successChipClasses =
-  'bg-green-500/10 text-green-600 dark:text-green-400';
+/** Quiet confirmation chip (e.g. "N sections detected") — ink, not green. */
+export const successChipClasses = 'bg-secondary text-foreground';
 
 /** Primary-accent action button (replaces hardcoded bg-orange-500 buttons). */
 export const primaryActionClasses =

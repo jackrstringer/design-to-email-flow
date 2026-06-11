@@ -135,8 +135,8 @@ export default function Auth() {
             )}
 
             {success && (
-              <Alert className="mb-4 border-green-500/50 bg-green-500/10">
-                <AlertDescription className="text-green-600">{success}</AlertDescription>
+              <Alert className="mb-4 border-foreground/20 bg-secondary">
+                <AlertDescription className="text-foreground">{success}</AlertDescription>
               </Alert>
             )}
 
