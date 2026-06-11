@@ -1,4 +1,4 @@
-import { List, Building2, Users, Settings, LogOut, Send, BarChart3 } from "lucide-react";
+import { List, Building2, Users, Settings, LogOut, Send, BarChart3, ChevronsUpDown } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -10,6 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -22,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
 
 const navItems = [
   { title: "Queue", url: "/queue", icon: List },
@@ -50,79 +52,83 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader>
-        <div
-          className={
-            collapsed
-              ? "flex flex-col items-center gap-1 py-2"
-              : "flex items-center gap-2.5 px-2 py-2.5"
-          }
-        >
+    <Sidebar collapsible="icon" className="group/rail border-r border-sidebar-border">
+      <SidebarHeader className="px-2 pb-1 pt-2">
+        <div className={cn("flex h-8 items-center", collapsed ? "justify-center" : "gap-2 pl-1.5 pr-1")}>
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand shadow-[0_1px_2px_rgb(0_0_0_/_0.12)]"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-primary"
             aria-hidden="true"
           >
-            <Send className="h-3.5 w-3.5 text-brand-foreground" strokeWidth={2.5} />
+            <Send className="h-3 w-3 text-primary-foreground" strokeWidth={2.25} />
           </span>
           {!collapsed && (
-            <span className="flex-1 text-[15px] font-semibold tracking-tight text-foreground">
-              Sendr
-            </span>
+            <>
+              <span className="flex-1 truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+                Sendr
+              </span>
+              {/* collapse control whispers in on rail hover, ⌘B always works */}
+              <SidebarTrigger
+                title="Collapse sidebar ⌘B"
+                className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/0 transition-colors hover:bg-sidebar-accent hover:text-foreground group-hover/rail:text-muted-foreground"
+              />
+            </>
           )}
-          <SidebarTrigger className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" />
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
+      <SidebarContent className="px-2">
+        <SidebarGroup className="p-0 pt-1">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    tooltip={item.title}
-                    className="h-8 rounded-lg text-[13px] font-medium transition-colors duration-150 data-[active=true]:bg-sidebar-accent data-[active=true]:text-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))]"
-                  >
-                    <NavLink to={item.url}>
-                      <item.icon
-                        className={
-                          isActive(item.url)
-                            ? "h-4 w-4 text-brand"
-                            : "h-4 w-4 text-sidebar-foreground/70"
-                        }
-                        strokeWidth={2}
-                      />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+            <SidebarMenu className="gap-px">
+              {navItems.map((item) => {
+                const active = isActive(item.url);
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      tooltip={item.title}
+                      className={cn(
+                        "h-7 rounded-md px-2 text-[13px] transition-colors duration-100",
+                        active
+                          ? "bg-sidebar-accent font-medium text-foreground"
+                          : "font-normal text-sidebar-foreground/80 hover:text-foreground",
+                      )}
+                    >
+                      <NavLink to={item.url}>
+                        <item.icon
+                          className={cn("h-[15px] w-[15px] shrink-0", active ? "text-foreground" : "text-sidebar-foreground/55")}
+                          strokeWidth={1.75}
+                        />
+                        <span className="truncate">{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border">
+      <SidebarFooter className="p-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className={
-                collapsed
-                  ? "flex w-full items-center justify-center rounded-lg py-2 transition-colors duration-150 hover:bg-sidebar-accent focus-visible:outline-none"
-                  : "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-sidebar-accent focus-visible:outline-none"
-              }
+              className={cn(
+                "flex w-full items-center rounded-md text-left outline-none transition-colors duration-100 hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-ring",
+                collapsed ? "h-8 justify-center" : "h-8 gap-2 px-1.5",
+              )}
               aria-label="Account menu"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
                 {initial}
               </span>
               {!collapsed && (
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {email}
-                </span>
+                <>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{email}</span>
+                  <ChevronsUpDown className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+                </>
               )}
             </button>
           </DropdownMenuTrigger>
@@ -142,6 +148,9 @@ export function AppSidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarFooter>
+
+      {/* click/drag affordance on the rail edge */}
+      <SidebarRail />
     </Sidebar>
   );
 }

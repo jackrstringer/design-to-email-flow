@@ -383,9 +383,9 @@ export default function CampaignQueue() {
       {/* Header - Simplified Airtable style */}
       <header className="border-b bg-background shrink-0">
         <div className="px-4">
-          <div className="flex h-12 items-center justify-between gap-3">
+          <div className="flex h-11 items-center justify-between gap-2.5">
             {/* Left: Title */}
-            <span className="shrink-0 whitespace-nowrap text-sm font-semibold tracking-tight">
+            <span className="shrink-0 whitespace-nowrap text-[13px] font-semibold tracking-tight">
               Queue
             </span>
 
@@ -416,7 +416,7 @@ export default function CampaignQueue() {
               </div>
               
               <Select value={brandFilter} onValueChange={setBrandFilter}>
-                <SelectTrigger className="h-8 w-36 text-[13px]">
+                <SelectTrigger className="h-7 w-32 text-xs">
                   <Building className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
                   <SelectValue placeholder="All Brands" />
                 </SelectTrigger>
@@ -431,7 +431,6 @@ export default function CampaignQueue() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8"
                 onClick={() => navigate('/upload')}
               >
                 <Upload className="h-3.5 w-3.5 mr-1.5" />
@@ -441,7 +440,7 @@ export default function CampaignQueue() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
                 onClick={() => refresh()}
                 disabled={isFetching}
               >
@@ -455,15 +454,15 @@ export default function CampaignQueue() {
       {/* Floating Bottom Bulk Action Bar - ClickUp style */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
-          <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg shadow-lg" style={{ backgroundColor: '#1F2937' }}>
+          <div className="flex items-center gap-4 rounded-lg bg-primary px-4 py-2 shadow-lg">
             {/* Selection count with clear button */}
-            <div className="flex items-center gap-2 text-white border-r border-gray-600 pr-4">
+            <div className="flex items-center gap-2 border-r border-white/15 pr-4 text-primary-foreground">
               <span className="text-sm font-medium">
                 {selectedIds.size} selected
               </span>
               <button 
                 onClick={handleClearSelection}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-primary-foreground/50 transition-colors hover:text-primary-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -475,7 +474,7 @@ export default function CampaignQueue() {
               {canBulkApprove && (
                 <Button 
                   size="sm" 
-                  className="bg-foreground hover:bg-foreground text-white h-8"
+                  className="h-7 bg-background text-foreground hover:bg-background/90"
                   onClick={handleBulkApprove}
                   disabled={isBulkProcessing}
                 >
@@ -492,7 +491,7 @@ export default function CampaignQueue() {
                 size="sm" 
                 onClick={handleBulkClose}
                 disabled={isBulkProcessing}
-                className="text-gray-300 hover:text-white hover:bg-gray-700 h-8"
+                className="h-7 text-primary-foreground/70 hover:bg-white/10 hover:text-primary-foreground"
               >
                 <Archive className="h-3.5 w-3.5 mr-1.5" />
                 Close
@@ -503,7 +502,7 @@ export default function CampaignQueue() {
                 size="sm" 
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isBulkProcessing}
-                className="text-destructive hover:text-destructive hover:bg-gray-700 h-8"
+                className="h-7 text-red-300 hover:bg-white/10 hover:text-red-200"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                 Delete

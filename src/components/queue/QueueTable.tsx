@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { Inbox } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueueRow } from './QueueRow';
@@ -260,9 +261,12 @@ export function QueueTable({
 
   if (items.length === 0) {
     return (
-      <div className="border border-border rounded p-12 text-center">
-        <p className="text-gray-500 text-sm">No campaigns in queue</p>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted/40">
+          <Inbox className="h-4 w-4 text-muted-foreground/70" strokeWidth={1.75} />
+        </div>
+        <p className="mt-3 text-[13px] font-medium">No campaigns in queue</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Upload a campaign or send one from Figma to get started
         </p>
       </div>
