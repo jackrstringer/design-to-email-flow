@@ -12,12 +12,16 @@ against real data before claiming done.
 - **Frontend**: Vite + React + shadcn + TanStack Query (`src/`). Port 8080.
 - **Backend**: Supabase — 58 Deno edge functions (`supabase/functions/`),
   37+ migrations (`supabase/migrations/`), Vault-encrypted brand API keys.
-- **Design system**: tokens in `src/index.css` (ClickUp-style: white canvas,
-  carbon `--primary` buttons, ONE brand violet `--brand` #7b68ee for identity,
-  functional green/amber/red tints for status). Primitives in
-  `src/components/ui/button|card|input|select.tsx` (13px base, h-8 controls).
+- **Design system** (2026-06-11, Jack's call): stock shadcn/ui, LIGHT ONLY,
+  zinc palette, Inter, small dense type (13px body), 6px radius, hairline
+  shadows. Monochrome — the old brand violet is retired; `--brand` is
+  aliased to `--primary` (carbon) for legacy classnames. Functional
+  green/amber/red/blue tints carry status meaning only. Jack's words:
+  "small text by default, sophisticated feel", nothing "cartoonish" (no
+  big rounded pills, bouncy buttons, oversized hero numbers). Primitives
+  in `src/components/ui/button|card|input|select.tsx` (13px, h-8 controls).
   `src/lib/agentMeta.ts` = agent/knowledge/QA badge metadata.
-  `DESIGN_SPEC.md` = older contract, partially superseded by the violet theme.
+  `DESIGN_SPEC.md` = older contract, superseded by this.
 - **Key surfaces**: `src/pages/CampaignQueue.tsx` + `components/queue/*`
   (QueueTable = Airtable-style grid: stretch-to-fill columns, never shrink
   below defaults, ≤5% squeeze tolerance, expanded panel pins to viewport via
