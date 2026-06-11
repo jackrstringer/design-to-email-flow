@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -7,10 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Send, RefreshCw, Heart, Check, Loader2, ExternalLink, Smile, Link as LinkIcon, Plus, X, Search, Save, Trash2, AlertTriangle, ArrowLeft, Flag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CampaignPreviewFrame } from '@/components/CampaignPreviewFrame';
 import { InboxPreview } from '@/components/InboxPreview';
+import { QAFlagsPanel } from '@/components/knowledge/QAFlagsPanel';
+import { FlagMistakeDialog } from '@/components/knowledge/FlagMistakeDialog';
 import type { ProcessedSlice } from '@/types/slice';
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
@@ -98,6 +101,28 @@ export default function CampaignSend() {
   
   // Success state
   const [campaignId, setCampaignId] = useState<string | null>(null);
+
+  // Flag a mistake dialog (brand knowledge layer)
+  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
+
+  // Queue row (when this campaign came through the queue) - source of qa_flags + name
+  const { data: queueRow } = useQuery({
+    queryKey: ['campaign-send-queue-row', id],
+    enabled: !!id,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('campaign_queue')
+        .select('id, name, brand_id, qa_flags')
+        .eq('id', id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const effectiveBrandId = brandId || queueRow?.brand_id || '';
+  const campaignName = queueRow?.name || (brandName ? `${brandName} campaign` : 'Campaign');
 
   // Filter lists based on search
   const filteredIncludeLists = useMemo(() => {
@@ -735,6 +760,32 @@ export default function CampaignSend() {
 
   return (
     <div className="h-screen w-full flex flex-col bg-background">
+      {/* Slim breadcrumb - this page renders without the sidebar */}
+      <div className="h-9 px-6 flex items-center justify-between border-b border-border/40 flex-shrink-0 bg-muted/30">
+        <div className="flex items-center gap-2 min-w-0">
+          <RouterLink
+            to="/queue"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Back to queue
+          </RouterLink>
+          <span className="text-muted-foreground/40 text-xs">/</span>
+          <span className="text-xs font-medium truncate">{campaignName}</span>
+        </div>
+        {effectiveBrandId && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs text-muted-foreground"
+            onClick={() => setFlagDialogOpen(true)}
+          >
+            <Flag className="w-3 h-3 mr-1" />
+            Flag a mistake
+          </Button>
+        )}
+      </div>
+
       {/* Header */}
       <div className="h-14 px-6 flex items-center justify-between border-b border-border/40 flex-shrink-0">
         <div className="flex items-center gap-4">
@@ -791,7 +842,14 @@ export default function CampaignSend() {
         {/* Right: Settings */}
         <ScrollArea className="flex-1">
           <div className="p-6 max-w-4xl mx-auto space-y-6">
-            
+
+            {/* QA flags from the autonomous QA agent */}
+            <QAFlagsPanel
+              flags={queueRow?.qa_flags}
+              brandId={effectiveBrandId || undefined}
+              queueId={queueRow?.id}
+            />
+
             {/* Audience Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -1125,6 +1183,16 @@ export default function CampaignSend() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Flag a mistake dialog - feeds the brand knowledge layer */}
+      {effectiveBrandId && (
+        <FlagMistakeDialog
+          brandId={effectiveBrandId}
+          queueId={queueRow?.id}
+          open={flagDialogOpen}
+          onOpenChange={setFlagDialogOpen}
+        />
+      )}
     </div>
   );
 }

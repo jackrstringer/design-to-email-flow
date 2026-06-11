@@ -7,10 +7,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy, Columns } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy, Columns, Flag } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
+import { QAFlagsPanel } from '@/components/knowledge/QAFlagsPanel';
+import { FlagMistakeDialog } from '@/components/knowledge/FlagMistakeDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -129,6 +131,10 @@ export function ExpandedRowPanel({
   type DisplayMode = 'all' | 'links' | 'none';
   const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
   const [hoveredSliceIndex, setHoveredSliceIndex] = useState<number | null>(null);
+
+  // "Flag a mistake" dialog state (feeds the brand knowledge layer)
+  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
+  const [flagContext, setFlagContext] = useState<Record<string, unknown> | undefined>(undefined);
 
   // Container sizing - zoom level passed in, no async fetch needed
   const footerIframeRef = useRef<HTMLIFrameElement>(null);
@@ -746,6 +752,29 @@ export function ExpandedRowPanel({
                 </button>
               </div>
             </div>
+
+            {/* Flag a mistake - feeds the brand knowledge layer */}
+            {item.brand_id && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px] text-muted-foreground ml-auto"
+                onClick={() => {
+                  const contextIndex = editingLinkIndex ?? editingAltIndex ?? hoveredSliceIndex;
+                  const slice = contextIndex != null ? slices[contextIndex] : undefined;
+                  setFlagContext(slice ? {
+                    sliceIndex: contextIndex,
+                    imageUrl: slice.imageUrl ?? null,
+                    link: slice.link ?? null,
+                    altText: slice.altText ?? null,
+                  } : undefined);
+                  setFlagDialogOpen(true);
+                }}
+              >
+                <Flag className="w-3 h-3 mr-1" />
+                Flag a mistake
+              </Button>
+            )}
           </div>
 
           {/* Email Preview - slices stacked - no scroll, show full content */}
@@ -1084,6 +1113,13 @@ export function ExpandedRowPanel({
 
         {/* RIGHT SIDE - Fixed width - Controls & QA - Sticky */}
         <div className="w-[560px] flex-shrink-0 p-4 space-y-4 sticky top-0 self-start max-h-[80vh] overflow-y-auto">
+          {/* QA flags from the autonomous QA agent - errors first, visible without scrolling */}
+          <QAFlagsPanel
+            flags={item.qa_flags}
+            brandId={item.brand_id}
+            queueId={item.id}
+          />
+
           {/* Audience Section */}
           <div className="space-y-2">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Audience</h4>
@@ -1530,6 +1566,17 @@ export function ExpandedRowPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Flag a mistake dialog - feeds the brand knowledge layer */}
+      {item.brand_id && (
+        <FlagMistakeDialog
+          brandId={item.brand_id}
+          queueId={item.id}
+          defaultContext={flagContext}
+          open={flagDialogOpen}
+          onOpenChange={setFlagDialogOpen}
+        />
+      )}
     </div>
   );
 }

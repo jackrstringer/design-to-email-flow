@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, Outlet, Link, NavLink } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Brand, SocialLink, BrandTypography, HtmlFormattingRule } from '@/types/brand-assets';
@@ -51,6 +53,7 @@ const tabs = [
 export interface BrandContextData {
   brand: Brand;
   refetchBrand: () => void;
+  isLoading: boolean;
 }
 
 export function BrandLayout() {
@@ -58,13 +61,15 @@ export function BrandLayout() {
   const navigate = useNavigate();
   const [brand, setBrand] = useState<Brand | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchBrand = async () => {
     if (!id) return;
-    
+
     setIsLoading(true);
+    setFetchError(false);
 
     const { data: brandData, error: brandError } = await supabase
       .from('brands')
@@ -74,6 +79,10 @@ export function BrandLayout() {
 
     if (brandError) {
       console.error('Error fetching brand:', brandError);
+      // PGRST116 = row not found; anything else is a real fetch error
+      if (brandError.code !== 'PGRST116') {
+        setFetchError(true);
+      }
       setIsLoading(false);
       return;
     }
@@ -203,38 +212,82 @@ export function BrandLayout() {
     }
   };
 
-  if (isLoading) {
+  // Initial load: skeleton header + tab bar matching the final layout
+  if (isLoading && !brand) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      <div className="min-h-full bg-background">
+        <div className="max-w-5xl mx-auto px-8 py-10">
+          <Skeleton className="h-4 w-28" />
+
+          <div className="flex items-center gap-4 mt-6">
+            <Skeleton className="w-12 h-12 rounded-xl" />
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-44" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+          </div>
+
+          <div className="flex gap-1 border-b mt-8 pb-px">
+            {tabs.map(tab => (
+              <div key={tab.path} className="px-4 py-2">
+                <Skeleton className="h-4 w-16" />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 space-y-4">
+            <Skeleton className="h-32 w-full rounded-xl" />
+            <Skeleton className="h-48 w-full rounded-xl" />
+          </div>
         </div>
       </div>
     );
   }
 
+  // Fetch error or brand not found
   if (!brand) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-full bg-background">
         <div className="max-w-5xl mx-auto px-8 py-10">
-          <p className="text-muted-foreground">Brand not found</p>
-          <Link to="/brands">
-            <Button variant="outline" className="mt-4">
-              Back to Brands
-            </Button>
+          <Link to="/brands" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to brands
           </Link>
+
+          <Alert variant="destructive" className="mt-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>{fetchError ? "Couldn't load this brand" : 'Brand not found'}</AlertTitle>
+            <AlertDescription className="flex flex-col items-start gap-3">
+              <span>
+                {fetchError
+                  ? 'Something went wrong while loading the brand. Try again.'
+                  : 'This brand may have been deleted, or the link is out of date.'}
+              </span>
+              <div className="flex gap-2">
+                {fetchError && (
+                  <Button variant="outline" size="sm" onClick={fetchBrand}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => navigate('/brands')}>
+                  Back to brands
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-full bg-background">
       <div className="max-w-5xl mx-auto px-8 py-10">
         {/* Back link */}
-        <Link to="/brands" className="inline-flex items-center text-muted-foreground hover:text-foreground">
+        <Link to="/brands" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Brands
+          Back to brands
         </Link>
 
         {/* Header */}
@@ -296,7 +349,7 @@ export function BrandLayout() {
 
         {/* Tab Content */}
         <div className="mt-8">
-          <Outlet context={{ brand, refetchBrand: fetchBrand } satisfies BrandContextData} />
+          <Outlet context={{ brand, refetchBrand: fetchBrand, isLoading } satisfies BrandContextData} />
         </div>
       </div>
     </div>

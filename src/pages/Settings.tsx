@@ -25,6 +25,7 @@ export default function Settings() {
   const [generating, setGenerating] = useState(false);
   const [newlyGeneratedToken, setNewlyGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [serverUrlCopied, setServerUrlCopied] = useState(false);
 
   useEffect(() => {
     fetchTokens();
@@ -103,6 +104,15 @@ export default function Settings() {
     return `${token.substring(0, 8)}...${token.substring(token.length - 4)}`;
   };
 
+  const serverUrl = import.meta.env.VITE_SUPABASE_URL as string;
+
+  const handleCopyServerUrl = async () => {
+    await navigator.clipboard.writeText(serverUrl);
+    setServerUrlCopied(true);
+    toast.success('Server URL copied to clipboard');
+    setTimeout(() => setServerUrlCopied(false), 2000);
+  };
+
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
@@ -125,13 +135,56 @@ export default function Settings() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Key className="h-5 w-5" />
-                Figma Plugin Tokens
+                Figma plugin
               </CardTitle>
               <CardDescription>
-                Generate tokens to connect your Figma plugin. Each token can be used in one Figma installation.
+                Connect the Sendr plugin so a selected frame lands in your queue in one click.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Install instructions */}
+              <ol className="space-y-2.5 text-sm">
+                <li className="flex gap-3">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">1</span>
+                  <span className="pt-px">
+                    In Figma: Plugins → Development → <span className="font-medium">Sendr — Design to Email</span>
+                  </span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">2</span>
+                  <span className="pt-px">Open Settings in the plugin</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">3</span>
+                  <div className="flex-1 min-w-0 space-y-1.5 pt-px">
+                    <span>Set the server URL:</span>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 min-w-0 truncate rounded-md border bg-muted/50 px-2.5 py-1.5 font-mono text-xs">
+                        {serverUrl}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={handleCopyServerUrl}
+                      >
+                        {serverUrlCopied ? (
+                          <Check className="h-3.5 w-3.5 text-green-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">4</span>
+                  <span className="pt-px">Paste a token generated below</span>
+                </li>
+              </ol>
+
+              <Separator />
+
               {/* Generate New Token */}
               <Button onClick={handleGenerateToken} disabled={generating}>
                 {generating ? (

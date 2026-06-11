@@ -427,12 +427,19 @@ export function BrandOnboardingModal({
     setShowFooterBuilder(true);
   };
 
+  // Klaviyo key is collected during creation, so the next onboarding step
+  // after the modal closes is the footer — or the link index if the footer
+  // was already built in-flow.
   const handleFooterSaved = () => {
     if (createdBrand) {
       onBrandCreated({ ...createdBrand, footerConfigured: true });
     }
     setShowFooterBuilder(false);
     onOpenChange(false);
+    if (createdBrand) {
+      toast.success('Brand created — next, import the link index');
+      navigate(`/brands/${createdBrand.id}/links`);
+    }
   };
 
   const handleSkipFooter = () => {
@@ -441,6 +448,10 @@ export function BrandOnboardingModal({
     }
     setShowFooterBuilder(false);
     onOpenChange(false);
+    if (createdBrand) {
+      toast.success('Brand created — next, build the footer');
+      navigate(`/brands/${createdBrand.id}/email`);
+    }
   };
 
 

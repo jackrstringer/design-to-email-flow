@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, ZoomIn, ZoomOut, Link, X, Plus, AlertTriangle, FileText, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -248,13 +249,26 @@ export default function ImageFooterStudio() {
     }
   };
 
-  // Loading state
+  // Loading state: skeleton matching the studio layout
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-10 h-10 mx-auto animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading footer studio...</p>
+      <div className="min-h-screen bg-muted/30 flex flex-col">
+        <header className="bg-background border-b px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-4 w-40" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </div>
+          <Skeleton className="h-9 w-28 rounded-md" />
+        </header>
+        <div className="flex-1 p-6">
+          <div className="max-w-[1200px] mx-auto flex flex-col items-center gap-2">
+            <Skeleton className="h-32 w-[300px]" />
+            <Skeleton className="h-32 w-[300px]" />
+            <Skeleton className="h-20 w-[300px]" />
+          </div>
         </div>
       </div>
     );
@@ -265,10 +279,10 @@ export default function ImageFooterStudio() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
-          <p className="text-destructive">{error || 'Failed to load footer data'}</p>
-          <Button variant="outline" onClick={() => navigate(-1)}>
+          <p className="text-sm text-destructive">Couldn't load the footer studio. Try again.</p>
+          <Button variant="outline" onClick={() => navigate(brandId ? `/brands/${brandId}/email` : '/brands')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Go Back
+            Back to brand email
           </Button>
         </div>
       </div>
@@ -280,13 +294,16 @@ export default function ImageFooterStudio() {
       {/* Header */}
       <header className="bg-background border-b px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/brands/${brand.id}/email`)}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
+          <button
+            onClick={() => navigate(`/brands/${brand.id}/email`)}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to {brand.name} email
+          </button>
           <div>
-            <h1 className="font-semibold">Image Footer Studio</h1>
-            <p className="text-sm text-muted-foreground">{brand.name}</p>
+            <h1 className="font-semibold">Image footer studio</h1>
+            <p className="text-sm text-muted-foreground">{footerName || brand.name}</p>
           </div>
         </div>
 

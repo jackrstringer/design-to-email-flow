@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Send, Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { primaryActionClasses } from '@/lib/statusColors';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -41,12 +42,12 @@ export function CampaignChat({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Auto-refine button - orange */}
+      {/* Auto-refine button - primary accent */}
       <div className="p-3 border-b border-border/50">
         <Button
           onClick={onAutoRefine}
           disabled={isLoading || isAutoRefining}
-          className="w-full h-9 text-[11px] bg-orange-500 hover:bg-orange-600 text-white"
+          className={`w-full h-9 text-[11px] ${primaryActionClasses}`}
         >
           {isAutoRefining ? (
             <>

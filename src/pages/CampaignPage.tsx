@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CampaignStudio } from '@/components/CampaignStudio';
@@ -336,27 +338,55 @@ export default function CampaignPage() {
   };
 
   const handleBack = () => {
-    navigate('/');
+    navigate('/queue');
   };
 
   const handleReset = () => {
     setTemplateId(null);
     setCampaignId(null);
-    navigate('/');
+    navigate('/queue');
   };
+
+  const breadcrumb = (
+    <div className="h-9 shrink-0 flex items-center gap-2 border-b border-border/40 px-4">
+      <Link
+        to="/queue"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+        Back to queue
+      </Link>
+      {brand?.name && (
+        <>
+          <span className="text-sm text-muted-foreground/50">/</span>
+          <span className="text-sm text-foreground truncate">{brand.name} campaign</span>
+        </>
+      )}
+    </div>
+  );
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="h-screen flex flex-col bg-background">
+        {breadcrumb}
+        <div className="flex-1 p-6 space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <div className="flex gap-6 h-full">
+            <Skeleton className="h-3/4 flex-1 rounded-xl" />
+            <Skeleton className="h-3/4 w-80 rounded-xl" />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!originalImageUrl) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Campaign not found</p>
+      <div className="h-screen flex flex-col bg-background">
+        {breadcrumb}
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-muted-foreground">Campaign not found</p>
+        </div>
       </div>
     );
   }
@@ -366,51 +396,57 @@ export default function CampaignPage() {
   const brandLinks = Array.isArray(rawLinks) ? rawLinks as string[] : [];
 
   return (
-    <CampaignStudio
-      slices={slices}
-      onSlicesChange={setSlices}
-      originalImageUrl={originalImageUrl}
-      brandUrl={brand?.websiteUrl || brand?.domain || ''}
-      brandContext={
-        brand
-          ? {
-              name: (brand as any)?.name,
-              domain: (brand as any)?.domain,
-              websiteUrl:
-                (brand as any)?.websiteUrl ??
-                (brand as any)?.website_url ??
-                (brand as any)?.domain,
-              colors: {
-                primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
-                secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
-                accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
-                background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
-                textPrimary:
-                  (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
-                link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
-              },
-              typography: (brand as any)?.typography,
-            }
-          : undefined
-      }
-      brandLinks={brandLinks}
-      figmaDesignData={figmaDesignData}
-      initialFooterHtml={initialFooterHtml}
-      initialFooterId={initialFooterId}
-      savedFooters={savedFooters}
-      onSaveFooter={handleSaveFooter}
-      onBack={handleBack}
-      onCreateTemplate={handleCreateTemplate}
-      onCreateCampaign={handleCreateCampaign}
-      onConvertToHtml={handleConvertToHtml}
-      isCreating={isCreating}
-      templateId={templateId}
-      campaignId={campaignId}
-      onReset={handleReset}
-      klaviyoLists={klaviyoLists}
-      selectedListId={selectedListId}
-      onSelectList={setSelectedListId}
-      isLoadingLists={isLoadingLists}
-    />
+    <div className="h-screen flex flex-col bg-background">
+      {breadcrumb}
+      {/* CampaignStudio sets its own h-screen; constrain it to the remaining space */}
+      <div className="flex-1 min-h-0 overflow-hidden [&>div]:!h-full">
+        <CampaignStudio
+          slices={slices}
+          onSlicesChange={setSlices}
+          originalImageUrl={originalImageUrl}
+          brandUrl={brand?.websiteUrl || brand?.domain || ''}
+          brandContext={
+            brand
+              ? {
+                  name: (brand as any)?.name,
+                  domain: (brand as any)?.domain,
+                  websiteUrl:
+                    (brand as any)?.websiteUrl ??
+                    (brand as any)?.website_url ??
+                    (brand as any)?.domain,
+                  colors: {
+                    primary: (brand as any)?.primaryColor ?? (brand as any)?.primary_color,
+                    secondary: (brand as any)?.secondaryColor ?? (brand as any)?.secondary_color,
+                    accent: (brand as any)?.accentColor ?? (brand as any)?.accent_color,
+                    background: (brand as any)?.backgroundColor ?? (brand as any)?.background_color,
+                    textPrimary:
+                      (brand as any)?.textPrimaryColor ?? (brand as any)?.text_primary_color,
+                    link: (brand as any)?.linkColor ?? (brand as any)?.link_color,
+                  },
+                  typography: (brand as any)?.typography,
+                }
+              : undefined
+          }
+          brandLinks={brandLinks}
+          figmaDesignData={figmaDesignData}
+          initialFooterHtml={initialFooterHtml}
+          initialFooterId={initialFooterId}
+          savedFooters={savedFooters}
+          onSaveFooter={handleSaveFooter}
+          onBack={handleBack}
+          onCreateTemplate={handleCreateTemplate}
+          onCreateCampaign={handleCreateCampaign}
+          onConvertToHtml={handleConvertToHtml}
+          isCreating={isCreating}
+          templateId={templateId}
+          campaignId={campaignId}
+          onReset={handleReset}
+          klaviyoLists={klaviyoLists}
+          selectedListId={selectedListId}
+          onSelectList={setSelectedListId}
+          isLoadingLists={isLoadingLists}
+        />
+      </div>
+    </div>
   );
 }

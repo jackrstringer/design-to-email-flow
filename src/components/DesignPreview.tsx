@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { EmailBlock } from '@/types/email-blocks';
 import { BlockOverlay } from './BlockOverlay';
+import { blockOverlayClasses } from '@/lib/statusColors';
 
 interface DesignPreviewProps {
   imageUrl: string;
@@ -74,11 +75,11 @@ export const DesignPreview = ({
         </div>
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-red-500" />
+            <span className={`w-2.5 h-2.5 rounded-sm ${blockOverlayClasses.image.swatch}`} />
             Image ({imageCount})
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
+            <span className={`w-2.5 h-2.5 rounded-sm ${blockOverlayClasses.code.swatch}`} />
             Code ({codeCount})
           </span>
         </div>

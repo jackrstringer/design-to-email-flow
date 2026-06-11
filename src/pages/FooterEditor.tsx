@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CampaignStudio } from '@/components/CampaignStudio';
@@ -166,13 +167,33 @@ export default function FooterEditor() {
   };
 
   const handleBack = () => {
-    navigate(`/brands/${brandId}`);
+    navigate(`/brands/${brandId}/email`);
   };
+
+  const breadcrumb = (
+    <div className="h-9 shrink-0 flex items-center gap-2 border-b border-border/40 px-4">
+      <Link
+        to={`/brands/${brandId}/email`}
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+        Back to {brand?.name ?? 'brand'} email
+      </Link>
+      <span className="text-sm text-muted-foreground/50">/</span>
+      <span className="text-sm text-foreground truncate">{footerName}</span>
+    </div>
+  );
 
   if (isLoading || !brand) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="h-screen flex flex-col bg-background">
+        <div className="h-9 shrink-0 flex items-center border-b border-border/40 px-4">
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <div className="flex-1 p-6 space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-3/4 w-full rounded-xl" />
+        </div>
       </div>
     );
   }
@@ -181,40 +202,46 @@ export default function FooterEditor() {
   const emptySlices: ProcessedSlice[] = [];
 
   return (
-    <CampaignStudio
-      mode="footer"
-      slices={emptySlices}
-      onSlicesChange={() => {}}
-      originalImageUrl={referenceImageUrl}
-      brandUrl={brand.websiteUrl || `https://${brand.domain}`}
-      brandContext={{
-        name: brand.name,
-        domain: brand.domain,
-        websiteUrl: brand.websiteUrl,
-        colors: {
-          primary: brand.primaryColor,
-          secondary: brand.secondaryColor,
-          accent: brand.accentColor,
-          background: brand.backgroundColor,
-          textPrimary: brand.textPrimaryColor,
-          link: brand.linkColor,
-        },
-        lightLogoUrl: brand.lightLogoUrl,
-        darkLogoUrl: brand.darkLogoUrl,
-        socialLinks: brand.socialLinks,
-      }}
-      figmaDesignData={figmaDesignData}
-      initialFooterHtml={footerHtml}
-      initialConversationHistory={conversationHistory}
-      sessionId={sessionId}
-      onSaveFooter={handleSaveFooter}
-      onBack={handleBack}
-      onCreateTemplate={() => {}}
-      onCreateCampaign={() => {}}
-      onConvertToHtml={async () => {}}
-      isCreating={isSaving}
-      footerName={footerName}
-      onFooterNameChange={setFooterName}
-    />
+    <div className="h-screen flex flex-col bg-background">
+      {breadcrumb}
+      {/* CampaignStudio sets its own h-screen; constrain it to the remaining space */}
+      <div className="flex-1 min-h-0 overflow-hidden [&>div]:!h-full">
+        <CampaignStudio
+          mode="footer"
+          slices={emptySlices}
+          onSlicesChange={() => {}}
+          originalImageUrl={referenceImageUrl}
+          brandUrl={brand.websiteUrl || `https://${brand.domain}`}
+          brandContext={{
+            name: brand.name,
+            domain: brand.domain,
+            websiteUrl: brand.websiteUrl,
+            colors: {
+              primary: brand.primaryColor,
+              secondary: brand.secondaryColor,
+              accent: brand.accentColor,
+              background: brand.backgroundColor,
+              textPrimary: brand.textPrimaryColor,
+              link: brand.linkColor,
+            },
+            lightLogoUrl: brand.lightLogoUrl,
+            darkLogoUrl: brand.darkLogoUrl,
+            socialLinks: brand.socialLinks,
+          }}
+          figmaDesignData={figmaDesignData}
+          initialFooterHtml={footerHtml}
+          initialConversationHistory={conversationHistory}
+          sessionId={sessionId}
+          onSaveFooter={handleSaveFooter}
+          onBack={handleBack}
+          onCreateTemplate={() => {}}
+          onCreateCampaign={() => {}}
+          onConvertToHtml={async () => {}}
+          isCreating={isSaving}
+          footerName={footerName}
+          onFooterNameChange={setFooterName}
+        />
+      </div>
+    </div>
   );
 }

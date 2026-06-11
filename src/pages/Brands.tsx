@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BrandCard } from '@/components/BrandCard';
 import { Button } from '@/components/ui/button';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Building2 } from 'lucide-react';
 import { Brand } from '@/types/brand-assets';
 import { BrandOnboardingModal } from '@/components/dashboard/BrandOnboardingModal';
 import { useBrandsQuery, useCampaignCountsQuery, useAddBrandToCache } from '@/hooks/useBrandsQuery';
@@ -39,8 +39,12 @@ export default function Brands() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : brands.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">No brands yet</p>
+          <div className="mx-auto max-w-md text-center py-12">
+            <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 text-sm font-medium">No brands yet</p>
+            <p className="mt-1 mb-4 text-sm text-muted-foreground">
+              Brands hold your client's Klaviyo account, footer, links, and memory — everything Sendr needs to turn a design into a send.
+            </p>
             <Button onClick={() => setShowOnboardingModal(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Create your first brand

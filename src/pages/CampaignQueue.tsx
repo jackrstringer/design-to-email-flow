@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Building, X, Trash2, Archive, Loader2, Timer } from 'lucide-react';
+import { RefreshCw, Building, X, Trash2, Archive, Loader2, Timer, Upload, Inbox } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { QueueTable } from '@/components/queue/QueueTable';
 import { useCampaignQueue, CampaignQueueItem } from '@/hooks/useCampaignQueue';
+import { useOnboardingStatus } from '@/hooks/useOnboardingStatus';
+import { SetupChecklist } from '@/components/onboarding/SetupChecklist';
+import { NextStepBanner } from '@/components/onboarding/NextStepBanner';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -30,7 +33,8 @@ export default function CampaignQueue() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { items, loading, isFetching, refresh, presetsByBrand, klaviyoListsByBrand, brandDataByBrand, userZoomLevel } = useCampaignQueue();
-  
+  const { data: onboarding } = useOnboardingStatus();
+
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
@@ -68,6 +72,14 @@ export default function CampaignQueue() {
     const matchesClosed = showClosed || item.status !== 'closed';
     return matchesBrand && matchesClosed;
   });
+
+  // Onboarding-aware empty states. While the onboarding query is still
+  // loading, the checklist renders its own skeleton — no flash of the
+  // wrong empty state.
+  const queueEmpty = !loading && items.length === 0;
+  const showChecklist = queueEmpty && !onboarding?.done;
+  const showEmptyState = queueEmpty && onboarding?.done === true;
+  const showNextStepBanner = !loading && items.length > 0 && onboarding && !onboarding.done && !!onboarding.nextStep;
 
   // Clear selection when filter changes
   useEffect(() => {
@@ -416,9 +428,19 @@ export default function CampaignQueue() {
                 </SelectContent>
               </Select>
               
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => navigate('/upload')}
+              >
+                <Upload className="h-3.5 w-3.5 mr-1.5" />
+                Upload
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => refresh()}
                 disabled={isFetching}
@@ -493,24 +515,56 @@ export default function CampaignQueue() {
 
       {/* Main Content - horizontal scroll for table */}
       <main className="px-4 py-4 overflow-x-auto">
-        <div className="min-w-max">
-          <QueueTable
-            items={filteredItems}
-            loading={loading}
-            expandedId={expandedId}
-            onToggleExpand={handleToggleExpand}
-            onUpdate={refresh}
-            presetsByBrand={presetsByBrand}
-            klaviyoListsByBrand={klaviyoListsByBrand}
-            brandDataByBrand={brandDataByBrand}
-            userZoomLevel={userZoomLevel}
-            selectedIds={selectedIds}
-            onSelectItem={handleSelectItem}
-            onSelectAll={handleSelectAll}
-            showTimers={showTimers}
-            onToggleTimers={handleToggleTimers}
-          />
-        </div>
+        {showChecklist ? (
+          /* New user: queue is empty and setup is incomplete — guide them */
+          <div className="mx-auto max-w-xl py-8">
+            <SetupChecklist />
+          </div>
+        ) : showEmptyState ? (
+          /* Set up, but nothing in the queue yet */
+          <div className="mx-auto max-w-xl py-16 text-center">
+            <Inbox className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 text-sm font-medium">No campaigns yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Send a frame from Figma, or upload a design.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-4"
+              onClick={() => navigate('/upload')}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              Upload a design
+            </Button>
+          </div>
+        ) : (
+          <>
+            {showNextStepBanner && onboarding?.nextStep && (
+              <div className="mb-4 min-w-0 max-w-2xl">
+                <NextStepBanner step={onboarding.nextStep} />
+              </div>
+            )}
+            <div className="min-w-max">
+              <QueueTable
+                items={filteredItems}
+                loading={loading}
+                expandedId={expandedId}
+                onToggleExpand={handleToggleExpand}
+                onUpdate={refresh}
+                presetsByBrand={presetsByBrand}
+                klaviyoListsByBrand={klaviyoListsByBrand}
+                brandDataByBrand={brandDataByBrand}
+                userZoomLevel={userZoomLevel}
+                selectedIds={selectedIds}
+                onSelectItem={handleSelectItem}
+                onSelectAll={handleSelectAll}
+                showTimers={showTimers}
+                onToggleTimers={handleToggleTimers}
+              />
+            </div>
+          </>
+        )}
       </main>
 
       {/* Delete Confirmation Dialog */}

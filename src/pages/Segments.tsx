@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Building2, KeyRound } from 'lucide-react';
 import { useSegmentPresets } from '@/hooks/useSegmentPresets';
 import { SegmentsTable } from '@/components/segments/SegmentsTable';
 import { useBrandsQuery } from '@/hooks/useBrandsQuery';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -66,7 +68,7 @@ export default function Segments() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
-        <h1 className="text-xl font-semibold">Segment Sets</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Segment sets</h1>
         
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Brand:</span>
@@ -122,15 +124,38 @@ export default function Segments() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {!selectedBrandId ? (
-          <div className="flex items-center justify-center h-64 text-muted-foreground">
+        {loadingBrands ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full rounded-md" />
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-md" />
+            ))}
+          </div>
+        ) : brands.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-center">
+            <Building2 className="w-10 h-10 text-muted-foreground/50 mb-4" />
+            <p className="text-sm font-medium">No brands yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Add a brand to start building segment sets.
+            </p>
+            <Button asChild variant="outline" size="sm" className="mt-4">
+              <Link to="/brands">Go to brands</Link>
+            </Button>
+          </div>
+        ) : !selectedBrandId ? (
+          <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
             Select a brand to manage segment sets
           </div>
         ) : !selectedBrand?.klaviyoKeySet ? (
-          <div className="flex items-center justify-center h-64 text-muted-foreground">
-            This brand doesn't have a Klaviyo API key configured.
-            <br />
-            Go to Brand Settings to add one.
+          <div className="flex flex-col items-center justify-center h-64 text-center">
+            <KeyRound className="w-10 h-10 text-muted-foreground/50 mb-4" />
+            <p className="text-sm font-medium">No Klaviyo key for this brand</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Add a Klaviyo key so Sendr can read this brand's segments.
+            </p>
+            <Button asChild variant="outline" size="sm" className="mt-4">
+              <Link to={`/brands/${selectedBrandId}/integrations`}>Add Klaviyo key</Link>
+            </Button>
           </div>
         ) : (
           <SegmentsTable

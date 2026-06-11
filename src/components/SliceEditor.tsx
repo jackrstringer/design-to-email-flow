@@ -6,6 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Scissors, RotateCcw, ChevronRight, Image, Code, ZoomIn, ZoomOut, Columns2, Columns3, Square, LayoutGrid, Wand2, Loader2, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { successChipClasses } from '@/lib/statusColors';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { SliceType, AutoSliceResponse, AutoDetectedSlice, AutoSliceV2Response } from '@/types/slice';
@@ -403,7 +404,7 @@ export function SliceEditor({ imageDataUrl, onProcess, onCancel, isProcessing }:
 
           {/* Results indicator */}
           {autoSliceResponse && sliceMode === 'automatic' && (
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400">
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium ${successChipClasses}`}>
               <Check className="w-3 h-3" />
               {autoSliceResponse.slices.length} sections detected
             </div>

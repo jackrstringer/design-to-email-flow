@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { Scissors } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { cutoffClasses } from '@/lib/statusColors';
 
 interface FooterCutoffHandleProps {
   position: number; // 0-100 percentage
@@ -70,15 +71,13 @@ export function FooterCutoffHandle({
         {/* Dashed line */}
         <div className={cn(
           "absolute left-0 right-0 h-0.5 border-t-2 border-dashed",
-          isActive ? "border-orange-500" : "border-orange-400/50"
+          isActive ? cutoffClasses.lineActive : cutoffClasses.lineInactive
         )} />
-        
+
         {/* Handle */}
         <div className={cn(
           "absolute left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium whitespace-nowrap transition-all",
-          isActive 
-            ? "bg-orange-500 text-white shadow-lg" 
-            : "bg-orange-500/80 text-white/90 group-hover:bg-orange-500"
+          isActive ? cutoffClasses.handleActive : cutoffClasses.handleInactive
         )}>
           <Scissors className="w-3 h-3" />
           <span>{isActive ? 'Footer cutoff' : 'Drag up to exclude footer'}</span>
@@ -87,12 +86,15 @@ export function FooterCutoffHandle({
 
       {/* Exclusion zone overlay */}
       {isActive && (
-        <div 
-          className="absolute left-0 right-0 bottom-0 pointer-events-none z-10 bg-orange-500/20"
+        <div
+          className={cn("absolute left-0 right-0 bottom-0 pointer-events-none z-10", cutoffClasses.zone)}
           style={{ height: `${100 - position}%` }}
         >
-          <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(249,115,22,0.1)_10px,rgba(249,115,22,0.1)_20px)]" />
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-medium text-orange-600 bg-orange-100/90 px-2 py-0.5 rounded">
+          <div className={cn("absolute inset-0", cutoffClasses.zoneStripes)} />
+          <div className={cn(
+            "absolute top-2 left-1/2 -translate-x-1/2 text-xs font-medium px-2 py-0.5 rounded",
+            cutoffClasses.zoneLabel
+          )}>
             Excluded from slices
           </div>
         </div>
@@ -129,7 +131,7 @@ export function FooterCutoffHandle({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-400/30 group-hover:bg-orange-500/50 transition-colors" />
+          <div className={cn("absolute bottom-0 left-0 right-0 h-1 transition-colors", cutoffClasses.grabZone)} />
         </div>
       )}
     </>

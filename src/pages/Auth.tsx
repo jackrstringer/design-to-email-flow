@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,7 +26,7 @@ export default function Auth() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user && !loading) {
-      navigate('/');
+      navigate('/queue');
     }
   }, [user, loading, navigate]);
 
@@ -81,12 +81,20 @@ export default function Auth() {
         setError(error.message);
       }
     } else if (data.user) {
-      // Check if email confirmation is required
       if (data.session) {
-        // Auto-confirmed, will redirect via useEffect
-        setSuccess('Account created successfully!');
+        // Auto-confirmed: the auth state change redirects to /queue via useEffect
+        setSuccess('Account created — signing you in...');
       } else {
-        setSuccess('Account created! Please check your email to confirm your account.');
+        // Autoconfirm is enabled server-side, so sign in directly instead of
+        // asking the user to check their email
+        setIsSubmitting(true);
+        const { error: signInError } = await signIn(email, password);
+        setIsSubmitting(false);
+        if (signInError) {
+          setError('Account created, but sign in failed. Please sign in manually.');
+        } else {
+          setSuccess('Account created — signing you in...');
+        }
       }
     }
   };
@@ -104,10 +112,8 @@ export default function Auth() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="p-2 bg-primary rounded-lg">
-              <Send className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-semibold">Sendr</span>
+            <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+            <span className="text-xl font-semibold tracking-tight">Sendr</span>
           </div>
           <CardTitle>Welcome</CardTitle>
           <CardDescription>
@@ -117,8 +123,8 @@ export default function Auth() {
         <CardContent>
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              <TabsTrigger value="signin">Sign in</TabsTrigger>
+              <TabsTrigger value="signup">Sign up</TabsTrigger>
             </TabsList>
 
             {error && (
@@ -173,7 +179,7 @@ export default function Auth() {
                       Signing in...
                     </>
                   ) : (
-                    'Sign In'
+                    'Sign in'
                   )}
                 </Button>
               </form>
@@ -221,7 +227,7 @@ export default function Auth() {
                       Creating account...
                     </>
                   ) : (
-                    'Create Account'
+                    'Create account'
                   )}
                 </Button>
               </form>
