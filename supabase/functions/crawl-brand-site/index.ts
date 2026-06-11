@@ -253,7 +253,7 @@ serve(async (req) => {
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Authorization': `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? supabaseServiceKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ texts })

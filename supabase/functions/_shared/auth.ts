@@ -43,7 +43,13 @@ export async function requireAuth(req: Request): Promise<AuthResult> {
   }
   const token = authHeader.slice('Bearer '.length).trim();
 
-  if (token === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+  // Internal calls may authenticate with either form of the service key:
+  // the injected key (sb_secret_… on newer projects) or the legacy JWT
+  // (SERVICE_ROLE_JWT secret) used for gateway-verified internal fetches.
+  if (
+    token === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ||
+    (Deno.env.get('SERVICE_ROLE_JWT') && token === Deno.env.get('SERVICE_ROLE_JWT'))
+  ) {
     return { userId: null, isService: true };
   }
 

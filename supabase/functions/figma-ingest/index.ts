@@ -121,7 +121,7 @@ serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`
+            'Authorization': `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? supabaseServiceKey}`
           },
           body: JSON.stringify({
             imageData,
@@ -192,7 +192,7 @@ serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`
+            'Authorization': `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? supabaseServiceKey}`
           },
           body: JSON.stringify({ campaignQueueId: campaign.id })
         }).catch(err => {

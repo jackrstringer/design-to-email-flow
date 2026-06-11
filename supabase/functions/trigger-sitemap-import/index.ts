@@ -107,7 +107,7 @@ serve(async (req) => {
       fetch(crawlUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Authorization': `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? supabaseServiceKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -126,7 +126,7 @@ serve(async (req) => {
       fetch(importUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Authorization': `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? supabaseServiceKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

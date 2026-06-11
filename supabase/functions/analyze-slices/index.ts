@@ -560,7 +560,7 @@ async function matchSlicesViaIndex(
       const matchResponse = await fetch(`${supabaseUrl}/functions/v1/match-slice-to-link`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${supabaseKey}`,
+          'Authorization': `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? supabaseKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

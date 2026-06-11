@@ -68,9 +68,13 @@ figma.ui.onmessage = async (msg) => {
     for (const node of selected) {
       figma.ui.postMessage({ type: 'export-progress', message: `Exporting "${node.name}"…` });
       try {
+        // 2x export for crispness, but cap total pixels so the upload stays
+        // well under request-size limits (tall email frames get 1x).
+        const MAX_PIXELS = 4000000;
+        const scale = node.width * node.height * 4 <= MAX_PIXELS ? 2 : 1;
         const bytes = await node.exportAsync({
           format: 'PNG',
-          constraint: { type: 'SCALE', value: 2 },
+          constraint: { type: 'SCALE', value: scale },
         });
         frames.push({
           name: node.name,

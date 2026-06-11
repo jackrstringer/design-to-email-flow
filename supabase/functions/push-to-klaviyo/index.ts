@@ -331,7 +331,7 @@ serve(async (req) => {
           signal: controller.signal,
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            Authorization: `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
           },
           body: JSON.stringify({ brandId, queueId: queueId ?? undefined }),
         });
