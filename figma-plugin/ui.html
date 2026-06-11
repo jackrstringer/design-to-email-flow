@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font: 11px/1.5 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--figma-color-text, #111);
+    background: var(--figma-color-bg, #fff);
+    padding: 16px;
+  }
+  h1 { font-size: 13px; font-weight: 600; margin-bottom: 12px; display:flex; align-items:center; gap:6px; }
+  h1 .dot { width:8px; height:8px; border-radius:50%; background:#f5862f; display:inline-block; }
+  label { display: block; font-weight: 600; margin: 10px 0 4px; color: var(--figma-color-text-secondary, #555); }
+  input, select, textarea {
+    width: 100%; padding: 7px 8px; border-radius: 6px;
+    border: 1px solid var(--figma-color-border, #ccc);
+    background: var(--figma-color-bg-secondary, #fafafa);
+    color: inherit; font: inherit;
+  }
+  button {
+    width: 100%; padding: 9px; margin-top: 12px; border: 0; border-radius: 6px;
+    background: #f5862f; color: #fff; font-weight: 600; cursor: pointer; font-size: 12px;
+  }
+  button.secondary { background: transparent; color: var(--figma-color-text, #111); border: 1px solid var(--figma-color-border, #ccc); }
+  button:disabled { opacity: .5; cursor: default; }
+  .frames { margin-top: 8px; padding: 8px; border-radius: 6px; background: var(--figma-color-bg-secondary, #f5f5f5); min-height: 38px; }
+  .frame-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .muted { color: var(--figma-color-text-secondary, #888); }
+  .status { margin-top: 10px; min-height: 16px; }
+  .status.error { color: #d4380d; }
+  .status.ok { color: #2e7d32; }
+  .link { color: #f5862f; cursor: pointer; text-decoration: underline; }
+  .settings-toggle { margin-top: 14px; font-size: 10px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <h1><span class="dot"></span> Sendr — Design to Email</h1>
+
+  <div id="setup" class="hidden">
+    <p class="muted">Connect the plugin to your Sendr account.</p>
+    <label>Server URL</label>
+    <input id="serverUrl" placeholder="https://YOUR-REF.supabase.co">
+    <label>Plugin token</label>
+    <input id="pluginToken" type="password" placeholder="Generate in Sendr → Settings → Integrations">
+    <button id="saveSettings">Save & connect</button>
+    <div id="setupStatus" class="status"></div>
+  </div>
+
+  <div id="main" class="hidden">
+    <label>Brand</label>
+    <select id="brand"><option value="">Loading brands…</option></select>
+
+    <label>Selected frames</label>
+    <div class="frames" id="frames"><span class="muted">Select one or more frames in Figma.</span></div>
+
+    <label>Subject line <span class="muted">(optional — AI generates if blank)</span></label>
+    <input id="subject" placeholder="e.g. Your summer glow starts here">
+    <label>Preview text <span class="muted">(optional)</span></label>
+    <input id="preview" placeholder="e.g. 20% off ends Sunday">
+
+    <button id="send" disabled>Send to queue</button>
+    <div id="status" class="status"></div>
+    <div class="settings-toggle"><span class="link" id="openSettings">Settings</span></div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let settings = { serverUrl: '', pluginToken: '' };
+  let selectedFrames = [];
+  let exportedFrames = null;
+
+  parent.postMessage({ pluginMessage: { type: 'init' } }, '*');
+
+  function showView(connected) {
+    $('setup').classList.toggle('hidden', connected);
+    $('main').classList.toggle('hidden', !connected);
+  }
+
+  function setStatus(el, message, kind) {
+    el.textContent = message || '';
+    el.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function renderFrames() {
+    const box = $('frames');
+    if (selectedFrames.length === 0) {
+      box.innerHTML = '<span class="muted">Select one or more frames in Figma.</span>';
+    } else {
+      box.innerHTML = selectedFrames
+        .map((f) => `<div class="frame-row"><span>${escapeHtml(f.name)}</span><span class="muted">${f.width}×${f.height}</span></div>`)
+        .join('');
+    }
+    $('send').disabled = selectedFrames.length === 0 || !settings.pluginToken;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function loadBrands() {
+    const select = $('brand');
+    select.innerHTML = '<option value="">Loading brands…</option>';
+    try {
+      const res = await fetch(
+        settings.serverUrl.replace(/\/$/, '') + '/functions/v1/get-plugin-brands?token=' + encodeURIComponent(settings.pluginToken)
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load brands');
+      const brands = data.brands || [];
+      select.innerHTML =
+        '<option value="">No brand (auto)</option>' +
+        brands.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+      const last = window.__lastBrand;
+      if (last && brands.some((b) => b.id === last)) select.value = last;
+      setStatus($('status'), '', '');
+    } catch (err) {
+      select.innerHTML = '<option value="">Could not load brands</option>';
+      setStatus($('status'), 'Brand load failed: ' + err.message + ' — check Settings.', 'error');
+    }
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = '';
+    const CHUNK = 32768;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+    }
+    return btoa(binary);
+  }
+
+  $('saveSettings').onclick = () => {
+    const serverUrl = $('serverUrl').value.trim();
+    const pluginToken = $('pluginToken').value.trim();
+    if (!serverUrl || !pluginToken) {
+      setStatus($('setupStatus'), 'Both fields are required.', 'error');
+      return;
+    }
+    parent.postMessage({ pluginMessage: { type: 'save-settings', settings: { serverUrl, pluginToken } } }, '*');
+  };
+
+  $('openSettings').onclick = () => {
+    $('serverUrl').value = settings.serverUrl;
+    $('pluginToken').value = settings.pluginToken;
+    showView(false);
+  };
+
+  $('send').onclick = () => {
+    exportedFrames = null;
+    $('send').disabled = true;
+    setStatus($('status'), 'Exporting frames…');
+    parent.postMessage({ pluginMessage: { type: 'export-frames' } }, '*');
+  };
+
+  async function upload(frames) {
+    setStatus($('status'), 'Uploading ' + frames.length + ' frame(s)…');
+    window.__lastBrand = $('brand').value || undefined;
+    try {
+      const payload = {
+        pluginToken: settings.pluginToken,
+        brandId: $('brand').value || undefined,
+        subjectLine: $('subject').value.trim() || undefined,
+        previewText: $('preview').value.trim() || undefined,
+        frames: frames.map((f) => ({
+          name: f.name,
+          width: f.width,
+          height: f.height,
+          imageBase64: bytesToBase64(f.bytes),
+          figmaUrl: f.figmaUrl || undefined,
+        })),
+      };
+      const res = await fetch(settings.serverUrl.replace(/\/$/, '') + '/functions/v1/figma-ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const detail = (data.errors && data.errors[0] && data.errors[0].error) || data.error || ('HTTP ' + res.status);
+        throw new Error(detail);
+      }
+      setStatus($('status'), '✓ Sent! ' + data.campaignIds.length + ' campaign(s) processing in your queue.', 'ok');
+      parent.postMessage({ pluginMessage: { type: 'notify', message: 'Sent to Sendr — slicing started' } }, '*');
+    } catch (err) {
+      setStatus($('status'), 'Upload failed: ' + err.message, 'error');
+    } finally {
+      $('send').disabled = selectedFrames.length === 0;
+    }
+  }
+
+  window.onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg) return;
+
+    if (msg.type === 'settings') {
+      settings = msg.settings;
+      const connected = !!(settings.serverUrl && settings.pluginToken);
+      showView(connected);
+      if (connected) loadBrands();
+      renderFrames();
+    }
+    if (msg.type === 'selection') {
+      selectedFrames = msg.frames;
+      renderFrames();
+    }
+    if (msg.type === 'export-progress') setStatus($('status'), msg.message);
+    if (msg.type === 'export-error') {
+      setStatus($('status'), msg.error, 'error');
+      $('send').disabled = selectedFrames.length === 0;
+    }
+    if (msg.type === 'frames-exported') upload(msg.frames);
+  };
+</script>
+</body>
+</html>

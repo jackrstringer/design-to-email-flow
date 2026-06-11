@@ -31,3 +31,9 @@ supabase/functions/.env
 supabase/.branches/
 supabase/.temp/
 *.tsbuildinfo
+.vercel
+
+# local credentials (never commit)
+.prod-login.txt
+.supabase-db-password
+.vercel
