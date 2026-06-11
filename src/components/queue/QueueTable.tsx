@@ -176,7 +176,35 @@ export function QueueTable({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+    // re-attach once the real table mounts (the ref is absent during the
+    // loading-skeleton render)
+  }, [loading]);
+
+  // Fit-to-viewport column engine: utility columns are fixed, content
+  // columns share whatever space remains (proportional to their configured
+  // widths, so drag-resize still adjusts shares). The table always sums to
+  // the visible width — the queue never forces horizontal scrolling unless
+  // the viewport is genuinely too narrow for the floors.
+  const FIXED_COLS = ['status', 'thumbnail', 'links', 'external', 'spelling', 'klaviyo'] as const;
+  const FLEX_COLS = ['name', 'client', 'segmentSet', 'subject', 'previewText'] as const;
+  const CHROME_W = 32 + 40; // checkbox + timer columns
+  const FLEX_FLOOR = 90;
+
+  const fitted = React.useMemo(() => {
+    const w: ColumnWidths = { ...columnWidths };
+    if (!visibleWidth) return w;
+    const fixedSum = FIXED_COLS.reduce((sum, c) => sum + w[c], 0) + CHROME_W + 24;
+    const flexSum = FLEX_COLS.reduce((sum, c) => sum + w[c], 0);
+    const avail = visibleWidth - fixedSum;
+    if (flexSum <= 0 || avail <= 0) return w;
+    const k = avail / flexSum;
+    FLEX_COLS.forEach((c) => {
+      w[c] = Math.max(FLEX_FLOOR, Math.floor(w[c] * k));
+    });
+    return w;
+  }, [columnWidths, visibleWidth]);
+
+  const minTableWidth = Object.values(fitted).reduce((sum, w) => sum + w, 0) + CHROME_W;
 
   if (loading) {
     return (
@@ -228,8 +256,6 @@ export function QueueTable({
     );
   }
 
-  // Calculate minimum table width based on all column widths
-  const minTableWidth = Object.values(columnWidths).reduce((sum, w) => sum + w, 0) + 32 + 40; // +32 for checkbox + 40 for timer column
 
   return (
     <div ref={scrollWrapRef} className="overflow-x-auto rounded-lg border border-border">
@@ -265,7 +291,7 @@ export function QueueTable({
         {/* Status */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.status }}
+          style={{ width: fitted.status }}
         >
           Status
           <div 
@@ -283,7 +309,7 @@ export function QueueTable({
         {/* Thumbnail */}
         <div 
           className="relative flex items-center px-2 flex-shrink-0"
-          style={{ width: columnWidths.thumbnail }}
+          style={{ width: fitted.thumbnail }}
         >
           <div 
             className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
@@ -300,7 +326,7 @@ export function QueueTable({
         {/* Name */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.name }}
+          style={{ width: fitted.name }}
         >
           Name
           <div 
@@ -318,7 +344,7 @@ export function QueueTable({
         {/* Client */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.client }}
+          style={{ width: fitted.client }}
         >
           Client
           <div 
@@ -336,7 +362,7 @@ export function QueueTable({
         {/* Segment Set */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.segmentSet }}
+          style={{ width: fitted.segmentSet }}
         >
           Segment Set
           <div 
@@ -354,7 +380,7 @@ export function QueueTable({
         {/* Subject Line */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.subject }}
+          style={{ width: fitted.subject }}
         >
           Subject Line
           <div 
@@ -372,7 +398,7 @@ export function QueueTable({
         {/* Preview Text */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.previewText }}
+          style={{ width: fitted.previewText }}
         >
           Preview Text
           <div 
@@ -390,7 +416,7 @@ export function QueueTable({
         {/* Links */}
         <div 
           className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.links }}
+          style={{ width: fitted.links }}
         >
           Links
           <div 
@@ -408,7 +434,7 @@ export function QueueTable({
         {/* External Links */}
         <div 
           className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.external }}
+          style={{ width: fitted.external }}
         >
           Ext. Links
           <div 
@@ -426,7 +452,7 @@ export function QueueTable({
         {/* Spelling */}
         <div 
           className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.spelling }}
+          style={{ width: fitted.spelling }}
         >
           Spelling
           <div 
@@ -444,7 +470,7 @@ export function QueueTable({
         {/* Klaviyo */}
         <div 
           className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
-          style={{ width: columnWidths.klaviyo }}
+          style={{ width: fitted.klaviyo }}
         >
           Klaviyo
           <div 
@@ -471,7 +497,7 @@ export function QueueTable({
                 isExpanded={expandedId === item.id}
                 onToggleExpand={() => onToggleExpand(item.id)}
                 onUpdate={onUpdate}
-                columnWidths={columnWidths}
+                columnWidths={fitted}
                 presets={presets}
                 liveSegmentIds={liveSegmentIds}
                 liveSegmentsLoaded={liveSegmentsLoaded}

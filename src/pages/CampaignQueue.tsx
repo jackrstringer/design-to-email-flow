@@ -545,8 +545,7 @@ export default function CampaignQueue() {
                 <NextStepBanner step={onboarding.nextStep} />
               </div>
             )}
-            <div className="min-w-max">
-              <QueueTable
+            <QueueTable
                 items={filteredItems}
                 loading={loading}
                 expandedId={expandedId}
@@ -562,7 +561,6 @@ export default function CampaignQueue() {
                 showTimers={showTimers}
                 onToggleTimers={handleToggleTimers}
               />
-            </div>
           </>
         )}
       </main>
