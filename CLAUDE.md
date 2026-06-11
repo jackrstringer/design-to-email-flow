@@ -80,20 +80,31 @@ Campaign"). Regenerate DB types after migrations:
 - **Never leave background watcher loops running** — Jack noticed 8 stray
   deploy-poll tasks once. Deploy, check once, move on.
 
-## Where we left off (2026-06-11)
+## Where we left off (2026-06-11, evening)
 
-Just finished (uncommitted at the time of this note, committed alongside it):
-- BrandKnowledge rewritten as a quiet wiki (link rules first, compact rows,
-  expand on click) + questions moved into a one-at-a-time survey dialog +
-  activity demoted to a margin whisper.
-- brand-agent-research dedupe (re-runs can't double entries; single
-  subject-line digest).
+Shipped and verified in production:
+- Brand-memory wiki + research dedupe deployed; eskiin `brand_knowledge`
+  dupes from the double-run cleaned (10 clean rows; 1 open question — the
+  "RW |" naming one. Jack answered the emoji question live: "Testing /
+  evolving", now a manual fact).
+- Queue expanded-panel fixes: panel pins to the visible viewport (the
+  visibleWidth observer missed the empty→populated mount; an inner
+  overflow-hidden also broke position:sticky). Contract per Jack: rows may
+  grow past the screen and scroll side-to-side (Airtable); the expanded
+  flyout must NEVER scroll sideways. Do not auto-squeeze his column widths.
+- Stale "missing footer" QA flag explained: pre-05:40 brand-agent-qa only
+  checked legacy brands.footer_html; footers live in brand_footers. Deployed
+  function is correct; re-ran QA on the flagged row → clean. Old closed rows
+  QA'd before that deploy may still carry stale flags — re-run QA, don't
+  hand-edit.
+- Settings "Connected" badge was dark-on-dark → green status tint.
+- `.env` was stale (old Lovable project esrimjavbjdtecszxudc) — now points
+  at real prod. `.env.local` is parked at `.env.local.off` so the dev
+  server runs against prod; rename it back for local-stack work.
+- Jack's saved queue column widths in profiles predate the density redesign
+  (no `__v:2`) and are intentionally ignored until he drags once.
 
 Known next steps / open threads:
-- Verify the new wiki visually with seeded entries + question banner, then
-  deploy (functions: brand-agent-research; frontend: vercel --prod).
-- Production data has duplicate research entries from a double-run — clean
-  `brand_knowledge` dupes for eskiin once dedupe is deployed.
 - Team sharing (members seeing shared brands/queue) is deliberately NOT built
   — phase 2, needs RLS redesign across all tables. v1 = roles + invites +
   admin-wide analytics only.
