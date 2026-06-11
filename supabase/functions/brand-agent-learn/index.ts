@@ -35,7 +35,7 @@ serve(async (req) => {
 
   try {
     const auth = await requireAuth(req);
-    const { brandId, queueId } = await req.json();
+    const { brandId, queueId, trigger = 'manual' } = await req.json();
     if (!brandId) return jsonResponse(req, { error: 'brandId is required' }, 400);
 
     const supabase = serviceClient();
@@ -172,6 +172,19 @@ ${events.map((e) => `- [${e.event_type}] before: ${JSON.stringify(e.before).slic
       .in('id', events.map((e) => e.id));
 
     logEvent(ctx, 'info', 'learn_complete', { events: events.length, lessons: inserted });
+
+    await supabase.from('agent_runs').insert({
+      brand_id: brandId,
+      user_id: brand.user_id,
+      agent: 'learn',
+      trigger: ['scheduled', 'after_push', 'pipeline', 'manual'].includes(trigger) ? trigger : 'manual',
+      status: 'success',
+      headline: inserted > 0
+        ? `Learned ${inserted} lesson${inserted === 1 ? '' : 's'} from ${events.length} correction${events.length === 1 ? '' : 's'}`
+        : `Reviewed ${events.length} correction${events.length === 1 ? '' : 's'} — nothing new to learn`,
+      detail: { eventsProcessed: events.length, lessonsLearned: inserted, queueId: queueId ?? null },
+    });
+
     return jsonResponse(req, { success: true, eventsProcessed: events.length, lessonsLearned: inserted });
   } catch (error: unknown) {
     if (error instanceof AuthError) return jsonResponse(req, { error: error.message }, error.status);

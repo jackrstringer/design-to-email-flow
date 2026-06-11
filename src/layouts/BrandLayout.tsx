@@ -42,6 +42,7 @@ function parseLinkPreferences(json: Json | null): BrandLinkPreferences | undefin
 
 const tabs = [
   { label: 'Overview', path: '' },
+  { label: 'Knowledge', path: 'knowledge' },
   { label: 'Links', path: 'links' },
   { label: 'Email', path: 'email' },
   { label: 'Integrations', path: 'integrations' },

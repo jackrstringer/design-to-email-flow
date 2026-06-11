@@ -145,6 +145,22 @@ serve(async (req) => {
 
       summary[brand.id] = result;
       logEvent(ctx, 'info', 'brand_refreshed', { brandId: brand.id, ...result });
+
+      const parts: string[] = [];
+      if (result.linksChecked > 0) {
+        parts.push(`verified ${result.linksChecked} links${result.linksUnhealthy ? ` (${result.linksUnhealthy} dead)` : ''}`);
+      }
+      if (result.promosExpired > 0) parts.push(`expired ${result.promosExpired} stale promo${result.promosExpired === 1 ? '' : 's'}`);
+      if (result.eventsProcessed > 0) parts.push(`processed ${result.eventsProcessed} correction${result.eventsProcessed === 1 ? '' : 's'}`);
+      await supabase.from('agent_runs').insert({
+        brand_id: brand.id,
+        user_id: brand.user_id,
+        agent: 'refresh',
+        trigger: auth.isService ? 'scheduled' : 'manual',
+        status: 'success',
+        headline: parts.length > 0 ? `Maintenance: ${parts.join(', ')}` : 'Maintenance sweep — everything current',
+        detail: result,
+      });
     }
 
     return jsonResponse(req, { success: true, brands: brands.length, summary });

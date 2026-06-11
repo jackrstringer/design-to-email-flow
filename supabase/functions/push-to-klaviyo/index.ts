@@ -333,7 +333,7 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
           },
-          body: JSON.stringify({ brandId, queueId: queueId ?? undefined }),
+          body: JSON.stringify({ brandId, queueId: queueId ?? undefined, trigger: 'after_push' }),
         });
         clearTimeout(timer);
       } catch (err) {

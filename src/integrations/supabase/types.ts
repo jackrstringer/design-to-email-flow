@@ -34,6 +34,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_runs: {
+        Row: {
+          agent: string
+          brand_id: string | null
+          created_at: string
+          detail: Json | null
+          headline: string | null
+          id: string
+          status: string
+          trigger: string
+          user_id: string | null
+        }
+        Insert: {
+          agent: string
+          brand_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          headline?: string | null
+          id?: string
+          status?: string
+          trigger?: string
+          user_id?: string | null
+        }
+        Update: {
+          agent?: string
+          brand_id?: string | null
+          created_at?: string
+          detail?: Json | null
+          headline?: string | null
+          id?: string
+          status?: string
+          trigger?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_runs_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brand_footers: {
         Row: {
           brand_id: string

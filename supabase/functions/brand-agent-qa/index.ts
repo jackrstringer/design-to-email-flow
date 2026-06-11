@@ -212,6 +212,21 @@ ${slices.map((s, i) => `${i + 1}. ${s.type === 'html' ? `HTML block: ${(s.htmlCo
       errors: flags.filter((f) => f.severity === 'error').length,
     });
 
+    const errorCount = flags.filter((f) => f.severity === 'error').length;
+    const warnCount = flags.filter((f) => f.severity === 'warning').length;
+    await supabase.from('agent_runs').insert({
+      brand_id: brandId,
+      user_id: brand.user_id,
+      agent: 'qa',
+      trigger: auth.isService ? 'pipeline' : 'manual',
+      status: 'success',
+      headline:
+        flags.length === 0
+          ? `Reviewed "${queueRow.name ?? 'campaign'}" — no issues found`
+          : `Reviewed "${queueRow.name ?? 'campaign'}" — ${errorCount} error${errorCount === 1 ? '' : 's'}, ${warnCount} warning${warnCount === 1 ? '' : 's'}`,
+      detail: { queueId, flagCount: flags.length, errors: errorCount, warnings: warnCount },
+    });
+
     return jsonResponse(req, {
       success: true,
       flags,
