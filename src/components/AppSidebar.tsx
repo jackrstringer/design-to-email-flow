@@ -10,6 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -50,7 +51,13 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader>
-        <div className="flex items-center gap-2.5 px-2 py-2.5">
+        <div
+          className={
+            collapsed
+              ? "flex flex-col items-center gap-1 py-2"
+              : "flex items-center gap-2.5 px-2 py-2.5"
+          }
+        >
           <span
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand shadow-[0_1px_2px_rgb(0_0_0_/_0.12)]"
             aria-hidden="true"
@@ -58,10 +65,11 @@ export function AppSidebar() {
             <Send className="h-3.5 w-3.5 text-brand-foreground" strokeWidth={2.5} />
           </span>
           {!collapsed && (
-            <span className="text-[15px] font-semibold tracking-tight text-foreground">
+            <span className="flex-1 text-[15px] font-semibold tracking-tight text-foreground">
               Sendr
             </span>
           )}
+          <SidebarTrigger className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" />
         </div>
       </SidebarHeader>
 
@@ -100,7 +108,11 @@ export function AppSidebar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-sidebar-accent focus-visible:outline-none"
+              className={
+                collapsed
+                  ? "flex w-full items-center justify-center rounded-lg py-2 transition-colors duration-150 hover:bg-sidebar-accent focus-visible:outline-none"
+                  : "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-sidebar-accent focus-visible:outline-none"
+              }
               aria-label="Account menu"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">

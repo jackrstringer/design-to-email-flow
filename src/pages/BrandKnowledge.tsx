@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
-import { Brain, Flag, Pencil, Plus, Trash2, Loader2 } from 'lucide-react';
+import { Brain, Flag, Pencil, Plus, Trash2, Loader2, Telescope, MessageCircleQuestion } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { BrandContextData } from '@/layouts/BrandLayout';
 import { AGENT_META, KNOWLEDGE_KIND_META, type AgentKind, type KnowledgeKind } from '@/lib/agentMeta';
@@ -26,7 +27,7 @@ import { useAgentRuns } from '@/hooks/useAgentRuns';
 import { FlagMistakeDialog } from '@/components/knowledge/FlagMistakeDialog';
 
 // Display order for knowledge kinds on this page.
-const KIND_ORDER: KnowledgeKind[] = ['link_rule', 'promo', 'voice', 'style', 'product', 'mistake', 'fact'];
+const KIND_ORDER: KnowledgeKind[] = ['question', 'link_rule', 'promo', 'voice', 'style', 'product', 'mistake', 'fact'];
 
 function ConfidenceDots({ value }: { value: number }) {
   // confidence may be stored as 0–1 or 1–3; normalize to 1–3 filled dots.
@@ -142,6 +143,42 @@ export default function BrandKnowledge() {
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<BrandKnowledgeEntry | null>(null);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [researching, setResearching] = useState(false);
+  const [answering, setAnswering] = useState<BrandKnowledgeEntry | null>(null);
+
+  const handleResearch = async () => {
+    setResearching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('brand-agent-research', {
+        body: { brandId: brand.id, trigger: 'manual' },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      toast.success(
+        data.campaigns === 0
+          ? 'No sent campaigns found in Klaviyo yet'
+          : `Researched ${data.campaigns} past campaigns — learned ${data.learned} things${data.questions ? `, ${data.questions} question${data.questions === 1 ? '' : 's'} for you` : ''}`,
+      );
+      knowledgeQuery.refetch();
+      runsQuery.refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Research failed');
+    } finally {
+      setResearching(false);
+    }
+  };
+
+  // Answering a question files the answer as a fact and retires the question.
+  const handleAnswer = async (input: KnowledgeEntryInput) => {
+    if (!answering) return;
+    try {
+      await addKnowledge.mutateAsync({ ...input, kind: 'fact' });
+      await retireKnowledge.mutateAsync(answering.id);
+      setAnswering(null);
+      toast.success('Answered — Sendr will use this from now on');
+    } catch {
+      toast.error('Failed to save answer');
+    }
+  };
 
   const entries = knowledgeQuery.data ?? [];
   const grouped = KIND_ORDER
@@ -198,6 +235,11 @@ export default function BrandKnowledge() {
           </div>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {entry.kind === 'question' && (
+            <Button variant="brand" size="sm" className="h-7 opacity-100" onClick={() => setAnswering(entry)}>
+              Answer
+            </Button>
+          )}
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditing(entry)} title="Edit">
             <Pencil className="w-3.5 h-3.5" />
           </Button>
@@ -218,7 +260,11 @@ export default function BrandKnowledge() {
   return (
     <div className="space-y-6">
       {/* Page actions */}
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleResearch} disabled={researching}>
+          {researching ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Telescope className="w-3.5 h-3.5 mr-2" />}
+          Research from Klaviyo history
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setFlagOpen(true)}>
           <Flag className="w-3.5 h-3.5 mr-2" />
           Flag a mistake
@@ -364,6 +410,15 @@ export default function BrandKnowledge() {
         />
       )}
 
+      {answering && (
+        <KnowledgeDialog
+          open={!!answering}
+          onOpenChange={(o) => !o && setAnswering(null)}
+          initial={{ ...answering, kind: 'fact', title: answering.title, content: '' } as BrandKnowledgeEntry}
+          onSubmit={handleAnswer}
+          isPending={addKnowledge.isPending || retireKnowledge.isPending}
+        />
+      )}
       <FlagMistakeDialog
         brandId={brand.id}
         open={flagOpen}

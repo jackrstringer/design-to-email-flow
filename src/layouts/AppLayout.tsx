@@ -14,9 +14,8 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="flex h-screen w-full bg-background">
         <AppSidebar />
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <SidebarTrigger className="h-8 w-8 text-muted-foreground hover:text-foreground" />
-          </header>
+          {/* Mobile-only floating trigger — desktop collapse lives in the sidebar */}
+          <SidebarTrigger className="fixed left-3 top-3 z-40 h-8 w-8 rounded-lg border bg-background text-muted-foreground shadow-sm hover:text-foreground md:hidden" />
           {/* keyed by path so every navigation gets the page-in rise */}
           <div key={location.pathname} className="min-h-0 flex-1 overflow-auto animate-page-in">
             {children}

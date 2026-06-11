@@ -187,7 +187,7 @@ export function QueueTable({
   // the viewport is genuinely too narrow for the floors.
   const FIXED_COLS = ['status', 'thumbnail', 'links', 'external', 'spelling', 'klaviyo'] as const;
   const FLEX_COLS = ['name', 'client', 'segmentSet', 'subject', 'previewText'] as const;
-  const CHROME_W = 32 + 40; // checkbox + timer columns
+  const CHROME_W = 32 + (showTimers ? 40 : 0); // checkbox + optional timer column
   const FLEX_FLOOR = 90;
 
   const fitted = React.useMemo(() => {
@@ -206,7 +206,7 @@ export function QueueTable({
       w[c] = Math.max(FLEX_FLOOR, Math.floor(w[c] * k));
     });
     return w;
-  }, [columnWidths, visibleWidth]);
+  }, [columnWidths, visibleWidth, showTimers]);
 
   const minTableWidth = Object.values(fitted).reduce((sum, w) => sum + w, 0) + CHROME_W;
 
@@ -216,7 +216,7 @@ export function QueueTable({
         {/* Header */}
         <div className="flex h-8 items-center bg-white border-b border-border text-[13px] text-gray-500 font-normal">
           <div className="w-8 flex-shrink-0 px-2" />
-          <div className="w-10 flex-shrink-0" /> {/* Timer column placeholder */}
+          {showTimers && <div className="w-10 flex-shrink-0" />} {/* Timer column */}
           <div className="px-2" style={{ width: 100 }}>Status</div>
           <div className="px-2" style={{ width: 40 }} />
           <div className="px-2" style={{ width: 180 }}>Name</div>
@@ -232,7 +232,7 @@ export function QueueTable({
         {[1, 2, 3].map((i) => (
           <div key={i} className="flex h-10 items-center border-b border-gray-100">
             <div className="w-8 flex-shrink-0 px-2"><Skeleton className="h-4 w-4" /></div>
-            <div className="w-10 flex-shrink-0" /> {/* Timer column placeholder */}
+            {showTimers && <div className="w-10 flex-shrink-0" />} {/* Timer column */}
             <div className="px-2" style={{ width: 100 }}><Skeleton className="h-5 w-14" /></div>
             <div className="px-2" style={{ width: 40 }}><Skeleton className="h-8 w-6" /></div>
             <div className="px-2" style={{ width: 180 }}><Skeleton className="h-4 w-28" /></div>
@@ -281,16 +281,18 @@ export function QueueTable({
           />
         </div>
 
-        {/* Timer column - matches ProcessingTimer width */}
-        <div 
-          className="w-10 flex-shrink-0 flex items-center justify-center cursor-pointer text-[10px] text-muted-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleTimers();
-          }}
-        >
-          {showTimers && 'Time'}
-        </div>
+        {/* Timer column — only exists while timers are shown */}
+        {showTimers && (
+          <div
+            className="w-10 flex-shrink-0 flex items-center justify-center cursor-pointer text-[10px] text-muted-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleTimers();
+            }}
+          >
+            Time
+          </div>
+        )}
 
         {/* Status */}
         <div 

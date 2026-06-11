@@ -129,8 +129,17 @@ export function InlineDropdownSelector({
   // Single click opens dropdown, double-click enters edit mode
   const handleCellClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isSaving && allOptions.length > 0 && !isEditing) {
-      setOpen(true);
+    if (!isSaving && !isEditing) {
+      setIsEditing(true);
+      setOpen(false);
+    }
+  };
+
+  const handleChevronClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isSaving && allOptions.length > 0) {
+      setIsEditing(false);
+      setOpen((o) => !o);
     }
   };
 
@@ -229,11 +238,14 @@ export function InlineDropdownSelector({
           )}
 
           {!isSaving && !isEditing && allOptions.length > 0 && (
-            <ChevronDown className={cn(
-              "h-3.5 w-3.5 text-gray-400 shrink-0 transition-opacity",
-              "opacity-0 group-hover:opacity-100",
-              open && "opacity-100"
-            )} />
+            <button
+              type="button"
+              onClick={handleChevronClick}
+              className="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-secondary hover:text-foreground"
+              aria-label="Show suggestions"
+            >
+              <ChevronDown className={cn("h-3.5 w-3.5", open && "rotate-180 transition-transform")} />
+            </button>
           )}
         </div>
       </PopoverTrigger>

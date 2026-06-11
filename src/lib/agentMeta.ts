@@ -1,9 +1,9 @@
 // Single source of truth for how the brand-memory agents present in the UI.
 // The agents render as one assistant ("Brand memory") with distinct activities.
 
-import { Brain, ShieldCheck, RefreshCw, Globe, type LucideIcon } from 'lucide-react';
+import { Brain, ShieldCheck, RefreshCw, Globe, Telescope, type LucideIcon } from 'lucide-react';
 
-export type AgentKind = 'learn' | 'qa' | 'refresh' | 'recrawl';
+export type AgentKind = 'learn' | 'qa' | 'refresh' | 'recrawl' | 'research';
 
 export const AGENT_META: Record<AgentKind, { label: string; icon: LucideIcon; badgeClass: string }> = {
   learn: {
@@ -26,9 +26,14 @@ export const AGENT_META: Record<AgentKind, { label: string; icon: LucideIcon; ba
     icon: Globe,
     badgeClass: 'bg-secondary text-muted-foreground border-border',
   },
+  research: {
+    label: 'Research',
+    icon: Telescope,
+    badgeClass: 'bg-brand/10 text-brand border-brand/20',
+  },
 };
 
-export type KnowledgeKind = 'voice' | 'style' | 'product' | 'promo' | 'link_rule' | 'mistake' | 'fact';
+export type KnowledgeKind = 'voice' | 'style' | 'product' | 'promo' | 'link_rule' | 'mistake' | 'fact' | 'question';
 
 export const KNOWLEDGE_KIND_META: Record<KnowledgeKind, { label: string; description: string }> = {
   voice: { label: 'Voice', description: 'Tone and wording rules' },
@@ -38,6 +43,7 @@ export const KNOWLEDGE_KIND_META: Record<KnowledgeKind, { label: string; descrip
   link_rule: { label: 'Link rule', description: 'Where CTAs should point' },
   mistake: { label: 'Mistake', description: 'Errors to avoid repeating' },
   fact: { label: 'Fact', description: 'Other durable brand knowledge' },
+  question: { label: 'Question', description: 'Sendr needs your answer' },
 };
 
 export type QaCategory = 'link' | 'date' | 'voice' | 'structure' | 'brand_rule' | 'spelling';

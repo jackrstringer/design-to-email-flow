@@ -46,7 +46,7 @@ const tabs = [
   { label: 'Overview', path: '' },
   { label: 'Knowledge', path: 'knowledge' },
   { label: 'Links', path: 'links' },
-  { label: 'Email', path: 'email' },
+  { label: 'Email Footers', path: 'email' },
   { label: 'Integrations', path: 'integrations' },
 ];
 

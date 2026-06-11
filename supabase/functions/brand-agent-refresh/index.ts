@@ -119,6 +119,25 @@ serve(async (req) => {
         .select('id');
       result.promosExpired = expired?.length ?? 0;
 
+      // 2.5 First-time research: a brand with a Klaviyo key but no voice
+      //     knowledge gets its history mined automatically.
+      const { count: voiceCount } = await supabase
+        .from('brand_knowledge')
+        .select('id', { count: 'exact', head: true })
+        .eq('brand_id', brand.id)
+        .eq('kind', 'voice')
+        .is('superseded_by', null);
+      if ((voiceCount ?? 0) === 0) {
+        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/brand-agent-research`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${Deno.env.get('SERVICE_ROLE_JWT') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({ brandId: brand.id, trigger: 'scheduled' }),
+        }).catch(() => {});
+      }
+
       // 3. Process learning backlog.
       const { count } = await supabase
         .from('knowledge_events')

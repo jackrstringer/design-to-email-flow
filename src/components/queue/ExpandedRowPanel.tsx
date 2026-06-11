@@ -637,6 +637,7 @@ export function ExpandedRowPanel({
   // QA calculations with proper empty array handling
   const hasSlices = slices.length > 0;
   const slicesWithLinks = slices.filter(s => s.link);
+  const uniqueLinkCount = new Set(slicesWithLinks.map(s => s.link)).size;
   const slicesMissingLinks = slices.filter(s => !s.link);
   const allHaveLinks = hasSlices && slicesMissingLinks.length === 0;
   
@@ -1233,14 +1234,14 @@ export function ExpandedRowPanel({
                   <>
                     <AlertTriangle className="h-4 w-4 text-warning" />
                     <span className="text-sm font-medium text-foreground">
-                      {slicesWithLinks.length} links · {externalLinkCount} external
+                      {uniqueLinkCount} unique link{uniqueLinkCount === 1 ? '' : 's'} · {externalLinkCount} external
                     </span>
                   </>
                 ) : (
                   <>
                     <Check className="h-4 w-4 text-success" />
                     <span className="text-sm font-medium text-foreground">
-                      {slicesWithLinks.length} links · all on brand domain
+                      {uniqueLinkCount} unique link{uniqueLinkCount === 1 ? '' : 's'} · all on brand domain
                     </span>
                   </>
                 )}

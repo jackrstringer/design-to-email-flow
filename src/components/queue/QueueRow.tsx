@@ -56,7 +56,7 @@ export function QueueRow({
   onToggleTimers
 }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string; totalColumns?: number; multiCtaWarning?: string }>) || [];
-  const linkCount = slices.filter(s => s.link).length;
+  const linkCount = new Set(slices.filter(sl => sl.link).map(sl => sl.link)).size; // unique destinations
 
   // Check for multi-column blocks
   const hasMultiColumnBlocks = slices.some(s => (s.totalColumns ?? 1) > 1);
@@ -158,14 +158,14 @@ export function QueueRow({
         />
       </div>
       
-      {/* Processing Timer */}
-      <ProcessingTimer
+      {/* Processing Timer (renders nothing when timers are off) */}
+      {showTimers && <ProcessingTimer
         createdAt={item.created_at}
         completedAt={(item as any).processing_completed_at}
         status={item.status}
         visible={showTimers}
         onToggle={onToggleTimers}
-      />
+      />}
       
       {/* Status */}
       <div 
@@ -246,16 +246,9 @@ export function QueueRow({
         style={{ width: columnWidths.client }}
       >
         {brandName ? (
-          <span 
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium truncate max-w-full shadow-sm"
-            style={{ 
-              background: `linear-gradient(135deg, ${brandColor}18 0%, ${brandColor}08 100%)`,
-              color: brandColor,
-              boxShadow: `0 1px 2px ${brandColor}12`
-            }}
-          >
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium truncate max-w-full bg-secondary text-foreground border">
             <span 
-              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              className="w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-black/10"
               style={{ backgroundColor: brandColor }}
             />
             {brandName}

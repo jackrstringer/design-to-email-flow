@@ -126,7 +126,18 @@ serve(async (req) => {
       });
     }
 
-    const footerHtml = (brand.footer_html as string | null) ?? '';
+    // Footers live in brand_footers (primary) with brands.footer_html as
+    // legacy fallback — check both before flagging a compliance risk.
+    let footerHtml = (brand.footer_html as string | null) ?? '';
+    if (!footerHtml) {
+      const { data: footers } = await supabase
+        .from('brand_footers')
+        .select('html, is_primary')
+        .eq('brand_id', brandId)
+        .order('is_primary', { ascending: false })
+        .limit(1);
+      footerHtml = footers?.[0]?.html ?? '';
+    }
     if (!footerHtml) {
       flags.push({
         type: 'missing_footer', severity: 'error', category: 'structure',
