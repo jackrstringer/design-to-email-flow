@@ -12,7 +12,7 @@ interface ExternalLinksIndicatorProps {
 
 export function ExternalLinksIndicator({ slices, brandDomain }: ExternalLinksIndicatorProps) {
   if (!brandDomain) {
-    return <span className="text-[11px] text-gray-400">—</span>;
+    return <span className="text-[11px] text-muted-foreground/70">—</span>;
   }
 
   const externalLinks = slices.filter(s => 

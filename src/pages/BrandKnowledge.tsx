@@ -263,7 +263,7 @@ export default function BrandKnowledge() {
         <div className="min-w-0 space-y-4">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold tracking-tight">Brand memory</h2>
+              <h2 className="text-base font-semibold tracking-tight">Brand memory</h2>
               <p className="text-xs text-muted-foreground">
                 Everything Sendr knows about {brand.name} — learned from your edits, its own research, and you.
               </p>
@@ -312,7 +312,7 @@ export default function BrandKnowledge() {
                   <h3 className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {KNOWLEDGE_KIND_META[kind]?.label ?? 'Other'}
                   </h3>
-                  <div className="divide-y rounded-lg border bg-card">
+                  <div className="divide-y rounded-xl border bg-card shadow-card">
                     {items.map((entry) => {
                       const isOpen = expanded === entry.id;
                       return (

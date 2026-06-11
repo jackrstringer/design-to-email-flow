@@ -65,7 +65,7 @@ export function InlineEditableText({
         disabled={isSaving}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "w-full bg-white text-[13px] text-gray-900 outline-none px-1 py-0.5",
+          "w-full bg-card text-[13px] text-foreground outline-none px-1 py-0.5",
           "ring-2 ring-foreground ring-inset rounded-sm",
           className
         )}
@@ -80,9 +80,9 @@ export function InlineEditableText({
         setIsEditing(true);
       }}
       className={cn(
-        "cursor-text px-1 py-0.5 rounded-sm truncate block text-[13px] text-gray-900",
-        "hover:ring-1 hover:ring-gray-300 hover:ring-inset transition-shadow",
-        !value && "text-gray-400 italic",
+        "cursor-text px-1 py-0.5 rounded-sm truncate block text-[13px] text-foreground",
+        "hover:ring-1 hover:ring-input hover:ring-inset transition-shadow",
+        !value && "text-muted-foreground/70 italic",
         className
       )}
     >

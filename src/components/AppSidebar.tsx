@@ -53,17 +53,17 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="group/rail border-r border-sidebar-border">
-      <SidebarHeader className="px-2 pb-1 pt-2">
-        <div className={cn("flex h-8 items-center", collapsed ? "justify-center" : "gap-2 pl-1.5 pr-1")}>
+      <SidebarHeader className="px-2 pb-2 pt-3">
+        <div className={cn("flex h-8 items-center", collapsed ? "justify-center" : "gap-2.5 pl-1.5 pr-1")}>
           <span
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] bg-primary"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-gradient-to-br from-[hsl(26_94%_55%)] to-[hsl(20_92%_46%)] shadow-[inset_0_1px_0_hsl(0_0%_100%/0.25),0_1px_2px_hsl(20_92%_30%/0.35)]"
             aria-hidden="true"
           >
-            <Send className="h-3 w-3 text-primary-foreground" strokeWidth={2.25} />
+            <Send className="h-3.5 w-3.5 text-white" strokeWidth={2.25} />
           </span>
           {!collapsed && (
             <>
-              <span className="flex-1 truncate text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+              <span className="flex-1 truncate text-sm font-semibold tracking-[-0.015em] text-foreground">
                 Sendr
               </span>
               {/* collapse control whispers in on rail hover, ⌘B always works */}
@@ -89,16 +89,19 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={item.title}
                       className={cn(
-                        "h-7 rounded-md px-2 text-[13px] transition-colors duration-100",
+                        "h-8 rounded-lg px-2 text-[13px] transition-all duration-150",
                         active
-                          ? "bg-sidebar-accent font-medium text-foreground"
-                          : "font-normal text-sidebar-foreground/80 hover:text-foreground",
+                          ? "bg-card font-medium text-foreground shadow-card"
+                          : "font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground",
                       )}
                     >
                       <NavLink to={item.url}>
                         <item.icon
-                          className={cn("h-[15px] w-[15px] shrink-0", active ? "text-foreground" : "text-sidebar-foreground/55")}
-                          strokeWidth={1.75}
+                          className={cn(
+                            "h-[15px] w-[15px] shrink-0 transition-colors duration-150",
+                            active ? "text-brand" : "text-sidebar-foreground/55",
+                          )}
+                          strokeWidth={active ? 2 : 1.75}
                         />
                         <span className="truncate">{item.title}</span>
                       </NavLink>
@@ -121,7 +124,7 @@ export function AppSidebar() {
               )}
               aria-label="Account menu"
             >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(30_8%_26%)] to-[hsl(30_8%_12%)] text-[10px] font-medium text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15)]">
                 {initial}
               </span>
               {!collapsed && (

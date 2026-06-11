@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, AlertCircle, Loader2, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/useAuth';
@@ -108,19 +108,25 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
-            <span className="text-xl font-semibold tracking-tight">Sendr</span>
-          </div>
-          <CardTitle>Welcome</CardTitle>
-          <CardDescription>
-            Sign in to your account or create a new one
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="glow-ember relative flex min-h-screen flex-col items-center justify-center bg-background p-4">
+      <div className="w-full max-w-[400px] animate-scale-in">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <span
+            className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[hsl(26_94%_55%)] to-[hsl(20_92%_46%)] shadow-[inset_0_1px_0_hsl(0_0%_100%/0.25),0_2px_8px_hsl(20_92%_30%/0.3),0_8px_24px_-8px_hsl(20_92%_40%/0.5)]"
+            aria-hidden="true"
+          >
+            <Send className="h-5 w-5 text-white" strokeWidth={2.25} />
+          </span>
+          <h1 className="font-display text-[32px] leading-tight text-foreground">
+            Welcome to Sendr
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Design to email, <span className="font-display italic text-foreground/70">automatically</span>.
+          </p>
+        </div>
+
+        <Card className="rounded-2xl border-border/70 shadow-floating">
+          <CardContent className="p-6">
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger value="signin">Sign in</TabsTrigger>
@@ -233,8 +239,13 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <p className="mt-7 text-center text-xs text-muted-foreground/80">
+          Figma → sliced, QA'd, linked → Klaviyo. In one click.
+        </p>
+      </div>
     </div>
   );
 }

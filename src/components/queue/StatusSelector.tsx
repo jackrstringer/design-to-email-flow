@@ -313,13 +313,13 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
           </button>
         </PopoverTrigger>
         <PopoverContent 
-          className="w-32 p-1 z-50 bg-white" 
+          className="w-32 p-1 z-50 bg-card" 
           align="start"
           onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => handleStatusChange('closed')}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent"
           >
             <span 
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
@@ -385,15 +385,15 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
         </button>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-44 p-1 z-50 bg-white" 
+        className="w-44 p-1 z-50 bg-card" 
         align="start"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={() => handleStatusChange('ready_for_review')}
           className={cn(
-            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100",
-            isReady && "bg-gray-50"
+            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent",
+            isReady && "bg-secondary/50"
           )}
         >
           <span 
@@ -406,8 +406,8 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
         <button
           onClick={() => handleStatusChange('approved')}
           className={cn(
-            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100",
-            isApproved && "bg-gray-50"
+            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent",
+            isApproved && "bg-secondary/50"
           )}
         >
           <span 
@@ -417,10 +417,10 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
             Approve & Build
           </span>
         </button>
-        <div className="h-px bg-gray-100 my-1" />
+        <div className="h-px bg-secondary my-1" />
         <button
           onClick={() => handleStatusChange('closed')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-gray-100"
+          className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent"
         >
           <span 
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"

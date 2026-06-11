@@ -3,38 +3,44 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Sendr design system — stock shadcn/ui, light, zinc.
-   White canvas, near-black primary actions, quiet zinc grays everywhere
-   else, small dense type (13px Inter). Functional color (green/amber/red/
-   blue) is reserved for status meaning only. No decorative chroma.
+   Sendr design system — "warm premium light".
+   Warm paper canvas, white surfaces with real (soft, layered) depth,
+   carbon primary actions with a sheen, and ONE identity accent: ember
+   (--brand). Ember is for identity and emphasis — logomark, active nav,
+   links, highlights — never for noise. Functional green/amber/red/blue
+   still carry status meaning only. Type: Inter, dense (13px), with
+   confident tight-tracked headings; Instrument Serif italic is reserved
+   for rare display moments (auth, empty-state headlines).
    ───────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Warm paper canvas; pure white is reserved for raised surfaces. */
+    --background: 40 33% 98.5%;
+    --foreground: 30 8% 9%;
 
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 30 8% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    --popover-foreground: 30 8% 9%;
 
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
+    /* Carbon — primary actions. Warm-tinted near-black. */
+    --primary: 30 8% 12%;
+    --primary-foreground: 40 33% 98.5%;
 
-    /* Legacy alias — identity accents now follow primary (monochrome). */
-    --brand: 240 5.9% 10%;
-    --brand-foreground: 0 0% 98%;
+    /* Ember — the one identity accent. */
+    --brand: 24 94% 50%;
+    --brand-foreground: 0 0% 100%;
 
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
+    --secondary: 40 14% 94.5%;
+    --secondary-foreground: 30 8% 12%;
 
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted: 40 14% 94.5%;
+    --muted-foreground: 30 5% 44%;
 
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --accent: 40 18% 93.5%;
+    --accent-foreground: 30 8% 12%;
 
     /* Functional color — quiet tints, real meaning. */
     --destructive: 0 72% 51%;
@@ -44,62 +50,62 @@
     --warning: 32 95% 44%;
     --warning-foreground: 0 0% 98%;
 
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --border: 40 10% 89%;
+    --input: 40 10% 86%;
+    --ring: 24 94% 50%;
 
-    --radius: 0.375rem; /* 6px — buttons/inputs 4px via rounded-md */
+    --radius: 0.625rem; /* 10px — soft, premium geometry */
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 240 5.9% 90%;
-    --sidebar-ring: 240 5.9% 10%;
+    --sidebar-background: 40 24% 96.5%;
+    --sidebar-foreground: 30 6% 28%;
+    --sidebar-primary: 30 8% 12%;
+    --sidebar-primary-foreground: 40 33% 98.5%;
+    --sidebar-accent: 40 12% 91%;
+    --sidebar-accent-foreground: 30 8% 12%;
+    --sidebar-border: 40 10% 89%;
+    --sidebar-ring: 24 94% 50%;
 
-    --inverted: 240 5.9% 10%;
-    --inverted-foreground: 0 0% 98%;
+    --inverted: 30 8% 12%;
+    --inverted-foreground: 40 33% 98.5%;
   }
 
   /* App is light-only; kept for component compatibility. */
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --brand: 0 0% 98%;
-    --brand-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --background: 30 8% 7%;
+    --foreground: 40 20% 96%;
+    --card: 30 8% 9%;
+    --card-foreground: 40 20% 96%;
+    --popover: 30 8% 9%;
+    --popover-foreground: 40 20% 96%;
+    --primary: 40 20% 96%;
+    --primary-foreground: 30 8% 10%;
+    --brand: 24 94% 54%;
+    --brand-foreground: 0 0% 100%;
+    --secondary: 30 6% 14%;
+    --secondary-foreground: 40 20% 96%;
+    --muted: 30 6% 14%;
+    --muted-foreground: 30 5% 62%;
+    --accent: 30 6% 14%;
+    --accent-foreground: 40 20% 96%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
     --success: 152 50% 45%;
-    --success-foreground: 240 10% 3.9%;
+    --success-foreground: 30 8% 7%;
     --warning: 36 90% 55%;
-    --warning-foreground: 240 10% 3.9%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 0 0% 98%;
-    --sidebar-primary-foreground: 240 5.9% 10%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 240 4.9% 83.9%;
-    --inverted: 0 0% 98%;
-    --inverted-foreground: 240 5.9% 10%;
+    --warning-foreground: 30 8% 7%;
+    --border: 30 6% 16%;
+    --input: 30 6% 16%;
+    --ring: 24 94% 54%;
+    --sidebar-background: 30 8% 9%;
+    --sidebar-foreground: 40 12% 90%;
+    --sidebar-primary: 40 20% 96%;
+    --sidebar-primary-foreground: 30 8% 10%;
+    --sidebar-accent: 30 6% 14%;
+    --sidebar-accent-foreground: 40 12% 90%;
+    --sidebar-border: 30 6% 16%;
+    --sidebar-ring: 24 94% 54%;
+    --inverted: 40 20% 96%;
+    --inverted-foreground: 30 8% 10%;
   }
 }
 
@@ -123,11 +129,11 @@
 
   h1, h2 {
     @apply font-semibold;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.022em;
   }
 
   ::selection {
-    background: hsl(240 5.9% 10% / 0.1);
+    background: hsl(var(--brand) / 0.18);
   }
 
   * {
@@ -148,24 +154,31 @@
     background-clip: content-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background: hsl(0 0% 70%);
+    background: hsl(30 6% 70%);
     border: 2px solid transparent;
     background-clip: content-box;
   }
 
   :focus-visible {
-    outline: 2px solid hsl(var(--ring) / 0.4);
+    outline: 2px solid hsl(var(--brand) / 0.55);
     outline-offset: 2px;
   }
 }
 
 @layer utilities {
   .drop-zone-active {
-    @apply border-primary bg-muted/60;
+    @apply border-brand bg-brand/5;
   }
 
   .hero-gradient {
-    background: linear-gradient(135deg, hsl(240 5.9% 10%) 0%, hsl(240 5% 26%) 100%);
+    background: linear-gradient(135deg, hsl(30 8% 10%) 0%, hsl(28 12% 22%) 100%);
+  }
+
+  /* Rare display moments only — auth headline, big empty states. */
+  .font-display {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.01em;
   }
 
   .scrollbar-hide {
@@ -177,25 +190,61 @@
   }
 
   .animate-page-in {
-    animation: page-in 0.24s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+    animation: page-in 0.26s cubic-bezier(0.21, 1.02, 0.73, 1) both;
   }
   .animate-fade-up {
-    animation: page-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+    animation: page-in 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+  }
+  .animate-scale-in {
+    animation: scale-in 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both;
   }
 
-  /* Card surface — hairline border, barely-there elevation. */
+  /* Surfaces — layered, soft, barely-there. */
   .surface-hairline {
-    @apply rounded-lg border bg-card shadow-sm;
+    @apply rounded-xl border bg-card;
+    box-shadow: 0 1px 2px hsl(30 8% 9% / 0.04), 0 1px 1px hsl(30 8% 9% / 0.03);
+  }
+
+  .shadow-card {
+    box-shadow: 0 1px 2px hsl(30 8% 9% / 0.04), 0 1px 1px hsl(30 8% 9% / 0.03);
+  }
+
+  .shadow-floating {
+    box-shadow:
+      0 0 0 1px hsl(30 8% 9% / 0.04),
+      0 1px 2px hsl(30 8% 9% / 0.05),
+      0 8px 24px -8px hsl(30 8% 9% / 0.12),
+      0 20px 48px -16px hsl(30 8% 9% / 0.1);
+  }
+
+  /* Interactive card — lifts toward the cursor. */
+  .card-lift {
+    transition: transform 0.16s cubic-bezier(0.21, 1.02, 0.73, 1), box-shadow 0.16s cubic-bezier(0.21, 1.02, 0.73, 1), border-color 0.16s ease;
+  }
+  .card-lift:hover {
+    transform: translateY(-1px);
+    border-color: hsl(40 10% 82%);
+    box-shadow: 0 2px 4px hsl(30 8% 9% / 0.05), 0 10px 24px -10px hsl(30 8% 9% / 0.12);
+  }
+  .card-lift:active {
+    transform: translateY(0);
   }
 
   .shadow-button {
-    @apply shadow-sm;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.12), 0 1px 2px hsl(30 8% 9% / 0.16);
   }
 
   /* Tracked-out mono micro-label (category tags, technical chips). */
   .label-mono {
     @apply font-mono text-xs uppercase;
     letter-spacing: 0.06em;
+  }
+
+  /* Soft warm glow for hero/empty-state moments. */
+  .glow-ember {
+    background:
+      radial-gradient(600px 300px at 50% -10%, hsl(24 94% 50% / 0.07), transparent 70%),
+      radial-gradient(800px 400px at 80% 110%, hsl(36 90% 55% / 0.05), transparent 70%);
   }
 }
 
@@ -210,9 +259,21 @@
   }
 }
 
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in,
-  .animate-fade-up {
+  .animate-fade-up,
+  .animate-scale-in {
     animation: none;
   }
   *,

@@ -133,8 +133,8 @@ export function QueueRow({
   return (
     <div 
       className={cn(
-        "group flex h-10 items-center bg-white border-b border-gray-100 text-[13px] text-gray-900",
-        "hover:bg-gray-50 transition-colors cursor-pointer",
+        "group flex h-10 items-center bg-card border-b border-border/60 text-[13px] text-foreground",
+        "hover:bg-secondary/50 transition-colors cursor-pointer",
         isExpanded && "bg-secondary",
         isSelected && "bg-foreground"
       )}
@@ -204,10 +204,10 @@ export function QueueRow({
           <img
             src={item.image_url}
             alt={item.name || 'Campaign preview'}
-            className="h-7 w-5 object-cover object-top rounded-sm border border-gray-200"
+            className="h-7 w-5 object-cover object-top rounded-sm border border-border"
           />
         ) : (
-          <div className="h-7 w-5 bg-gray-100 rounded-sm border border-gray-200" />
+          <div className="h-7 w-5 bg-secondary rounded-sm border border-border" />
         )}
       </div>
       
@@ -227,9 +227,9 @@ export function QueueRow({
         <button
           className={cn(
             "absolute right-0 top-0 bottom-0 flex items-center",
-            "pl-4 pr-2 text-[11px] text-gray-500 hover:text-gray-700",
+            "pl-4 pr-2 text-[11px] text-muted-foreground hover:text-foreground/80",
             "opacity-0 group-hover:opacity-100 transition-opacity",
-            isExpanded ? "bg-secondary" : isSelected ? "bg-foreground" : "bg-white"
+            isExpanded ? "bg-secondary" : isSelected ? "bg-foreground" : "bg-card"
           )}
           onClick={(e) => {
             e.stopPropagation();
@@ -313,7 +313,7 @@ export function QueueRow({
       
       {/* Links - just count */}
       <div 
-        className="px-2 flex-shrink-0 text-center text-gray-600" 
+        className="px-2 flex-shrink-0 text-center text-muted-foreground" 
         style={{ width: columnWidths.links }}
       >
         {linkCount > 0 ? linkCount : '—'}
@@ -352,7 +352,7 @@ export function QueueRow({
                 href={klaviyoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-gray-500 hover:text-muted-foreground flex-shrink-0"
+                className="text-muted-foreground hover:text-muted-foreground flex-shrink-0"
                 title="Open in Klaviyo"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -372,15 +372,15 @@ export function QueueRow({
                   navigator.clipboard.writeText(klaviyoUrl);
                   toast.success('URL copied');
                 }}
-                className="opacity-0 group-hover/klaviyo:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+                className="opacity-0 group-hover/klaviyo:opacity-100 transition-opacity p-0.5 hover:bg-accent rounded flex-shrink-0"
                 title="Copy URL"
               >
-                <Copy className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                <Copy className="h-3 w-3 text-muted-foreground/70 hover:text-muted-foreground" />
               </button>
             </div>
           );
         })() : (
-          <span className="text-gray-400">—</span>
+          <span className="text-muted-foreground/70">—</span>
         )}
       </div>
     </div>

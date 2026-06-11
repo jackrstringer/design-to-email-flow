@@ -84,7 +84,7 @@ export function SegmentSetSelector({
 
   if (!brandId || presets.length === 0) {
     return (
-      <span className="text-gray-400 text-[12px]">—</span>
+      <span className="text-muted-foreground/70 text-[12px]">—</span>
     );
   }
 
@@ -96,7 +96,7 @@ export function SegmentSetSelector({
           size="sm"
           className={cn(
             "h-6 px-2 text-[12px] font-normal justify-between min-w-0 max-w-full gap-1",
-            selectedPreset ? "text-gray-700" : "text-gray-400",
+            selectedPreset ? "text-foreground/80" : "text-muted-foreground/70",
             selectedMissingCount > 0 && "text-destructive hover:text-destructive",
             disabled && "opacity-50 pointer-events-none"
           )}
@@ -114,21 +114,21 @@ export function SegmentSetSelector({
           <ChevronDown className="h-3 w-3 ml-auto flex-shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-1 bg-white" align="start">
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-gray-100 mb-1">
-          <Search className="h-3 w-3 text-gray-400 flex-shrink-0" />
+      <PopoverContent className="w-64 p-1 bg-card" align="start">
+        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-border/60 mb-1">
+          <Search className="h-3 w-3 text-muted-foreground/70 flex-shrink-0" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search segments..."
-            className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-gray-400"
+            className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/70"
             autoFocus
           />
         </div>
         <div className="max-h-[240px] overflow-y-auto">
           {filteredPresets.length === 0 ? (
-            <div className="px-2 py-3 text-center text-[12px] text-gray-400">
+            <div className="px-2 py-3 text-center text-[12px] text-muted-foreground/70">
               No matches
             </div>
           ) : (
@@ -138,8 +138,8 @@ export function SegmentSetSelector({
                 <button
                   key={preset.id}
                   className={cn(
-                    "w-full flex items-center gap-2 px-2 py-1.5 text-left text-[13px] rounded hover:bg-gray-100 transition-colors",
-                    selectedPresetId === preset.id && "bg-gray-50"
+                    "w-full flex items-center gap-2 px-2 py-1.5 text-left text-[13px] rounded hover:bg-accent transition-colors",
+                    selectedPresetId === preset.id && "bg-secondary/50"
                   )}
                   onClick={() => {
                     onSelect(preset.id);
@@ -175,14 +175,14 @@ export function SegmentSetSelector({
           )}
         </div>
 
-        <div className="border-t border-gray-100 mt-1 pt-1">
+        <div className="border-t border-border/60 mt-1 pt-1">
           <button
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[13px] text-gray-600 rounded hover:bg-gray-100 transition-colors"
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[13px] text-muted-foreground rounded hover:bg-accent transition-colors"
             onClick={handleManagePresets}
           >
             <Settings className="h-3.5 w-3.5" />
             <span>Add/Edit Presets</span>
-            <span className="ml-auto text-gray-400">→</span>
+            <span className="ml-auto text-muted-foreground/70">→</span>
           </button>
         </div>
       </PopoverContent>

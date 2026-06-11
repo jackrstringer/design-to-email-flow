@@ -11,7 +11,7 @@ interface BrandCardProps {
 export const BrandCard = ({ brand, campaignCount = 0 }: BrandCardProps) => {
   return (
     <Link to={`/brands/${brand.id}`}>
-      <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer border border-border">
+      <Card className="card-lift cursor-pointer border border-border p-4">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             {brand.darkLogoUrl ? (

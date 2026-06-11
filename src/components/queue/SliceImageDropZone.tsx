@@ -127,7 +127,7 @@ export function SliceImageDropZone({
       {children ?? (
         isHtml ? (
           <div
-            className="bg-white"
+            className="bg-card"
             dangerouslySetInnerHTML={{ __html: htmlContent! }}
             style={{ width: '100%' }}
           />

@@ -224,7 +224,7 @@ export function QueueTable({
     return (
       <div className="border border-border rounded-lg overflow-hidden">
         {/* Header */}
-        <div className="flex h-8 items-center bg-white border-b border-border text-[13px] text-gray-500 font-normal">
+        <div className="flex h-8 items-center bg-card border-b border-border text-[13px] text-muted-foreground font-normal">
           <div className="w-8 flex-shrink-0 px-2" />
           {showTimers && <div className="w-10 flex-shrink-0" />} {/* Timer column */}
           <div className="px-2" style={{ width: 100 }}>Status</div>
@@ -240,7 +240,7 @@ export function QueueTable({
         </div>
         {/* Skeleton rows */}
         {[1, 2, 3].map((i) => (
-          <div key={i} className="flex h-10 items-center border-b border-gray-100">
+          <div key={i} className="flex h-10 items-center border-b border-border/60">
             <div className="w-8 flex-shrink-0 px-2"><Skeleton className="h-4 w-4" /></div>
             {showTimers && <div className="w-10 flex-shrink-0" />} {/* Timer column */}
             <div className="px-2" style={{ width: 100 }}><Skeleton className="h-5 w-14" /></div>
@@ -261,13 +261,13 @@ export function QueueTable({
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted/40">
-          <Inbox className="h-4 w-4 text-muted-foreground/70" strokeWidth={1.75} />
+      <div className="glow-ember flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-brand/20 bg-gradient-to-b from-brand/10 to-brand/5 shadow-card">
+          <Inbox className="h-5 w-5 text-brand" strokeWidth={1.75} />
         </div>
-        <p className="mt-3 text-[13px] font-medium">No campaigns in queue</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Upload a campaign or send one from Figma to get started
+        <p className="font-display mt-5 text-[22px] leading-tight text-foreground">Your queue is clear</p>
+        <p className="mt-1.5 max-w-xs text-[13px] text-muted-foreground">
+          Send a frame from Figma or upload a design — Sendr slices it, QAs it, and builds it in Klaviyo.
         </p>
       </div>
     );
@@ -282,7 +282,7 @@ export function QueueTable({
     <div style={{ minWidth: `${minTableWidth}px` }}>
       {/* Header - Airtable style */}
       <div 
-        className="flex h-8 items-center bg-white border-b border-border select-none"
+        className="flex h-8 items-center bg-card border-b border-border select-none"
         style={{ cursor: resizing ? 'col-resize' : 'default' }}
       >
         {/* Checkbox column */}
@@ -312,12 +312,12 @@ export function QueueTable({
 
         {/* Status */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.status }}
         >
           Status
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -334,7 +334,7 @@ export function QueueTable({
           style={{ width: fitted.thumbnail }}
         >
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -347,12 +347,12 @@ export function QueueTable({
 
         {/* Name */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.name }}
         >
           Name
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -365,12 +365,12 @@ export function QueueTable({
 
         {/* Client */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.client }}
         >
           Client
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -383,12 +383,12 @@ export function QueueTable({
 
         {/* Segment Set */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.segmentSet }}
         >
           Segment Set
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -401,12 +401,12 @@ export function QueueTable({
 
         {/* Subject Line */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.subject }}
         >
           Subject Line
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -419,12 +419,12 @@ export function QueueTable({
 
         {/* Preview Text */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.previewText }}
         >
           Preview Text
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -437,12 +437,12 @@ export function QueueTable({
 
         {/* Links */}
         <div 
-          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center justify-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.links }}
         >
           Links
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -455,12 +455,12 @@ export function QueueTable({
 
         {/* External Links */}
         <div 
-          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center justify-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.external }}
         >
           Ext. Links
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -473,12 +473,12 @@ export function QueueTable({
 
         {/* Spelling */}
         <div 
-          className="relative flex items-center justify-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center justify-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.spelling }}
         >
           Spelling
           <div 
-            className="absolute right-0 top-1 bottom-1 w-px bg-gray-200"
+            className="absolute right-0 top-1 bottom-1 w-px bg-secondary"
           />
           <div 
             className={cn(
@@ -491,7 +491,7 @@ export function QueueTable({
 
         {/* Klaviyo */}
         <div 
-          className="relative flex items-center px-2 text-[13px] text-gray-500 font-normal flex-shrink-0"
+          className="relative flex items-center px-2 text-[13px] text-muted-foreground font-normal flex-shrink-0"
           style={{ width: fitted.klaviyo }}
         >
           Klaviyo

@@ -49,7 +49,7 @@ export function ProcessingTimer({ createdAt, completedAt, status, visible, onTog
       }}
     >
       {visible && (
-        <span className="text-[10px] text-gray-400 whitespace-nowrap">
+        <span className="text-[10px] text-muted-foreground/70 whitespace-nowrap">
           {display}
         </span>
       )}

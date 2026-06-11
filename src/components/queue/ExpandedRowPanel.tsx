@@ -695,7 +695,7 @@ export function ExpandedRowPanel({
         <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto overflow-x-visible">
           {/* Inbox Preview - full width, subject/preview editable in place */}
           <div className="mb-3">
-            <div className="bg-white rounded-lg border shadow-sm">
+            <div className="bg-card rounded-lg border shadow-sm">
               <div className="flex gap-2 border-b px-3 py-2">
                 <input
                   value={selectedSubject}
@@ -1043,7 +1043,7 @@ export function ExpandedRowPanel({
                             
                             {slice.type === 'html' && slice.htmlContent ? (
                               <div 
-                                className="bg-white"
+                                className="bg-card"
                                 dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
                                 style={{ width: '100%' }}
                               />
@@ -1250,7 +1250,7 @@ export function ExpandedRowPanel({
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QA Checks</h4>
             
             {/* Links Summary - Detailed */}
-            <div className="bg-white rounded-lg border px-3 py-2.5 space-y-2">
+            <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">
               <details className="group/links">
               <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
                 {hasExternalLinks ? (
@@ -1295,7 +1295,7 @@ export function ExpandedRowPanel({
             </div>
 
             {/* Spelling Status with details */}
-            <div className="bg-white rounded-lg border px-3 py-2.5 space-y-2">
+            <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-2">
                 {spellingErrors.length > 0 ? (
                   <>
@@ -1333,7 +1333,7 @@ export function ExpandedRowPanel({
 
 
             {/* Klaviyo Campaign URL */}
-            <div className="bg-white rounded-lg border px-3 py-2.5 space-y-2">
+            <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-2">
                 <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Klaviyo Campaign</span>

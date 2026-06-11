@@ -521,19 +521,21 @@ export default function CampaignQueue() {
           </div>
         ) : showEmptyState ? (
           /* Set up, but nothing in the queue yet */
-          <div className="mx-auto max-w-xl py-16 text-center">
-            <Inbox className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">No campaigns yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Send a frame from Figma, or upload a design.
+          <div className="glow-ember mx-auto flex min-h-[460px] max-w-xl flex-col items-center justify-center py-16 text-center animate-fade-up">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-brand/20 bg-gradient-to-b from-brand/10 to-brand/5 shadow-card">
+              <Inbox className="h-5 w-5 text-brand" strokeWidth={1.75} />
+            </div>
+            <p className="font-display mt-5 text-[26px] leading-tight">Your queue is clear</p>
+            <p className="mt-2 max-w-sm text-[13px] text-muted-foreground">
+              Send a frame from Figma or upload a design — Sendr slices it, QAs it
+              against your brand memory, and builds it in Klaviyo.
             </p>
             <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
+              size="default"
+              className="mt-6"
               onClick={() => navigate('/upload')}
             >
-              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              <Upload className="h-3.5 w-3.5 mr-1" />
               Upload a design
             </Button>
           </div>
