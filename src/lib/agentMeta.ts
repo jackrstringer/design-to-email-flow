@@ -9,22 +9,22 @@ export const AGENT_META: Record<AgentKind, { label: string; icon: LucideIcon; ba
   learn: {
     label: 'Learning',
     icon: Brain,
-    badgeClass: 'bg-secondary text-foreground border-border',
+    badgeClass: 'bg-brand/10 text-brand border-brand/20',
   },
   qa: {
     label: 'QA review',
     icon: ShieldCheck,
-    badgeClass: 'bg-secondary text-foreground border-border',
+    badgeClass: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20',
   },
   refresh: {
     label: 'Maintenance',
     icon: RefreshCw,
-    badgeClass: 'bg-secondary text-foreground border-border',
+    badgeClass: 'bg-success/10 text-success border-success/20',
   },
   recrawl: {
     label: 'Site recrawl',
     icon: Globe,
-    badgeClass: 'bg-secondary text-foreground border-border',
+    badgeClass: 'bg-secondary text-muted-foreground border-border',
   },
 };
 
@@ -43,7 +43,7 @@ export const KNOWLEDGE_KIND_META: Record<KnowledgeKind, { label: string; descrip
 export type QaCategory = 'link' | 'date' | 'voice' | 'structure' | 'brand_rule' | 'spelling';
 
 export const QA_SEVERITY_META = {
-  error: { label: 'Error', badgeClass: 'bg-foreground text-background border-foreground' },
-  warning: { label: 'Warning', badgeClass: 'bg-secondary text-foreground border-border' },
+  error: { label: 'Error', badgeClass: 'bg-destructive/10 text-destructive border-destructive/25' },
+  warning: { label: 'Warning', badgeClass: 'bg-warning/10 text-warning border-warning/25' },
   info: { label: 'Info', badgeClass: 'bg-muted text-muted-foreground border-border' },
 } as const;

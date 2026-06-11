@@ -52,10 +52,10 @@ export function AppSidebar() {
       <SidebarHeader>
         <div className="flex items-center gap-2.5 px-2 py-2.5">
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary shadow-[0_1px_2px_rgb(0_0_0_/_0.12)]"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand shadow-[0_1px_2px_rgb(0_0_0_/_0.12)]"
             aria-hidden="true"
           >
-            <Send className="h-3.5 w-3.5 text-primary-foreground" strokeWidth={2.5} />
+            <Send className="h-3.5 w-3.5 text-brand-foreground" strokeWidth={2.5} />
           </span>
           {!collapsed && (
             <span className="text-[15px] font-semibold tracking-tight text-foreground">
@@ -81,7 +81,7 @@ export function AppSidebar() {
                       <item.icon
                         className={
                           isActive(item.url)
-                            ? "h-4 w-4 text-primary"
+                            ? "h-4 w-4 text-brand"
                             : "h-4 w-4 text-sidebar-foreground/70"
                         }
                         strokeWidth={2}

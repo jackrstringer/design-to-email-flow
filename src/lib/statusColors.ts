@@ -46,7 +46,7 @@ export const blockOverlayClasses: Record<BlockKind, BlockOverlayClasses> = {
 };
 
 /** Quiet confirmation chip (e.g. "N sections detected") — ink, not green. */
-export const successChipClasses = 'bg-secondary text-foreground';
+export const successChipClasses = 'bg-success/10 text-success';
 
 /** Primary-accent action button (replaces hardcoded bg-orange-500 buttons). */
 export const primaryActionClasses =

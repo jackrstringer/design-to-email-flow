@@ -28,14 +28,14 @@ export function NextStepBanner({ step }: NextStepBannerProps) {
 
   return (
     <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2 text-sm">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden />
       <p className="flex-1 min-w-0 truncate">
         <span className="text-muted-foreground">Next:</span>{' '}
         <span className="font-medium">{step.title}</span>
       </p>
       <Link
         to={step.href}
-        className="flex shrink-0 items-center gap-1 font-medium text-primary hover:underline"
+        className="flex shrink-0 items-center gap-1 font-medium text-brand hover:underline"
       >
         Continue
         <ArrowRight className="h-3.5 w-3.5" />

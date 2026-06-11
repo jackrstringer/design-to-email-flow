@@ -290,9 +290,9 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
     return (
       <div 
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: 'hsl(0 0% 95%)', color: 'hsl(0 0% 25%)' }}
+        style={{ backgroundColor: 'hsl(204 100% 50% / 0.10)', color: 'hsl(204 80% 38%)' }}
       >
-        <Loader2 className="h-3 w-3 animate-spin" style={{ color: 'hsl(0 0% 40%)' }} />
+        <Loader2 className="h-3 w-3 animate-spin" style={{ color: 'hsl(204 80% 45%)' }} />
         {isUpdating ? 'Building...' : `${item.processing_percent || 0}%`}
       </div>
     );
@@ -306,7 +306,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
           <button
             onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium hover:opacity-90 transition-colors whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
+            style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
           >
             <span className="whitespace-nowrap">Built in Klaviyo</span>
             <ChevronDown className="h-3 w-3 flex-shrink-0" />
@@ -323,7 +323,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
           >
             <span 
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-              style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
+              style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
             >
               <Archive className="h-3 w-3" />
               Close
@@ -339,7 +339,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
+        style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
       >
         <Archive className="h-3 w-3" />
         Closed
@@ -352,7 +352,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
     return (
       <div 
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: 'hsl(0 72% 45% / 0.08)', color: 'hsl(0 72% 40%)' }}
+        style={{ backgroundColor: 'hsl(0 72% 51% / 0.10)', color: 'hsl(0 65% 42%)' }}
       >
         Failed
         <button
@@ -376,8 +376,8 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
           onClick={(e) => e.stopPropagation()}
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap hover:opacity-90"
           style={isReady 
-            ? { backgroundColor: 'hsl(0 0% 100%)', color: 'hsl(0 0% 4%)', boxShadow: 'inset 0 0 0 1px hsl(0 0% 4%)' }
-            : { backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }
+            ? { backgroundColor: 'hsl(32 95% 44% / 0.10)', color: 'hsl(30 80% 36%)' }
+            : { backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }
           }
         >
           {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approve & Build'}
@@ -398,7 +398,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
         >
           <span 
             className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(0 0% 100%)', color: 'hsl(0 0% 4%)', boxShadow: 'inset 0 0 0 1px hsl(0 0% 4%)' }}
+            style={{ backgroundColor: 'hsl(32 95% 44% / 0.10)', color: 'hsl(30 80% 36%)' }}
           >
             Ready for Review
           </span>
@@ -412,7 +412,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
         >
           <span 
             className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
+            style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
           >
             Approve & Build
           </span>
@@ -424,7 +424,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
         >
           <span 
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(0 0% 9%)', color: 'hsl(0 0% 100%)' }}
+            style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
           >
             <Archive className="h-3 w-3" />
             Close

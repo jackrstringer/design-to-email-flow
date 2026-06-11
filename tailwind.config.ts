@@ -23,6 +23,14 @@ export default {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
         },
+        brand: {
+          DEFAULT: "hsl(var(--brand))",
+          foreground: "hsl(var(--brand-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -60,7 +68,7 @@ export default {
       },
       fontFamily: {
         sans: [
-          "Geist",
+          "Plus Jakarta Sans",
           "Inter",
           "system-ui",
           "-apple-system",
@@ -68,7 +76,7 @@ export default {
           "Segoe UI",
           "sans-serif",
         ],
-        mono: ["Geist Mono", "ui-monospace", "SF Mono", "Cascadia Code", "monospace"],
+        mono: ["Sometype Mono", "ui-monospace", "SF Mono", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -61,7 +61,7 @@ export function SetupChecklist() {
                 } ${!step.complete && !isNext ? 'opacity-60' : ''}`}
               >
                 {step.complete ? (
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
                     <Check className="h-3.5 w-3.5" />
                   </span>
                 ) : (
