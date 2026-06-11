@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QueueRow } from './QueueRow';
@@ -169,19 +169,19 @@ export function QueueTable({
 
   // Visible width of the scroll viewport — the expanded panel pins to this
   // so horizontal table scrolling never clips the review surface.
-  const scrollWrapRef = useRef<HTMLDivElement>(null);
+  // Callback ref: the wrap mounts/unmounts across loading-skeleton and
+  // empty-state renders, so the observer must follow the element itself —
+  // an effect keyed on render flags misses the empty→populated transition.
+  const [scrollWrapEl, setScrollWrapEl] = useState<HTMLDivElement | null>(null);
   const [visibleWidth, setVisibleWidth] = useState(0);
   useEffect(() => {
-    const el = scrollWrapRef.current;
-    if (!el) return;
-    const update = () => setVisibleWidth(el.clientWidth);
+    if (!scrollWrapEl) return;
+    const update = () => setVisibleWidth(scrollWrapEl.clientWidth);
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(el);
+    ro.observe(scrollWrapEl);
     return () => ro.disconnect();
-    // re-attach once the real table mounts (the ref is absent during the
-    // loading-skeleton render)
-  }, [loading]);
+  }, [scrollWrapEl]);
 
   // Fit-to-viewport column engine: utility columns are fixed, content
   // columns share whatever space remains (proportional to their configured
@@ -191,7 +191,6 @@ export function QueueTable({
   const FIXED_COLS = ['status', 'thumbnail', 'links', 'external', 'spelling', 'klaviyo'] as const;
   const FLEX_COLS = ['name', 'client', 'segmentSet', 'subject', 'previewText'] as const;
   const CHROME_W = 32 + (showTimers ? 40 : 0); // checkbox + optional timer column
-  const FLEX_FLOOR = 90;
 
   const fitted = React.useMemo(() => {
     const w: ColumnWidths = { ...columnWidths };
@@ -201,11 +200,12 @@ export function QueueTable({
     const avail = visibleWidth - fixedSum;
     // Stretch-to-fill only: when there's spare room, content columns grow to
     // use it. When there isn't, columns KEEP their comfortable widths and the
-    // rows scroll sideways inside the table — never squished, never clipping
-    // the page.
+    // rows scroll sideways inside the table (Airtable-style) — the user can
+    // widen columns past the viewport freely. Only the page never scrolls.
     // allow an invisible squeeze (≤5%) rather than a pointless scrollbar
     if (flexSum <= 0 || avail <= 0 || avail < flexSum * 0.95) return w;
     const k = avail / flexSum;
+    const FLEX_FLOOR = 90;
     let used = 0;
     FLEX_COLS.forEach((c) => {
       w[c] = Math.max(FLEX_FLOOR, Math.floor(w[c] * k));
@@ -271,8 +271,11 @@ export function QueueTable({
 
 
   return (
-    <div ref={scrollWrapRef} className="overflow-x-auto rounded-lg border border-border">
-    <div className="overflow-hidden" style={{ minWidth: `${minTableWidth}px` }}>
+    <div ref={setScrollWrapEl} className="overflow-x-auto rounded-lg border border-border">
+    {/* min-width spacer only — overflow must stay visible here or the
+        expanded panel's sticky pinning breaks (sticky needs the scrollable
+        ancestor to be the rounded scroll wrap above) */}
+    <div style={{ minWidth: `${minTableWidth}px` }}>
       {/* Header - Airtable style */}
       <div 
         className="flex h-8 items-center bg-white border-b border-border select-none"
