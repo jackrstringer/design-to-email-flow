@@ -383,15 +383,15 @@ export default function CampaignQueue() {
       {/* Header - Simplified Airtable style */}
       <header className="border-b bg-background shrink-0">
         <div className="px-4">
-          <div className="flex h-12 items-center justify-between">
+          <div className="flex h-12 items-center justify-between gap-3">
             {/* Left: Title */}
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium">Campaign Queue</span>
-            </div>
-            
+            <span className="shrink-0 whitespace-nowrap text-sm font-semibold tracking-tight">
+              Queue
+            </span>
+
             {/* Right: Show Closed + Brand Filter + Refresh */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="hidden items-center gap-3 md:flex">
                 <button
                   onClick={handleToggleTimers}
                   className={`flex items-center gap-1.5 text-[12px] transition-colors ${
@@ -401,7 +401,7 @@ export default function CampaignQueue() {
                   <Timer className="h-3.5 w-3.5" />
                   <span>Timers</span>
                 </button>
-                
+
                 <div className="flex items-center gap-2">
                   <Switch
                     id="show-closed"
@@ -409,7 +409,7 @@ export default function CampaignQueue() {
                     onCheckedChange={setShowClosed}
                     className="scale-75"
                   />
-                  <Label htmlFor="show-closed" className="text-[12px] text-muted-foreground cursor-pointer">
+                  <Label htmlFor="show-closed" className="whitespace-nowrap text-[12px] text-muted-foreground cursor-pointer">
                     Show Closed
                   </Label>
                 </div>
