@@ -39,18 +39,20 @@ export interface ColumnWidths {
 }
 
 // Improved defaults to fill page width better, prioritizing longer content fields
+// Sized so the natural sum (~1170 + chrome) fits a laptop viewport with the
+// sidebar open at the 13px density — bigger screens stretch to fill.
 const DEFAULT_WIDTHS: ColumnWidths = {
-  status: 150,
-  thumbnail: 40,
-  name: 220,
-  client: 140,
-  segmentSet: 180,
-  subject: 280,
-  previewText: 280,
-  links: 60,
-  external: 80,
-  spelling: 70,
-  klaviyo: 180,
+  status: 124,
+  thumbnail: 36,
+  name: 160,
+  client: 110,
+  segmentSet: 114,
+  subject: 184,
+  previewText: 184,
+  links: 44,
+  external: 56,
+  spelling: 52,
+  klaviyo: 120,
 };
 
 const MIN_WIDTHS: ColumnWidths = {
@@ -103,7 +105,8 @@ export function QueueTable({
           .eq('id', user.id)
           .single();
 
-        if (profile?.queue_column_widths && typeof profile.queue_column_widths === 'object') {
+        // v2: discard widths saved under the old, wider design.
+        if (profile?.queue_column_widths && typeof profile.queue_column_widths === 'object' && (profile.queue_column_widths as Record<string, unknown>).__v === 2) {
           // Merge with defaults to handle any new columns gracefully
           setColumnWidths({ ...DEFAULT_WIDTHS, ...(profile.queue_column_widths as Partial<ColumnWidths>) });
         }
@@ -125,7 +128,7 @@ export function QueueTable({
 
       await supabase
         .from('profiles')
-        .update({ queue_column_widths: widths as unknown as Record<string, number> })
+        .update({ queue_column_widths: { __v: 2, ...widths } as unknown as Record<string, number> })
         .eq('id', user.id);
     } catch (error) {
       console.error('Error saving column widths:', error);
@@ -200,11 +203,17 @@ export function QueueTable({
     // use it. When there isn't, columns KEEP their comfortable widths and the
     // rows scroll sideways inside the table — never squished, never clipping
     // the page.
-    if (flexSum <= 0 || avail <= flexSum) return w;
+    // allow an invisible squeeze (≤5%) rather than a pointless scrollbar
+    if (flexSum <= 0 || avail <= 0 || avail < flexSum * 0.95) return w;
     const k = avail / flexSum;
+    let used = 0;
     FLEX_COLS.forEach((c) => {
       w[c] = Math.max(FLEX_FLOOR, Math.floor(w[c] * k));
+      used += w[c];
     });
+    // Hand the rounding remainder to the subject column so the row sums to
+    // EXACTLY the available width — no phantom scrollbar.
+    w.subject += Math.max(0, avail - used);
     return w;
   }, [columnWidths, visibleWidth, showTimers]);
 

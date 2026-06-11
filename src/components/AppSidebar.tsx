@@ -83,7 +83,7 @@ export function AppSidebar() {
                     asChild
                     isActive={isActive(item.url)}
                     tooltip={item.title}
-                    className="h-9 rounded-lg font-medium transition-colors duration-150 data-[active=true]:bg-sidebar-accent data-[active=true]:text-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))]"
+                    className="h-8 rounded-lg text-[13px] font-medium transition-colors duration-150 data-[active=true]:bg-sidebar-accent data-[active=true]:text-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))]"
                   >
                     <NavLink to={item.url}>
                       <item.icon

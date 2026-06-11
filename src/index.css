@@ -128,8 +128,8 @@
 
   body {
     @apply bg-background text-foreground font-sans;
-    font-size: 14px;
-    line-height: 1.43;
+    font-size: 13px;
+    line-height: 1.45;
     letter-spacing: -0.01em;
   }
 
