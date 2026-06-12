@@ -32,6 +32,8 @@ const ClickUpIcon = ({ className }: { className?: string }) => (
 
 interface InlineDropdownSelectorProps {
   selected: string | null;
+  /** extra classes for the display/input text (e.g. dense muted row styling) */
+  textClassName?: string;
   options: string[] | null;
   provided?: string | null;
   onSelect: (value: string) => Promise<boolean> | void;
@@ -52,6 +54,7 @@ export function InlineDropdownSelector({
   processingStep = null,
   isAiGenerated = false,
   isClickUpSource = false,
+  textClassName,
 }: InlineDropdownSelectorProps) {
   const [open, setOpen] = useState(false);
   const [editValue, setEditValue] = useState(selected || '');
@@ -177,8 +180,8 @@ export function InlineDropdownSelector({
         <div 
           className={cn(
             "group flex items-center gap-0.5 rounded-sm transition-shadow cursor-pointer w-full",
-            isEditing && "ring-2 ring-brand/60 ring-inset",
-            open && "ring-2 ring-brand/60 ring-inset"
+            isEditing && "ring-1 ring-foreground/30 ring-inset bg-card",
+            open && "ring-1 ring-foreground/30 ring-inset bg-card"
           )}
           onClick={handleCellClick}
           onDoubleClick={handleDoubleClick}
@@ -191,7 +194,8 @@ export function InlineDropdownSelector({
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               className={cn(
-                "flex-1 min-w-0 bg-card outline-none text-[13px] text-foreground px-1 py-0.5"
+                "flex-1 min-w-0 bg-transparent outline-none text-[13px] text-foreground px-1 py-0.5",
+                textClassName
               )}
               placeholder={placeholder}
               disabled={isSaving}
@@ -201,7 +205,8 @@ export function InlineDropdownSelector({
             <span
               className={cn(
                 "text-[13px] truncate px-1 py-0.5 flex-1 min-w-0 text-foreground flex items-center gap-1",
-                !displayValue && "text-muted-foreground/70 italic"
+                textClassName,
+                !displayValue && "text-muted-foreground/60 italic"
               )}
               title={displayValue || placeholder}
             >
@@ -241,7 +246,7 @@ export function InlineDropdownSelector({
             <button
               type="button"
               onClick={handleChevronClick}
-              className="shrink-0 rounded p-0.5 text-muted-foreground/70 transition-colors hover:bg-secondary hover:text-foreground"
+              className="shrink-0 rounded p-0.5 text-muted-foreground/70 opacity-0 transition-opacity hover:bg-secondary hover:text-foreground group-hover:opacity-100"
               aria-label="Show suggestions"
             >
               <ChevronDown className={cn("h-3.5 w-3.5", open && "rotate-180 transition-transform")} />
@@ -251,7 +256,7 @@ export function InlineDropdownSelector({
       </PopoverTrigger>
       {allOptions.length > 0 && (
         <PopoverContent 
-          className="p-0 z-50 bg-card shadow-lg border"
+          className="p-0 z-50 bg-card shadow-floating border-0 rounded-2xl overflow-hidden"
           align="start"
           side="bottom"
           sideOffset={2}
@@ -273,11 +278,11 @@ export function InlineDropdownSelector({
                   className={cn(
                     "w-full flex items-start gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-foreground",
                     "hover:bg-secondary",
-                    isSelected && "bg-brand/10"
+                    isSelected && "bg-muted"
                   )}
                 >
                   <div className="w-4 shrink-0 pt-0.5">
-                    {isSelected && <Check className="h-4 w-4 text-brand" />}
+                    {isSelected && <Check className="h-4 w-4 text-foreground" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="leading-snug break-words">{opt.value}</p>
@@ -295,7 +300,7 @@ export function InlineDropdownSelector({
                 setOpen(false);
                 setIsEditing(true);
               }}
-              className="w-full flex items-center gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-brand hover:bg-brand/5 border-t mt-1 pt-2 font-medium"
+              className="w-full flex items-center gap-2 px-2 py-2 text-[13px] text-left rounded transition-colors text-foreground hover:bg-muted border-t mt-1 pt-2 font-medium"
             >
               <div className="w-4 shrink-0 flex justify-center"><Pencil className="h-3.5 w-3.5" /></div>
               <span>Write your own…</span>

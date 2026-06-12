@@ -1,11 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Building, X, Trash2, Archive, Loader2, Timer, Upload, Inbox } from 'lucide-react';
+import { RefreshCw, X, Trash2, Archive, Loader2, Timer, Upload, Inbox, Search, Rows3, AlignJustify, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { QueueTable } from '@/components/queue/QueueTable';
+import { QueueDensity } from '@/components/queue/QueueRow';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useCampaignQueue, CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { useOnboardingStatus } from '@/hooks/useOnboardingStatus';
 import { SetupChecklist } from '@/components/onboarding/SetupChecklist';
@@ -39,6 +43,15 @@ export default function CampaignQueue() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const [showTimers, setShowTimers] = useState(() => localStorage.getItem('queueShowTimers') === 'true');
+  const [density, setDensity] = useState<QueueDensity>(() =>
+    localStorage.getItem('queueDensity') === 'compact' ? 'compact' : 'comfortable'
+  );
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSetDensity = (d: QueueDensity) => {
+    setDensity(d);
+    localStorage.setItem('queueDensity', d);
+  };
   
   const handleToggleTimers = () => {
     setShowTimers(prev => {
@@ -67,11 +80,22 @@ export default function CampaignQueue() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [items]);
 
+  const q = searchQuery.trim().toLowerCase();
   const filteredItems = items.filter(item => {
     const matchesBrand = brandFilter === 'all' || item.brand_id === brandFilter;
     const matchesClosed = showClosed || item.status !== 'closed';
-    return matchesBrand && matchesClosed;
+    const matchesSearch =
+      !q ||
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.selected_subject_line || '').toLowerCase().includes(q) ||
+      ((item as any).brands?.name || '').toLowerCase().includes(q);
+    return matchesBrand && matchesClosed && matchesSearch;
   });
+
+  const needsReviewCount = items.filter(
+    (i) => i.status === 'ready_for_review' || i.status === 'approved' || i.status === 'failed'
+  ).length;
+  const activeCount = items.filter((i) => i.status !== 'closed').length;
 
   // Onboarding-aware empty states. While the onboarding query is still
   // loading, the checklist renders its own skeleton — no flash of the
@@ -380,91 +404,163 @@ export default function CampaignQueue() {
 
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* Header - Simplified Airtable style */}
-      <header className="border-b bg-background shrink-0">
-        <div className="px-4">
-          <div className="flex h-11 items-center justify-between gap-2.5">
-            {/* Left: Title */}
-            <span className="shrink-0 whitespace-nowrap text-[13px] font-semibold tracking-tight">
-              Queue
-            </span>
-
-            {/* Right: Show Closed + Brand Filter + Refresh */}
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="hidden items-center gap-3 md:flex">
-                <button
-                  onClick={handleToggleTimers}
-                  className={`flex items-center gap-1.5 text-[12px] transition-colors ${
-                    showTimers ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Timer className="h-3.5 w-3.5" />
-                  <span>Timers</span>
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="show-closed"
-                    checked={showClosed}
-                    onCheckedChange={setShowClosed}
-                    className="scale-75"
-                  />
-                  <Label htmlFor="show-closed" className="whitespace-nowrap text-[12px] text-muted-foreground cursor-pointer">
-                    Show Closed
-                  </Label>
-                </div>
-              </div>
-              
-              <Select value={brandFilter} onValueChange={setBrandFilter}>
-                <SelectTrigger className="h-7 w-32 text-xs">
-                  <Building className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-                  <SelectValue placeholder="All Brands" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Brands</SelectItem>
-                  {brands.map(brand => (
-                    <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate('/upload')}
-              >
-                <Upload className="h-3.5 w-3.5 mr-1.5" />
-                Upload
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                onClick={() => refresh()}
-                disabled={isFetching}
-              >
-                <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
+      {/* Topbar — title block, search, filters, density, primary CTA */}
+      <header className="shrink-0 px-6 pt-5 pb-4 md:px-8">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="mr-2 min-w-0">
+            <h1 className="text-[19px] font-semibold leading-tight tracking-[-0.015em]">Queue</h1>
+            <p className="mt-px text-[11.5px] text-muted-foreground">
+              {needsReviewCount > 0 ? (
+                <>
+                  <span className="font-semibold text-foreground">{needsReviewCount}</span> need
+                  {needsReviewCount === 1 ? 's' : ''} your review · {activeCount} active
+                </>
+              ) : (
+                <>{activeCount} active campaign{activeCount === 1 ? '' : 's'}</>
+              )}
+            </p>
           </div>
+
+          <div className="flex-1" />
+
+          {/* Search pill */}
+          <label className="hidden h-8 w-[210px] cursor-text items-center gap-2 rounded-full bg-card px-3.5 text-[12px] text-muted-foreground shadow-[inset_0_0_0_1px_hsl(240_6%_90%)] transition-shadow focus-within:shadow-[inset_0_0_0_1.5px_hsl(240_6%_10%/0.35)] lg:flex">
+            <Search className="h-3 w-3 shrink-0" strokeWidth={2.2} />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search campaigns"
+              className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/70"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="text-muted-foreground hover:text-foreground">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </label>
+
+          {/* Brand filter pill */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex h-8 items-center gap-1.5 rounded-full bg-card px-3.5 text-[12px] font-medium text-foreground shadow-[inset_0_0_0_1px_hsl(240_6%_90%)] transition-colors hover:bg-muted/60">
+                <span className="max-w-[120px] truncate">
+                  {brandFilter === 'all' ? 'All brands' : brands.find((b) => b.id === brandFilter)?.name || 'Brand'}
+                </span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" strokeWidth={2.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 rounded-xl border-0 p-1 shadow-floating">
+              <DropdownMenuItem
+                className="rounded-lg text-[12px]"
+                onClick={() => setBrandFilter('all')}
+              >
+                All brands
+              </DropdownMenuItem>
+              {brands.map((brand) => (
+                <DropdownMenuItem
+                  key={brand.id}
+                  className="rounded-lg text-[12px]"
+                  onClick={() => setBrandFilter(brand.id)}
+                >
+                  {brand.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Active / Closed segmented pill */}
+          <div className="flex h-8 items-center rounded-full bg-secondary p-[3px] text-[11.5px] font-medium">
+            {([false, true] as const).map((closed) => (
+              <button
+                key={String(closed)}
+                onClick={() => setShowClosed(closed)}
+                className={
+                  showClosed === closed
+                    ? 'flex h-[26px] items-center rounded-full bg-card px-3 font-semibold text-foreground shadow-[0_1px_2px_hsl(0_0%_0%/0.06)]'
+                    : 'flex h-[26px] items-center rounded-full px-3 text-muted-foreground transition-colors hover:text-foreground'
+                }
+              >
+                {closed ? 'All' : 'Active'}
+              </button>
+            ))}
+          </div>
+
+          {/* Density toggle — Comfortable / Compact */}
+          <div className="flex h-8 items-center rounded-full bg-secondary p-[3px]" role="group" aria-label="Row density">
+            <button
+              onClick={() => handleSetDensity('comfortable')}
+              title="Comfortable rows"
+              className={
+                density === 'comfortable'
+                  ? 'flex h-[26px] w-8 items-center justify-center rounded-full bg-card text-foreground shadow-[0_1px_2px_hsl(0_0%_0%/0.06)]'
+                  : 'flex h-[26px] w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground'
+              }
+            >
+              <Rows3 className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+            <button
+              onClick={() => handleSetDensity('compact')}
+              title="Compact rows — see everything"
+              className={
+                density === 'compact'
+                  ? 'flex h-[26px] w-8 items-center justify-center rounded-full bg-card text-foreground shadow-[0_1px_2px_hsl(0_0%_0%/0.06)]'
+                  : 'flex h-[26px] w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground'
+              }
+            >
+              <AlignJustify className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+          </div>
+
+          {/* Quiet utilities */}
+          <button
+            onClick={handleToggleTimers}
+            title={showTimers ? 'Hide processing timers' : 'Show processing timers'}
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+              showTimers ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+            }`}
+          >
+            <Timer className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+          <button
+            onClick={() => refresh()}
+            disabled={isFetching}
+            title="Refresh"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} strokeWidth={2} />
+          </button>
+
+          {/* The one filled CTA on the page */}
+          <button
+            onClick={() => navigate('/upload')}
+            className="shadow-button flex h-[34px] items-center gap-1.5 rounded-full bg-primary px-4 text-[12.5px] font-medium text-primary-foreground transition-transform duration-200 active:scale-[0.98]"
+          >
+            <Upload className="h-3 w-3" strokeWidth={2.4} />
+            Upload design
+          </button>
         </div>
       </header>
 
       {/* Floating Bottom Bulk Action Bar - ClickUp style */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
-          <div className="flex items-center gap-4 rounded-lg bg-primary px-4 py-2 shadow-lg">
+          <div className="flex items-center gap-3 rounded-full bg-primary py-1.5 pl-4 pr-2 shadow-floating">
             {/* Selection count with clear button */}
-            <div className="flex items-center gap-2 border-r border-white/15 pr-4 text-primary-foreground">
-              <span className="text-sm font-medium">
+            <div className="flex items-center gap-2 border-r border-white/15 pr-3 text-primary-foreground">
+              <span className="text-[12.5px] font-medium tabular-nums">
                 {selectedIds.size} selected
               </span>
+              <button
+                onClick={() => setSelectedIds(new Set(filteredItems.map(i => i.id)))}
+                className="text-[11.5px] font-medium text-primary-foreground/60 transition-colors hover:text-primary-foreground"
+              >
+                Select all
+              </button>
               <button 
                 onClick={handleClearSelection}
                 className="text-primary-foreground/50 transition-colors hover:text-primary-foreground"
               >
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
 
@@ -474,7 +570,7 @@ export default function CampaignQueue() {
               {canBulkApprove && (
                 <Button 
                   size="sm" 
-                  className="h-7 bg-background text-foreground hover:bg-background/90"
+                  className="h-7 rounded-full bg-card text-foreground hover:bg-card/90"
                   onClick={handleBulkApprove}
                   disabled={isBulkProcessing}
                 >
@@ -491,7 +587,7 @@ export default function CampaignQueue() {
                 size="sm" 
                 onClick={handleBulkClose}
                 disabled={isBulkProcessing}
-                className="h-7 text-primary-foreground/70 hover:bg-white/10 hover:text-primary-foreground"
+                className="h-7 rounded-full text-primary-foreground/70 hover:bg-white/10 hover:text-primary-foreground"
               >
                 <Archive className="h-3.5 w-3.5 mr-1.5" />
                 Close
@@ -502,7 +598,7 @@ export default function CampaignQueue() {
                 size="sm" 
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isBulkProcessing}
-                className="h-7 text-red-300 hover:bg-white/10 hover:text-red-200"
+                className="h-7 rounded-full text-red-300 hover:bg-white/10 hover:text-red-200"
               >
                 <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                 Delete
@@ -512,8 +608,7 @@ export default function CampaignQueue() {
         </div>
       )}
 
-      {/* Main Content - horizontal scroll for table */}
-      <main className="px-4 py-4">
+      <main className="flex-1 px-6 pb-10 md:px-8">
         {showChecklist ? (
           /* New user: queue is empty and setup is incomplete — guide them */
           <div className="mx-auto max-w-xl py-8">
@@ -521,18 +616,18 @@ export default function CampaignQueue() {
           </div>
         ) : showEmptyState ? (
           /* Set up, but nothing in the queue yet */
-          <div className="glow-ember mx-auto flex min-h-[460px] max-w-xl flex-col items-center justify-center py-16 text-center animate-fade-up">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-brand/20 bg-gradient-to-b from-brand/10 to-brand/5 shadow-card">
-              <Inbox className="h-5 w-5 text-brand" strokeWidth={1.75} />
+          <div className="glow-ember mx-auto flex min-h-[460px] max-w-xl flex-col items-center justify-center rounded-3xl bg-card py-16 text-center shadow-card animate-fade-up">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted">
+              <Inbox className="h-5 w-5 text-foreground/70" strokeWidth={1.75} />
             </div>
-            <p className="font-display mt-5 text-[26px] leading-tight">Your queue is clear</p>
+            <p className="mt-5 text-[20px] font-semibold tracking-[-0.01em] leading-tight">Your queue is clear</p>
             <p className="mt-2 max-w-sm text-[13px] text-muted-foreground">
               Send a frame from Figma or upload a design — Sendr slices it, QAs it
               against your brand memory, and builds it in Klaviyo.
             </p>
             <Button
               size="default"
-              className="mt-6"
+              className="shadow-button mt-6 rounded-full"
               onClick={() => navigate('/upload')}
             >
               <Upload className="h-3.5 w-3.5 mr-1" />
@@ -561,6 +656,7 @@ export default function CampaignQueue() {
                 onSelectAll={handleSelectAll}
                 showTimers={showTimers}
                 onToggleTimers={handleToggleTimers}
+                density={density}
               />
           </>
         )}

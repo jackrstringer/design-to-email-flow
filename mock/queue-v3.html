@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sendr — Queue (v3 mock)</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --obsidian:#09090b; --ink:#18181b; --graphite:#3f3f46; --slate:#52525b;
+    --steel:#71717a; --ash:#a1a1aa; --pebble:#d4d4d8; --fog:#ececee;
+    --mist:#f4f4f5; --snow:#ffffff;
+    --ok:#16a34a; --warn:#d97706; --busy:#2563eb;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    background:var(--mist); color:var(--ink);
+    font-size:13px; line-height:1.45;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    display:flex; height:100vh; overflow:hidden; padding:10px; gap:10px;
+  }
+
+  /* ───────────────────────── Sidebar — matte obsidian tile ───────────── */
+  .rail{
+    width:216px; flex-shrink:0; background:var(--obsidian);
+    border-radius:24px; display:flex; flex-direction:column;
+    padding:18px 12px 12px; color:#fff;
+  }
+  .brand{display:flex; align-items:center; gap:9px; padding:0 8px 0 6px}
+  .brand .glyph{
+    width:26px;height:26px;border-radius:9px;background:#fff;color:var(--obsidian);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .brand .glyph svg{width:13px;height:13px}
+  .brand .word{font-size:14px;font-weight:600;letter-spacing:-0.01em}
+  .brand .plan{margin-left:auto;font-size:9.5px;font-weight:500;color:rgba(255,255,255,.45);
+    border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:2px 6px}
+
+  .nav{margin-top:22px;display:flex;flex-direction:column;gap:2px}
+  .nav a{
+    display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;
+    border-radius:11px;color:var(--ash);font-size:12.5px;font-weight:500;
+    text-decoration:none;transition:color .2s,background .2s;
+  }
+  .nav a svg{width:14px;height:14px;opacity:.75}
+  .nav a:hover{color:#fff}
+  .nav a.active{background:rgba(255,255,255,.09);color:#fff;
+    box-shadow:inset 0 0.5px 0 rgba(255,255,255,.12)}
+  .nav a.active svg{opacity:1}
+  .nav .count{margin-left:auto;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.85);
+    background:rgba(255,255,255,.12);border-radius:7px;padding:1px 6px;line-height:1.5}
+
+  .rail .spacer{flex:1}
+
+  .rail .new{
+    display:flex;align-items:center;justify-content:center;gap:7px;height:34px;
+    border-radius:999px;background:#fff;color:var(--obsidian);
+    font-size:12.5px;font-weight:600;text-decoration:none;margin:0 2px 14px;
+    box-shadow:inset 0 -1px 0 rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.3);
+  }
+  .rail .new svg{width:12px;height:12px}
+
+  .account{
+    display:flex;align-items:center;gap:9px;border-top:1px solid rgba(255,255,255,.08);
+    padding:12px 8px 4px;
+  }
+  .account .avatar{width:24px;height:24px;border-radius:999px;background:linear-gradient(160deg,#3f3f46,#18181b);
+    border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:600;color:#fff}
+  .account .who{min-width:0}
+  .account .who .n{font-size:11.5px;font-weight:600;color:#fff;line-height:1.3}
+  .account .who .e{font-size:10px;color:rgba(255,255,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ───────────────────────── Main ────────────────────────────────────── */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .topbar{
+    display:flex;align-items:center;gap:10px;padding:10px 6px 16px 10px;flex-shrink:0;
+  }
+  .title h1{font-size:19px;font-weight:600;letter-spacing:-0.015em;line-height:1.15}
+  .title .sub{font-size:11.5px;color:var(--steel);margin-top:1px}
+  .title .sub b{color:var(--ink);font-weight:600}
+
+  .topbar .grow{flex:1}
+
+  .search{
+    display:flex;align-items:center;gap:8px;height:32px;width:230px;
+    background:var(--snow);border-radius:999px;padding:0 13px;
+    box-shadow:inset 0 0 0 1px var(--fog);color:var(--ash);font-size:12px;
+  }
+  .search svg{width:12.5px;height:12.5px;flex-shrink:0}
+  .search .kbd{margin-left:auto;font-size:9.5px;font-weight:600;color:var(--ash);
+    border:1px solid var(--fog);border-radius:6px;padding:1px 5px;background:var(--mist)}
+
+  .chip-btn{
+    display:flex;align-items:center;gap:6px;height:32px;padding:0 13px;
+    background:var(--snow);border-radius:999px;box-shadow:inset 0 0 0 1px var(--fog);
+    font-size:12px;font-weight:500;color:var(--ink);cursor:default;
+  }
+  .chip-btn svg{width:11px;height:11px;color:var(--steel)}
+
+  .seg{
+    display:flex;align-items:center;height:32px;background:var(--fog);
+    border-radius:999px;padding:3px;font-size:11.5px;font-weight:500;
+  }
+  .seg span{padding:0 12px;height:26px;display:flex;align-items:center;border-radius:999px;color:var(--steel)}
+  .seg .on{background:var(--snow);color:var(--ink);font-weight:600;
+    box-shadow:0 1px 2px rgba(0,0,0,.06)}
+
+  .cta{
+    display:flex;align-items:center;gap:7px;height:34px;padding:0 16px;
+    background:var(--obsidian);color:#fff;border-radius:999px;
+    font-size:12.5px;font-weight:500;text-decoration:none;
+    box-shadow:rgba(255,255,255,.5) 0 .5px 0 0 inset, rgba(117,123,133,.4) 0 9px 14px -5px inset,
+      rgb(44,46,52) 0 0 0 1.5px, rgba(0,0,0,.14) 0 4px 6px 0;
+  }
+  .cta svg{width:12px;height:12px}
+
+  /* ───────────────────────── Queue list ──────────────────────────────── */
+  .scroll{flex:1;overflow-y:auto;padding:2px 6px 24px 10px}
+  .grouphead{
+    display:flex;align-items:baseline;gap:7px;
+    padding:18px 10px 8px;
+  }
+  .grouphead:first-child{padding-top:4px}
+  .grouphead .g{font-size:12px;font-weight:600;color:var(--ink);letter-spacing:-0.005em}
+  .grouphead .c{font-size:11px;font-weight:500;color:var(--ash)}
+  .grouphead .line{flex:1;height:1px;background:var(--pebble);opacity:.55;align-self:center;margin-left:4px}
+
+  .rows{display:flex;flex-direction:column;gap:6px}
+  .row{
+    display:flex;align-items:center;gap:14px;
+    background:var(--snow);border-radius:16px;padding:10px 16px 10px 10px;
+    box-shadow:rgb(228,228,231) 0 1px 0 0 inset;
+    transition:transform .2s,box-shadow .2s;cursor:default;
+  }
+  .row:hover{box-shadow:rgb(228,228,231) 0 1px 0 0 inset, 0 4px 12px rgba(0,0,0,.04)}
+
+  .thumb{
+    width:42px;height:54px;border-radius:9px;overflow:hidden;flex-shrink:0;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);background:#fff;
+    display:flex;flex-direction:column;
+  }
+  .thumb .hero{height:55%}
+  .thumb .l{height:3px;border-radius:2px;background:var(--fog);margin:3px 6px 0}
+  .thumb .l.s{width:55%;margin-left:6px}
+  .thumb .btn{height:6px;width:60%;margin:4px auto 0;border-radius:3px;background:var(--graphite)}
+
+  .id{flex:1.6;min-width:0}
+  .id .name{font-size:13px;font-weight:600;letter-spacing:-0.005em;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .id .copy{font-size:11.5px;color:var(--steel);margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .id .copy .dot{color:var(--pebble);padding:0 4px}
+  .id .copy .ph{color:var(--ash);font-style:normal}
+
+  .cell{flex-shrink:0}
+  .brandchip{
+    display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px 0 4px;
+    background:var(--mist);border-radius:999px;font-size:11px;font-weight:500;color:var(--graphite);
+  }
+  .brandchip .m{width:17px;height:17px;border-radius:999px;background:var(--obsidian);color:#fff;
+    font-size:8.5px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+  .segchip{
+    display:inline-flex;align-items:center;height:24px;padding:0 10px;
+    background:var(--mist);border-radius:999px;font-size:11px;font-weight:500;color:var(--graphite);
+  }
+  .segchip .plus{color:var(--ash);margin-left:4px;font-weight:600}
+  .nosegs{font-size:11px;color:var(--ash)}
+
+  .status{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 11px;
+    border-radius:999px;font-size:11px;font-weight:550;background:var(--mist);color:var(--graphite)}
+  .status .d{width:5px;height:5px;border-radius:999px;background:var(--ash)}
+  .status.ok .d{background:var(--ok)}
+  .status.warn .d{background:var(--warn)}
+  .status.busy .d{background:var(--busy)}
+  .status.busy{color:var(--slate)}
+
+  .meta{display:flex;align-items:center;gap:14px;flex-shrink:0;justify-content:flex-end}
+  .links{font-size:11px;color:var(--steel);font-weight:500;font-variant-numeric:tabular-nums}
+  .links b{color:var(--ink);font-weight:600}
+  .flag{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;
+    font-size:10.5px;font-weight:550;color:#92400e;background:#fef3c7}
+  .flag svg{width:9px;height:9px}
+  .kpill{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 11px;border-radius:999px;
+    font-size:11px;font-weight:550;background:var(--obsidian);color:#fff}
+  .kpill svg{width:9px;height:9px;opacity:.7}
+  .open{width:26px;height:26px;border-radius:999px;background:var(--mist);display:flex;
+    align-items:center;justify-content:center;color:var(--slate);flex-shrink:0}
+  .open svg{width:11px;height:11px}
+
+  .colw-brand{width:128px}
+  .colw-seg{width:148px}
+  .colw-status{width:148px}
+  .colw-meta{width:230px}
+
+  .spin{width:11px;height:11px;border-radius:999px;border:1.5px solid var(--pebble);
+    border-top-color:var(--slate);animation:r 1s linear infinite;flex-shrink:0}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .prog{font-size:11px;color:var(--steel)}
+</style>
+</head>
+<body>
+
+<aside class="rail">
+  <div class="brand">
+    <span class="glyph">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+    </span>
+    <span class="word">Sendr</span>
+    <span class="plan">Redwood</span>
+  </div>
+
+  <nav class="nav">
+    <a class="active" href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      Queue <span class="count">3</span>
+    </a>
+    <a href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg>
+      Brands
+    </a>
+    <a href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Segments
+    </a>
+    <a href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
+      Analytics
+    </a>
+    <a href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+      Settings
+    </a>
+  </nav>
+
+  <div class="spacer"></div>
+
+  <a class="new" href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    New campaign
+  </a>
+
+  <div class="account">
+    <span class="avatar">J</span>
+    <span class="who">
+      <span class="n">Jack Stringer</span><br>
+      <span class="e">jackstringer@redwood.so</span>
+    </span>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="title">
+      <h1>Queue</h1>
+      <div class="sub"><b>3</b> need your review · 14 campaigns this week</div>
+    </div>
+    <div class="grow"></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      Search campaigns
+      <span class="kbd">⌘K</span>
+    </div>
+    <div class="chip-btn">All brands
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <div class="seg"><span class="on">Active</span><span>Closed</span></div>
+    <a class="cta" href="#">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+      Upload design
+    </a>
+  </div>
+
+  <div class="scroll">
+
+    <div class="grouphead"><span class="g">Needs review</span><span class="c">3</span><span class="line"></span></div>
+    <div class="rows">
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#cfe3df,#9dbfb6)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Summer Glow Sale — 40% sitewide</div>
+          <div class="copy">Your skin called. It wants filtered water ☀️<span class="dot">·</span>Up to 40% off ends Sunday — every showerhead, every filter.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">E</span>eskiin</span></div>
+        <div class="cell colw-seg"><span class="segchip">Master engaged<span class="plus">+2</span></span></div>
+        <div class="cell colw-status"><span class="status warn"><span class="d"></span>Needs review</span></div>
+        <div class="meta colw-meta">
+          <span class="flag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="m10.3 3.9-8.2 14.2a2 2 0 0 0 1.7 3h16.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>2 spelling</span>
+          <span class="links"><b>9</b> links</span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#e8ddcf,#c9b394)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Holi(slow) Body Serum Launch</div>
+          <div class="copy">The serum your body's been waiting for<span class="dot">·</span>Meet holi(slow) — firming, hydrating, and finally here.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">A</span>Agent Nateur</span></div>
+        <div class="cell colw-seg"><span class="segchip">Full list excl. 30d</span></div>
+        <div class="cell colw-status"><span class="status warn"><span class="d"></span>Needs review</span></div>
+        <div class="meta colw-meta">
+          <span class="flag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="m10.3 3.9-8.2 14.2a2 2 0 0 0 1.7 3h16.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>1 ext link</span>
+          <span class="links"><b>6</b> links</span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#d6dce8,#8f9fc0)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Father's Day Gift Guide</div>
+          <div class="copy">Dad-approved upgrades for the bathroom<span class="dot">·</span>Five gifts he'll actually use — starting at $89.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">E</span>eskiin</span></div>
+        <div class="cell colw-seg"><span class="segchip">Master engaged<span class="plus">+1</span></span></div>
+        <div class="cell colw-status"><span class="status warn"><span class="d"></span>Needs review</span></div>
+        <div class="meta colw-meta">
+          <span class="links"><b>11</b> links</span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="grouphead"><span class="g">Processing</span><span class="c">2</span><span class="line"></span></div>
+    <div class="rows">
+
+      <div class="row" style="opacity:.92">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#f0e4e0,#cfa99d)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Abandoned Browse — Week 24</div>
+          <div class="copy"><span class="ph">Generating subject lines…</span></div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">M</span>Mara Supply</span></div>
+        <div class="cell colw-seg"><span class="nosegs">—</span></div>
+        <div class="cell colw-status"><span class="status busy"><span class="spin"></span>Assigning links</span></div>
+        <div class="meta colw-meta">
+          <span class="prog">2 of 4 steps · 1m 12s</span>
+        </div>
+      </div>
+
+      <div class="row" style="opacity:.92">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#dfe8df,#a3bfa3)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Hydration Restock Reminder</div>
+          <div class="copy"><span class="ph">Slicing design…</span></div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">E</span>eskiin</span></div>
+        <div class="cell colw-seg"><span class="nosegs">—</span></div>
+        <div class="cell colw-status"><span class="status busy"><span class="spin"></span>Slicing design</span></div>
+        <div class="meta colw-meta">
+          <span class="prog">1 of 4 steps · 24s</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="grouphead"><span class="g">Sent to Klaviyo</span><span class="c">9</span><span class="line"></span></div>
+    <div class="rows">
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#e6e0f0,#a99dc9)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Memorial Day — Last Chance</div>
+          <div class="copy">Final hours: 30% off ends at midnight<span class="dot">·</span>This is the email you don't want to skim. 30% off, gone at 12.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">E</span>eskiin</span></div>
+        <div class="cell colw-seg"><span class="segchip">Master engaged<span class="plus">+2</span></span></div>
+        <div class="cell colw-status"><span class="status ok"><span class="d"></span>Sent to Klaviyo</span></div>
+        <div class="meta colw-meta">
+          <span class="links"><b>8</b> links</span>
+          <span class="kpill">Klaviyo<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#f0eadc,#d1bd8e)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Calm(her) Evening Ritual</div>
+          <div class="copy">Your 9pm wind-down, upgraded<span class="dot">·</span>Magnesium, calm(her), and a routine that actually sticks.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">A</span>Agent Nateur</span></div>
+        <div class="cell colw-seg"><span class="segchip">VIP 90-day</span></div>
+        <div class="cell colw-status"><span class="status ok"><span class="d"></span>Sent to Klaviyo</span></div>
+        <div class="meta colw-meta">
+          <span class="links"><b>5</b> links</span>
+          <span class="kpill">Klaviyo<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#dce8ea,#8fb4ba)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Welcome Series — Email 3 Refresh</div>
+          <div class="copy">The science of softer skin (2-min read)<span class="dot">·</span>Why hard water is sabotaging your skincare routine.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">E</span>eskiin</span></div>
+        <div class="cell colw-seg"><span class="segchip">New subscribers</span></div>
+        <div class="cell colw-status"><span class="status ok"><span class="d"></span>Sent to Klaviyo</span></div>
+        <div class="meta colw-meta">
+          <span class="links"><b>4</b> links</span>
+          <span class="kpill">Klaviyo<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="thumb"><div class="hero" style="background:linear-gradient(160deg,#e8dcdc,#bf8f8f)"></div><div class="l"></div><div class="l s"></div><div class="btn"></div></div>
+        <div class="id">
+          <div class="name">Mara Supply — June Drop</div>
+          <div class="copy">New arrivals: the June edit is live<span class="dot">·</span>Twelve new pieces. Small batches. They won't restock.</div>
+        </div>
+        <div class="cell colw-brand"><span class="brandchip"><span class="m">M</span>Mara Supply</span></div>
+        <div class="cell colw-seg"><span class="segchip">Master list</span></div>
+        <div class="cell colw-status"><span class="status ok"><span class="d"></span>Sent to Klaviyo</span></div>
+        <div class="meta colw-meta">
+          <span class="links"><b>7</b> links</span>
+          <span class="kpill">Klaviyo<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg></span>
+          <span class="open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+</body>
+</html>

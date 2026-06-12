@@ -285,15 +285,17 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
   const qaFlags = item.qa_flags as Array<{ type: string }> | null;
   const hasIssues = qaFlags && qaFlags.length > 0;
 
+  // Shared pill language: neutral surface, meaning carried by the dot.
+  const pill =
+    'inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-muted text-[11px] font-medium text-foreground/75 whitespace-nowrap';
+  const dot = 'h-[5px] w-[5px] rounded-full flex-shrink-0';
+
   // Processing state - not clickable
   if (item.status === 'processing' || isUpdating) {
     return (
-      <div 
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: 'hsl(204 100% 50% / 0.10)', color: 'hsl(204 80% 38%)' }}
-      >
-        <Loader2 className="h-3 w-3 animate-spin" style={{ color: 'hsl(204 80% 45%)' }} />
-        {isUpdating ? 'Building...' : `${item.processing_percent || 0}%`}
+      <div className={cn(pill, 'text-muted-foreground')}>
+        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/70" />
+        {isUpdating ? 'Building…' : `${item.processing_percent || 0}%`}
       </div>
     );
   }
@@ -305,29 +307,24 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium hover:opacity-90 transition-colors whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
+            className={cn(pill, 'group/st transition-colors hover:bg-secondary')}
           >
+            <span className={cn(dot, 'bg-success')} />
             <span className="whitespace-nowrap">Built in Klaviyo</span>
-            <ChevronDown className="h-3 w-3 flex-shrink-0" />
+            <ChevronDown className="h-3 w-3 flex-shrink-0 text-muted-foreground/0 transition-colors group-hover/st:text-muted-foreground" />
           </button>
         </PopoverTrigger>
-        <PopoverContent 
-          className="w-32 p-1 z-50 bg-card" 
+        <PopoverContent
+          className="w-36 rounded-xl p-1 z-50 bg-card shadow-floating border-0"
           align="start"
           onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => handleStatusChange('closed')}
-            className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-left rounded-lg transition-colors hover:bg-muted"
           >
-            <span 
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-              style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
-            >
-              <Archive className="h-3 w-3" />
-              Close
-            </span>
+            <Archive className="h-3 w-3 text-muted-foreground" />
+            Close
           </button>
         </PopoverContent>
       </Popover>
@@ -337,10 +334,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
   // Closed state - static badge
   if (item.status === 'closed') {
     return (
-      <div 
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
-      >
+      <div className={cn(pill, 'text-muted-foreground')}>
         <Archive className="h-3 w-3" />
         Closed
       </div>
@@ -350,14 +344,13 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
   // Failed state - with retry
   if (item.status === 'failed') {
     return (
-      <div 
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-        style={{ backgroundColor: 'hsl(0 72% 51% / 0.10)', color: 'hsl(0 65% 42%)' }}
-      >
+      <div className={cn(pill)}>
+        <span className={cn(dot, 'bg-destructive')} />
         Failed
         <button
           onClick={handleRetry}
-          className="ml-0.5 hover:opacity-80 rounded p-0.5 transition-colors"
+          className="ml-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          title="Retry"
         >
           <RotateCw className="h-3 w-3" />
         </button>
@@ -374,61 +367,49 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
       <PopoverTrigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors whitespace-nowrap hover:opacity-90"
-          style={isReady 
-            ? { backgroundColor: 'hsl(32 95% 44% / 0.10)', color: 'hsl(30 80% 36%)' }
-            : { backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }
-          }
+          className={cn(pill, 'group/st transition-colors hover:bg-secondary')}
         >
-          {isReady ? (hasIssues ? `${qaFlags?.length} issue${(qaFlags?.length ?? 0) === 1 ? "" : "s"}` : 'Ready for Review') : 'Approve & Build'}
-          <ChevronDown className="h-3 w-3" />
+          <span className={cn(dot, isReady ? 'bg-warning' : 'bg-success')} />
+          {isReady
+            ? hasIssues
+              ? `Needs review · ${qaFlags?.length}`
+              : 'Needs review'
+            : 'Approved'}
+          <ChevronDown className="h-3 w-3 text-muted-foreground/0 transition-colors group-hover/st:text-muted-foreground" />
         </button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-44 p-1 z-50 bg-card" 
+      <PopoverContent
+        className="w-44 rounded-xl p-1 z-50 bg-card shadow-floating border-0"
         align="start"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={() => handleStatusChange('ready_for_review')}
           className={cn(
-            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent",
-            isReady && "bg-secondary/50"
+            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-left rounded-lg transition-colors hover:bg-muted',
+            isReady && 'bg-muted/70 font-medium',
           )}
         >
-          <span 
-            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(32 95% 44% / 0.10)', color: 'hsl(30 80% 36%)' }}
-          >
-            Ready for Review
-          </span>
+          <span className={cn(dot, 'bg-warning')} />
+          Needs review
         </button>
         <button
           onClick={() => handleStatusChange('approved')}
           className={cn(
-            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent",
-            isApproved && "bg-secondary/50"
+            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-left rounded-lg transition-colors hover:bg-muted',
+            isApproved && 'bg-muted/70 font-medium',
           )}
         >
-          <span 
-            className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
-          >
-            Approve & Build
-          </span>
+          <span className={cn(dot, 'bg-success')} />
+          Approve &amp; build
         </button>
-        <div className="h-px bg-secondary my-1" />
+        <div className="h-px bg-border/70 my-1" />
         <button
           onClick={() => handleStatusChange('closed')}
-          className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] text-left rounded transition-colors hover:bg-accent"
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-left rounded-lg transition-colors hover:bg-muted"
         >
-          <span 
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-            style={{ backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }}
-          >
-            <Archive className="h-3 w-3" />
-            Close
-          </span>
+          <Archive className="h-3 w-3 text-muted-foreground" />
+          Close
         </button>
       </PopoverContent>
     </Popover>

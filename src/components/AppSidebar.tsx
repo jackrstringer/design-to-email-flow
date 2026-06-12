@@ -1,4 +1,4 @@
-import { List, Building2, Users, Settings, LogOut, Send, BarChart3, ChevronsUpDown } from "lucide-react";
+import { List, Building2, Users, Settings, LogOut, Send, BarChart3, Plus } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -11,7 +11,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -52,34 +51,27 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" className="group/rail border-r border-sidebar-border">
-      <SidebarHeader className="px-2 pb-2 pt-3">
-        <div className={cn("flex h-8 items-center", collapsed ? "justify-center" : "gap-2.5 pl-1.5 pr-1")}>
+    <Sidebar collapsible="icon" variant="floating" className="group/rail">
+      <SidebarHeader className={cn("pt-4", collapsed ? "px-2 pb-1" : "px-4 pb-1")}>
+        <div className={cn("flex h-8 items-center", collapsed ? "justify-center" : "gap-2.5")}>
           <span
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] bg-gradient-to-br from-[hsl(26_94%_55%)] to-[hsl(20_92%_46%)] shadow-[inset_0_1px_0_hsl(0_0%_100%/0.25),0_1px_2px_hsl(20_92%_30%/0.35)]"
+            className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[9px] bg-white text-[hsl(240_10%_4%)]"
             aria-hidden="true"
           >
-            <Send className="h-3.5 w-3.5 text-white" strokeWidth={2.25} />
+            <Send className="h-3.5 w-3.5" strokeWidth={2.4} />
           </span>
           {!collapsed && (
-            <>
-              <span className="flex-1 truncate text-sm font-semibold tracking-[-0.015em] text-foreground">
-                Sendr
-              </span>
-              {/* collapse control whispers in on rail hover, ⌘B always works */}
-              <SidebarTrigger
-                title="Collapse sidebar ⌘B"
-                className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/0 transition-colors hover:bg-sidebar-accent hover:text-foreground group-hover/rail:text-muted-foreground"
-              />
-            </>
+            <span className="flex-1 truncate text-sm font-semibold tracking-[-0.01em] text-white">
+              Sendr
+            </span>
           )}
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2">
-        <SidebarGroup className="p-0 pt-1">
+      <SidebarContent className={cn(collapsed ? "px-1.5" : "px-3")}>
+        <SidebarGroup className="p-0 pt-4">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-px">
+            <SidebarMenu className="gap-0.5">
               {navItems.map((item) => {
                 const active = isActive(item.url);
                 return (
@@ -89,19 +81,19 @@ export function AppSidebar() {
                       isActive={active}
                       tooltip={item.title}
                       className={cn(
-                        "h-8 rounded-lg px-2 text-[13px] transition-all duration-150",
+                        "h-8 rounded-[11px] px-2.5 text-[12.5px] transition-colors duration-200",
                         active
-                          ? "bg-card font-medium text-foreground shadow-card"
-                          : "font-normal text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground",
+                          ? "bg-white/[0.09] font-medium text-white shadow-[inset_0_0.5px_0_hsl(0_0%_100%/0.12)] hover:bg-white/[0.09] hover:text-white"
+                          : "font-medium text-[hsl(240_5%_65%)] hover:bg-white/[0.04] hover:text-white",
                       )}
                     >
                       <NavLink to={item.url}>
                         <item.icon
                           className={cn(
-                            "h-[15px] w-[15px] shrink-0 transition-colors duration-150",
-                            active ? "text-brand" : "text-sidebar-foreground/55",
+                            "h-[14px] w-[14px] shrink-0 transition-opacity duration-200",
+                            active ? "opacity-100" : "opacity-70",
                           )}
-                          strokeWidth={active ? 2 : 1.75}
+                          strokeWidth={2}
                         />
                         <span className="truncate">{item.title}</span>
                       </NavLink>
@@ -114,24 +106,40 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-2">
+      <SidebarFooter className={cn("pb-3", collapsed ? "px-1.5" : "px-3")}>
+        <button
+          onClick={() => navigate("/upload")}
+          className={cn(
+            "mb-2 flex items-center justify-center gap-1.5 rounded-full bg-white text-[12.5px] font-semibold text-[hsl(240_10%_4%)]",
+            "shadow-[inset_0_-1px_0_hsl(0_0%_0%/0.08),0_1px_2px_hsl(0_0%_0%/0.3)]",
+            "transition-transform duration-200 active:scale-[0.98]",
+            collapsed ? "h-8 w-8 self-center" : "h-[34px] w-full",
+          )}
+          title="New campaign"
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {!collapsed && "New campaign"}
+        </button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
-                "flex w-full items-center rounded-md text-left outline-none transition-colors duration-100 hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-ring",
-                collapsed ? "h-8 justify-center" : "h-8 gap-2 px-1.5",
+                "flex w-full items-center rounded-xl border-t border-white/[0.08] text-left outline-none transition-colors duration-200 hover:bg-white/[0.04]",
+                collapsed ? "h-9 justify-center" : "h-11 gap-2.5 px-1.5 pt-1",
               )}
               aria-label="Account menu"
             >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(30_8%_26%)] to-[hsl(30_8%_12%)] text-[10px] font-medium text-primary-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.15)]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[hsl(240_5%_28%)] to-[hsl(240_6%_14%)] text-[10px] font-semibold text-white shadow-[inset_0_0.5px_0_hsl(0_0%_100%/0.15)]">
                 {initial}
               </span>
               {!collapsed && (
-                <>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{email}</span>
-                  <ChevronsUpDown className="h-3 w-3 shrink-0 text-muted-foreground/50" />
-                </>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px] font-medium leading-tight text-white">
+                    {email.split("@")[0]}
+                  </span>
+                  <span className="block truncate text-[10px] leading-tight text-white/40">{email}</span>
+                </span>
               )}
             </button>
           </DropdownMenuTrigger>
@@ -152,7 +160,7 @@ export function AppSidebar() {
         </DropdownMenu>
       </SidebarFooter>
 
-      {/* click/drag affordance on the rail edge */}
+      {/* click/drag affordance on the rail edge — ⌘B also toggles */}
       <SidebarRail />
     </Sidebar>
   );

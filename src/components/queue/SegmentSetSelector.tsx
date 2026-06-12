@@ -95,8 +95,8 @@ export function SegmentSetSelector({
           variant="ghost"
           size="sm"
           className={cn(
-            "h-6 px-2 text-[12px] font-normal justify-between min-w-0 max-w-full gap-1",
-            selectedPreset ? "text-foreground/80" : "text-muted-foreground/70",
+            "h-6 rounded-full bg-muted px-2.5 text-[11px] font-medium justify-between min-w-0 max-w-full gap-1 hover:bg-secondary",
+            selectedPreset ? "text-foreground/75" : "text-muted-foreground/70",
             selectedMissingCount > 0 && "text-destructive hover:text-destructive",
             disabled && "opacity-50 pointer-events-none"
           )}

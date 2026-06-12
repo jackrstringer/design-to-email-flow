@@ -1,37 +1,25 @@
 import { StatusSelector } from './StatusSelector';
 import { InlineEditableText } from './InlineEditableText';
 import { InlineDropdownSelector } from './InlineDropdownSelector';
-import { ExternalLinksIndicator } from './ExternalLinksIndicator';
-import { SpellingIndicator } from './SpellingIndicator';
 import { SegmentSetSelector, SegmentPreset } from './SegmentSetSelector';
+import { LinksSummaryPopover } from './LinksSummaryPopover';
 import { ProcessingTimer } from './ProcessingTimer';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ExternalLink, Copy, Columns, AlertTriangle } from 'lucide-react';
+import { ArrowUpRight, ChevronRight, Columns, AlertTriangle } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-interface ColumnWidths {
-  status: number;
-  thumbnail: number;
-  name: number;
-  client: number;
-  segmentSet: number;
-  subject: number;
-  previewText: number;
-  links: number;
-  external: number;
-  spelling: number;
-  klaviyo: number;
-}
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+
+export type QueueDensity = 'comfortable' | 'compact';
 
 interface QueueRowProps {
   item: CampaignQueueItem;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onUpdate: () => void;
-  columnWidths: ColumnWidths;
+  density: QueueDensity;
   presets: SegmentPreset[];
   liveSegmentIds: Set<string>;
   liveSegmentsLoaded: boolean;
@@ -41,46 +29,62 @@ interface QueueRowProps {
   onToggleTimers: () => void;
 }
 
-export function QueueRow({ 
-  item, 
-  isExpanded, 
-  onToggleExpand, 
-  onUpdate, 
-  columnWidths, 
+/** Quiet amber flag chip — the only saturated surface in a row. */
+function FlagChip({ label, title, dense }: { label: string; title: string; dense?: boolean }) {
+  return (
+    <Tooltip delayDuration={150}>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 font-semibold text-warning',
+            dense ? 'h-5 px-1.5 text-[10px]' : 'h-[22px] px-2 text-[10.5px]',
+          )}
+        >
+          <AlertTriangle className="h-[9px] w-[9px]" strokeWidth={2.5} />
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {title}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function QueueRow({
+  item,
+  isExpanded,
+  onToggleExpand,
+  onUpdate,
+  density,
   presets,
   liveSegmentIds,
   liveSegmentsLoaded,
   isSelected,
   onSelect,
   showTimers,
-  onToggleTimers
 }: QueueRowProps) {
   const slices = (item.slices as Array<{ link?: string; totalColumns?: number; multiCtaWarning?: string }>) || [];
-  const linkCount = new Set(slices.filter(sl => sl.link).map(sl => sl.link)).size; // unique destinations
 
-  // Check for multi-column blocks
-  const hasMultiColumnBlocks = slices.some(s => (s.totalColumns ?? 1) > 1);
-  
-  // Check for multi-CTA warnings (slices that may need splitting)
-  const hasMultiCtaWarning = slices.some(s => s.multiCtaWarning);
+  const hasMultiColumnBlocks = slices.some((s) => (s.totalColumns ?? 1) > 1);
+  const hasMultiCtaWarning = slices.some((s) => s.multiCtaWarning);
 
-  // Get brand info from joined data
   const brandName = (item as any).brands?.name;
   const brandDomain = (item as any).brands?.domain;
-  const brandColor = (item as any).brands?.primary_color || '#6b7280';
 
-  // Parse spelling errors
   const spellingErrors = item.spelling_errors as Array<{ text: string }> | null;
+  const spellingCount = spellingErrors?.length || 0;
+  const externalCount = brandDomain
+    ? new Set(slices.filter((s) => s.link && !s.link.includes(brandDomain)).map((s) => s.link)).size
+    : 0;
 
-  // Get the selected preset - use saved one, or auto-select default
-  const selectedPresetId = item.selected_segment_preset_id || presets.find(p => p.is_default)?.id || null;
+  const selectedPresetId = item.selected_segment_preset_id || presets.find((p) => p.is_default)?.id || null;
+
+  const isProcessing = item.status === 'processing';
+  const compact = density === 'compact';
 
   const handleNameSave = async (newName: string) => {
-    const { error } = await supabase
-      .from('campaign_queue')
-      .update({ name: newName })
-      .eq('id', item.id);
-
+    const { error } = await supabase.from('campaign_queue').update({ name: newName }).eq('id', item.id);
     if (error) {
       toast.error('Failed to update name');
       return false;
@@ -94,7 +98,6 @@ export function QueueRow({
       .from('campaign_queue')
       .update({ selected_subject_line: value })
       .eq('id', item.id);
-
     if (error) {
       toast.error('Failed to update subject line');
       return false;
@@ -108,7 +111,6 @@ export function QueueRow({
       .from('campaign_queue')
       .update({ selected_preview_text: value })
       .eq('id', item.id);
-
     if (error) {
       toast.error('Failed to update preview text');
       return false;
@@ -122,7 +124,6 @@ export function QueueRow({
       .from('campaign_queue')
       .update({ selected_segment_preset_id: presetId })
       .eq('id', item.id);
-
     if (error) {
       toast.error('Failed to update segment preset');
       return;
@@ -130,259 +131,308 @@ export function QueueRow({
     onUpdate();
   };
 
-  return (
-    <div 
+  // ── shared fragments ─────────────────────────────────────────────────────
+
+  const checkbox = (
+    <div
       className={cn(
-        "group flex h-10 items-center bg-card border-b border-border/60 text-[13px] text-foreground",
-        "hover:bg-secondary/50 transition-colors cursor-pointer",
-        isExpanded && "bg-secondary",
-        isSelected && "bg-foreground"
+        'flex shrink-0 items-center justify-center transition-opacity',
+        compact ? 'w-6' : 'w-7',
+        isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
       )}
-      onClick={onToggleExpand}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(item.id, !isSelected, e.shiftKey);
+      }}
     >
-      {/* Checkbox column - visible on hover or when selected */}
-      <div 
-        className="w-8 flex-shrink-0 px-2 flex items-center justify-center" 
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(item.id, !isSelected, e.shiftKey);
-        }}
-      >
-        <Checkbox
-          checked={isSelected}
-          onCheckedChange={(checked) => onSelect(item.id, checked as boolean, false)}
+      <Checkbox checked={isSelected} className="pointer-events-none rounded-[5px]" />
+    </div>
+  );
+
+  const thumbnail = (
+    <div className="relative shrink-0">
+      {(hasMultiCtaWarning || hasMultiColumnBlocks) && !compact && (
+        <Tooltip delayDuration={150}>
+          <TooltipTrigger asChild>
+            <span className="absolute -right-1.5 -top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-card text-muted-foreground shadow-card">
+              {hasMultiCtaWarning ? (
+                <AlertTriangle className="h-2.5 w-2.5 text-warning" />
+              ) : (
+                <Columns className="h-2.5 w-2.5" />
+              )}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {hasMultiCtaWarning ? 'Some slices may have multiple CTAs that need splitting' : 'Contains multi-column blocks'}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {item.image_url ? (
+        <img
+          src={item.image_url}
+          alt=""
+          loading="lazy"
           className={cn(
-            "transition-opacity pointer-events-none",
-            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            'object-cover object-top shadow-[inset_0_0_0_1px_hsl(0_0%_0%/0.07)]',
+            compact ? 'h-7 w-5 rounded-[5px]' : 'h-[54px] w-[42px] rounded-[9px]',
           )}
         />
-      </div>
-      
-      {/* Processing Timer (renders nothing when timers are off) */}
-      {showTimers && <ProcessingTimer
+      ) : (
+        <div
+          className={cn(
+            'bg-muted shadow-[inset_0_0_0_1px_hsl(0_0%_0%/0.05)]',
+            compact ? 'h-7 w-5 rounded-[5px]' : 'h-[54px] w-[42px] rounded-[9px]',
+          )}
+        />
+      )}
+    </div>
+  );
+
+  const brandChip = brandName ? (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-center rounded-full bg-muted font-medium text-foreground/70',
+        compact ? 'h-5 gap-1 px-1.5 pl-[3px] text-[10.5px]' : 'h-6 gap-1.5 px-2.5 pl-1 text-[11px]',
+      )}
+    >
+      <span
+        className={cn(
+          'flex shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground',
+          compact ? 'h-3.5 w-3.5 text-[7.5px]' : 'h-[17px] w-[17px] text-[8.5px]',
+        )}
+      >
+        {brandName.charAt(0).toUpperCase()}
+      </span>
+      <span className="truncate">{brandName}</span>
+    </span>
+  ) : (
+    <span className="text-[11px] text-muted-foreground/60">—</span>
+  );
+
+  const statusCell = (
+    <div onClick={(e) => e.stopPropagation()}>
+      <StatusSelector
+        item={item}
+        onUpdate={onUpdate}
+        presets={presets}
+        liveSegmentIds={liveSegmentIds}
+        liveSegmentsLoaded={liveSegmentsLoaded}
+      />
+    </div>
+  );
+
+  const segmentCell = (
+    <div onClick={(e) => e.stopPropagation()} className="min-w-0">
+      <SegmentSetSelector
+        presets={presets}
+        selectedPresetId={selectedPresetId}
+        brandId={item.brand_id}
+        liveSegmentIds={liveSegmentIds}
+        liveSegmentsLoaded={liveSegmentsLoaded}
+        onSelect={handleSegmentPresetSelect}
+        disabled={isProcessing}
+      />
+    </div>
+  );
+
+  const flags = (
+    <>
+      {spellingCount > 0 && (
+        <FlagChip
+          dense={compact}
+          label={compact ? String(spellingCount) : `${spellingCount} spelling`}
+          title={`${spellingCount} possible spelling error${spellingCount === 1 ? '' : 's'} — open to review`}
+        />
+      )}
+      {externalCount > 0 && (
+        <FlagChip
+          dense={compact}
+          label={compact ? `${externalCount} ext` : `${externalCount} ext link${externalCount === 1 ? '' : 's'}`}
+          title={`${externalCount} destination${externalCount === 1 ? '' : 's'} outside ${brandDomain} — check the link list`}
+        />
+      )}
+    </>
+  );
+
+  const klaviyoPill = (() => {
+    if (!((item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id)))
+      return null;
+    const url =
+      item.klaviyo_campaign_url ||
+      `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          'inline-flex shrink-0 items-center gap-1 rounded-full bg-primary font-medium text-primary-foreground transition-opacity hover:opacity-85',
+          compact ? 'h-5 px-2 text-[10.5px]' : 'h-6 px-2.5 text-[11px]',
+        )}
+        title="Open campaign in Klaviyo"
+      >
+        Klaviyo
+        <ArrowUpRight className={cn('opacity-60', compact ? 'h-2.5 w-2.5' : 'h-[11px] w-[11px]')} strokeWidth={2.5} />
+      </a>
+    );
+  })();
+
+  const timer = showTimers ? (
+    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
+      <ProcessingTimer
         createdAt={item.created_at}
         completedAt={(item as any).processing_completed_at}
         status={item.status}
         visible={showTimers}
-        onToggle={onToggleTimers}
-      />}
-      
-      {/* Status */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.status }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <StatusSelector
-          item={item}
-          onUpdate={onUpdate}
-          presets={presets}
-          liveSegmentIds={liveSegmentIds}
-          liveSegmentsLoaded={liveSegmentsLoaded}
-        />
-      </div>
-      
-      {/* Thumbnail */}
-      <div className="px-2 flex-shrink-0 relative" style={{ width: columnWidths.thumbnail }}>
-        {/* Multi-CTA warning badge - takes priority */}
-        {hasMultiCtaWarning && (
-          <Badge 
-            variant="outline" 
-            className="absolute -top-1 -right-1 bg-foreground text-foreground border-border text-[8px] px-1 py-0 h-4 z-10"
-            title="This campaign may have slices with multiple CTAs that need splitting"
-          >
-            <AlertTriangle className="w-2.5 h-2.5" />
-          </Badge>
-        )}
-        {/* Multi-column badge - only show if no warning */}
-        {!hasMultiCtaWarning && hasMultiColumnBlocks && (
-          <Badge variant="outline" className="absolute -top-1 -right-1 bg-foreground text-muted-foreground border-border text-[8px] px-1 py-0 h-4 z-10">
-            <Columns className="w-2.5 h-2.5" />
-          </Badge>
-        )}
-        {item.image_url ? (
-          <img
-            src={item.image_url}
-            alt={item.name || 'Campaign preview'}
-            className="h-7 w-5 object-cover object-top rounded-sm border border-border"
+        onToggle={() => {}}
+      />
+    </span>
+  ) : null;
+
+  const chevron = (
+    <span
+      className={cn(
+        'flex shrink-0 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors group-hover:bg-secondary group-hover:text-foreground',
+        compact ? 'h-5 w-5' : 'h-[26px] w-[26px]',
+        isExpanded && 'bg-primary text-primary-foreground group-hover:bg-primary group-hover:text-primary-foreground',
+      )}
+    >
+      <ChevronRight
+        className={cn('transition-transform duration-200', compact ? 'h-3 w-3' : 'h-[11px] w-[11px]', isExpanded && 'rotate-90')}
+        strokeWidth={2.5}
+      />
+    </span>
+  );
+
+  const tileClasses = cn(
+    'row-tile group flex cursor-pointer items-center',
+    compact ? 'gap-2.5 rounded-xl py-1.5 pl-1 pr-2.5' : 'gap-3.5 rounded-2xl py-2.5 pl-1.5 pr-4',
+    isProcessing && 'opacity-[0.92]',
+    isExpanded && 'rounded-b-none shadow-none',
+    isSelected && 'bg-secondary/60',
+  );
+
+  // ── compact: one line, everything visible, engineer density ─────────────
+  if (compact) {
+    return (
+      <div className={tileClasses} onClick={onToggleExpand}>
+        {checkbox}
+        {thumbnail}
+        <div className="w-[200px] shrink-0 xl:w-[240px]" onClick={(e) => e.stopPropagation()}>
+          <InlineEditableText
+            value={item.name || 'Untitled Campaign'}
+            onSave={handleNameSave}
+            className="!text-[12px] font-semibold"
           />
-        ) : (
-          <div className="h-7 w-5 bg-secondary rounded-sm border border-border" />
-        )}
+        </div>
+        <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
+          <InlineDropdownSelector
+            selected={item.selected_subject_line}
+            options={item.generated_subject_lines}
+            provided={item.provided_subject_line}
+            onSelect={handleSubjectLineSelect}
+            placeholder="Subject…"
+            isProcessing={isProcessing}
+            processingStep={item.processing_step}
+            isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
+            isClickUpSource={item.copy_source === 'clickup'}
+            textClassName="!text-[12px]"
+          />
+        </div>
+        <div className="hidden min-w-0 flex-1 lg:block" onClick={(e) => e.stopPropagation()}>
+          <InlineDropdownSelector
+            selected={item.selected_preview_text}
+            options={item.generated_preview_texts}
+            provided={item.provided_preview_text}
+            onSelect={handlePreviewTextSelect}
+            placeholder="Preview…"
+            isProcessing={isProcessing}
+            processingStep={item.processing_step}
+            isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
+            isClickUpSource={item.copy_source === 'clickup'}
+            textClassName="!text-[12px] text-muted-foreground"
+          />
+        </div>
+        <div className="w-[108px] shrink-0">{brandChip}</div>
+        <div className="hidden w-[120px] shrink-0 md:block">{segmentCell}</div>
+        <div className="w-[124px] shrink-0">{statusCell}</div>
+        <div className="flex w-[148px] shrink-0 items-center justify-end gap-1.5">
+          {flags}
+          <LinksSummaryPopover slices={slices} brandDomain={brandDomain} dense />
+          {klaviyoPill}
+          {timer}
+        </div>
+        {chevron}
       </div>
-      
-      {/* Name */}
-      <div 
-        className="relative px-2 flex-shrink-0 overflow-hidden" 
-        style={{ width: columnWidths.name }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Text flows naturally, no truncation - only clipped by container overflow */}
-        <InlineEditableText
-          value={item.name || 'Untitled Campaign'}
-          onSave={handleNameSave}
-          className="text-[13px] whitespace-nowrap"
-        />
-        {/* Open button - absolutely positioned, appears on row hover with solid bg */}
-        <button
-          className={cn(
-            "absolute right-0 top-0 bottom-0 flex items-center",
-            "pl-4 pr-2 text-[11px] text-muted-foreground hover:text-foreground/80",
-            "opacity-0 group-hover:opacity-100 transition-opacity",
-            isExpanded ? "bg-secondary" : isSelected ? "bg-foreground" : "bg-card"
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpand();
-          }}
-        >
-          Open ›
-        </button>
-      </div>
-      
-      {/* Client (Brand Name) */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.client }}
-      >
-        {brandName ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium truncate max-w-full bg-secondary text-foreground border">
-            <span 
-              className="w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-black/10"
-              style={{ backgroundColor: brandColor }}
+    );
+  }
+
+  // ── comfortable: two-line object row, the approved mock ─────────────────
+  return (
+    <div className={tileClasses} onClick={onToggleExpand}>
+      {checkbox}
+      {thumbnail}
+
+      <div className="min-w-0 flex-[1.6]">
+        <div onClick={(e) => e.stopPropagation()} className="-ml-1 max-w-full pr-2">
+          <InlineEditableText
+            value={item.name || 'Untitled Campaign'}
+            onSave={handleNameSave}
+            className="!text-[13px] font-semibold tracking-[-0.005em]"
+          />
+        </div>
+        <div className="mt-px flex min-w-0 items-center pr-2" onClick={(e) => e.stopPropagation()}>
+          <div className="-ml-1 min-w-0 max-w-[48%] flex-shrink">
+            <InlineDropdownSelector
+              selected={item.selected_subject_line}
+              options={item.generated_subject_lines}
+              provided={item.provided_subject_line}
+              onSelect={handleSubjectLineSelect}
+              placeholder="Select subject…"
+              isProcessing={isProcessing}
+              processingStep={item.processing_step}
+              isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
+              isClickUpSource={item.copy_source === 'clickup'}
+              textClassName="!text-[11.5px] text-muted-foreground"
             />
-            {brandName}
-          </span>
-        ) : '—'}
-      </div>
-
-      {/* Segment Set */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.segmentSet }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SegmentSetSelector
-          presets={presets}
-          selectedPresetId={selectedPresetId}
-          brandId={item.brand_id}
-          liveSegmentIds={liveSegmentIds}
-          liveSegmentsLoaded={liveSegmentsLoaded}
-          onSelect={handleSegmentPresetSelect}
-          disabled={item.status === 'processing'}
-        />
-      </div>
-      
-      {/* Subject Line */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.subject }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineDropdownSelector
-          selected={item.selected_subject_line}
-          options={item.generated_subject_lines}
-          provided={item.provided_subject_line}
-          onSelect={handleSubjectLineSelect}
-          placeholder="Select subject..."
-          isProcessing={item.status === 'processing'}
-          processingStep={item.processing_step}
-          isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
-          isClickUpSource={item.copy_source === 'clickup'}
-        />
-      </div>
-
-      {/* Preview Text */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.previewText }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineDropdownSelector
-          selected={item.selected_preview_text}
-          options={item.generated_preview_texts}
-          provided={item.provided_preview_text}
-          onSelect={handlePreviewTextSelect}
-          placeholder="Select preview..."
-          isProcessing={item.status === 'processing'}
-          processingStep={item.processing_step}
-          isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
-          isClickUpSource={item.copy_source === 'clickup'}
-        />
-      </div>
-      
-      {/* Links - just count */}
-      <div 
-        className="px-2 flex-shrink-0 text-center text-muted-foreground" 
-        style={{ width: columnWidths.links }}
-      >
-        {linkCount > 0 ? linkCount : '—'}
-      </div>
-      
-      {/* External Links Indicator */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.external }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <ExternalLinksIndicator slices={slices} brandDomain={brandDomain} />
-      </div>
-      
-      {/* Spelling Indicator */}
-      <div 
-        className="px-2 flex-shrink-0" 
-        style={{ width: columnWidths.spelling }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SpellingIndicator spellingErrors={spellingErrors} />
-      </div>
-
-      {/* Klaviyo Link */}
-      <div 
-        className="px-2 flex-shrink-0 flex items-center group/klaviyo" 
-        style={{ width: columnWidths.klaviyo }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {(item.status === 'sent_to_klaviyo' || item.status === 'closed') && (item.klaviyo_campaign_url || item.klaviyo_campaign_id) ? (() => {
-          const klaviyoUrl = item.klaviyo_campaign_url || `https://www.klaviyo.com/email-template-editor/campaign/${item.klaviyo_campaign_id}/content/edit`;
-          const displayText = `campaign/${item.klaviyo_campaign_id || '...'}`;
-          return (
-            <div className="flex items-center gap-1.5 min-w-0 w-full">
-              <a
-                href={klaviyoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-muted-foreground flex-shrink-0"
-                title="Open in Klaviyo"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-              <a
-                href={klaviyoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-muted-foreground hover:text-muted-foreground hover:underline truncate flex-1 min-w-0"
-                title={klaviyoUrl}
-              >
-                {displayText}
-              </a>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(klaviyoUrl);
-                  toast.success('URL copied');
-                }}
-                className="opacity-0 group-hover/klaviyo:opacity-100 transition-opacity p-0.5 hover:bg-accent rounded flex-shrink-0"
-                title="Copy URL"
-              >
-                <Copy className="h-3 w-3 text-muted-foreground/70 hover:text-muted-foreground" />
-              </button>
+          </div>
+          {!isProcessing && (
+            <span className="px-1 text-[11.5px] text-border" aria-hidden>
+              ·
+            </span>
+          )}
+          {!isProcessing && (
+            <div className="min-w-0 flex-1">
+              <InlineDropdownSelector
+                selected={item.selected_preview_text}
+                options={item.generated_preview_texts}
+                provided={item.provided_preview_text}
+                onSelect={handlePreviewTextSelect}
+                placeholder="Select preview…"
+                isProcessing={isProcessing}
+                processingStep={item.processing_step}
+                isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
+                isClickUpSource={item.copy_source === 'clickup'}
+                textClassName="!text-[11.5px] text-muted-foreground/80"
+              />
             </div>
-          );
-        })() : (
-          <span className="text-muted-foreground/70">—</span>
-        )}
+          )}
+        </div>
       </div>
+
+      <div className="hidden w-[124px] shrink-0 md:block">{brandChip}</div>
+      <div className="hidden w-[144px] shrink-0 lg:block">{segmentCell}</div>
+      <div className="w-[136px] shrink-0">{statusCell}</div>
+
+      <div className="flex w-[180px] shrink-0 items-center justify-end gap-2 xl:w-[220px]">
+        {flags}
+        <LinksSummaryPopover slices={slices} brandDomain={brandDomain} />
+        {klaviyoPill}
+        {timer}
+      </div>
+
+      {chevron}
     </div>
   );
 }

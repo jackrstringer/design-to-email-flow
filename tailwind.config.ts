@@ -31,6 +31,13 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -68,7 +75,7 @@ export default {
       },
       fontFamily: {
         sans: [
-          "Inter",
+          "DM Sans",
           "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",
