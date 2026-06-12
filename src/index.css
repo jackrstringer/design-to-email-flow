@@ -159,8 +159,9 @@
     background-clip: content-box;
   }
 
+  /* Quiet, neutral focus — visible for keyboard users, never loud chrome. */
   :focus-visible {
-    outline: 2px solid hsl(var(--brand) / 0.55);
+    outline: 1.5px solid hsl(var(--foreground) / 0.35);
     outline-offset: 2px;
   }
 }
@@ -190,13 +191,14 @@
   }
 
   .animate-page-in {
-    animation: page-in 0.26s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+    animation: page-in 0.16s ease-out both;
   }
   .animate-fade-up {
-    animation: page-in 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+    animation: page-in 0.2s ease-out both;
   }
+  /* Mild overshoot spring — reserved for entrances (panels, auth card). */
   .animate-scale-in {
-    animation: scale-in 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+    animation: scale-in 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
   }
 
   /* Surfaces — layered, soft, barely-there. */
@@ -217,17 +219,13 @@
       0 20px 48px -16px hsl(30 8% 9% / 0.1);
   }
 
-  /* Interactive card — lifts toward the cursor. */
+  /* Interactive card — crisp border/wash response, no bouncy lift. */
   .card-lift {
-    transition: transform 0.16s cubic-bezier(0.21, 1.02, 0.73, 1), box-shadow 0.16s cubic-bezier(0.21, 1.02, 0.73, 1), border-color 0.16s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
   }
   .card-lift:hover {
-    transform: translateY(-1px);
-    border-color: hsl(40 10% 82%);
-    box-shadow: 0 2px 4px hsl(30 8% 9% / 0.05), 0 10px 24px -10px hsl(30 8% 9% / 0.12);
-  }
-  .card-lift:active {
-    transform: translateY(0);
+    border-color: hsl(40 10% 78%);
+    box-shadow: 0 1px 3px hsl(30 8% 9% / 0.06);
   }
 
   .shadow-button {
@@ -248,14 +246,13 @@
   }
 }
 
+/* Pages fade, never slide — motion is transform/opacity only and quiet. */
 @keyframes page-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

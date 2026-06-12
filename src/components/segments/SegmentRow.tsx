@@ -138,18 +138,23 @@ export function SegmentRow({
         ) : (
           <>
             <span
-              className="text-sm font-medium cursor-pointer hover:text-primary truncate"
+              className="cursor-text truncate text-[13px] font-medium transition-colors duration-150 hover:text-foreground/70"
               onClick={() => setEditingName(true)}
             >
               {preset.name}
             </span>
             {preset.is_default ? (
-              <Star className="h-4 w-4 fill-foreground text-foreground flex-shrink-0" />
+              <span className="inline-flex h-[18px] flex-shrink-0 items-center rounded-full bg-secondary px-2 text-[10px] font-medium leading-none text-muted-foreground">
+                Default
+              </span>
             ) : (
-              <Star 
-                className="h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-foreground hover:fill-foreground cursor-pointer transition-all flex-shrink-0"
+              <button
                 onClick={handleSetDefault}
-              />
+                className="inline-flex h-[18px] flex-shrink-0 items-center rounded-full border border-dashed border-input px-2 text-[10px] font-medium leading-none text-muted-foreground/70 opacity-0 transition-[opacity,color,border-color] duration-150 hover:border-foreground/30 hover:text-foreground group-hover:opacity-100"
+              >
+                <Star className="mr-1 h-2.5 w-2.5" />
+                Set default
+              </button>
             )}
           </>
         )}

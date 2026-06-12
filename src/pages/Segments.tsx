@@ -67,11 +67,14 @@ export default function Segments() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-background">
-        <h1 className="text-xl font-semibold tracking-tight">Segment sets</h1>
-        
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">Brand:</span>
+      <div className="flex items-center justify-between border-b px-6 py-3.5">
+        <div>
+          <h1 className="text-base font-semibold tracking-tight">Segment sets</h1>
+          <p className="text-xs text-muted-foreground">Reusable audiences applied at review time.</p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs text-muted-foreground">Brand</span>
           {loadingBrands ? (
             <Skeleton className="h-9 w-48" />
           ) : (
@@ -79,19 +82,15 @@ export default function Segments() {
               value={selectedBrandId || ''}
               onValueChange={setSelectedBrandId}
             >
-              <SelectTrigger className="w-[220px]">
+              {/* Neutral chrome: the brand is identified by a small swatch,
+                  never by coloring the UI itself. */}
+              <SelectTrigger className="h-8 w-[200px] text-[13px]">
                 <SelectValue placeholder="Select a brand">
                   {selectedBrand && (
-                    <span 
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
-                      style={{ 
-                        background: `linear-gradient(135deg, ${selectedBrand.primaryColor}18 0%, ${selectedBrand.primaryColor}08 100%)`,
-                        color: selectedBrand.primaryColor,
-                      }}
-                    >
-                      <span 
-                        className="w-1.5 h-1.5 rounded-full" 
-                        style={{ backgroundColor: selectedBrand.primaryColor }} 
+                    <span className="inline-flex items-center gap-2 font-medium text-foreground">
+                      <span
+                        className="h-2 w-2 rounded-full ring-1 ring-black/10"
+                        style={{ backgroundColor: selectedBrand.primaryColor }}
                       />
                       {selectedBrand.name}
                     </span>
@@ -100,17 +99,11 @@ export default function Segments() {
               </SelectTrigger>
               <SelectContent>
                 {brands.map((brand) => (
-                  <SelectItem key={brand.id} value={brand.id}>
-                    <span 
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
-                      style={{ 
-                        background: `linear-gradient(135deg, ${brand.primaryColor}18 0%, ${brand.primaryColor}08 100%)`,
-                        color: brand.primaryColor,
-                      }}
-                    >
-                      <span 
-                        className="w-1.5 h-1.5 rounded-full" 
-                        style={{ backgroundColor: brand.primaryColor }} 
+                  <SelectItem key={brand.id} value={brand.id} className="text-[13px]">
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 rounded-full ring-1 ring-black/10"
+                        style={{ backgroundColor: brand.primaryColor }}
                       />
                       {brand.name}
                     </span>

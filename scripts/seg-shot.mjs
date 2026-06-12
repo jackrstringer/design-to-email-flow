@@ -1,0 +1,14 @@
+import { chromium } from '@playwright/test';
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 2 });
+const page = await ctx.newPage();
+await page.goto('http://localhost:8080/auth', { waitUntil: 'networkidle' });
+await page.fill('#signin-email', 'neo-qa@redwood.so');
+await page.fill('#signin-password', 'neoqa-2026-Sendr!');
+await page.click('button[type="submit"]');
+await page.waitForURL('**/queue', { timeout: 15000 });
+await page.goto('http://localhost:8080/segments', { waitUntil: 'networkidle' });
+await page.waitForTimeout(2000);
+await page.screenshot({ path: '/tmp/s1-segments.png' });
+await browser.close();
+console.log('done');

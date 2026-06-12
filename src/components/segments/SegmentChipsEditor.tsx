@@ -54,10 +54,10 @@ export function SegmentChipsEditor({
           key={segment.id}
           variant="secondary"
           className={cn(
-            "flex items-center gap-1 pr-1 whitespace-nowrap",
+            "flex h-[22px] max-w-[200px] items-center gap-1 rounded-full border pl-2.5 pr-1 text-[11px] font-medium leading-none transition-colors duration-150",
             segment.missing
-              ? "bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/15"
-              : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
+              ? "border-destructive/30 bg-destructive/[0.07] text-destructive hover:bg-destructive/10"
+              : "border-border bg-card text-foreground/80 hover:border-foreground/25 hover:text-foreground"
           )}
           title={
             segment.missing
@@ -65,13 +65,13 @@ export function SegmentChipsEditor({
               : undefined
           }
         >
-          {segment.missing && <AlertTriangle className="h-3 w-3" />}
-          <span>{segment.name}</span>
+          {segment.missing && <AlertTriangle className="h-3 w-3 shrink-0" />}
+          <span className="truncate">{segment.name}</span>
           <button
             onClick={() => handleRemove(segment.id)}
             className={cn(
-              "ml-0.5 rounded-full p-0.5",
-              segment.missing ? "hover:bg-destructive/20" : "hover:bg-primary/20"
+              "ml-0.5 shrink-0 rounded-full p-0.5 text-muted-foreground/60 transition-colors duration-150 hover:text-foreground",
+              segment.missing ? "hover:bg-destructive/15" : "hover:bg-accent"
             )}
           >
             <X className="h-3 w-3" />
@@ -81,14 +81,10 @@ export function SegmentChipsEditor({
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs text-muted-foreground"
-          >
-            <Plus className="h-3 w-3 mr-1" />
+          <button className="inline-flex h-[22px] items-center gap-1 rounded-full border border-dashed border-input pl-2 pr-2.5 text-[11px] leading-none text-muted-foreground transition-colors duration-150 hover:border-foreground/30 hover:text-foreground">
+            <Plus className="h-3 w-3" />
             {selectedSegments.length === 0 ? placeholder : 'Add'}
-          </Button>
+          </button>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="start">
           <Command>

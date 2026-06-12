@@ -116,13 +116,13 @@ export function SegmentsTable({
   ];
 
   return (
-    <div className={`border rounded-lg bg-card overflow-hidden ${resizing ? 'select-none' : ''}`}>
+    <div className={`overflow-hidden rounded-xl border bg-card shadow-card ${resizing ? 'select-none' : ''}`}>
       {/* Header */}
-      <div className="flex bg-muted/50 border-b">
+      <div className="flex border-b bg-secondary/40">
         {columns.map((col, idx) => (
           <div
             key={col.key}
-            className={`relative flex items-center px-3 py-2 text-sm font-medium text-muted-foreground ${idx > 0 ? 'border-l border-border/50' : ''}`}
+            className={`relative flex h-8 items-center px-3 text-[11px] font-medium text-muted-foreground ${idx > 0 ? 'border-l border-border/40' : ''}`}
             style={{ 
               width: col.grow ? undefined : columnWidths[col.key], 
               minWidth: MIN_WIDTHS[col.key],
@@ -195,12 +195,12 @@ export function SegmentsTable({
           </div>
         ) : (
           <div
-            className="flex items-center px-3 py-2 cursor-pointer hover:bg-muted/50"
+            className="flex cursor-pointer items-center px-3 py-2.5 text-muted-foreground/70 transition-colors duration-150 hover:bg-accent/40 hover:text-foreground"
             onClick={() => setIsAddingNew(true)}
           >
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Plus className="h-4 w-4" />
-              <span>Add new segment set...</span>
+            <div className="flex items-center gap-2">
+              <Plus className="h-3.5 w-3.5" />
+              <span className="text-[13px]">New segment set</span>
             </div>
           </div>
         )}

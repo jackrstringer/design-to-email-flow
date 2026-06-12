@@ -7,7 +7,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, Link, FileText, Copy, Columns, Flag, ChevronDown } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, FileText, Copy, Flag, ChevronDown } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { InboxPreview } from './InboxPreview';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -16,7 +16,7 @@ import { FlagMistakeDialog } from '@/components/knowledge/FlagMistakeDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { SliceImageDropZone } from './SliceImageDropZone';
+import { SliceCanvas } from './SliceCanvas';
 
 interface KlaviyoList {
   id: string;
@@ -118,11 +118,6 @@ export function ExpandedRowPanel({
   const [footerError, setFooterError] = useState<string | null>(null);
   const [footerPreviewHeight, setFooterPreviewHeight] = useState(200);
 
-  // CampaignStudio-style editing state
-  const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null);
-  const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
-  const [linkSearchValue, setLinkSearchValue] = useState('');
-  
   // Brand links for autocomplete - initialize from preloaded data
   const [brandLinks, setBrandLinks] = useState<string[]>(preloadedBrandData?.allLinks || []);
   const [brandDomain, setBrandDomain] = useState<string | null>(preloadedBrandData?.domain || null);
@@ -152,11 +147,6 @@ export function ExpandedRowPanel({
     location?: string;
     sliceIndex?: number;
   }>) || [];
-
-  // Filter brand links based on search
-  const filteredLinks = brandLinks.filter(link => 
-    link.toLowerCase().includes(linkSearchValue.toLowerCase())
-  );
 
   // Initialize slices from item
   useEffect(() => {
@@ -731,53 +721,37 @@ export function ExpandedRowPanel({
             </div>
           </div>
 
-          {/* Zoom Control + Display Mode Toggle */}
-          <div className="flex items-center gap-4 mb-3">
+          {/* Canvas toolbar — quiet, pill-segmented, 11px */}
+          <div className="mb-3 flex items-center gap-5">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">Zoom</span>
+              <span className="text-[11px] text-muted-foreground">Zoom</span>
               <input
                 type="range"
                 min={25}
                 max={100}
                 value={zoomLevel}
                 onChange={(e) => handleZoomChange(Number(e.target.value))}
-                className="w-24 h-1 accent-primary"
+                className="h-1 w-28 cursor-pointer accent-foreground"
               />
-              <span className="text-[10px] text-muted-foreground w-8">{zoomLevel}%</span>
+              <span className="w-8 font-mono text-[10px] tabular-nums text-muted-foreground">{zoomLevel}%</span>
             </div>
-            
-            {/* Display Mode Toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">Show</span>
-              <div className="flex bg-muted rounded-md p-0.5">
-                <button 
-                  onClick={() => setDisplayMode('all')}
+
+            {/* Display mode — segmented pill */}
+            <div className="flex items-center rounded-full border bg-secondary/60 p-0.5">
+              {(['all', 'links', 'none'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setDisplayMode(mode)}
                   className={cn(
-                    "px-2 py-0.5 text-[10px] rounded transition-colors",
-                    displayMode === 'all' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    'rounded-full px-2.5 py-[3px] text-[11px] leading-none transition-[background-color,color,box-shadow] duration-150',
+                    displayMode === mode
+                      ? 'bg-card font-medium text-foreground shadow-card'
+                      : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  All
+                  {mode === 'all' ? 'All' : mode === 'links' ? 'Links' : 'Clean'}
                 </button>
-                <button 
-                  onClick={() => setDisplayMode('links')}
-                  className={cn(
-                    "px-2 py-0.5 text-[10px] rounded transition-colors",
-                    displayMode === 'links' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Links
-                </button>
-                <button 
-                  onClick={() => setDisplayMode('none')}
-                  className={cn(
-                    "px-2 py-0.5 text-[10px] rounded transition-colors",
-                    displayMode === 'none' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  None
-                </button>
-              </div>
+              ))}
             </div>
 
             {/* Flag a mistake - feeds the brand knowledge layer */}
@@ -787,7 +761,7 @@ export function ExpandedRowPanel({
                 size="sm"
                 className="h-6 px-2 text-[10px] text-muted-foreground ml-auto"
                 onClick={() => {
-                  const contextIndex = editingLinkIndex ?? editingAltIndex ?? hoveredSliceIndex;
+                  const contextIndex = hoveredSliceIndex;
                   const slice = contextIndex != null ? slices[contextIndex] : undefined;
                   setFlagContext(slice ? {
                     sliceIndex: contextIndex,
@@ -804,7 +778,7 @@ export function ExpandedRowPanel({
             )}
           </div>
 
-          {/* Email Preview - slices stacked - no scroll, show full content */}
+          {/* Email Preview — one flush canvas; annotations overlay in gutters */}
           <div>
             <div className="flex flex-col">
               <div className="py-3">
@@ -818,287 +792,17 @@ export function ExpandedRowPanel({
                   </div>
                 )}
 
-                {/* Render each slice group (row) */}
-                {sortedGroups.map((slicesInRow, groupIndex) => {
-                  // Check if this is a multi-column row
-                  const isMultiColumnRow = slicesInRow.length > 1 || (slicesInRow[0]?.slice.totalColumns ?? 1) > 1;
-                  const columnCount = slicesInRow[0]?.slice.totalColumns || slicesInRow.length;
-                  
-                  return (
-                  <div 
-                    key={groupIndex} 
-                    className={cn(
-                      "relative flex justify-center items-stretch group/row",
-                      isMultiColumnRow ? "border-l-4 border-border bg-secondary hover:bg-secondary" : "hover:bg-muted/10"
-                    )}
-                  >
-                    {/* Multi-column indicator badge */}
-                    {isMultiColumnRow && (
-                      <div className="absolute -top-2 left-2 z-20 flex items-center gap-1 bg-primary text-primary-foreground text-[10px] font-medium px-2 py-0.5 rounded-full shadow-sm">
-                        <Columns className="w-3 h-3" />
-                        {columnCount}-Column Block
-                      </div>
-                    )}
-                    
-                    {/* Slice separator line */}
-                    {groupIndex > 0 && (
-                      <div className="absolute top-0 left-0 right-0 flex items-center z-10" style={{ transform: 'translateY(-50%)' }}>
-                        <div className={cn("h-px flex-1", isMultiColumnRow ? "bg-foreground" : "bg-border")} />
-                      </div>
-                    )}
-                    
-                    {/* Left: Link Column - only show if displayMode !== 'none' */}
-                    {displayMode !== 'none' && (
-                    <div className="flex flex-col justify-center py-1 pr-3 gap-1 items-end flex-shrink-0 w-56">
-                      {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
-                        <Popover key={originalIndex} open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
-                          if (open) {
-                            setEditingLinkIndex(originalIndex);
-                            setLinkSearchValue('');
-                          } else {
-                            setEditingLinkIndex(null);
-                          }
-                        }}>
-                          <PopoverTrigger asChild>
-                            {slice.link ? (
-                              <button className={cn(
-                                "flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors text-left max-w-full overflow-hidden bg-card border hover:border-brand/40 hover:bg-brand/5"
-                              )} title={slice.link ?? undefined}>
-                                {isMultiColumnRow && (
-                                  <span className="bg-brand text-brand-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
-                                    {colIdx + 1}
-                                  </span>
-                                )}
-                                <Link className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
-                                <span className="text-foreground truncate" style={{ direction: 'rtl', textAlign: 'left' }}>{slice.link}</span>
-                              </button>
-                            ) : (
-                              <button className={cn(
-                                "flex items-center gap-1.5 px-2 py-0.5 border border-dashed rounded transition-colors text-[9px] whitespace-nowrap",
-                                isMultiColumnRow 
-                                  ? "border-border text-muted-foreground hover:border-border opacity-100" 
-                                  : "border-muted-foreground/30 text-muted-foreground/50 hover:border-primary/40 opacity-0 group-hover/row:opacity-100"
-                              )}>
-                                {isMultiColumnRow && (
-                                  <span className="bg-brand text-brand-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0">
-                                    {colIdx + 1}
-                                  </span>
-                                )}
-                                <Link className="w-3 h-3 flex-shrink-0" />
-                                <span>{isMultiColumnRow ? `Col ${colIdx + 1}` : 'Add link'}</span>
-                              </button>
-                            )}
-                          </PopoverTrigger>
-                          <PopoverContent className="w-96 p-0" align="end" side="left">
-                            <Command>
-                              <CommandInput 
-                                placeholder="Search or enter URL..." 
-                                value={linkSearchValue}
-                                onValueChange={setLinkSearchValue}
-                              />
-                              <CommandList>
-                                <CommandEmpty>
-                                  {linkSearchValue && (
-                                    <button
-                                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                      onClick={() => setSliceLink(originalIndex, linkSearchValue)}
-                                    >
-                                      Use "{linkSearchValue}"
-                                    </button>
-                                  )}
-                                </CommandEmpty>
-                                {filteredLinks.length > 0 && (
-                                  <CommandGroup heading="Brand Links">
-                                    {filteredLinks.slice(0, 10).map((link) => (
-                                      <CommandItem
-                                        key={link}
-                                        value={link}
-                                        onSelect={() => setSliceLink(originalIndex, link)}
-                                        className="text-xs"
-                                      >
-                                        <span className="break-all">{link}</span>
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                )}
-                                {slice.link && (
-                                  <CommandGroup>
-                                    <CommandItem
-                                      onSelect={() => {
-                                        removeLink(originalIndex);
-                                        setEditingLinkIndex(null);
-                                      }}
-                                      className="text-xs text-destructive"
-                                    >
-                                      <X className="w-3 h-3 mr-2" />
-                                      Remove link
-                                    </CommandItem>
-                                  </CommandGroup>
-                                )}
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                      ))}
-                    </div>
-                    )}
-                    
-                    {/* Center: Image Column */}
-                    <div className="flex flex-shrink-0" style={{ width: scaledWidth }}>
-                      {slicesInRow.map(({ slice, originalIndex }, colIdx) => {
-                        const colWidth = slice.totalColumns 
-                          ? scaledWidth / slice.totalColumns 
-                          : scaledWidth / slicesInRow.length;
-                        
-                        return (
-                          <div 
-                            key={originalIndex} 
-                            className={cn(
-                              "relative",
-                              isMultiColumnRow && colIdx > 0 && "border-l-2 border-border"
-                            )}
-                            style={{ width: colWidth }}
-                            onMouseEnter={() => displayMode === 'none' && setHoveredSliceIndex(originalIndex)}
-                            onMouseLeave={() => displayMode === 'none' && setHoveredSliceIndex(null)}
-                          >
-                            {/* Column number badge on image */}
-                            {isMultiColumnRow && (
-                              <div className="absolute top-2 right-2 bg-primary text-primary-foreground text-xs w-6 h-6 rounded-full flex items-center justify-center font-semibold z-10 shadow-md">
-                                {colIdx + 1}
-                              </div>
-                            )}
-                            
-                            {/* Hover link tooltip in 'none' mode - compact clickable pill */}
-                            {displayMode === 'none' && hoveredSliceIndex === originalIndex && slice.link && (
-                              <Popover open={editingLinkIndex === originalIndex} onOpenChange={(open) => {
-                                if (open) {
-                                  setEditingLinkIndex(originalIndex);
-                                  setLinkSearchValue('');
-                                } else {
-                                  setEditingLinkIndex(null);
-                                }
-                              }}>
-                                <PopoverTrigger asChild>
-                                  <button 
-                                    className="absolute left-2 top-2 z-50 bg-background/95 border border-border rounded-md shadow-lg px-2 py-1 flex items-center gap-1.5 hover:bg-muted transition-colors animate-in fade-in-0 duration-100 whitespace-nowrap"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <Link className="w-3 h-3 text-primary flex-shrink-0" />
-                                    <span className="text-[10px] text-foreground whitespace-nowrap">
-                                      {slice.link}
-                                    </span>
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-96 p-0" align="start" side="bottom">
-                                  <Command>
-                                    <CommandInput 
-                                      placeholder="Search or enter URL..." 
-                                      value={linkSearchValue}
-                                      onValueChange={setLinkSearchValue}
-                                    />
-                                    <CommandList>
-                                      <CommandEmpty>
-                                        {linkSearchValue && (
-                                          <button
-                                            className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                                            onClick={() => setSliceLink(originalIndex, linkSearchValue)}
-                                          >
-                                            Use "{linkSearchValue}"
-                                          </button>
-                                        )}
-                                      </CommandEmpty>
-                                      {filteredLinks.length > 0 && (
-                                        <CommandGroup heading="Brand Links">
-                                          {filteredLinks.slice(0, 10).map((link) => (
-                                            <CommandItem
-                                              key={link}
-                                              value={link}
-                                              onSelect={() => setSliceLink(originalIndex, link)}
-                                              className="text-xs"
-                                            >
-                                              <span className="break-all">{link}</span>
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      )}
-                                      {slice.link && (
-                                        <CommandGroup>
-                                          <CommandItem
-                                            onSelect={() => {
-                                              removeLink(originalIndex);
-                                              setEditingLinkIndex(null);
-                                            }}
-                                            className="text-xs text-destructive"
-                                          >
-                                            <X className="w-3 h-3 mr-2" />
-                                            Remove link
-                                          </CommandItem>
-                                        </CommandGroup>
-                                      )}
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                            )}
-                            
-                            {slice.type === 'html' && slice.htmlContent ? (
-                              <div 
-                                className="bg-card"
-                                dangerouslySetInnerHTML={{ __html: slice.htmlContent }}
-                                style={{ width: '100%' }}
-                              />
-                            ) : (
-                              <SliceImageDropZone
-                                imageUrl={slice.imageUrl}
-                                altText={slice.altText}
-                                type={slice.type}
-                                htmlContent={slice.htmlContent}
-                                brandId={(item as any).brand_id}
-                                onUploaded={(newUrl) => updateSlice(originalIndex, { imageUrl: newUrl })}
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    
-                    {/* Right: Alt Text Column - only show if displayMode === 'all' */}
-                    {displayMode === 'all' && (
-                    <div className="flex flex-col justify-center py-1 pl-3 gap-1 flex-shrink-0 w-56">
-                      {slicesInRow.map(({ slice, originalIndex }, colIdx) => (
-                        <div key={originalIndex} className={cn(isMultiColumnRow && "flex items-start gap-1.5")}>
-                          {isMultiColumnRow && (
-                            <span className="bg-brand text-brand-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                              {colIdx + 1}
-                            </span>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            {editingAltIndex === originalIndex ? (
-                              <textarea
-                                value={slice.altText || ''}
-                                onChange={(e) => updateSlice(originalIndex, { altText: e.target.value })}
-                                placeholder="Alt..."
-                                className="w-full text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 border-0 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-                                rows={2}
-                                autoFocus
-                                onBlur={() => setEditingAltIndex(null)}
-                              />
-                            ) : (
-                              <p 
-                                onClick={() => setEditingAltIndex(originalIndex)}
-                                className="text-[9px] text-muted-foreground leading-snug cursor-pointer hover:bg-muted/50 rounded px-1.5 py-0.5 line-clamp-2"
-                              >
-                                {slice.altText || <span className="italic opacity-60">Alt...</span>}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    )}
-                  </div>
-                  );
-                })}
+                {slices.length > 0 && (
+                  <SliceCanvas
+                    slices={slices}
+                    scaledWidth={scaledWidth}
+                    displayMode={displayMode}
+                    brandLinks={brandLinks}
+                    brandId={item.brand_id}
+                    onUpdateSlice={updateSlice}
+                    onHoverSlice={setHoveredSliceIndex}
+                  />
+                )}
 
                 {/* Footer Section - centered to match slices */}
                 {footerHtml && (
@@ -1146,7 +850,7 @@ export function ExpandedRowPanel({
 
           {/* Audience Section */}
           <div className="space-y-2">
-            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Audience</h4>
+            <h4 className="text-[11px] font-semibold text-muted-foreground">Audience</h4>
             {presets.length > 0 && (
               <Select 
                 value={selectedPresetId || undefined}
@@ -1175,7 +879,7 @@ export function ExpandedRowPanel({
                 {includedSegments.map(id => {
                   const list = klaviyoLists.find(l => l.id === id);
                   return (
-                    <Badge key={id} variant="secondary" className="text-[10px] gap-1">
+                    <Badge key={id} variant="secondary" className="h-[22px] max-w-[180px] gap-1 rounded-full border border-border bg-card pl-2.5 pr-1 text-[11px] font-medium leading-none text-foreground/80">
                       {list?.name || id}
                       <button onClick={() => removeSegment(id, 'include')}>
                         <X className="h-2 w-2" />
@@ -1207,7 +911,7 @@ export function ExpandedRowPanel({
                 {excludedSegments.map(id => {
                   const list = klaviyoLists.find(l => l.id === id);
                   return (
-                    <Badge key={id} variant="outline" className="text-[10px] gap-1 text-destructive border-destructive/30">
+                    <Badge key={id} variant="outline" className="h-[22px] max-w-[180px] gap-1 rounded-full border-destructive/30 bg-destructive/[0.06] pl-2.5 pr-1 text-[11px] font-medium leading-none text-destructive">
                       {list?.name || id}
                       <button onClick={() => removeSegment(id, 'exclude')}>
                         <X className="h-2 w-2" />
@@ -1247,7 +951,7 @@ export function ExpandedRowPanel({
 
           {/* QA Section */}
           <div className="space-y-2">
-            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">QA Checks</h4>
+            <h4 className="text-[11px] font-semibold text-muted-foreground">QA checks</h4>
             
             {/* Links Summary - Detailed */}
             <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">

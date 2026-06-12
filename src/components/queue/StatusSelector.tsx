@@ -380,7 +380,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
             : { backgroundColor: 'hsl(152 60% 34% / 0.12)', color: 'hsl(152 65% 26%)' }
           }
         >
-          {isReady ? (hasIssues ? `${qaFlags?.length} issues` : 'Ready for Review') : 'Approve & Build'}
+          {isReady ? (hasIssues ? `${qaFlags?.length} issue${(qaFlags?.length ?? 0) === 1 ? "" : "s"}` : 'Ready for Review') : 'Approve & Build'}
           <ChevronDown className="h-3 w-3" />
         </button>
       </PopoverTrigger>
