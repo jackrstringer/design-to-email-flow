@@ -404,43 +404,37 @@ export function QueueRow({
             className="!text-[13px] font-semibold tracking-[-0.005em]"
           />
         </div>
-        <div className="mt-px flex min-w-0 items-center pr-2" onClick={(e) => e.stopPropagation()}>
-          <div className="-ml-1 min-w-0 max-w-[48%] flex-shrink">
+        {/* Jack's spec: title, SL, PT stacked — each on its own line, full width */}
+        <div className="-ml-1 mt-px min-w-0 pr-2" onClick={(e) => e.stopPropagation()}>
+          <InlineDropdownSelector
+            selected={item.selected_subject_line}
+            options={item.generated_subject_lines}
+            provided={item.provided_subject_line}
+            onSelect={handleSubjectLineSelect}
+            placeholder="Select subject…"
+            isProcessing={isProcessing}
+            processingStep={item.processing_step}
+            isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
+            isClickUpSource={item.copy_source === 'clickup'}
+            textClassName="!text-[11.5px] text-muted-foreground"
+          />
+        </div>
+        {!isProcessing && (
+          <div className="-ml-1 min-w-0 pr-2" onClick={(e) => e.stopPropagation()}>
             <InlineDropdownSelector
-              selected={item.selected_subject_line}
-              options={item.generated_subject_lines}
-              provided={item.provided_subject_line}
-              onSelect={handleSubjectLineSelect}
-              placeholder="Select subject…"
+              selected={item.selected_preview_text}
+              options={item.generated_preview_texts}
+              provided={item.provided_preview_text}
+              onSelect={handlePreviewTextSelect}
+              placeholder="Select preview…"
               isProcessing={isProcessing}
               processingStep={item.processing_step}
-              isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
+              isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
               isClickUpSource={item.copy_source === 'clickup'}
-              textClassName="!text-[11.5px] text-muted-foreground"
+              textClassName="!text-[11.5px] text-muted-foreground/80"
             />
           </div>
-          {!isProcessing && (
-            <span className="px-1 text-[11.5px] text-border" aria-hidden>
-              ·
-            </span>
-          )}
-          {!isProcessing && (
-            <div className="min-w-0 flex-1">
-              <InlineDropdownSelector
-                selected={item.selected_preview_text}
-                options={item.generated_preview_texts}
-                provided={item.provided_preview_text}
-                onSelect={handlePreviewTextSelect}
-                placeholder="Select preview…"
-                isProcessing={isProcessing}
-                processingStep={item.processing_step}
-                isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
-                isClickUpSource={item.copy_source === 'clickup'}
-                textClassName="!text-[11.5px] text-muted-foreground/80"
-              />
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       <div className="hidden w-[124px] shrink-0 md:block">{brandChip}</div>

@@ -39,15 +39,18 @@ export function displayUrl(raw: string): string {
 }
 
 /* Map-label collision pass: keep pills at their anchor when possible,
-   push down minimally when neighbors collide. */
-function resolvePositions(anchors: number[], pillH: number, gap: number): number[] {
+   push down minimally when neighbors collide. Heights may vary per item
+   (URLs wrap to show their full length — Jack's rule: never truncate). */
+function resolvePositions(anchors: number[], heights: number | number[], gap: number): number[] {
+  const hOf = (i: number) => (Array.isArray(heights) ? heights[i] ?? PILL_H : heights);
   const order = anchors.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y);
   const out = new Array(anchors.length).fill(0);
   let cursor = -Infinity;
   for (const { y, i } of order) {
-    const top = Math.max(y - pillH / 2, cursor + gap);
+    const h = hOf(i);
+    const top = Math.max(y - h / 2, cursor + gap);
     out[i] = top;
-    cursor = top + pillH;
+    cursor = top + h;
   }
   return out;
 }
@@ -69,7 +72,9 @@ export function SliceCanvas({
   // Measured geometry: per-slice center Y relative to the canvas.
   const canvasRef = useRef<HTMLDivElement>(null);
   const sliceRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const pillRefs = useRef<(HTMLElement | null)[]>([]);
   const [anchors, setAnchors] = useState<number[]>([]);
+  const [pillHeights, setPillHeights] = useState<number[]>([]);
 
   const measure = useCallback(() => {
     const canvas = canvasRef.current;
@@ -84,6 +89,10 @@ export function SliceCanvas({
     setAnchors((prev) =>
       prev.length === next.length && prev.every((v, i) => Math.abs(v - next[i]) < 0.5) ? prev : next,
     );
+    const nextH = slices.map((_, i) => pillRefs.current[i]?.offsetHeight || PILL_H);
+    setPillHeights((prev) =>
+      prev.length === nextH.length && prev.every((v, i) => Math.abs(v - nextH[i]) < 0.5) ? prev : nextH,
+    );
   }, [slices]);
 
   useLayoutEffect(() => {
@@ -93,10 +102,14 @@ export function SliceCanvas({
     const ro = new ResizeObserver(measure);
     ro.observe(canvas);
     sliceRefs.current.forEach((el) => el && ro.observe(el));
+    pillRefs.current.forEach((el) => el && ro.observe(el));
     return () => ro.disconnect();
   }, [measure, scaledWidth, displayMode]);
 
-  const pillTops = useMemo(() => resolvePositions(anchors, PILL_H, PILL_GAP), [anchors]);
+  const pillTops = useMemo(
+    () => resolvePositions(anchors, pillHeights, PILL_GAP),
+    [anchors, pillHeights],
+  );
   // Alt blocks run ~2 lines (~38px) — collision-resolve with their real height
   // so neighboring alt texts never overlap or squash each other.
   const ALT_H = 38;
@@ -201,8 +214,9 @@ export function SliceCanvas({
             return (
               <div
                 key={i}
+                ref={(el) => (pillRefs.current[i] = el)}
                 className="absolute right-0 flex w-full justify-end"
-                style={{ top: pillTops[i], height: PILL_H }}
+                style={{ top: pillTops[i], minHeight: PILL_H }}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
               >
@@ -217,7 +231,7 @@ export function SliceCanvas({
                     {isRealLink(slice.link) ? (
                       <button
                         className={cn(
-                          'pointer-events-auto inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border bg-card pl-2 pr-2.5 text-[11px] leading-none text-foreground/80 transition-[border-color,background-color,color] duration-150',
+                          'pointer-events-auto inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-xl border bg-card py-1 pl-2 pr-2.5 text-[11px] leading-[1.25] text-foreground/80 transition-[border-color,background-color,color] duration-150',
                           hovered === i
                             ? 'border-foreground/25 bg-accent text-foreground'
                             : 'border-border',
@@ -230,7 +244,7 @@ export function SliceCanvas({
                           </span>
                         )}
                         <LinkIcon className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                        <span className="truncate">{displayUrl(slice.link!)}</span>
+                        <span className="break-all text-left">{displayUrl(slice.link!)}</span>
                       </button>
                     ) : (
                       <button
