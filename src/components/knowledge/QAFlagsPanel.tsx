@@ -33,12 +33,22 @@ interface QAFlagsPanelProps {
 
 const SEVERITY_ORDER: QaSeverity[] = ['error', 'warning', 'info'];
 
+// Advisory categories Jack explicitly doesn't want slowing him down:
+// copy/voice critiques and naming-convention nags. Real blockers only.
+const MUTED_CATEGORIES = new Set(['voice', 'naming', 'copy']);
+
 function parseFlags(flags: unknown): Array<{ flag: QaFlag; index: number }> {
   // Legacy / malformed shapes (objects, strings, null): render nothing.
   if (!Array.isArray(flags)) return [];
   return flags
     .map((raw, index) => ({ raw, index }))
     .filter(({ raw }) => raw && typeof raw === 'object' && typeof (raw as QaFlag).message === 'string')
+    .filter(({ raw }) => {
+      const f = raw as QaFlag;
+      if (f.severity === 'info') return false;
+      if (f.category && MUTED_CATEGORIES.has(f.category)) return false;
+      return true;
+    })
     .map(({ raw, index }) => {
       const f = raw as QaFlag;
       const severity: QaSeverity = SEVERITY_ORDER.includes(f.severity) ? f.severity : 'info';

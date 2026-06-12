@@ -101,7 +101,7 @@ export function SliceImageDropZone({
     <div
       className={cn(
         'relative group/swap cursor-pointer',
-        isDragging && 'ring-2 ring-primary ring-offset-1',
+        isDragging && 'ring-1 ring-inset ring-foreground/40',
       )}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
@@ -148,22 +148,22 @@ export function SliceImageDropZone({
         )
       )}
 
-      {/* Hover overlay */}
+      {/* Hover affordance — a quiet corner chip, never a wash over the design */}
       {!isUploading && !isDragging && (
-        <div className="absolute inset-0 bg-black/0 group-hover/swap:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover/swap:opacity-100 pointer-events-none">
-          <div className="bg-background/95 border border-border rounded-md px-3 py-1.5 flex items-center gap-1.5 shadow-lg">
-            <Upload className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-medium">Click or drop to swap</span>
+        <div className="pointer-events-none absolute bottom-1.5 right-1.5 opacity-0 transition-opacity duration-200 group-hover/swap:opacity-100">
+          <div className="flex items-center gap-1 rounded-full bg-black/55 px-2 py-[3px] backdrop-blur-sm">
+            <Upload className="h-2.5 w-2.5 text-white/90" />
+            <span className="text-[10px] font-medium text-white/90">Swap</span>
           </div>
         </div>
       )}
 
       {/* Drag-over overlay */}
       {isDragging && (
-        <div className="absolute inset-0 bg-primary/20 border-2 border-dashed border-primary flex items-center justify-center pointer-events-none">
-          <div className="bg-background border border-primary rounded-md px-3 py-1.5 flex items-center gap-1.5 shadow-lg">
-            <Upload className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Drop image or GIF</span>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-foreground/[0.06]">
+          <div className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 shadow-floating">
+            <Upload className="h-3.5 w-3.5 text-foreground" />
+            <span className="text-xs font-medium">Drop to swap</span>
           </div>
         </div>
       )}

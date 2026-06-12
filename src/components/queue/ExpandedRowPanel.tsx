@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, FileText, Copy, Flag, ChevronDown } from 'lucide-react';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
-import { InboxPreview } from './InboxPreview';
+import { InlineDropdownSelector } from './InlineDropdownSelector';
+import { isRealLink } from '@/lib/links';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
 import { QAFlagsPanel } from '@/components/knowledge/QAFlagsPanel';
 import { FlagMistakeDialog } from '@/components/knowledge/FlagMistakeDialog';
@@ -626,18 +627,17 @@ export function ExpandedRowPanel({
 
   // QA calculations with proper empty array handling
   const hasSlices = slices.length > 0;
-  const slicesWithLinks = slices.filter(s => s.link);
+  const slicesWithLinks = slices.filter(s => isRealLink(s.link));
   const uniqueLinkCount = new Set(slicesWithLinks.map(s => s.link)).size;
-  const slicesMissingLinks = slices.filter(s => !s.link);
+  const slicesMissingLinks = slices.filter(s => !isRealLink(s.link));
   const allHaveLinks = hasSlices && slicesMissingLinks.length === 0;
   
 
   // External links check
-  const externalLinks = brandDomain 
-    ? slicesWithLinks.filter(s => s.link && !s.link.includes(brandDomain))
-    : [];
-  const hasExternalLinks = externalLinks.length > 0;
-  const externalLinkCount = externalLinks.length;
+  const externalLinkCount = brandDomain
+    ? new Set(slicesWithLinks.filter(s => !s.link!.includes(brandDomain)).map(s => s.link)).size
+    : 0;
+  const hasExternalLinks = externalLinkCount > 0;
 
   // Group slices by rowIndex (same logic as CampaignStudio)
   const groupedSlices = slices.reduce((groups, slice, index) => {
@@ -683,41 +683,48 @@ export function ExpandedRowPanel({
       <div className="flex items-start">
         {/* LEFT SIDE - Campaign Preview - fills available space, scrollable */}
         <div className="flex-1 p-4 border-r min-w-0 max-h-[80vh] overflow-y-auto overflow-x-visible">
-          {/* Inbox Preview - full width, subject/preview editable in place */}
+          {/* Inbox preview — THE one editable home for subject/preview in the
+              expanded view. Click either line to edit; chevron opens the 10
+              generated options. (The row above is the only other location.) */}
           <div className="mb-3">
-            <div className="bg-card rounded-lg border shadow-sm">
-              <div className="flex gap-2 border-b px-3 py-2">
-                <input
-                  value={selectedSubject}
-                  onChange={(e) => setSelectedSubject(e.target.value)}
-                  onBlur={async () => {
-                    if (selectedSubject !== item.selected_subject_line) {
-                      await supabase.from('campaign_queue').update({ selected_subject_line: selectedSubject }).eq('id', item.id);
-                      onUpdate();
-                    }
+            <div className="surface-hairline px-3 py-3">
+              <div className="mb-1 flex items-center gap-2.5">
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-foreground/70">
+                  {brandName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex min-w-0 flex-1 items-center justify-between">
+                  <span className="truncate text-[13px] font-semibold">{brandName}</span>
+                  <span className="ml-2 flex-shrink-0 text-[11px] text-muted-foreground">now</span>
+                </div>
+              </div>
+              <div className="pl-[38px]">
+                <InlineDropdownSelector
+                  selected={selectedSubject || null}
+                  options={item.generated_subject_lines}
+                  provided={item.provided_subject_line}
+                  onSelect={async (value) => {
+                    setSelectedSubject(value);
+                    await supabase.from('campaign_queue').update({ selected_subject_line: value }).eq('id', item.id);
+                    onUpdate();
+                    return true;
                   }}
-                  placeholder="Subject line"
-                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] font-medium outline-none transition-colors hover:border-border focus:border-brand/50"
+                  placeholder="Select a subject line…"
+                  textClassName="!text-[13px] font-medium"
                 />
-                <input
-                  value={selectedPreview}
-                  onChange={(e) => setSelectedPreview(e.target.value)}
-                  onBlur={async () => {
-                    if (selectedPreview !== item.selected_preview_text) {
-                      await supabase.from('campaign_queue').update({ selected_preview_text: selectedPreview }).eq('id', item.id);
-                      onUpdate();
-                    }
+                <InlineDropdownSelector
+                  selected={selectedPreview || null}
+                  options={item.generated_preview_texts}
+                  provided={item.provided_preview_text}
+                  onSelect={async (value) => {
+                    setSelectedPreview(value);
+                    await supabase.from('campaign_queue').update({ selected_preview_text: value }).eq('id', item.id);
+                    onUpdate();
+                    return true;
                   }}
-                  placeholder="Preview text"
-                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] text-muted-foreground outline-none transition-colors hover:border-border focus:border-brand/50"
+                  placeholder="Select preview text…"
+                  textClassName="!text-[12px] text-muted-foreground"
                 />
               </div>
-              <InboxPreview
-                senderName={brandName}
-                subjectLine={selectedSubject || 'Select a subject line...'}
-                previewText={selectedPreview || 'Select preview text...'}
-                avatarColor={brandColor}
-              />
             </div>
           </div>
 

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Check, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isRealLink } from '@/lib/links';
 
 interface Slice {
   link?: string;
@@ -42,7 +43,7 @@ export function LinksSummaryPopover({ slices, brandDomain, dense = false }: Link
   const groups = useMemo<DomainGroup[]>(() => {
     const counts = new Map<string, number>();
     for (const s of slices) {
-      if (!s.link) continue;
+      if (!isRealLink(s.link)) continue;
       counts.set(s.link, (counts.get(s.link) || 0) + 1);
     }
     const byDomain = new Map<string, DomainGroup>();
@@ -68,7 +69,7 @@ export function LinksSummaryPopover({ slices, brandDomain, dense = false }: Link
   }, [slices, brandDomain]);
 
   const uniqueCount = useMemo(
-    () => new Set(slices.filter((s) => s.link).map((s) => s.link)).size,
+    () => new Set(slices.filter((s) => isRealLink(s.link)).map((s) => s.link)).size,
     [slices],
   );
   const externalCount = groups.filter((g) => g.external).length;
@@ -98,9 +99,13 @@ export function LinksSummaryPopover({ slices, brandDomain, dense = false }: Link
         >
           <span className="font-semibold text-foreground">{uniqueCount}</span>
           {!dense && <span>link{uniqueCount === 1 ? '' : 's'}</span>}
-          {externalCount > 0 && (
-            <span className="ml-0.5 h-[5px] w-[5px] rounded-full bg-warning" aria-label="external destinations" />
-          )}
+          <span
+            className={cn(
+              'ml-0.5 h-[5px] w-[5px] rounded-full',
+              externalCount > 0 ? 'bg-warning' : 'bg-success',
+            )}
+            aria-label={externalCount > 0 ? 'external destinations present' : 'all destinations on brand domain'}
+          />
         </button>
       </PopoverTrigger>
       <PopoverContent

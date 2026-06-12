@@ -6,6 +6,7 @@ import { LinksSummaryPopover } from './LinksSummaryPopover';
 import { ProcessingTimer } from './ProcessingTimer';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
 import { supabase } from '@/integrations/supabase/client';
+import { isRealLink } from '@/lib/links';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ArrowUpRight, ChevronRight, Columns, AlertTriangle } from 'lucide-react';
@@ -29,18 +30,29 @@ interface QueueRowProps {
   onToggleTimers: () => void;
 }
 
-/** Quiet amber flag chip — the only saturated surface in a row. */
-function FlagChip({ label, title, dense }: { label: string; title: string; dense?: boolean }) {
+/** Always-visible QA status chip: green dot when clean, amber when not. */
+function QaChip({
+  ok,
+  label,
+  title,
+  dense,
+}: {
+  ok: boolean;
+  label: string;
+  title: string;
+  dense?: boolean;
+}) {
   return (
     <Tooltip delayDuration={150}>
       <TooltipTrigger asChild>
         <span
           className={cn(
-            'inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/15 font-semibold text-warning',
-            dense ? 'h-5 px-1.5 text-[10px]' : 'h-[22px] px-2 text-[10.5px]',
+            'inline-flex shrink-0 items-center gap-1.5 rounded-full font-medium tabular-nums',
+            dense ? 'h-5 px-2 text-[10.5px]' : 'h-6 px-2.5 text-[11px]',
+            ok ? 'bg-muted text-foreground/65' : 'bg-warning/15 font-semibold text-warning',
           )}
         >
-          <AlertTriangle className="h-[9px] w-[9px]" strokeWidth={2.5} />
+          <span className={cn('h-[5px] w-[5px] rounded-full', ok ? 'bg-success' : 'bg-warning')} />
           {label}
         </span>
       </TooltipTrigger>
@@ -74,8 +86,10 @@ export function QueueRow({
 
   const spellingErrors = item.spelling_errors as Array<{ text: string }> | null;
   const spellingCount = spellingErrors?.length || 0;
+
+  const realLinks = slices.filter((s) => isRealLink(s.link));
   const externalCount = brandDomain
-    ? new Set(slices.filter((s) => s.link && !s.link.includes(brandDomain)).map((s) => s.link)).size
+    ? new Set(realLinks.filter((s) => !s.link!.includes(brandDomain)).map((s) => s.link)).size
     : 0;
 
   const selectedPresetId = item.selected_segment_preset_id || presets.find((p) => p.is_default)?.id || null;
@@ -235,23 +249,27 @@ export function QueueRow({
     </div>
   );
 
-  const flags = (
-    <>
-      {spellingCount > 0 && (
-        <FlagChip
-          dense={compact}
-          label={compact ? String(spellingCount) : `${spellingCount} spelling`}
-          title={`${spellingCount} possible spelling error${spellingCount === 1 ? '' : 's'} — open to review`}
-        />
-      )}
-      {externalCount > 0 && (
-        <FlagChip
-          dense={compact}
-          label={compact ? `${externalCount} ext` : `${externalCount} ext link${externalCount === 1 ? '' : 's'}`}
-          title={`${externalCount} destination${externalCount === 1 ? '' : 's'} outside ${brandDomain} — check the link list`}
-        />
-      )}
-    </>
+  const linksCell = <LinksSummaryPopover slices={slices} brandDomain={brandDomain} dense={compact} />;
+
+  const spellingCell = (
+    <QaChip
+      dense={compact}
+      ok={spellingCount === 0}
+      label={
+        spellingCount === 0
+          ? compact
+            ? 'Aa'
+            : '0 errors'
+          : compact
+            ? String(spellingCount)
+            : `${spellingCount} spelling`
+      }
+      title={
+        spellingCount === 0
+          ? 'Spelling QA passed — no errors found'
+          : `${spellingCount} possible spelling error${spellingCount === 1 ? '' : 's'} — open to review`
+      }
+    />
   );
 
   const klaviyoPill = (() => {
@@ -313,13 +331,17 @@ export function QueueRow({
     isSelected && 'bg-secondary/60',
   );
 
+  // Field order per Jack: status → thumbnail → title/SL/PT → client →
+  // segment set → links (green = all on domain) → spelling QA.
+
   // ── compact: one line, everything visible, engineer density ─────────────
   if (compact) {
     return (
       <div className={tileClasses} onClick={onToggleExpand}>
         {checkbox}
+        <div className="w-[118px] shrink-0">{statusCell}</div>
         {thumbnail}
-        <div className="w-[200px] shrink-0 xl:w-[240px]" onClick={(e) => e.stopPropagation()}>
+        <div className="w-[180px] shrink-0 xl:w-[220px]" onClick={(e) => e.stopPropagation()}>
           <InlineEditableText
             value={item.name || 'Untitled Campaign'}
             onSave={handleNameSave}
@@ -356,10 +378,9 @@ export function QueueRow({
         </div>
         <div className="w-[108px] shrink-0">{brandChip}</div>
         <div className="hidden w-[120px] shrink-0 md:block">{segmentCell}</div>
-        <div className="w-[124px] shrink-0">{statusCell}</div>
-        <div className="flex w-[148px] shrink-0 items-center justify-end gap-1.5">
-          {flags}
-          <LinksSummaryPopover slices={slices} brandDomain={brandDomain} dense />
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
+          {linksCell}
+          {spellingCell}
           {klaviyoPill}
           {timer}
         </div>
@@ -368,10 +389,11 @@ export function QueueRow({
     );
   }
 
-  // ── comfortable: two-line object row, the approved mock ─────────────────
+  // ── comfortable: two-line object row ─────────────────────────────────────
   return (
     <div className={tileClasses} onClick={onToggleExpand}>
       {checkbox}
+      <div className="w-[136px] shrink-0">{statusCell}</div>
       {thumbnail}
 
       <div className="min-w-0 flex-[1.6]">
@@ -423,11 +445,10 @@ export function QueueRow({
 
       <div className="hidden w-[124px] shrink-0 md:block">{brandChip}</div>
       <div className="hidden w-[144px] shrink-0 lg:block">{segmentCell}</div>
-      <div className="w-[136px] shrink-0">{statusCell}</div>
 
-      <div className="flex w-[180px] shrink-0 items-center justify-end gap-2 xl:w-[220px]">
-        {flags}
-        <LinksSummaryPopover slices={slices} brandDomain={brandDomain} />
+      <div className="flex shrink-0 items-center justify-end gap-2">
+        {linksCell}
+        {spellingCell}
         {klaviyoPill}
         {timer}
       </div>

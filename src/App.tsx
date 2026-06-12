@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -61,21 +61,25 @@ const App = () => (
               {/* Public routes */}
               <Route path="/auth" element={<Auth />} />
 
-              {/* Protected routes with sidebar layout */}
+              {/* Protected routes share ONE persistent shell — the sidebar
+                  never unmounts between pages, so navigation is instant with
+                  no skeleton flash. */}
               <Route path="/" element={<Navigate to="/queue" replace />} />
-              <Route path="/queue" element={<AuthGuard><AppLayout><CampaignQueue /></AppLayout></AuthGuard>} />
-              <Route path="/brands" element={<AuthGuard><AppLayout><Brands /></AppLayout></AuthGuard>} />
-              <Route path="/brands/:id" element={<AuthGuard><AppLayout><BrandLayout /></AppLayout></AuthGuard>}>
-                <Route index element={<BrandOverview />} />
-                <Route path="knowledge" element={<BrandKnowledge />} />
-                <Route path="links" element={<BrandLinks />} />
-                <Route path="email" element={<BrandEmail />} />
-                <Route path="integrations" element={<BrandIntegrations />} />
+              <Route element={<AuthGuard><AppLayout><Outlet /></AppLayout></AuthGuard>}>
+                <Route path="/queue" element={<CampaignQueue />} />
+                <Route path="/brands" element={<Brands />} />
+                <Route path="/brands/:id" element={<BrandLayout />}>
+                  <Route index element={<BrandOverview />} />
+                  <Route path="knowledge" element={<BrandKnowledge />} />
+                  <Route path="links" element={<BrandLinks />} />
+                  <Route path="email" element={<BrandEmail />} />
+                  <Route path="integrations" element={<BrandIntegrations />} />
+                </Route>
+                <Route path="/segments" element={<Segments />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/upload" element={<SimpleUpload />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
-              <Route path="/segments" element={<AuthGuard><AppLayout><Segments /></AppLayout></AuthGuard>} />
-              <Route path="/analytics" element={<AuthGuard><AppLayout><Analytics /></AppLayout></AuthGuard>} />
-              <Route path="/upload" element={<AuthGuard><AppLayout><SimpleUpload /></AppLayout></AuthGuard>} />
-              <Route path="/settings" element={<AuthGuard><AppLayout><Settings /></AppLayout></AuthGuard>} />
 
               {/* Focused full-screen flows (each carries a breadcrumb back) */}
               <Route path="/campaign/:id" element={<AuthGuard><CampaignPage /></AuthGuard>} />

@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Link as LinkIcon, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SliceImageDropZone } from './SliceImageDropZone';
+import { isRealLink } from '@/lib/links';
 
 export interface CanvasSlice {
   imageUrl?: string;
@@ -31,16 +32,10 @@ const PILL_H = 24;
 const PILL_GAP = 4;
 const GUTTER_PAD = 12;
 
-/* Compact, readable URL: strip protocol/www, middle-collapse long paths. */
+/* Full-length URL, just without protocol/www noise. The gutter has room —
+   never collapse the path (Jack needs to read the whole destination). */
 export function displayUrl(raw: string): string {
-  let u = raw.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-  const [host, ...parts] = u.split('/');
-  if (parts.length === 0) return host;
-  const path = parts.join('/');
-  if (path.length <= 28) return `${host}/${path}`;
-  const last = parts[parts.length - 1];
-  const tail = last.length > 26 ? `${last.slice(0, 12)}…${last.slice(-10)}` : last;
-  return parts.length > 1 ? `${host}/…/${tail}` : `${host}/${tail}`;
+  return raw.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
 }
 
 /* Map-label collision pass: keep pills at their anchor when possible,
@@ -102,6 +97,10 @@ export function SliceCanvas({
   }, [measure, scaledWidth, displayMode]);
 
   const pillTops = useMemo(() => resolvePositions(anchors, PILL_H, PILL_GAP), [anchors]);
+  // Alt blocks run ~2 lines (~38px) — collision-resolve with their real height
+  // so neighboring alt texts never overlap or squash each other.
+  const ALT_H = 38;
+  const altTops = useMemo(() => resolvePositions(anchors, ALT_H, 6), [anchors]);
 
   const setHover = (i: number | null) => {
     setHovered(i);
@@ -215,7 +214,7 @@ export function SliceCanvas({
                   }}
                 >
                   <PopoverTrigger asChild>
-                    {slice.link ? (
+                    {isRealLink(slice.link) ? (
                       <button
                         className={cn(
                           'pointer-events-auto inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border bg-card pl-2 pr-2.5 text-[11px] leading-none text-foreground/80 transition-[border-color,background-color,color] duration-150',
@@ -223,7 +222,7 @@ export function SliceCanvas({
                             ? 'border-foreground/25 bg-accent text-foreground'
                             : 'border-border',
                         )}
-                        title={slice.link}
+                        title={slice.link!}
                       >
                         {multi && (
                           <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-[9px] font-medium">
@@ -231,7 +230,7 @@ export function SliceCanvas({
                           </span>
                         )}
                         <LinkIcon className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-                        <span className="truncate">{displayUrl(slice.link)}</span>
+                        <span className="truncate">{displayUrl(slice.link!)}</span>
                       </button>
                     ) : (
                       <button
@@ -245,7 +244,7 @@ export function SliceCanvas({
                       </button>
                     )}
                   </PopoverTrigger>
-                  {linkEditor(i, slice.link)}
+                  {linkEditor(i, isRealLink(slice.link) ? slice.link : null)}
                 </Popover>
               </div>
             );
@@ -265,7 +264,7 @@ export function SliceCanvas({
               <div
                 key={i}
                 className="absolute left-0 w-full max-w-[220px]"
-                style={{ top: pillTops[i], minHeight: PILL_H }}
+                style={{ top: altTops[i], minHeight: PILL_H }}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
               >
@@ -342,7 +341,7 @@ export function SliceCanvas({
                     )}
                   />
                   {/* Missing-link wash — quiet amber tint so gaps are scannable. */}
-                  {showLinks && !slice.link && (
+                  {showLinks && !isRealLink(slice.link) && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="pointer-events-none absolute inset-0 bg-warning/[0.06]" />

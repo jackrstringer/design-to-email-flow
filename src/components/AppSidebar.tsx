@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { List, Building2, Users, Settings, LogOut, Send, BarChart3, Plus } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -34,7 +35,11 @@ const navItems = [
 
 export function AppSidebar() {
   const { state } = useSidebar();
-  const collapsed = state === "collapsed";
+  // Peek: hovering the collapsed rail slides the full sidebar out as an
+  // overlay (the content gap stays at icon width — nothing shifts).
+  const [peek, setPeek] = useState(false);
+  const railCollapsed = state === "collapsed";
+  const collapsed = railCollapsed && !peek;
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuthContext();
@@ -51,7 +56,13 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" variant="floating" className="group/rail">
+    <Sidebar
+      collapsible="icon"
+      variant="floating"
+      className={cn("group/rail", railCollapsed && peek && "z-50 !w-[13.5rem]")}
+      onMouseEnter={() => railCollapsed && setPeek(true)}
+      onMouseLeave={() => setPeek(false)}
+    >
       <SidebarHeader className={cn("pt-4", collapsed ? "px-2 pb-1" : "px-4 pb-1")}>
         <div className={cn("flex h-8 items-center", collapsed ? "justify-center" : "gap-2.5")}>
           <span
@@ -161,7 +172,7 @@ export function AppSidebar() {
       </SidebarFooter>
 
       {/* click/drag affordance on the rail edge — ⌘B also toggles */}
-      <SidebarRail />
+      <SidebarRail className="hover:after:!bg-transparent" />
     </Sidebar>
   );
 }
