@@ -88,6 +88,7 @@ export function SegmentsTable({
       brand_id: brandId,
       name: newName.trim(),
       description: null,
+      color: null,
       included_segments: [],
       excluded_segments: [],
       is_default: presets.length === 0,

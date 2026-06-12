@@ -86,7 +86,7 @@ serve(async (req) => {
 
     const { data: queueRow } = await supabase
       .from('campaign_queue')
-      .select('id, user_id, name, slices, selected_subject_line, selected_preview_text, generated_subject_lines, spelling_errors')
+      .select('id, user_id, name, slices, selected_subject_line, selected_preview_text, generated_subject_lines, spelling_errors, user_context')
       .eq('id', queueId)
       .maybeSingle();
     if (!queueRow) return jsonResponse(req, { error: 'Campaign not found' }, 404);
@@ -179,8 +179,23 @@ serve(async (req) => {
 Review the campaign below against the brand knowledge. Flag ONLY real, specific problems a senior email marketer would stop a send for. Do not flag stylistic preferences not grounded in the provided knowledge. NEVER critique or suggest alternatives for the subject line, preview text, or campaign name/title — copy choice and naming are the marketer's call, not yours. Categories: link (wrong destination per brand rules), date (expired/inconsistent promo dates, wrong day-of-week, stale year), brand_rule (factually contradicts documented knowledge, e.g. wrong promo code or discount amount).
 Return ONLY a JSON array (possibly empty): [{"severity":"error"|"warning","category":"link"|"date"|"brand_rule","message":"...", "sliceIndex": n|null}]`;
 
+      // User-provided campaign context from the Figma plugin (copy notes,
+      // links, landing page, offer details) — given to the agent as ground
+      // truth about campaign intent, clearly delimited, only when non-empty.
+      const userContext = typeof queueRow.user_context === 'string' && queueRow.user_context.trim()
+        ? queueRow.user_context.trim()
+        : null;
+      const userContextSection = userContext
+        ? `
+
+User-provided campaign context (authoritative intent from the marketer — check the campaign is consistent with it, e.g. links go to any landing page they specified and offer details match):
+<user_campaign_context>
+${userContext}
+</user_campaign_context>`
+        : '';
+
       const userMessage = `Brand knowledge:
-${(knowledge ?? []).map((k) => `- [${k.kind}, conf ${k.confidence}${k.valid_until ? `, valid until ${k.valid_until}` : ''}] ${k.title}: ${k.content}`).join('\n') || '(none)'}
+${(knowledge ?? []).map((k) => `- [${k.kind}, conf ${k.confidence}${k.valid_until ? `, valid until ${k.valid_until}` : ''}] ${k.title}: ${k.content}`).join('\n') || '(none)'}${userContextSection}
 
 Campaign "${queueRow.name ?? 'unnamed'}":
 Subject line: ${queueRow.selected_subject_line ?? '(not selected)'}

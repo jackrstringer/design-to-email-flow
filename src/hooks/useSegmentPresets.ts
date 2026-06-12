@@ -15,6 +15,8 @@ export interface SegmentPreset {
   brand_id: string;
   name: string;
   description: string | null;
+  /** Optional accent color for the set's dot. Null = neutral. */
+  color: string | null;
   included_segments: KlaviyoSegment[];
   excluded_segments: KlaviyoSegment[];
   is_default: boolean;
@@ -111,6 +113,7 @@ export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolea
         brand_id: p.brand_id,
         name: p.name,
         description: p.description || null,
+        color: p.color || null,
         included_segments: hydrateSegments(p.included_segments as unknown[], klaviyoSegments, klaviyoLoaded),
         excluded_segments: hydrateSegments(p.excluded_segments as unknown[], klaviyoSegments, klaviyoLoaded),
         is_default: p.is_default,
@@ -141,6 +144,7 @@ export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolea
           brand_id: preset.brand_id,
           name: preset.name,
           description: preset.description,
+          color: preset.color ?? null,
           included_segments: preset.included_segments as any,
           excluded_segments: preset.excluded_segments as any,
           is_default: preset.is_default,
@@ -173,6 +177,7 @@ export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolea
       const updateData: Record<string, any> = {};
       if (updates.name !== undefined) updateData.name = updates.name;
       if (updates.description !== undefined) updateData.description = updates.description;
+      if (updates.color !== undefined) updateData.color = updates.color;
       if (updates.included_segments !== undefined) updateData.included_segments = updates.included_segments;
       if (updates.excluded_segments !== undefined) updateData.excluded_segments = updates.excluded_segments;
       if (updates.is_default !== undefined) updateData.is_default = updates.is_default;

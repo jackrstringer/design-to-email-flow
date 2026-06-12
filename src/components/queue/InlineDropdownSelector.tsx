@@ -11,6 +11,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { CopyIssue } from '@/hooks/useSpellcheck';
+import { CopyQaIndicator } from './CopyQaIndicator';
 
 // ClickUp brand icon as inline SVG
 const ClickUpIcon = ({ className }: { className?: string }) => (
@@ -42,6 +44,12 @@ interface InlineDropdownSelectorProps {
   processingStep?: string | null;
   isAiGenerated?: boolean;
   isClickUpSource?: boolean;
+  /** Spelling/grammar issues for the SAVED value — red-outlines the field. */
+  qaIssues?: CopyIssue[];
+  /** One-click whitelist for flagged words (per-brand custom dictionary). */
+  onAddToDictionary?: (word: string) => void | Promise<unknown>;
+  /** Sync local spellcheck for live feedback while typing (mid-edit). */
+  getDraftIssues?: (text: string) => CopyIssue[];
 }
 
 export function InlineDropdownSelector({
@@ -55,12 +63,30 @@ export function InlineDropdownSelector({
   isAiGenerated = false,
   isClickUpSource = false,
   textClassName,
+  qaIssues,
+  onAddToDictionary,
+  getDraftIssues,
 }: InlineDropdownSelectorProps) {
   const [open, setOpen] = useState(false);
   const [editValue, setEditValue] = useState(selected || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [draftIssues, setDraftIssues] = useState<CopyIssue[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Live local spellcheck while typing — debounced so it feels instant
+  // without checking on every keystroke.
+  useEffect(() => {
+    if (!isEditing || !getDraftIssues) return;
+    const timer = setTimeout(() => setDraftIssues(getDraftIssues(editValue)), 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editValue, isEditing]);
+
+  // While editing, live draft issues drive the outline; otherwise the saved
+  // value's merged (local + LLM) issues do.
+  const activeIssues = isEditing && getDraftIssues ? draftIssues : (qaIssues ?? []);
+  const hasQaIssues = activeIssues.length > 0;
 
   // Sync edit value with selected prop
   useEffect(() => {
@@ -181,7 +207,8 @@ export function InlineDropdownSelector({
           className={cn(
             "group flex items-center gap-0.5 rounded-sm transition-shadow cursor-pointer w-full",
             isEditing && "ring-1 ring-foreground/30 ring-inset bg-card",
-            open && "ring-1 ring-foreground/30 ring-inset bg-card"
+            open && "ring-1 ring-foreground/30 ring-inset bg-card",
+            hasQaIssues && "ring-1 ring-destructive ring-inset bg-destructive/[0.03]"
           )}
           onClick={handleCellClick}
           onDoubleClick={handleDoubleClick}
@@ -236,6 +263,10 @@ export function InlineDropdownSelector({
                 </Tooltip>
               )}
             </span>
+          )}
+
+          {!isEditing && hasQaIssues && (
+            <CopyQaIndicator issues={activeIssues} onAddToDictionary={onAddToDictionary} />
           )}
 
           {isSaving && (

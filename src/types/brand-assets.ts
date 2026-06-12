@@ -147,6 +147,8 @@ export interface Brand {
   clickupListId?: string;
   // Link intelligence
   linkPreferences?: import('./link-intelligence').BrandLinkPreferences;
+  // Campaign naming convention template, e.g. "{brand} | {date:MM.DD} | {name}"
+  namingConvention?: string | null;
   createdAt: string;
   updatedAt: string;
 }

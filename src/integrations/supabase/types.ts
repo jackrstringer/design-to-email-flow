@@ -138,6 +138,7 @@ export type Database = {
           id: string
           kind: string
           last_applied_at: string | null
+          metadata: Json | null
           source: string
           superseded_by: string | null
           times_applied: number
@@ -155,6 +156,7 @@ export type Database = {
           id?: string
           kind: string
           last_applied_at?: string | null
+          metadata?: Json | null
           source?: string
           superseded_by?: string | null
           times_applied?: number
@@ -172,6 +174,7 @@ export type Database = {
           id?: string
           kind?: string
           last_applied_at?: string | null
+          metadata?: Json | null
           source?: string
           superseded_by?: string | null
           times_applied?: number
@@ -270,11 +273,14 @@ export type Database = {
           accent_color: string | null
           all_links: Json
           background_color: string | null
+          clickup_folder_id: string | null
           clickup_key_set: boolean
           clickup_list_id: string | null
+          clickup_list_ids: string[]
           clickup_workspace_id: string | null
           copy_examples: Json | null
           created_at: string
+          custom_dictionary: string[]
           dark_logo_public_id: string | null
           dark_logo_url: string | null
           domain: string
@@ -291,6 +297,7 @@ export type Database = {
           link_color: string | null
           link_preferences: Json | null
           name: string
+          naming_convention: string | null
           primary_color: string
           secondary_color: string
           social_icons: Json | null
@@ -305,11 +312,14 @@ export type Database = {
           accent_color?: string | null
           all_links?: Json
           background_color?: string | null
+          clickup_folder_id?: string | null
           clickup_key_set?: boolean
           clickup_list_id?: string | null
+          clickup_list_ids?: string[]
           clickup_workspace_id?: string | null
           copy_examples?: Json | null
           created_at?: string
+          custom_dictionary?: string[]
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
           domain: string
@@ -326,6 +336,7 @@ export type Database = {
           link_color?: string | null
           link_preferences?: Json | null
           name: string
+          naming_convention?: string | null
           primary_color?: string
           secondary_color?: string
           social_icons?: Json | null
@@ -340,11 +351,14 @@ export type Database = {
           accent_color?: string | null
           all_links?: Json
           background_color?: string | null
+          clickup_folder_id?: string | null
           clickup_key_set?: boolean
           clickup_list_id?: string | null
+          clickup_list_ids?: string[]
           clickup_workspace_id?: string | null
           copy_examples?: Json | null
           created_at?: string
+          custom_dictionary?: string[]
           dark_logo_public_id?: string | null
           dark_logo_url?: string | null
           domain?: string
@@ -361,6 +375,7 @@ export type Database = {
           link_color?: string | null
           link_preferences?: Json | null
           name?: string
+          naming_convention?: string | null
           primary_color?: string
           secondary_color?: string
           social_icons?: Json | null
@@ -384,6 +399,8 @@ export type Database = {
           copy_source: string | null
           created_at: string | null
           error_message: string | null
+          footer_override_html: string | null
+          footer_override_state: Json | null
           footer_start_percent: number | null
           generated_preview_texts: Json | null
           generated_subject_lines: Json | null
@@ -414,6 +431,7 @@ export type Database = {
           spelling_errors: Json | null
           status: string | null
           updated_at: string | null
+          user_context: string | null
           user_id: string
         }
         Insert: {
@@ -426,6 +444,8 @@ export type Database = {
           copy_source?: string | null
           created_at?: string | null
           error_message?: string | null
+          footer_override_html?: string | null
+          footer_override_state?: Json | null
           footer_start_percent?: number | null
           generated_preview_texts?: Json | null
           generated_subject_lines?: Json | null
@@ -456,6 +476,7 @@ export type Database = {
           spelling_errors?: Json | null
           status?: string | null
           updated_at?: string | null
+          user_context?: string | null
           user_id: string
         }
         Update: {
@@ -468,6 +489,8 @@ export type Database = {
           copy_source?: string | null
           created_at?: string | null
           error_message?: string | null
+          footer_override_html?: string | null
+          footer_override_state?: Json | null
           footer_start_percent?: number | null
           generated_preview_texts?: Json | null
           generated_subject_lines?: Json | null
@@ -498,6 +521,7 @@ export type Database = {
           spelling_errors?: Json | null
           status?: string | null
           updated_at?: string | null
+          user_context?: string | null
           user_id?: string
         }
         Relationships: [
@@ -949,6 +973,7 @@ export type Database = {
       segment_presets: {
         Row: {
           brand_id: string
+          color: string | null
           created_at: string
           description: string | null
           excluded_segments: Json
@@ -960,6 +985,7 @@ export type Database = {
         }
         Insert: {
           brand_id: string
+          color?: string | null
           created_at?: string
           description?: string | null
           excluded_segments?: Json
@@ -971,6 +997,7 @@ export type Database = {
         }
         Update: {
           brand_id?: string
+          color?: string | null
           created_at?: string
           description?: string | null
           excluded_segments?: Json

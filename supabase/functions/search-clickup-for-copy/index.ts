@@ -290,42 +290,93 @@ serve(async (req) => {
     // with the service-role key. requireAuth permits both and rejects anonymous calls.
     await requireAuth(req);
 
-    const { figmaUrl, clickupApiKey, listId, workspaceId } = await req.json();
+    const { figmaUrl, clickupApiKey, listId, listIds, folderId, workspaceId } = await req.json();
 
-    if (!figmaUrl || !clickupApiKey || !listId) {
+    // Build the effective set of lists to search:
+    // - explicit multi-select list IDs (listIds: string[])
+    // - all lists inside the selected folder (folderId), resolved at query time
+    //   so lists created after setup are included automatically
+    // - legacy single listId (backward compat)
+    const effectiveListIds = new Set<string>();
+    if (Array.isArray(listIds)) {
+      for (const id of listIds) if (id) effectiveListIds.add(String(id));
+    }
+    // Legacy single listId only applies when no new-style selection was provided
+    if (listId && effectiveListIds.size === 0 && !folderId) {
+      effectiveListIds.add(String(listId));
+    }
+
+    if (folderId && clickupApiKey) {
+      try {
+        const folderRes = await fetch(
+          `https://api.clickup.com/api/v2/folder/${folderId}/list`,
+          { headers: { 'Authorization': clickupApiKey } }
+        );
+        if (folderRes.ok) {
+          const folderData = await folderRes.json();
+          const folderLists = folderData.lists || [];
+          console.log(`[clickup] Folder ${folderId} resolved to ${folderLists.length} lists`);
+          for (const l of folderLists) if (l?.id) effectiveListIds.add(String(l.id));
+        } else {
+          console.error(`[clickup] Folder list fetch failed (${folderRes.status}):`, await folderRes.text());
+        }
+      } catch (err) {
+        console.error('[clickup] Error resolving folder lists:', err);
+      }
+    }
+
+    if (!figmaUrl || !clickupApiKey || effectiveListIds.size === 0) {
       console.log('[clickup] Missing required parameters');
       return jsonResponse(req, { found: false, error: 'Missing required parameters' });
     }
 
     // Parse and log the target Figma URL for debugging
     const parsedTarget = parseFigmaUrl(figmaUrl);
-    console.log(`[clickup] Searching for Figma URL in list ${listId}`);
+    console.log(`[clickup] Searching for Figma URL across ${effectiveListIds.size} list(s): ${[...effectiveListIds].join(', ')}`);
     console.log(`[clickup] Target URL: ${figmaUrl}`);
     console.log(`[clickup] Parsed target - fileKey: ${parsedTarget?.fileKey || 'NONE'}, nodeId: ${parsedTarget?.nodeId || 'NONE'}`);
 
-    // Get tasks from the specific list WITH descriptions
+    // Get tasks from every selected list WITH descriptions
     // Note: Do NOT pass custom_fields=true - some ClickUp workspaces reject it with ITEM_156 error
     // Custom fields are included by default in the response anyway
-    const tasksResponse = await fetch(
-      `https://api.clickup.com/api/v2/list/${listId}/task?include_closed=false&subtasks=true&include_markdown_description=true`,
-      {
-        headers: { 'Authorization': clickupApiKey }
-      }
-    );
+    const tasks: any[] = [];
+    let anyListSucceeded = false;
+    let lastClickupStatus: number | null = null;
+    let lastClickupError: string | null = null;
 
-    if (!tasksResponse.ok) {
-      const errorBody = await tasksResponse.text();
-      console.error('[clickup] Task list fetch failed:', tasksResponse.status, errorBody);
+    const listFetches = [...effectiveListIds].map(async (id) => {
+      const res = await fetch(
+        `https://api.clickup.com/api/v2/list/${id}/task?include_closed=false&subtasks=true&include_markdown_description=true`,
+        { headers: { 'Authorization': clickupApiKey } }
+      );
+      if (!res.ok) {
+        const errorBody = await res.text();
+        console.error(`[clickup] Task fetch failed for list ${id}:`, res.status, errorBody);
+        return { ok: false as const, status: res.status, error: errorBody };
+      }
+      const data = await res.json();
+      return { ok: true as const, tasks: data.tasks || [] };
+    });
+
+    for (const result of await Promise.all(listFetches)) {
+      if (result.ok) {
+        anyListSucceeded = true;
+        tasks.push(...result.tasks);
+      } else {
+        lastClickupStatus = result.status;
+        lastClickupError = result.error;
+      }
+    }
+
+    if (!anyListSucceeded) {
       return jsonResponse(
         req,
-        { found: false, error: 'ClickUp API error', clickupStatus: tasksResponse.status, clickupError: errorBody },
+        { found: false, error: 'ClickUp API error', clickupStatus: lastClickupStatus, clickupError: lastClickupError },
         502,
       );
     }
 
-    const tasksData = await tasksResponse.json();
-    const tasks = tasksData.tasks || [];
-    console.log(`[clickup] Found ${tasks.length} tasks in list`);
+    console.log(`[clickup] Found ${tasks.length} tasks across ${effectiveListIds.size} list(s)`);
 
     // Find task containing the Figma URL (using normalized matching)
     let matchedTask = null;

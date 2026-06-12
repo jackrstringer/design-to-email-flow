@@ -48,6 +48,40 @@ function getResizedCloudinaryUrl(url: string, maxWidth: number, maxHeight: numbe
   return getResizedImageUrl(url, maxWidth, maxHeight);
 }
 
+
+// ---- Campaign naming convention -------------------------------------------
+// Duplicated from src/lib/naming.ts (Deno functions can't import from src/).
+// Keep both copies in sync. Tokens: {brand} {name} {date:FMT} {month} {year}.
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatDateToken(fmt: string, d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = String(d.getFullYear());
+  return fmt
+    .replace(/YYYY/g, yyyy)
+    .replace(/YY/g, yyyy.slice(2))
+    .replace(/MM/g, mm)
+    .replace(/DD/g, dd)
+    .replace(/M(?![M])/g, String(d.getMonth() + 1))
+    .replace(/D(?![D])/g, String(d.getDate()));
+}
+
+function formatCampaignName(
+  template: string,
+  parts: { brand: string; name: string; date?: Date },
+): string {
+  const d = parts.date ?? new Date();
+  return template
+    .replace(/\{brand\}/gi, parts.brand)
+    .replace(/\{name\}/gi, parts.name)
+    .replace(/\{date:([^}]+)\}/gi, (_m, fmt: string) => formatDateToken(fmt, d))
+    .replace(/\{month\}/gi, MONTHS_SHORT[d.getMonth()])
+    .replace(/\{year\}/gi, String(d.getFullYear()))
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 // Helper to update campaign queue status
 async function updateQueueItem(
   supabase: any,
@@ -144,7 +178,8 @@ async function startEarlyGeneration(
   mimeType: string,     // NEW: Pass correct MIME type to avoid Anthropic 400 errors
   brandContext: { name: string; domain: string } | null,
   brandId: string | null,
-  copyExamples: any
+  copyExamples: any,
+  userContext: string | null
 ): Promise<string> {
   const sessionKey = crypto.randomUUID();
   console.log('[process] Step 1.5: Starting early SL/PT generation, session:', sessionKey);
@@ -165,7 +200,8 @@ async function startEarlyGeneration(
         mimeType: mimeType, // NEW: Pass correct MIME type (ImageKit returns JPEG, not PNG)
         brandContext: brandContext || { name: 'Unknown', domain: null },
         brandId: brandId || null,
-        copyExamples: copyExamples || null
+        copyExamples: copyExamples || null,
+        userContext: userContext || null
       })
     }).catch(err => console.log('[process] Early generation triggered:', err?.message || 'ok'));
 
@@ -212,7 +248,8 @@ async function autoSliceImage(
   // Link intelligence params (optional)
   linkIndex?: LinkIndexEntry[],
   defaultDestinationUrl?: string,
-  brandPreferenceRules?: BrandPreferenceRule[]
+  brandPreferenceRules?: BrandPreferenceRule[],
+  userContext?: string | null
 ): Promise<AutoSliceResult | null> {
   const hasLinkIndex = linkIndex && linkIndex.length > 0;
   console.log(`[process] Step 3: Auto-slicing image (${mimeType})... (link index: ${hasLinkIndex ? linkIndex.length + ' links' : 'none'})`);
@@ -232,7 +269,8 @@ async function autoSliceImage(
         // Pass link intelligence if available
         linkIndex: hasLinkIndex ? linkIndex : undefined,
         defaultDestinationUrl: hasLinkIndex ? defaultDestinationUrl : undefined,
-        brandPreferenceRules: hasLinkIndex ? brandPreferenceRules : undefined
+        brandPreferenceRules: hasLinkIndex ? brandPreferenceRules : undefined,
+        userContext: userContext || undefined
       })
     });
 
@@ -596,7 +634,8 @@ async function generateCopy(
   slices: any[],
   brandContext: any,
   imageUrl: string,
-  copyExamples?: any
+  copyExamples?: any,
+  userContext?: string | null
 ): Promise<{ subjectLines: string[]; previewTexts: string[] } | null> {
   console.log('[process] Step 5: Generating copy (pairCount: 10)...');
 
@@ -613,7 +652,8 @@ async function generateCopy(
         brandContext,
         pairCount: 10, // CRITICAL: Match manual flow (was 5)
         copyExamples,
-        campaignImageUrl: imageUrl
+        campaignImageUrl: imageUrl,
+        userContext: userContext || undefined
       })
     });
 
@@ -772,12 +812,24 @@ serve(async (req) => {
       processing_percent: 10
     });
 
+    // User-provided campaign context from the Figma plugin (copy notes, links,
+    // landing page, offer details) — piped into slicing, copy gen, and QA.
+    const userContext: string | null =
+      typeof item.user_context === 'string' && item.user_context.trim()
+        ? item.user_context.trim()
+        : null;
+    if (userContext) {
+      console.log('[process] User-provided campaign context present (', userContext.length, 'chars)');
+    }
+
     // === STEP 1.5: Start early SL/PT generation immediately (matches manual flow) ===
     let brandId = item.brand_id;
     let brandContext: { name: string; domain: string } | null = null;
     let copyExamples = null;
     let clickupApiKey = null;
     let clickupListId = null;
+    let clickupListIds: string[] = [];
+    let clickupFolderId: string | null = null;
     let clickupWorkspaceId = null;
     
     // Fetch user's profile for master ClickUp connection
@@ -812,8 +864,36 @@ serve(async (req) => {
         }
         clickupApiKey = userProfile?.clickup_api_key || brandClickupKey || null;
         clickupWorkspaceId = userProfile?.clickup_workspace_id || brand.clickup_workspace_id || null;
-        // List ID still comes from brand (location-specific)
+        // Location still comes from brand: multi-list + optional whole folder,
+        // with the legacy single list as backward-compat fallback
+        clickupListIds = Array.isArray(brand.clickup_list_ids) ? brand.clickup_list_ids : [];
+        clickupFolderId = brand.clickup_folder_id || null;
         clickupListId = brand.clickup_list_id || null;
+
+        // Apply the brand's naming convention to the queue item's title.
+        // {name} is always the RAW design name (Figma frame name when
+        // available) so re-processing a campaign stays idempotent.
+        if (brand.naming_convention && typeof brand.naming_convention === 'string') {
+          const rawName: string | null =
+            (item.source_metadata && typeof item.source_metadata === 'object'
+              ? (item.source_metadata as Record<string, unknown>).frameName as string | undefined
+              : undefined) || item.name || null;
+          if (rawName) {
+            try {
+              const formatted = formatCampaignName(brand.naming_convention, {
+                brand: brand.name,
+                name: rawName,
+              });
+              if (formatted && formatted !== item.name) {
+                await updateQueueItem(supabase, campaignQueueId, { name: formatted });
+                item.name = formatted;
+                console.log('[process] Applied naming convention:', formatted);
+              }
+            } catch (err) {
+              console.error('[process] Naming convention failed (non-fatal):', err);
+            }
+          }
+        }
       }
     }
 
@@ -826,7 +906,8 @@ serve(async (req) => {
       imageResult.mimeType,     // NEW: Pass MIME type to fix Anthropic 400 errors
       brandContext,
       brandId,
-      copyExamples
+      copyExamples,
+      userContext
     );
 
     // === STEP 1.5c: Fire early spelling check (async, parallel with entire pipeline) ===
@@ -855,7 +936,8 @@ serve(async (req) => {
     type ClickUpCopyResult = { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null; found: boolean };
     let clickupPromise: Promise<ClickUpCopyResult> | null = null;
 
-    if (clickupApiKey && clickupListId && item.source_url) {
+    const hasClickupLocation = clickupListIds.length > 0 || !!clickupFolderId || !!clickupListId;
+    if (clickupApiKey && hasClickupLocation && item.source_url) {
       console.log('[process] Step 1.5b: Firing async ClickUp search (non-blocking)...');
       const clickupUrl = Deno.env.get('SUPABASE_URL') + '/functions/v1/search-clickup-for-copy';
       
@@ -872,6 +954,8 @@ serve(async (req) => {
               figmaUrl: item.source_url,
               clickupApiKey: clickupApiKey,
               listId: clickupListId,
+              listIds: clickupListIds,
+              folderId: clickupFolderId,
               workspaceId: clickupWorkspaceId
             })
           });
@@ -967,7 +1051,8 @@ serve(async (req) => {
       item.image_height || 2000,
       linkIndex.length > 0 ? linkIndex : undefined,
       defaultDestinationUrl || undefined,
-      brandPreferenceRules.length > 0 ? brandPreferenceRules : undefined
+      brandPreferenceRules.length > 0 ? brandPreferenceRules : undefined,
+      userContext
     );
 
     // Brand is already set from plugin (item.brand_id), no detection needed
@@ -1338,7 +1423,8 @@ serve(async (req) => {
         currentSlices,
         brandContext,
         resizedCampaignImageUrl,
-        copyExamples
+        copyExamples,
+        userContext
       );
     }
 

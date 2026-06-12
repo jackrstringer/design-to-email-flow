@@ -16,6 +16,8 @@ export interface SegmentPreset {
   included_segments: Array<string | SegmentPresetSegmentRef>;
   excluded_segments: Array<string | SegmentPresetSegmentRef>;
   is_default: boolean;
+  /** Optional user-chosen accent color — rendered as a small dot only. */
+  color?: string | null;
 }
 
 interface SegmentSetSelectorProps {
@@ -110,6 +112,12 @@ export function SegmentSetSelector({
           {selectedMissingCount > 0 && (
             <AlertTriangle className="h-3 w-3 flex-shrink-0 text-destructive" />
           )}
+          {selectedPreset?.color && selectedMissingCount === 0 && (
+            <span
+              className="h-1.5 w-1.5 flex-shrink-0 rounded-full ring-1 ring-black/10"
+              style={{ backgroundColor: selectedPreset.color }}
+            />
+          )}
           <span className="truncate">{displayName}</span>
           <ChevronDown className="h-3 w-3 ml-auto flex-shrink-0 opacity-50" />
         </Button>
@@ -157,6 +165,12 @@ export function SegmentSetSelector({
                       <Check className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
                   </div>
+                  {preset.color && (
+                    <span
+                      className="h-1.5 w-1.5 flex-shrink-0 rounded-full ring-1 ring-black/10"
+                      style={{ backgroundColor: preset.color }}
+                    />
+                  )}
                   <span className={cn("truncate flex-1", missingCount > 0 && "text-destructive")}>
                     {preset.name}
                   </span>

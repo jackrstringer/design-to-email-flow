@@ -72,7 +72,7 @@ serve(async (req) => {
   }
 
   try {
-    const { sessionKey, imageUrl, imageBase64, mimeType, brandContext, brandId, copyExamples } = await req.json();
+    const { sessionKey, imageUrl, imageBase64, mimeType, brandContext, brandId, copyExamples, userContext } = await req.json();
 
     if (!sessionKey) {
       throw new Error('sessionKey is required');
@@ -109,6 +109,19 @@ ${copyExamples.previewTexts.slice(0, 20).map((p: string) => `- "${p}"`).join('\n
 `;
     }
 
+    // User-provided campaign context (copy notes, links, landing page, offer details)
+    const userContextSection = (typeof userContext === 'string' && userContext.trim())
+      ? `
+
+## USER-PROVIDED CAMPAIGN CONTEXT (from the person sending this campaign)
+
+<user_campaign_context>
+${userContext.trim()}
+</user_campaign_context>
+
+Treat this as authoritative campaign intent — use any offer details, product focus, audience notes, or copy direction here when writing subject lines and preview texts. If it conflicts with what you infer from the email image, the user's context wins.`
+      : '';
+
     const textPrompt = `You are a senior retention copywriter writing subject lines and preview text for high-performing DTC brands.
 
 Your job is not just to be correct, but to be sharp, tasteful, on-brand, and inbox-competitive.
@@ -123,7 +136,7 @@ You must write SL/PT pairs that:
 
 - Would realistically get approved by a strong creative director
 
-${brandVoiceSection}
+${brandVoiceSection}${userContextSection}
 
 ## EMAIL BEING SENT:
 

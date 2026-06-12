@@ -3,7 +3,7 @@
 // the figma-ingest edge function. Settings (server URL + plugin token) are
 // kept in clientStorage so they survive restarts.
 
-figma.showUI(__html__, { width: 380, height: 560, themeColors: true });
+figma.showUI(__html__, { width: 380, height: 648, themeColors: true });
 
 const SETTING_KEYS = ['serverUrl', 'pluginToken'];
 

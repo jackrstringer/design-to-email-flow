@@ -5,6 +5,8 @@ import { SegmentSetSelector, SegmentPreset } from './SegmentSetSelector';
 import { LinksSummaryPopover } from './LinksSummaryPopover';
 import { ProcessingTimer } from './ProcessingTimer';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
+import { useBrandDictionary } from '@/hooks/useBrandDictionary';
+import { useCopyQa } from '@/hooks/useSpellcheck';
 import { supabase } from '@/integrations/supabase/client';
 import { isRealLink } from '@/lib/links';
 import { toast } from 'sonner';
@@ -96,6 +98,26 @@ export function QueueRow({
 
   const isProcessing = item.status === 'processing';
   const compact = density === 'compact';
+
+  // Spelling + grammar QA on the SELECTED subject line / preview text.
+  // Local nspell is instant; the LLM grammar pass only runs for values the
+  // user edits from this row (the expanded panel checks on open).
+  const dictionary = useBrandDictionary(item.brand_id);
+  const copyQa = useCopyQa(
+    { subject: item.selected_subject_line, preview: item.selected_preview_text },
+    {
+      dictionary: dictionary.words,
+      brandName,
+      brandDomain,
+      grammarOnMount: false,
+      enabled: !isProcessing,
+    },
+  );
+  const copyQaProps = (field: 'subject' | 'preview') => ({
+    qaIssues: copyQa.issuesByField[field] ?? [],
+    onAddToDictionary: item.brand_id ? dictionary.addWord : undefined,
+    getDraftIssues: copyQa.checkDraft,
+  });
 
   const handleNameSave = async (newName: string) => {
     const { error } = await supabase.from('campaign_queue').update({ name: newName }).eq('id', item.id);
@@ -267,7 +289,10 @@ export function QueueRow({
       title={
         spellingCount === 0
           ? 'Spelling QA passed — no errors found'
-          : `${spellingCount} possible spelling error${spellingCount === 1 ? '' : 's'} — open to review`
+          : `Possible misspelling${spellingCount === 1 ? '' : 's'}: ${spellingErrors!
+              .slice(0, 5)
+              .map((e) => `“${e.text}”`)
+              .join(', ')}${spellingCount > 5 ? ` +${spellingCount - 5} more` : ''} — open to review`
       }
     />
   );
@@ -360,6 +385,7 @@ export function QueueRow({
             isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
             isClickUpSource={item.copy_source === 'clickup'}
             textClassName="!text-[12px]"
+            {...copyQaProps('subject')}
           />
         </div>
         <div className="hidden min-w-0 flex-1 lg:block" onClick={(e) => e.stopPropagation()}>
@@ -374,6 +400,7 @@ export function QueueRow({
             isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
             isClickUpSource={item.copy_source === 'clickup'}
             textClassName="!text-[12px] text-muted-foreground"
+            {...copyQaProps('preview')}
           />
         </div>
         <div className="w-[108px] shrink-0">{brandChip}</div>
@@ -417,6 +444,7 @@ export function QueueRow({
             isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_subject_line)}
             isClickUpSource={item.copy_source === 'clickup'}
             textClassName="!text-[11.5px] text-muted-foreground"
+            {...copyQaProps('subject')}
           />
         </div>
         {!isProcessing && (
@@ -432,6 +460,7 @@ export function QueueRow({
               isAiGenerated={item.copy_source === 'ai' || (!item.copy_source && !item.provided_preview_text)}
               isClickUpSource={item.copy_source === 'clickup'}
               textClassName="!text-[11.5px] text-muted-foreground/80"
+              {...copyQaProps('preview')}
             />
           </div>
         )}

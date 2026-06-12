@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, ExternalLink, AlertCircle, Check, Link2 } from 'lucide-react';
+import { Loader2, ExternalLink, AlertCircle, Check, Link2, ChevronRight, Folder as FolderIcon, List as ListIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { cn } from '@/lib/utils';
 
 interface BrandClickUpLocationSelectorProps {
   brandId: string;
@@ -14,27 +16,42 @@ interface BrandClickUpLocationSelectorProps {
   onSkip: () => void;
 }
 
-export function BrandClickUpLocationSelector({ 
-  brandId, 
-  onComplete, 
-  onSkip 
+interface ClickUpList {
+  id: string;
+  name: string;
+  folderless?: boolean;
+}
+
+interface ClickUpFolder {
+  id: string;
+  name: string;
+  lists: ClickUpList[] | null; // null = not fetched yet
+  expanded: boolean;
+  loading: boolean;
+}
+
+export function BrandClickUpLocationSelector({
+  brandId,
+  onComplete,
+  onSkip
 }: BrandClickUpLocationSelectorProps) {
   const { user } = useAuth();
-  
+
   // Master connection from profile
   const [masterApiKey, setMasterApiKey] = useState<string | null>(null);
   const [masterWorkspaceId, setMasterWorkspaceId] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  
-  // Location selection
-  const [spaces, setSpaces] = useState<{id: string; name: string}[]>([]);
-  const [folders, setFolders] = useState<{id: string; name: string}[]>([]);
-  const [lists, setLists] = useState<{id: string; name: string; folderless?: boolean}[]>([]);
-  
+
+  // Hierarchy browsing
+  const [spaces, setSpaces] = useState<{ id: string; name: string }[]>([]);
   const [selectedSpaceId, setSelectedSpaceId] = useState('');
-  const [selectedFolderId, setSelectedFolderId] = useState('');
-  const [selectedListId, setSelectedListId] = useState('');
-  
+  const [folders, setFolders] = useState<ClickUpFolder[]>([]);
+  const [folderlessLists, setFolderlessLists] = useState<ClickUpList[]>([]);
+
+  // Selection: one whole folder (optional) + any number of individual lists
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
+
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -43,20 +60,19 @@ export function BrandClickUpLocationSelector({
   useEffect(() => {
     async function fetchProfile() {
       if (!user) return;
-      
+
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('clickup_api_key, clickup_workspace_id')
           .eq('id', user.id)
           .single();
-        
+
         if (error) throw error;
-        
+
         setMasterApiKey(data?.clickup_api_key || null);
         setMasterWorkspaceId(data?.clickup_workspace_id || null);
-        
-        // If we have both, fetch spaces
+
         if (data?.clickup_api_key && data?.clickup_workspace_id) {
           fetchSpaces(data.clickup_api_key, data.clickup_workspace_id);
         }
@@ -66,7 +82,7 @@ export function BrandClickUpLocationSelector({
         setIsLoadingProfile(false);
       }
     }
-    
+
     fetchProfile();
   }, [user]);
 
@@ -88,83 +104,126 @@ export function BrandClickUpLocationSelector({
 
   const handleSpaceChange = async (spaceId: string) => {
     setSelectedSpaceId(spaceId);
-    setSelectedFolderId('');
-    setSelectedListId('');
     setFolders([]);
-    setLists([]);
-    
+    setFolderlessLists([]);
+    setSelectedFolderId(null);
+    setSelectedListIds([]);
+
     if (!spaceId || !masterApiKey) return;
-    
+
     setIsLoadingData(true);
     try {
-      // Fetch folders
-      const { data: foldersData } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'folders', clickupApiKey: masterApiKey, spaceId }
-      });
-      setFolders(foldersData?.folders || []);
-      
-      // Fetch folderless lists
-      const { data: listsData } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'lists', clickupApiKey: masterApiKey, spaceId }
-      });
-      setLists(listsData?.lists || []);
+      const [{ data: foldersData }, { data: listsData }] = await Promise.all([
+        supabase.functions.invoke('get-clickup-hierarchy', {
+          body: { type: 'folders', clickupApiKey: masterApiKey, spaceId }
+        }),
+        supabase.functions.invoke('get-clickup-hierarchy', {
+          body: { type: 'lists', clickupApiKey: masterApiKey, spaceId }
+        }),
+      ]);
+      setFolders(
+        (foldersData?.folders || []).map((f: { id: string; name: string }) => ({
+          ...f,
+          lists: null,
+          expanded: false,
+          loading: false,
+        }))
+      );
+      setFolderlessLists(listsData?.lists || []);
     } catch (err) {
       console.error('Failed to fetch folders/lists:', err);
+      toast.error('Failed to load ClickUp folders');
     } finally {
       setIsLoadingData(false);
     }
   };
 
-  const handleFolderChange = async (folderId: string) => {
-    setSelectedFolderId(folderId);
-    setSelectedListId('');
-    
-    if (!folderId || !masterApiKey) {
-      // If no folder selected, show folderless lists
-      if (selectedSpaceId) {
-        setIsLoadingData(true);
-        try {
-          const { data } = await supabase.functions.invoke('get-clickup-hierarchy', {
-            body: { type: 'lists', clickupApiKey: masterApiKey, spaceId: selectedSpaceId }
-          });
-          setLists(data?.lists || []);
-        } catch (err) {
-          console.error('Failed to fetch lists:', err);
-        } finally {
-          setIsLoadingData(false);
-        }
-      }
-      return;
-    }
-    
-    setIsLoadingData(true);
+  // Fetch a folder's lists (for expansion or for pruning on folder-select)
+  const fetchFolderLists = useCallback(async (folderId: string): Promise<ClickUpList[]> => {
+    const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
+      body: { type: 'lists', clickupApiKey: masterApiKey, folderId }
+    });
+    if (error) throw error;
+    return data?.lists || [];
+  }, [masterApiKey]);
+
+  const ensureFolderLists = async (folderId: string): Promise<ClickUpList[]> => {
+    const folder = folders.find(f => f.id === folderId);
+    if (folder?.lists) return folder.lists;
+
+    setFolders(prev => prev.map(f => f.id === folderId ? { ...f, loading: true } : f));
     try {
-      const { data, error } = await supabase.functions.invoke('get-clickup-hierarchy', {
-        body: { type: 'lists', clickupApiKey: masterApiKey, folderId, spaceId: selectedSpaceId }
-      });
-      if (error) throw error;
-      setLists(data?.lists || []);
+      const lists = await fetchFolderLists(folderId);
+      setFolders(prev => prev.map(f => f.id === folderId ? { ...f, lists, loading: false } : f));
+      return lists;
     } catch (err) {
-      console.error('Failed to fetch lists:', err);
-    } finally {
-      setIsLoadingData(false);
+      console.error('Failed to fetch folder lists:', err);
+      setFolders(prev => prev.map(f => f.id === folderId ? { ...f, loading: false } : f));
+      return [];
     }
   };
+
+  const toggleFolderExpanded = async (folderId: string) => {
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+    setFolders(prev => prev.map(f => f.id === folderId ? { ...f, expanded: !f.expanded } : f));
+    if (!folder.expanded && !folder.lists) {
+      await ensureFolderLists(folderId);
+    }
+  };
+
+  const toggleFolderSelected = async (folderId: string, checked: boolean) => {
+    if (checked) {
+      // One whole-folder selection at a time (it maps to a single brand column)
+      setSelectedFolderId(folderId);
+      // Expand so the user sees what's included
+      setFolders(prev => prev.map(f => f.id === folderId ? { ...f, expanded: true } : f));
+      // Folder supersedes its child lists: prune them from explicit selection
+      const lists = await ensureFolderLists(folderId);
+      if (lists.length > 0) {
+        const childIds = new Set(lists.map(l => l.id));
+        setSelectedListIds(prev => prev.filter(id => !childIds.has(id)));
+      }
+    } else {
+      setSelectedFolderId(prev => (prev === folderId ? null : prev));
+    }
+  };
+
+  const toggleListSelected = (listId: string, checked: boolean) => {
+    setSelectedListIds(prev =>
+      checked ? (prev.includes(listId) ? prev : [...prev, listId]) : prev.filter(id => id !== listId)
+    );
+  };
+
+  const selectedFolder = folders.find(f => f.id === selectedFolderId) || null;
+  const hasSelection = !!selectedFolderId || selectedListIds.length > 0;
+
+  const summaryText = (() => {
+    const parts: string[] = [];
+    if (selectedFolder) parts.push(`Folder ‘${selectedFolder.name}’ (all lists)`);
+    if (selectedListIds.length > 0) {
+      parts.push(`${selectedListIds.length} list${selectedListIds.length === 1 ? '' : 's'}`);
+    }
+    return parts.join(' + ');
+  })();
 
   const handleSave = async () => {
-    if (!selectedListId) return;
-    
+    if (!hasSelection) return;
+
     setIsSaving(true);
     try {
       const { error } = await supabase
         .from('brands')
         .update({
-          clickup_list_id: selectedListId,
+          clickup_list_ids: selectedListIds,
+          clickup_folder_id: selectedFolderId,
+          // Keep legacy single-list column populated for older read paths
+          clickup_list_id: selectedListIds[0] || null,
         })
         .eq('id', brandId);
 
       if (error) throw error;
-      
+
       setIsSaved(true);
       toast.success('ClickUp location saved!');
       setTimeout(() => onComplete(), 500);
@@ -197,14 +256,14 @@ export function BrandClickUpLocationSelector({
             To link this brand to ClickUp, you'll need to set up your ClickUp integration first.
           </p>
         </div>
-        
+
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-sm">
             ClickUp helps us automatically pull subject lines and preview text from your campaign tasks.
           </AlertDescription>
         </Alert>
-        
+
         <div className="flex flex-col gap-2">
           <Button asChild variant="outline">
             <Link to="/settings">
@@ -225,12 +284,41 @@ export function BrandClickUpLocationSelector({
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-3">
         <div className="w-12 h-12 rounded-full bg-foreground dark:bg-foreground flex items-center justify-center">
-          <Check className="h-6 w-6 text-foreground" />
+          <Check className="h-6 w-6 text-background" />
         </div>
         <p className="font-medium text-foreground">ClickUp connected!</p>
       </div>
     );
   }
+
+  const renderListRow = (list: ClickUpList, opts: { insideSelectedFolder?: boolean; indent?: boolean } = {}) => {
+    const { insideSelectedFolder = false, indent = false } = opts;
+    const checked = insideSelectedFolder || selectedListIds.includes(list.id);
+    return (
+      <label
+        key={list.id}
+        className={cn(
+          'flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] leading-none',
+          insideSelectedFolder
+            ? 'cursor-default text-muted-foreground'
+            : 'cursor-pointer hover:bg-muted/60',
+          indent && 'ml-6'
+        )}
+      >
+        <Checkbox
+          checked={checked}
+          disabled={insideSelectedFolder}
+          onCheckedChange={(c) => toggleListSelected(list.id, c === true)}
+          className="h-3.5 w-3.5"
+        />
+        <ListIcon className={cn('h-3.5 w-3.5 shrink-0', insideSelectedFolder ? 'text-muted-foreground/60' : 'text-muted-foreground')} />
+        <span className="truncate">{list.name}</span>
+        {insideSelectedFolder && (
+          <span className="ml-auto text-[11px] text-muted-foreground/70">via folder</span>
+        )}
+      </label>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -240,14 +328,14 @@ export function BrandClickUpLocationSelector({
         </div>
         <h3 className="font-medium">Connect to ClickUp</h3>
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-          Select the ClickUp list where campaign tasks for this brand are managed.
+          Pick where this brand's campaign tasks live — a whole folder, multiple lists, or both.
         </p>
       </div>
-      
+
       <Alert className="bg-muted/50 border-muted">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription className="text-xs">
-          This helps us automatically pull subject lines and preview text from your campaign tasks in ClickUp.
+          Selecting a folder includes every list inside it — including lists created later.
         </AlertDescription>
       </Alert>
 
@@ -257,8 +345,8 @@ export function BrandClickUpLocationSelector({
         <select
           value={selectedSpaceId}
           onChange={(e) => handleSpaceChange(e.target.value)}
-          className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-          disabled={isLoadingData}
+          className="w-full h-8 text-[13px] border rounded-md px-3 bg-background"
+          disabled={isLoadingData && spaces.length === 0}
         >
           <option value="">Select a space...</option>
           {spaces.map(s => (
@@ -267,41 +355,74 @@ export function BrandClickUpLocationSelector({
         </select>
       </div>
 
-      {/* Folder selector (optional) */}
-      {selectedSpaceId && folders.length > 0 && (
+      {/* Hierarchy: folders (checkable, expandable) + folderless lists (checkable) */}
+      {selectedSpaceId && (folders.length > 0 || folderlessLists.length > 0) && (
         <div className="space-y-1.5">
-          <Label className="text-sm">Folder (optional)</Label>
-          <select
-            value={selectedFolderId}
-            onChange={(e) => handleFolderChange(e.target.value)}
-            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-            disabled={isLoadingData}
-          >
-            <option value="">No folder (folderless lists)</option>
-            {folders.map(f => (
-              <option key={f.id} value={f.id}>{f.name}</option>
-            ))}
-          </select>
+          <Label className="text-sm">Folders &amp; lists</Label>
+          <div className="border rounded-md max-h-56 overflow-y-auto p-1 space-y-0.5">
+            {folders.map(folder => {
+              const folderSelected = selectedFolderId === folder.id;
+              return (
+                <div key={folder.id}>
+                  <div
+                    className={cn(
+                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] leading-none',
+                      folderSelected ? 'bg-muted' : 'hover:bg-muted/60'
+                    )}
+                  >
+                    <Checkbox
+                      checked={folderSelected}
+                      onCheckedChange={(c) => toggleFolderSelected(folder.id, c === true)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => toggleFolderExpanded(folder.id)}
+                      className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+                    >
+                      <ChevronRight
+                        className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', folder.expanded && 'rotate-90')}
+                      />
+                      <FolderIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate font-medium">{folder.name}</span>
+                    </button>
+                    {folderSelected && (
+                      <span className="text-[11px] text-muted-foreground shrink-0">whole folder</span>
+                    )}
+                    {folder.loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
+                  </div>
+                  {folder.expanded && folder.lists && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {folder.lists.length === 0 ? (
+                        <p className="ml-8 px-2 py-1 text-[11px] text-muted-foreground">No lists in this folder</p>
+                      ) : (
+                        folder.lists.map(list =>
+                          renderListRow(list, { insideSelectedFolder: folderSelected, indent: true })
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {folderlessLists.length > 0 && (
+              <div className={cn(folders.length > 0 && 'pt-1 mt-1 border-t')}>
+                {folders.length > 0 && (
+                  <p className="px-2 py-1 text-[11px] uppercase tracking-wide text-muted-foreground/70">Folderless lists</p>
+                )}
+                {folderlessLists.map(list => renderListRow(list))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* List selector */}
-      {selectedSpaceId && lists.length > 0 && (
-        <div className="space-y-1.5">
-          <Label className="text-sm">List</Label>
-          <select
-            value={selectedListId}
-            onChange={(e) => setSelectedListId(e.target.value)}
-            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-            disabled={isLoadingData}
-          >
-            <option value="">Select a list...</option>
-            {lists.map(l => (
-              <option key={l.id} value={l.id}>
-                {l.name}{l.folderless ? ' (folderless)' : ''}
-              </option>
-            ))}
-          </select>
+      {/* Selection summary */}
+      {hasSelection && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+          <Check className="h-3.5 w-3.5 text-foreground shrink-0" />
+          <span className="text-[12px] text-foreground">Selected: {summaryText}</span>
         </div>
       )}
 
@@ -325,9 +446,9 @@ export function BrandClickUpLocationSelector({
         <Button variant="ghost" onClick={onSkip} className="flex-1">
           Skip for now
         </Button>
-        <Button 
-          onClick={handleSave} 
-          disabled={isSaving || !selectedListId}
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || !hasSelection}
           className="flex-1"
         >
           {isSaving ? (

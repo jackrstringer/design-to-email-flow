@@ -105,13 +105,32 @@ function QuestionSurvey({
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
+  // Users click an answer, they don't type. Free text is the fallback for
+  // legacy questions (no options) or "Write my own…".
+  const [freeText, setFreeText] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
   const q = questions[index];
   if (!q) return null;
 
+  const options = (q.metadata?.answer_options ?? []).filter(
+    (o) => typeof o === 'string' && o.trim().length > 0,
+  );
+  const hasOptions = options.length > 0;
+  const typing = !hasOptions || freeText;
+
   const advance = () => {
     setAnswer('');
+    setFreeText(false);
+    setPicked(null);
     if (index + 1 < questions.length) setIndex(index + 1);
     else onClose();
+  };
+
+  const submit = async (value: string) => {
+    setBusy(true);
+    await onAnswer(q, value);
+    setBusy(false);
+    advance();
   };
 
   return (
@@ -126,13 +145,62 @@ function QuestionSurvey({
         <div className="space-y-3">
           <p className="text-sm font-medium leading-snug">{q.title}</p>
           <p className="text-xs leading-relaxed text-muted-foreground">{q.content}</p>
-          <Textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Your answer — Sendr remembers it permanently"
-            rows={3}
-            autoFocus
-          />
+
+          {typing ? (
+            <Textarea
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder="Your answer — Sendr remembers it permanently"
+              rows={3}
+              autoFocus
+            />
+          ) : (
+            <div className="space-y-1.5">
+              {options.map((opt) => {
+                const isPicked = picked === opt;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setPicked(opt);
+                      submit(opt);
+                    }}
+                    className={cn(
+                      'flex w-full items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-left transition-[transform,background-color,border-color] duration-150 active:scale-[0.99]',
+                      isPicked
+                        ? 'border-foreground/30 bg-secondary/60'
+                        : 'border-border hover:border-foreground/25 hover:bg-secondary/40',
+                      busy && !isPicked && 'opacity-50',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border',
+                        isPicked ? 'border-foreground bg-foreground' : 'border-input',
+                      )}
+                    >
+                      {isPicked && busy ? (
+                        <Loader2 className="h-2.5 w-2.5 animate-spin text-background" />
+                      ) : isPicked ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-background" />
+                      ) : null}
+                    </span>
+                    <span className="text-[13px] leading-snug">{opt}</span>
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setFreeText(true)}
+                className="px-1 pt-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Write my own…
+              </button>
+            </div>
+          )}
         </div>
         <DialogFooter className="gap-2">
           <Button
@@ -147,18 +215,15 @@ function QuestionSurvey({
           >
             Dismiss
           </Button>
-          <Button
-            disabled={!answer.trim() || busy}
-            onClick={async () => {
-              setBusy(true);
-              await onAnswer(q, answer.trim());
-              setBusy(false);
-              advance();
-            }}
-          >
-            {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save answer
-          </Button>
+          {typing && (
+            <Button
+              disabled={!answer.trim() || busy}
+              onClick={() => submit(answer.trim())}
+            >
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save answer
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

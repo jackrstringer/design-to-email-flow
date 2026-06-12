@@ -38,7 +38,7 @@ serve(async (req) => {
   }
 
   try {
-    const { slices, brandContext, existingFavorites, pairCount = 10, refinementPrompt, copyExamples, campaignImageUrl } = await req.json();
+    const { slices, brandContext, existingFavorites, pairCount = 10, refinementPrompt, copyExamples, campaignImageUrl, userContext } = await req.json();
     
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
     if (!ANTHROPIC_API_KEY) {
@@ -107,8 +107,21 @@ serve(async (req) => {
     if (favoriteSLs.length > 0) favoriteContext += `\n\nFavorited subject lines (match this style):\n${favoriteSLs.join('\n')}`;
     if (favoritePTs.length > 0) favoriteContext += `\n\nFavorited preview texts (match this style):\n${favoritePTs.join('\n')}`;
 
-    const userDirection = refinementPrompt 
+    const userDirection = refinementPrompt
       ? `\n\nUSER'S REQUEST: "${refinementPrompt}"\nFollow this direction for tone, style, or focus.`
+      : '';
+
+    // User-provided campaign context (copy notes, links, landing page, offer details)
+    const userContextSection = (typeof userContext === 'string' && userContext.trim())
+      ? `
+
+## USER-PROVIDED CAMPAIGN CONTEXT (from the person sending this campaign)
+
+<user_campaign_context>
+${userContext.trim()}
+</user_campaign_context>
+
+Treat this as authoritative campaign intent — use any offer details, product focus, audience notes, or copy direction here when writing subject lines and preview texts. If it conflicts with what you infer from the email content, the user's context wins.`
       : '';
 
     // Build brand voice examples section ONLY if we have real examples
@@ -158,7 +171,7 @@ ${linkContext ? `Links in email: ${linkContext}` : ''}
 
 ${sliceImages.length > 0 ? 'Analyze the email images to understand the offer, products, and message.' : ''}
 
-${favoriteContext}${userDirection}
+${favoriteContext}${userDirection}${userContextSection}
 
 ---
 

@@ -2,6 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { KnowledgeKind } from '@/lib/agentMeta';
 
+export interface KnowledgeMetadata {
+  /** For 'question' entries: 3-5 one-click answer choices. Legacy questions have none. */
+  answer_options?: string[];
+}
+
 export interface BrandKnowledgeEntry {
   id: string;
   kind: string;
@@ -11,6 +16,7 @@ export interface BrandKnowledgeEntry {
   confidence: number;
   valid_until: string | null;
   times_applied: number;
+  metadata: KnowledgeMetadata | null;
   created_at: string;
   updated_at: string;
 }
@@ -32,12 +38,15 @@ export function useBrandKnowledge(brandId: string | undefined) {
     queryFn: async (): Promise<BrandKnowledgeEntry[]> => {
       const { data, error } = await supabase
         .from('brand_knowledge')
-        .select('id, kind, title, content, source, confidence, valid_until, times_applied, created_at, updated_at')
+        .select('id, kind, title, content, source, confidence, valid_until, times_applied, metadata, created_at, updated_at')
         .eq('brand_id', brandId!)
         .is('superseded_by', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((row) => ({
+        ...row,
+        metadata: (row.metadata as KnowledgeMetadata | null) ?? null,
+      }));
     },
   });
 }

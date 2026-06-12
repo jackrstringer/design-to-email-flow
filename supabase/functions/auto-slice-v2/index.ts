@@ -933,8 +933,9 @@ async function askClaude(
   linkIndex?: LinkIndexEntry[],
   defaultDestinationUrl?: string,
   brandPreferenceRules?: BrandPreferenceRule[],
-  isFooterMode?: boolean
-): Promise<{ 
+  isFooterMode?: boolean,
+  userContext?: string | null
+): Promise<{
   success: true; 
   decision: ClaudeDecision; 
   needsLinkSearch: Array<{ sliceIndex: number; description: string }>;
@@ -1649,8 +1650,27 @@ When a slice shows a CATEGORY HEADER (e.g., "JACKETS", "SNOWPANTS", "FLEECE", "N
    - Example: Slice shows "JACKETS" but no link has "jacket" in it → needs_search, NOT homepage`;
   }
 
-  // Combine base prompt with link intelligence
-  const fullPrompt = prompt + linkIntelligencePrompt;
+  // Build user-provided campaign context section (only when non-empty)
+  let userContextPrompt = '';
+  if (userContext && userContext.trim()) {
+    userContextPrompt = `
+
+---
+
+## USER-PROVIDED CAMPAIGN CONTEXT (from the person sending this campaign)
+
+<user_campaign_context>
+${userContext.trim()}
+</user_campaign_context>
+
+Treat this as authoritative intent for the campaign:
+- If the user specifies a landing page or destination URL for this campaign, that URL takes PRIORITY over the link index, routing rules, and default destination when assigning CTA links. Use it for the campaign's CTAs unless a slice clearly points at a different specific product/page.
+- Use any offer details, product names, or copy notes here to disambiguate what slices show and which links match.
+- This context informs link assignment and alt text only — it does not change the slicing rules above.`;
+  }
+
+  // Combine base prompt with link intelligence and user context
+  const fullPrompt = prompt + linkIntelligencePrompt + userContextPrompt;
 
   return askClaudeWithPrompt(imageBase64, mimeType, fullPrompt, rawData.imageHeight);
 }
@@ -1808,7 +1828,9 @@ serve(async (req) => {
       defaultDestinationUrl,
       brandPreferenceRules,
       // Footer mode - treats entire image as footer content
-      isFooterMode
+      isFooterMode,
+      // User-provided campaign context (copy notes, links, landing page, offer details)
+      userContext
     } = await req.json();
     
     if (!imageDataUrl) {
@@ -1909,7 +1931,8 @@ serve(async (req) => {
       hasLinkIndex ? linkIndex : undefined,
       defaultDestinationUrl,
       brandPreferenceRules,
-      isFooterMode === true
+      isFooterMode === true,
+      typeof userContext === 'string' ? userContext : null
     );
 
     if (!claudeResult.success) {

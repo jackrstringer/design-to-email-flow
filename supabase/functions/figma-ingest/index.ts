@@ -20,6 +20,7 @@ interface IngestPayload {
   subjectLine?: string;
   previewText?: string;
   brandId?: string; // Optional brand selection from plugin dropdown
+  userContext?: string; // Free-form campaign context (copy notes, links, landing page, offer details)
 }
 
 serve(async (req) => {
@@ -34,7 +35,12 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const payload: IngestPayload = await req.json();
-    const { pluginToken, frames, subjectLine, previewText, brandId } = payload;
+    const { pluginToken, frames, subjectLine, previewText, brandId, userContext } = payload;
+    // Normalize user context: trim, cap length, store null when empty
+    const normalizedUserContext =
+      typeof userContext === 'string' && userContext.trim()
+        ? userContext.trim().slice(0, 10000)
+        : null;
 
     console.log('[figma-ingest] Received request with', frames?.length || 0, 'frames, brandId:', brandId || 'none');
 
@@ -171,6 +177,7 @@ serve(async (req) => {
             cloudinary_public_id: publicId,
             provided_subject_line: subjectLine || null,
             provided_preview_text: previewText || null,
+            user_context: normalizedUserContext,
             status: 'processing',
             processing_step: 'queued',
             processing_percent: 0

@@ -116,6 +116,7 @@ export function BrandLayout() {
       clickupWorkspaceId: brandData.clickup_workspace_id || undefined,
       clickupListId: brandData.clickup_list_id || undefined,
       linkPreferences: parseLinkPreferences(brandData.link_preferences),
+      namingConvention: brandData.naming_convention || null,
       createdAt: brandData.created_at,
       updatedAt: brandData.updated_at,
     };

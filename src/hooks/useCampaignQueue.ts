@@ -122,6 +122,7 @@ async function fetchCampaignQueueData(): Promise<CampaignQueueData> {
           included_segments: normalizeSegmentIds(p.included_segments),
           excluded_segments: normalizeSegmentIds(p.excluded_segments),
           is_default: p.is_default || false,
+          color: p.color || null,
         });
         return acc;
       }, {} as Record<string, SegmentPreset[]>);
@@ -254,6 +255,7 @@ export function useCampaignQueue() {
                             included_segments: normalizeSegmentIds(p.included_segments),
                             excluded_segments: normalizeSegmentIds(p.excluded_segments),
                             is_default: p.is_default || false,
+                            color: p.color || null,
                           }));
                           mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
                           
@@ -347,6 +349,7 @@ export function useCampaignQueue() {
                     included_segments: normalizeSegmentIds(p.included_segments),
                     excluded_segments: normalizeSegmentIds(p.excluded_segments),
                     is_default: p.is_default || false,
+                    color: p.color || null,
                   }));
                   mapped.sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0));
                   

@@ -7,8 +7,11 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, FileText, Copy, Flag, ChevronDown } from 'lucide-react';
+import { Trash2, Send, RefreshCw, ExternalLink, Plus, X, Check, AlertTriangle, FileText, Copy, Flag, ChevronDown, PenLine } from 'lucide-react';
+import { FooterStudioFlyout } from '@/components/footer/FooterStudioFlyout';
 import { CampaignQueueItem } from '@/hooks/useCampaignQueue';
+import { useBrandDictionary } from '@/hooks/useBrandDictionary';
+import { useCopyQa } from '@/hooks/useSpellcheck';
 import { InlineDropdownSelector } from './InlineDropdownSelector';
 import { isRealLink } from '@/lib/links';
 import { SpellingErrorsPanel } from './SpellingErrorsPanel';
@@ -114,8 +117,11 @@ export function ExpandedRowPanel({
   const [excludePickerOpen, setExcludePickerOpen] = useState(false);
   const [segmentSearchValue, setSegmentSearchValue] = useState('');
 
-  // Footer HTML - initialize from preloaded data
-  const [footerHtml, setFooterHtml] = useState<string | null>(preloadedBrandData?.footerHtml || null);
+  // Footer HTML - per-campaign override (footer studio) wins, then preloaded brand footer
+  const [footerHtml, setFooterHtml] = useState<string | null>(
+    item.footer_override_html || preloadedBrandData?.footerHtml || null,
+  );
+  const [footerStudioOpen, setFooterStudioOpen] = useState(false);
   const [footerError, setFooterError] = useState<string | null>(null);
   const [footerPreviewHeight, setFooterPreviewHeight] = useState(200);
 
@@ -148,6 +154,30 @@ export function ExpandedRowPanel({
     location?: string;
     sliceIndex?: number;
   }>) || [];
+
+  // Spelling + grammar QA on the selected subject line / preview text.
+  // Blocks "Build in Klaviyo" while any issue exists. Grammar (LLM) also
+  // runs once when the panel opens — this is the pre-build checkpoint.
+  const dictionary = useBrandDictionary(item.brand_id);
+  const copyQa = useCopyQa(
+    { subject: selectedSubject, preview: selectedPreview },
+    {
+      dictionary: dictionary.words,
+      brandName: item.brands?.name,
+      brandDomain: item.brands?.domain,
+      grammarOnMount: true,
+    },
+  );
+  const copyIssues = [
+    ...(copyQa.issuesByField.subject ?? []),
+    ...(copyQa.issuesByField.preview ?? []),
+  ];
+  // The backend image-QA spelling_errors also block until re-QA clears them.
+  const buildBlockers = [
+    ...copyIssues.map((i) => `${i.kind === 'spelling' ? 'Spelling' : 'Grammar'}: “${i.word}”${i.message ? ` — ${i.message}` : ''}`),
+    ...spellingErrors.map((e) => `Design spelling: “${e.text}”${e.correction ? ` → “${e.correction}”` : ''}`),
+  ];
+  const isBlockedByCopyQa = buildBlockers.length > 0;
 
   // Initialize slices from item
   useEffect(() => {
@@ -216,30 +246,32 @@ export function ExpandedRowPanel({
             setBrandDomain(brand.domain);
           }
 
-          // Load footer
-          const { data: primaryFooter } = await supabase
-            .from('brand_footers')
-            .select('html')
-            .eq('brand_id', item.brand_id)
-            .eq('is_primary', true)
-            .limit(1)
-            .maybeSingle();
-
-          if (primaryFooter?.html) {
-            setFooterHtml(primaryFooter.html);
-          } else {
-            const { data: recentFooter } = await supabase
+          // Load footer (skip when this campaign has a footer-studio override)
+          if (!item.footer_override_html) {
+            const { data: primaryFooter } = await supabase
               .from('brand_footers')
               .select('html')
               .eq('brand_id', item.brand_id)
-              .order('updated_at', { ascending: false })
+              .eq('is_primary', true)
               .limit(1)
               .maybeSingle();
-            
-            if (recentFooter?.html) {
-              setFooterHtml(recentFooter.html);
-            } else if (brand?.footer_html) {
-              setFooterHtml(brand.footer_html);
+
+            if (primaryFooter?.html) {
+              setFooterHtml(primaryFooter.html);
+            } else {
+              const { data: recentFooter } = await supabase
+                .from('brand_footers')
+                .select('html')
+                .eq('brand_id', item.brand_id)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (recentFooter?.html) {
+                setFooterHtml(recentFooter.html);
+              } else if (brand?.footer_html) {
+                setFooterHtml(brand.footer_html);
+              }
             }
           }
 
@@ -591,6 +623,11 @@ export function ExpandedRowPanel({
       toast.error('Please select a subject line and preview text first');
       return;
     }
+
+    if (isBlockedByCopyQa) {
+      toast.error('Fix the flagged spelling/grammar issues before building');
+      return;
+    }
     
     if (includedSegments.length === 0) {
       // Check if brand has any presets
@@ -710,6 +747,9 @@ export function ExpandedRowPanel({
                   }}
                   placeholder="Select a subject line…"
                   textClassName="!text-[13px] font-medium"
+                  qaIssues={copyQa.issuesByField.subject ?? []}
+                  onAddToDictionary={item.brand_id ? dictionary.addWord : undefined}
+                  getDraftIssues={copyQa.checkDraft}
                 />
                 <InlineDropdownSelector
                   selected={selectedPreview || null}
@@ -723,6 +763,9 @@ export function ExpandedRowPanel({
                   }}
                   placeholder="Select preview text…"
                   textClassName="!text-[12px] text-muted-foreground"
+                  qaIssues={copyQa.issuesByField.preview ?? []}
+                  onAddToDictionary={item.brand_id ? dictionary.addWord : undefined}
+                  getDraftIssues={copyQa.checkDraft}
                 />
               </div>
             </div>
@@ -958,7 +1001,19 @@ export function ExpandedRowPanel({
 
           {/* QA Section */}
           <div className="space-y-2">
-            <h4 className="text-[11px] font-semibold text-muted-foreground">QA checks</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-[11px] font-semibold text-muted-foreground">QA checks</h4>
+              {item.brand_id && (
+                <button
+                  onClick={() => setFooterStudioOpen(true)}
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                  title="Open the footer studio"
+                >
+                  <PenLine className="h-3 w-3" />
+                  Edit footer
+                </button>
+              )}
+            </div>
             
             {/* Links Summary - Detailed */}
             <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">
@@ -1089,23 +1144,43 @@ export function ExpandedRowPanel({
                 </a>
               </Button>
             ) : (
-              <Button
-                className="w-full"
-                disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview || includedSegments.length === 0}
-                onClick={handleSendToKlaviyo}
-              >
-                {isSending ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Building...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Build in Klaviyo
-                  </>
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  {/* span wrapper so the tooltip still fires on the disabled button */}
+                  <span className="block w-full">
+                    <Button
+                      className="w-full"
+                      disabled={isSending || item.status === 'processing' || !selectedSubject || !selectedPreview || includedSegments.length === 0 || isBlockedByCopyQa}
+                      onClick={handleSendToKlaviyo}
+                    >
+                      {isSending ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Building...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Build in Klaviyo
+                        </>
+                      )}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {isBlockedByCopyQa && (
+                  <TooltipContent side="top" className="max-w-[300px]">
+                    <p className="mb-1 text-xs font-medium">Fix these before building:</p>
+                    <ul className="space-y-0.5">
+                      {buildBlockers.slice(0, 6).map((b, i) => (
+                        <li key={i} className="text-[11px] leading-snug">{b}</li>
+                      ))}
+                      {buildBlockers.length > 6 && (
+                        <li className="text-[11px] leading-snug opacity-70">+{buildBlockers.length - 6} more</li>
+                      )}
+                    </ul>
+                  </TooltipContent>
                 )}
-              </Button>
+              </Tooltip>
             )}
             
             <div className="flex gap-2">
@@ -1304,6 +1379,22 @@ export function ExpandedRowPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Footer studio flyout — type-to-edit / drag / themes / agent */}
+      {item.brand_id && (
+        <FooterStudioFlyout
+          open={footerStudioOpen}
+          onOpenChange={setFooterStudioOpen}
+          brandId={item.brand_id}
+          queueId={item.id}
+          fallbackFooterHtml={footerHtml}
+          overrideState={item.footer_override_state}
+          onApplied={(html) => {
+            setFooterHtml(html);
+            onUpdate();
+          }}
+        />
+      )}
 
       {/* Flag a mistake dialog - feeds the brand knowledge layer */}
       {item.brand_id && (

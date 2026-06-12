@@ -23,6 +23,10 @@ interface ResearchEntry {
   title: string;
   content: string;
   confidence: number;
+  /** REQUIRED for 'question' kind: 3-5 plausible, mutually distinct answers
+   *  the user can pick with one click. The UI falls back to free text when
+   *  absent (legacy questions). */
+  answer_options?: string[];
 }
 
 serve(async (req) => {
@@ -106,8 +110,10 @@ Extract (only when the evidence supports it):
 - fact: anything else durable (flagship products named repeatedly, audience hints)
 - question: when something IMPORTANT for producing campaigns cannot be inferred and is worth asking the user (max 2 questions, phrased directly, e.g. "Do you ever use emoji in subject lines, or is the plain style deliberate?")
 
+Every "question" entry MUST include "answer_options": an array of 3-5 plausible, mutually distinct answers the user can pick with ONE CLICK — users never type. Each option is a short, complete answer (under 12 words) covering the realistic range, e.g. ["Yes, emoji are fine anywhere", "Only sparingly, max one per subject line", "Never — plain text is deliberate", "Testing both, no rule yet"]. Do not include vague options like "Other" or "It depends".
+
 Rules: be specific and evidence-based ("8 of 20 subject lines lead with a question" beats "uses questions sometimes"). Skip anything already covered by existing knowledge titles provided. confidence 0.6-0.9 by evidence strength; questions get 0.5.
-Return ONLY a JSON array: [{"kind","title","content","confidence"}]. 3-8 entries.`;
+Return ONLY a JSON array: [{"kind","title","content","confidence","answer_options"?}] — answer_options only on questions. 3-8 entries.`;
 
     const userMessage = `Existing knowledge titles (do not duplicate):
 ${(existing ?? []).map((k) => `- [${k.kind}] ${k.title}`).join('\n') || '(none)'}
@@ -143,6 +149,13 @@ ${messages.map((m: { subject: string; preview: string }, i: number) => `${i + 1}
       const titleKey = entry.title.toLowerCase().trim();
       if (existingTitles.has(titleKey)) continue;
       existingTitles.add(titleKey);
+      // Questions carry one-click answer options in metadata for the survey UI.
+      const answerOptions = entry.kind === 'question' && Array.isArray(entry.answer_options)
+        ? entry.answer_options
+            .filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+            .map((o) => o.trim().slice(0, 120))
+            .slice(0, 5)
+        : [];
       const { error } = await supabase.from('brand_knowledge').insert({
         brand_id: brandId,
         user_id: brand.user_id,
@@ -151,6 +164,7 @@ ${messages.map((m: { subject: string; preview: string }, i: number) => `${i + 1}
         content: entry.content.slice(0, 4000),
         source: 'crawl',
         confidence: Math.min(Math.max(entry.confidence ?? 0.6, 0), 1),
+        metadata: answerOptions.length >= 2 ? { answer_options: answerOptions } : null,
       });
       if (!error) {
         inserted++;

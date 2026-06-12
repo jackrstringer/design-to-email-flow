@@ -192,7 +192,21 @@ serve(async (req) => {
     }
 
     const resolvedTemplateName = templateName || campaignName;
-    const resolvedFooterHtml = footerHtml || (brand.footer_html as string | null) || '';
+
+    // Footer priority: per-campaign override (footer studio "Use for this
+    // campaign") > caller-provided footer > brand default.
+    let footerOverrideHtml: string | null = null;
+    if (queueId) {
+      const { data: queueRow } = await supabase
+        .from('campaign_queue')
+        .select('footer_override_html')
+        .eq('id', queueId)
+        .maybeSingle();
+      footerOverrideHtml = (queueRow?.footer_override_html as string | null) || null;
+      if (footerOverrideHtml) logEvent(ctx, 'info', 'footer_override_applied', { queueId });
+    }
+    const resolvedFooterHtml =
+      footerOverrideHtml || footerHtml || (brand.footer_html as string | null) || '';
     const hasSlices = Array.isArray(slices) && slices.length > 0;
 
     if ((!imageUrl && !hasSlices) || !resolvedTemplateName) {

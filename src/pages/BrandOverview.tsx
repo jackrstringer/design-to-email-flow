@@ -1,5 +1,7 @@
 import { useOutletContext } from 'react-router-dom';
 import { BrandIdentityCompact } from '@/components/brand/BrandIdentityCompact';
+import { CampaignNamingCard } from '@/components/brand/CampaignNamingCard';
+import { DictionaryCard } from '@/components/brand/DictionaryCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { BrandContextData } from '@/layouts/BrandLayout';
 
@@ -32,6 +34,12 @@ export default function BrandOverview() {
     <div className="space-y-8">
       {/* Compact Brand Identity with logo upload */}
       <BrandIdentityCompact brand={brand} onBrandChange={refetchBrand} />
+
+      {/* Automatic campaign naming convention */}
+      <CampaignNamingCard brand={brand} onBrandChange={refetchBrand} />
+
+      {/* Spelling dictionary — brand/product words exempt from copy QA */}
+      <DictionaryCard brandId={brand.id} />
     </div>
   );
 }

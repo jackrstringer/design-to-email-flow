@@ -3,68 +3,220 @@
 <head>
 <meta charset="utf-8">
 <style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; margin: 0; }
+  /* Sendr — rounded midnight console.
+     Mist canvas, white cards, obsidian accents, pressed-glass primary action.
+     System font stack only (plugin iframe: no external resources). */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --mist: #f4f4f5;
+    --card: #ffffff;
+    --ink: #09090b;
+    --ink-2: #52525b;
+    --ink-3: #a1a1aa;
+    --line: rgba(9, 9, 11, 0.08);
+    --line-strong: rgba(9, 9, 11, 0.14);
+    --ok: #16a34a;
+    --err: #dc2626;
+  }
+
+  html, body { height: 100%; }
   body {
-    font: 11px/1.5 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-    color: var(--figma-color-text, #111);
-    background: var(--figma-color-bg, #fff);
-    padding: 16px;
+    font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--ink);
+    background: var(--mist);
+    padding: 14px 14px 16px;
+    -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 13px; font-weight: 600; margin-bottom: 12px; display:flex; align-items:center; gap:6px; }
-  h1 .dot { width:8px; height:8px; border-radius:50%; background:#f5862f; display:inline-block; }
-  label { display: block; font-weight: 600; margin: 10px 0 4px; color: var(--figma-color-text-secondary, #555); }
-  input, select, textarea {
-    width: 100%; padding: 7px 8px; border-radius: 6px;
-    border: 1px solid var(--figma-color-border, #ccc);
-    background: var(--figma-color-bg-secondary, #fafafa);
-    color: inherit; font: inherit;
+
+  /* ---------- header ---------- */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 2px 12px;
   }
-  button {
-    width: 100%; padding: 9px; margin-top: 12px; border: 0; border-radius: 6px;
-    background: #f5862f; color: #fff; font-weight: 600; cursor: pointer; font-size: 12px;
+  .wordmark { display: flex; align-items: center; gap: 7px; }
+  .wordmark .name { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+  .wordmark .sub { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+  .dot {
+    width: 5px; height: 5px; border-radius: 50%; flex: none;
+    background: var(--ink-3);
+    transition: opacity 200ms ease;
   }
-  button.secondary { background: transparent; color: var(--figma-color-text, #111); border: 1px solid var(--figma-color-border, #ccc); }
-  button:disabled { opacity: .5; cursor: default; }
-  .frames { margin-top: 8px; padding: 8px; border-radius: 6px; background: var(--figma-color-bg-secondary, #f5f5f5); min-height: 38px; }
-  .frame-row { display: flex; justify-content: space-between; padding: 2px 0; }
-  .muted { color: var(--figma-color-text-secondary, #888); }
-  .status { margin-top: 10px; min-height: 16px; }
-  .status.error { color: #d4380d; }
-  .status.ok { color: #2e7d32; }
-  .link { color: #f5862f; cursor: pointer; text-decoration: underline; }
-  .settings-toggle { margin-top: 14px; font-size: 10px; }
+  .dot.on { background: var(--ok); }
+  .dot.err { background: var(--err); }
+
+  .gear {
+    width: 26px; height: 26px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--ink-2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 150ms ease, transform 150ms ease;
+    opacity: 0.7;
+  }
+  .gear:hover { opacity: 1; }
+  .gear:active { transform: scale(0.92); }
+  .gear svg { display: block; }
+
+  /* ---------- views ---------- */
+  .view { transition: opacity 200ms ease, transform 200ms ease; }
+  .view.leaving { opacity: 0; transform: translateY(4px); }
   .hidden { display: none; }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 2px rgba(9, 9, 11, 0.03);
+  }
+  .card-title {
+    font-size: 11px; font-weight: 600; color: var(--ink-2);
+    letter-spacing: 0.02em; margin-bottom: 8px;
+  }
+
+  /* ---------- frames list ---------- */
+  .frame-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 4px 0;
+    font-size: 12px;
+  }
+  .frame-row .fname {
+    font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .frame-row .fdims { font-size: 11px; font-weight: 500; color: var(--ink-3); flex: none; }
+  .empty {
+    font-size: 12px; color: var(--ink-3); font-weight: 500;
+    display: flex; align-items: center; gap: 7px; padding: 2px 0;
+  }
+
+  /* ---------- form ---------- */
+  label {
+    display: block; font-size: 11px; font-weight: 600; color: var(--ink-2);
+    margin: 12px 0 5px;
+  }
+  label:first-child { margin-top: 0; }
+  label .opt { font-weight: 500; color: var(--ink-3); }
+
+  input, select, textarea {
+    width: 100%;
+    font: inherit; font-size: 12px; color: var(--ink);
+    background: var(--mist);
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 8px 10px;
+    outline: none;
+    transition: opacity 150ms ease;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--line-strong); background: #fff; }
+  input::placeholder, textarea::placeholder { color: var(--ink-3); }
+  select { appearance: none; -webkit-appearance: none; cursor: pointer;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2352525b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 28px;
+  }
+  textarea { resize: vertical; min-height: 64px; max-height: 160px; line-height: 1.5; }
+
+  /* ---------- buttons ---------- */
+  .primary {
+    width: 100%;
+    margin-top: 2px;
+    padding: 11px 14px;
+    border: 0; border-radius: 12px;
+    font: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.01em;
+    color: #fafafa; cursor: pointer;
+    background: linear-gradient(180deg, #27272a 0%, var(--ink) 55%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+                0 1px 3px rgba(9, 9, 11, 0.25);
+    transition: opacity 150ms ease, transform 150ms ease;
+  }
+  .primary:hover:not(:disabled) { opacity: 0.92; }
+  .primary:active:not(:disabled) { transform: translateY(1px) scale(0.995); }
+  .primary:disabled { opacity: 0.35; cursor: default; }
+
+  .ghost {
+    background: transparent; border: 0; cursor: pointer;
+    font: inherit; font-size: 11px; font-weight: 600; color: var(--ink-2);
+    padding: 6px 2px;
+    transition: opacity 150ms ease;
+  }
+  .ghost:hover { opacity: 0.7; }
+
+  /* ---------- status line ---------- */
+  .status {
+    display: flex; align-items: flex-start; gap: 7px;
+    min-height: 18px; margin-top: 10px; padding: 0 2px;
+    font-size: 11px; font-weight: 500; color: var(--ink-2);
+    opacity: 0; transition: opacity 200ms ease;
+  }
+  .status.show { opacity: 1; }
+  .status .dot { margin-top: 5px; }
+  .status.ok { color: var(--ok); font-weight: 600; }
+  .status.error { color: var(--err); font-weight: 600; }
+
+  .settings-note { font-size: 11px; font-weight: 500; color: var(--ink-3); margin-bottom: 12px; }
+  .settings-foot { display: flex; justify-content: flex-end; margin-top: 2px; }
 </style>
 </head>
 <body>
-  <h1><span class="dot"></span> Sendr — Design to Email</h1>
 
-  <div id="setup" class="hidden">
-    <p class="muted">Connect the plugin to your Sendr account.</p>
-    <label>Server URL</label>
-    <input id="serverUrl" placeholder="https://YOUR-REF.supabase.co">
-    <label>Plugin token</label>
-    <input id="pluginToken" type="password" placeholder="Generate in Sendr → Settings → Integrations">
-    <button id="saveSettings">Save & connect</button>
-    <div id="setupStatus" class="status"></div>
+  <div class="header">
+    <div class="wordmark">
+      <span class="dot" id="connDot"></span>
+      <span class="name">Sendr</span>
+      <span class="sub">Design to Email</span>
+    </div>
+    <button class="gear hidden" id="openSettings" title="Settings" aria-label="Settings">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
   </div>
 
-  <div id="main" class="hidden">
-    <label>Brand</label>
-    <select id="brand"><option value="">Loading brands…</option></select>
+  <!-- ============ settings / first-run setup ============ -->
+  <div id="setup" class="view hidden">
+    <div class="card">
+      <div class="card-title">Connection</div>
+      <p class="settings-note">Connect the plugin to your Sendr account.</p>
+      <label>Server URL</label>
+      <input id="serverUrl" placeholder="https://YOUR-REF.supabase.co" spellcheck="false">
+      <label>Plugin token</label>
+      <input id="pluginToken" type="password" placeholder="Sendr &rarr; Settings &rarr; Integrations" spellcheck="false">
+    </div>
+    <button class="primary" id="saveSettings">Save and connect</button>
+    <div id="setupStatus" class="status"><span class="dot"></span><span class="msg"></span></div>
+    <div class="settings-foot"><button class="ghost hidden" id="closeSettings">Back</button></div>
+  </div>
 
-    <label>Selected frames</label>
-    <div class="frames" id="frames"><span class="muted">Select one or more frames in Figma.</span></div>
+  <!-- ============ main ============ -->
+  <div id="main" class="view hidden">
+    <div class="card">
+      <div class="card-title">Selected frames</div>
+      <div id="frames">
+        <div class="empty"><span class="dot"></span>Select one or more frames in Figma.</div>
+      </div>
+    </div>
 
-    <label>Subject line <span class="muted">(optional — AI generates if blank)</span></label>
-    <input id="subject" placeholder="e.g. Your summer glow starts here">
-    <label>Preview text <span class="muted">(optional)</span></label>
-    <input id="preview" placeholder="e.g. 20% off ends Sunday">
+    <div class="card">
+      <label>Brand</label>
+      <select id="brand"><option value="">Loading brands&hellip;</option></select>
 
-    <button id="send" disabled>Send to queue</button>
-    <div id="status" class="status"></div>
-    <div class="settings-toggle"><span class="link" id="openSettings">Settings</span></div>
+      <label>Campaign context <span class="opt">&middot; optional</span></label>
+      <textarea id="context" rows="4" placeholder="Copy notes, offer details, links &mdash; e.g. paste the landing page this campaign should drive to."></textarea>
+
+      <label>Subject line <span class="opt">&middot; optional, AI generates if blank</span></label>
+      <input id="subject" placeholder="e.g. Your summer glow starts here">
+
+      <label>Preview text <span class="opt">&middot; optional</span></label>
+      <input id="preview" placeholder="e.g. 20% off ends Sunday">
+    </div>
+
+    <button class="primary" id="send" disabled>Send to Sendr</button>
+    <div id="status" class="status"><span class="dot"></span><span class="msg"></span></div>
   </div>
 
 <script>
@@ -72,26 +224,40 @@
   let settings = { serverUrl: '', pluginToken: '' };
   let selectedFrames = [];
   let exportedFrames = null;
+  let isConnected = false;
 
   parent.postMessage({ pluginMessage: { type: 'init' } }, '*');
 
+  function switchView(showId, hideId) {
+    const showEl = $(showId), hideEl = $(hideId);
+    hideEl.classList.add('hidden');
+    hideEl.classList.remove('leaving');
+    showEl.classList.add('leaving');
+    showEl.classList.remove('hidden');
+    requestAnimationFrame(() => requestAnimationFrame(() => showEl.classList.remove('leaving')));
+  }
+
   function showView(connected) {
-    $('setup').classList.toggle('hidden', connected);
-    $('main').classList.toggle('hidden', !connected);
+    if (connected) switchView('main', 'setup');
+    else switchView('setup', 'main');
+    $('openSettings').classList.toggle('hidden', !connected);
+    $('closeSettings').classList.toggle('hidden', !isConnected);
   }
 
   function setStatus(el, message, kind) {
-    el.textContent = message || '';
-    el.className = 'status' + (kind ? ' ' + kind : '');
+    el.querySelector('.msg').textContent = message || '';
+    el.className = 'status' + (kind ? ' ' + kind : '') + (message ? ' show' : '');
+    const dot = el.querySelector('.dot');
+    dot.className = 'dot' + (kind === 'ok' ? ' on' : kind === 'error' ? ' err' : '');
   }
 
   function renderFrames() {
     const box = $('frames');
     if (selectedFrames.length === 0) {
-      box.innerHTML = '<span class="muted">Select one or more frames in Figma.</span>';
+      box.innerHTML = '<div class="empty"><span class="dot"></span>Select one or more frames in Figma.</div>';
     } else {
       box.innerHTML = selectedFrames
-        .map((f) => `<div class="frame-row"><span>${escapeHtml(f.name)}</span><span class="muted">${f.width}×${f.height}</span></div>`)
+        .map((f) => '<div class="frame-row"><span class="fname">' + escapeHtml(f.name) + '</span><span class="fdims">' + f.width + '&times;' + f.height + '</span></div>')
         .join('');
     }
     $('send').disabled = selectedFrames.length === 0 || !settings.pluginToken;
@@ -103,7 +269,7 @@
 
   async function loadBrands() {
     const select = $('brand');
-    select.innerHTML = '<option value="">Loading brands…</option>';
+    select.innerHTML = '<option value="">Loading brands&hellip;</option>';
     try {
       const res = await fetch(
         settings.serverUrl.replace(/\/$/, '') + '/functions/v1/get-plugin-brands?token=' + encodeURIComponent(settings.pluginToken)
@@ -113,12 +279,14 @@
       const brands = data.brands || [];
       select.innerHTML =
         '<option value="">No brand (auto)</option>' +
-        brands.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+        brands.map((b) => '<option value="' + b.id + '">' + escapeHtml(b.name) + '</option>').join('');
       const last = window.__lastBrand;
       if (last && brands.some((b) => b.id === last)) select.value = last;
+      $('connDot').className = 'dot on';
       setStatus($('status'), '', '');
     } catch (err) {
       select.innerHTML = '<option value="">Could not load brands</option>';
+      $('connDot').className = 'dot err';
       setStatus($('status'), 'Brand load failed: ' + err.message + ' — check Settings.', 'error');
     }
   }
@@ -145,7 +313,12 @@
   $('openSettings').onclick = () => {
     $('serverUrl').value = settings.serverUrl;
     $('pluginToken').value = settings.pluginToken;
+    setStatus($('setupStatus'), '', '');
     showView(false);
+  };
+
+  $('closeSettings').onclick = () => {
+    if (isConnected) showView(true);
   };
 
   $('send').onclick = () => {
@@ -164,6 +337,7 @@
         brandId: $('brand').value || undefined,
         subjectLine: $('subject').value.trim() || undefined,
         previewText: $('preview').value.trim() || undefined,
+        userContext: $('context').value.trim() || undefined,
         frames: frames.map((f) => ({
           name: f.name,
           width: f.width,
@@ -182,7 +356,7 @@
         const detail = (data.errors && data.errors[0] && data.errors[0].error) || data.error || ('HTTP ' + res.status);
         throw new Error(detail);
       }
-      setStatus($('status'), '✓ Sent! ' + data.campaignIds.length + ' campaign(s) processing in your queue.', 'ok');
+      setStatus($('status'), 'Sent — ' + data.campaignIds.length + ' campaign(s) processing in your queue.', 'ok');
       parent.postMessage({ pluginMessage: { type: 'notify', message: 'Sent to Sendr — slicing started' } }, '*');
     } catch (err) {
       setStatus($('status'), 'Upload failed: ' + err.message, 'error');
@@ -198,6 +372,8 @@
     if (msg.type === 'settings') {
       settings = msg.settings;
       const connected = !!(settings.serverUrl && settings.pluginToken);
+      isConnected = connected;
+      $('connDot').className = 'dot' + (connected ? ' on' : '');
       showView(connected);
       if (connected) loadBrands();
       renderFrames();

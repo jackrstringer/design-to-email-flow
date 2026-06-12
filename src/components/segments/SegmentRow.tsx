@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, TextareaHTMLAttributes } from 'react';
 import { Trash2, Loader2, Star } from 'lucide-react';
 import { SegmentPreset, KlaviyoSegment } from '@/hooks/useSegmentPresets';
 import { SegmentChipsEditor } from './SegmentChipsEditor';
+import { SegmentColorPicker } from './SegmentColorPicker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -120,6 +121,10 @@ export function SegmentRow({
     <div className="flex items-center hover:bg-muted/30 group">
       {/* Name + Star */}
       <div className="px-3 py-2 flex items-center gap-2" style={{ width: columnWidths.name, minWidth: 150 }}>
+        <SegmentColorPicker
+          color={preset.color}
+          onChange={(color) => onUpdate(preset.id, { color })}
+        />
         {editingName ? (
           <Input
             value={tempName}

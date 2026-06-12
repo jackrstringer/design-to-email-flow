@@ -176,3 +176,9 @@ verify_jwt = true
 [functions.invite-user]
 verify_jwt = true
 
+[functions.check-copy-grammar]
+verify_jwt = true
+
+[functions.footer-agent]
+verify_jwt = true
+
