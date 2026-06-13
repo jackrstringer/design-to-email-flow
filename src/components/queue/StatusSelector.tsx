@@ -28,9 +28,11 @@ interface StatusSelectorProps {
   presets?: Array<{ id: string; name: string; included_segments: unknown; excluded_segments: unknown }>;
   liveSegmentIds?: Set<string>;
   liveSegmentsLoaded?: boolean;
+  /** Flagged SL/PT words from live QA — blocks the build until cleared. */
+  copyIssueWords?: string[];
 }
 
-export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSegmentsLoaded }: StatusSelectorProps) {
+export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSegmentsLoaded, copyIssueWords }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -62,6 +64,17 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
       // Validate subject line and preview text
       if (!item.selected_subject_line || !item.selected_preview_text) {
         toast.error('Please select subject line and preview text first');
+        setOpen(false);
+        return;
+      }
+
+      // Block the build while the subject/preview has spelling or grammar issues.
+      if (copyIssueWords && copyIssueWords.length > 0) {
+        toast.error(
+          `Fix the flagged copy first: ${copyIssueWords.slice(0, 4).map((w) => `“${w}”`).join(', ')}` +
+            (copyIssueWords.length > 4 ? ` +${copyIssueWords.length - 4} more` : ''),
+          { duration: 8000 },
+        );
         setOpen(false);
         return;
       }
@@ -285,16 +298,49 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
   const qaFlags = item.qa_flags as Array<{ type: string }> | null;
   const hasIssues = qaFlags && qaFlags.length > 0;
 
-  // Shared pill language: neutral surface, meaning carried by the dot.
-  const pill =
-    'inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-muted text-[11px] font-medium text-foreground/75 whitespace-nowrap';
+  // Base pill shell — geometry only, no color here.
+  const pillBase =
+    'inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[11px] font-medium whitespace-nowrap';
   const dot = 'h-[5px] w-[5px] rounded-full flex-shrink-0';
+
+  // Per-status color tokens: tinted background + matched text + dot color.
+  // Backgrounds use ~10% alpha of the functional hue (see .bg-status-* in
+  // index.css). Text uses the semantic color token directly.
+  const statusStyles = {
+    ready_for_review: {
+      pill: 'bg-status-warning text-warning',
+      dot:  'bg-warning',
+    },
+    approved: {
+      pill: 'bg-status-info text-info',
+      dot:  'bg-info',
+    },
+    sent_to_klaviyo: {
+      pill: 'bg-status-success text-success',
+      dot:  'bg-success',
+    },
+    processing: {
+      // Calm and transient — faint primary tint, muted text.
+      pill: 'bg-status-primary text-muted-foreground',
+      dot:  '',
+    },
+    closed: {
+      // Deliberately recessive — stays grey.
+      pill: 'bg-muted text-muted-foreground',
+      dot:  '',
+    },
+    failed: {
+      pill: 'bg-status-error text-destructive',
+      dot:  'bg-destructive',
+    },
+  } as const;
 
   // Processing state - not clickable
   if (item.status === 'processing' || isUpdating) {
+    const s = statusStyles.processing;
     return (
-      <div className={cn(pill, 'text-muted-foreground')}>
-        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/70" />
+      <div className={cn(pillBase, s.pill)}>
+        <Loader2 className="h-3 w-3 animate-spin opacity-60" />
         {isUpdating ? 'Building…' : `${item.processing_percent || 0}%`}
       </div>
     );
@@ -302,16 +348,17 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
 
   // Sent state - "Built in Klaviyo" badge
   if (item.status === 'sent_to_klaviyo') {
+    const s = statusStyles.sent_to_klaviyo;
     return (
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             onClick={(e) => e.stopPropagation()}
-            className={cn(pill, 'group/st transition-colors hover:bg-secondary')}
+            className={cn(pillBase, s.pill, 'group/st transition-colors hover:brightness-95')}
           >
-            <span className={cn(dot, 'bg-success')} />
+            <span className={cn(dot, s.dot)} />
             <span className="whitespace-nowrap">Built in Klaviyo</span>
-            <ChevronDown className="h-3 w-3 flex-shrink-0 text-muted-foreground/0 transition-colors group-hover/st:text-muted-foreground" />
+            <ChevronDown className="h-3 w-3 flex-shrink-0 opacity-0 transition-opacity group-hover/st:opacity-60" />
           </button>
         </PopoverTrigger>
         <PopoverContent
@@ -333,8 +380,9 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
 
   // Closed state - static badge
   if (item.status === 'closed') {
+    const s = statusStyles.closed;
     return (
-      <div className={cn(pill, 'text-muted-foreground')}>
+      <div className={cn(pillBase, s.pill)}>
         <Archive className="h-3 w-3" />
         Closed
       </div>
@@ -343,13 +391,14 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
 
   // Failed state - with retry
   if (item.status === 'failed') {
+    const s = statusStyles.failed;
     return (
-      <div className={cn(pill)}>
-        <span className={cn(dot, 'bg-destructive')} />
+      <div className={cn(pillBase, s.pill)}>
+        <span className={cn(dot, s.dot)} />
         Failed
         <button
           onClick={handleRetry}
-          className="ml-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="ml-0.5 rounded p-0.5 opacity-60 transition-opacity hover:opacity-100"
           title="Retry"
         >
           <RotateCw className="h-3 w-3" />
@@ -361,21 +410,22 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
   // Ready or Approved - clickable dropdown
   const isReady = item.status === 'ready_for_review';
   const isApproved = item.status === 'approved';
+  const activePillStyles = isReady ? statusStyles.ready_for_review : statusStyles.approved;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
-          className={cn(pill, 'group/st transition-colors hover:bg-secondary')}
+          className={cn(pillBase, activePillStyles.pill, 'group/st transition-colors hover:brightness-95')}
         >
-          <span className={cn(dot, isReady ? 'bg-warning' : 'bg-success')} />
+          <span className={cn(dot, activePillStyles.dot)} />
           {isReady
             ? hasIssues
               ? `Needs review · ${qaFlags?.length}`
               : 'Needs review'
             : 'Approved'}
-          <ChevronDown className="h-3 w-3 text-muted-foreground/0 transition-colors group-hover/st:text-muted-foreground" />
+          <ChevronDown className="h-3 w-3 opacity-0 transition-opacity group-hover/st:opacity-60" />
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -390,7 +440,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
             isReady && 'bg-muted/70 font-medium',
           )}
         >
-          <span className={cn(dot, 'bg-warning')} />
+          <span className={cn(dot, statusStyles.ready_for_review.dot)} />
           Needs review
         </button>
         <button
@@ -400,7 +450,7 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
             isApproved && 'bg-muted/70 font-medium',
           )}
         >
-          <span className={cn(dot, 'bg-success')} />
+          <span className={cn(dot, statusStyles.approved.dot)} />
           Approve &amp; build
         </button>
         <div className="h-px bg-border/70 my-1" />

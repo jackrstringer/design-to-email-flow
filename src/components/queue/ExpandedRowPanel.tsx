@@ -148,12 +148,13 @@ export function ExpandedRowPanel({
   const brandName = (item as any).brands?.name || 'Brand';
   const brandColor = (item as any).brands?.primary_color || '#6b7280';
 
-  const spellingErrors = (item.spelling_errors as Array<{
-    text: string;
-    correction: string;
-    location?: string;
-    sliceIndex?: number;
-  }>) || [];
+  // Backend design-image spelling (Claude vision over the sliced PNG).
+  // Shape is { word, suggestion, context } — filter out empty-word noise.
+  const designSpelling = (((item.spelling_errors as Array<{
+    word?: string;
+    suggestion?: string;
+    context?: string;
+  }>) || []).filter((e) => e.word && e.word.trim().length > 0));
 
   // Spelling + grammar QA on the selected subject line / preview text.
   // Blocks "Build in Klaviyo" while any issue exists. Grammar (LLM) also
@@ -172,10 +173,10 @@ export function ExpandedRowPanel({
     ...(copyQa.issuesByField.subject ?? []),
     ...(copyQa.issuesByField.preview ?? []),
   ];
-  // The backend image-QA spelling_errors also block until re-QA clears them.
+  // The backend design-image spelling also blocks until re-QA clears it.
   const buildBlockers = [
     ...copyIssues.map((i) => `${i.kind === 'spelling' ? 'Spelling' : 'Grammar'}: “${i.word}”${i.message ? ` — ${i.message}` : ''}`),
-    ...spellingErrors.map((e) => `Design spelling: “${e.text}”${e.correction ? ` → “${e.correction}”` : ''}`),
+    ...designSpelling.map((e) => `Design spelling: “${e.word}”${e.suggestion ? ` → “${e.suggestion}”` : ''}`),
   ];
   const isBlockedByCopyQa = buildBlockers.length > 0;
 
@@ -1060,39 +1061,64 @@ export function ExpandedRowPanel({
               </details>
             </div>
 
-            {/* Spelling Status with details */}
+            {/* Spelling / grammar QA — live on the selected subject & preview,
+                plus any spelling caught in the design image itself. */}
             <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-2">
-                {spellingErrors.length > 0 ? (
+                {copyIssues.length + designSpelling.length > 0 ? (
                   <>
                     <AlertTriangle className="h-4 w-4 text-warning" />
                     <span className="text-sm font-medium text-foreground">
-                      {spellingErrors.length} Spelling Error{spellingErrors.length > 1 ? 's' : ''}
+                      {copyIssues.length + designSpelling.length} issue
+                      {copyIssues.length + designSpelling.length > 1 ? 's' : ''} — fix before building
                     </span>
                   </>
                 ) : (
                   <>
                     <Check className="h-4 w-4 text-success" />
-                    <span className="text-sm font-medium text-foreground">No spelling errors</span>
+                    <span className="text-sm font-medium text-foreground">No spelling or grammar issues</span>
                   </>
                 )}
               </div>
-              
-              {/* Show actual spelling errors */}
-              {spellingErrors.length > 0 && (
-                <div className="space-y-1 pt-2 border-t">
-                  {spellingErrors.slice(0, 5).map((error, i) => (
-                    <div key={i} className="text-[11px] flex items-center gap-2">
-                      <span className="text-destructive line-through">{error.text}</span>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="text-foreground font-medium">{error.correction}</span>
+
+              {(copyIssues.length > 0 || designSpelling.length > 0) && (
+                <div className="space-y-1.5 pt-2 border-t">
+                  {copyIssues.map((issue, i) => (
+                    <div key={`c${i}`} className="flex items-center gap-2 text-[11.5px]">
+                      <span
+                        className={cn(
+                          'inline-flex h-[16px] shrink-0 items-center rounded-full px-1.5 text-[9.5px] font-medium leading-none',
+                          issue.kind === 'spelling' ? 'bg-destructive/[0.08] text-destructive' : 'bg-amber-500/10 text-amber-700',
+                        )}
+                      >
+                        {issue.kind === 'spelling' ? 'Spelling' : 'Grammar'}
+                      </span>
+                      <span className="font-medium text-foreground">{issue.word}</span>
+                      {issue.suggestions && issue.suggestions.length > 0 && (
+                        <>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="text-foreground">{issue.suggestions[0]}</span>
+                        </>
+                      )}
                     </div>
                   ))}
-                  {spellingErrors.length > 5 && (
-                    <span className="text-[11px] text-muted-foreground">
-                      +{spellingErrors.length - 5} more
-                    </span>
-                  )}
+                  {designSpelling.slice(0, 5).map((e, i) => (
+                    <div key={`d${i}`} className="flex items-center gap-2 text-[11.5px]">
+                      <span className="inline-flex h-[16px] shrink-0 items-center rounded-full bg-muted px-1.5 text-[9.5px] font-medium leading-none text-foreground/65">
+                        In design
+                      </span>
+                      <span className="font-medium text-destructive">{e.word}</span>
+                      {e.suggestion && (
+                        <>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="text-foreground">{e.suggestion}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  <p className="pt-0.5 text-[10.5px] text-muted-foreground">
+                    Hover the underlined word in the subject or preview above to replace it in one click.
+                  </p>
                 </div>
               )}
             </div>

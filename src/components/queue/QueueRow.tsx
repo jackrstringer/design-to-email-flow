@@ -86,9 +86,6 @@ export function QueueRow({
   const brandName = (item as any).brands?.name;
   const brandDomain = (item as any).brands?.domain;
 
-  const spellingErrors = item.spelling_errors as Array<{ text: string }> | null;
-  const spellingCount = spellingErrors?.length || 0;
-
   const realLinks = slices.filter((s) => isRealLink(s.link));
   const externalCount = brandDomain
     ? new Set(realLinks.filter((s) => !s.link!.includes(brandDomain)).map((s) => s.link)).size
@@ -118,6 +115,14 @@ export function QueueRow({
     onAddToDictionary: item.brand_id ? dictionary.addWord : undefined,
     getDraftIssues: copyQa.checkDraft,
   });
+
+  // Live spelling/grammar issues on the selected SL/PT drive the row chip and
+  // block the build — replacing the old (mis-shaped) backend spelling_errors.
+  const copyIssues = [
+    ...(copyQa.issuesByField.subject ?? []),
+    ...(copyQa.issuesByField.preview ?? []),
+  ];
+  const spellingCount = copyIssues.length;
 
   const handleNameSave = async (newName: string) => {
     const { error } = await supabase.from('campaign_queue').update({ name: newName }).eq('id', item.id);
@@ -253,6 +258,7 @@ export function QueueRow({
         presets={presets}
         liveSegmentIds={liveSegmentIds}
         liveSegmentsLoaded={liveSegmentsLoaded}
+        copyIssueWords={copyIssues.map((i) => i.word)}
       />
     </div>
   );
@@ -284,15 +290,15 @@ export function QueueRow({
             : '0 errors'
           : compact
             ? String(spellingCount)
-            : `${spellingCount} spelling`
+            : `${spellingCount} issue${spellingCount === 1 ? '' : 's'}`
       }
       title={
         spellingCount === 0
-          ? 'Spelling QA passed — no errors found'
-          : `Possible misspelling${spellingCount === 1 ? '' : 's'}: ${spellingErrors!
+          ? 'Spelling & grammar QA passed — no issues'
+          : `${copyIssues
               .slice(0, 5)
-              .map((e) => `“${e.text}”`)
-              .join(', ')}${spellingCount > 5 ? ` +${spellingCount - 5} more` : ''} — open to review`
+              .map((e) => `“${e.word}”`)
+              .join(', ')}${spellingCount > 5 ? ` +${spellingCount - 5} more` : ''} — hover the underlined word to fix`
       }
     />
   );

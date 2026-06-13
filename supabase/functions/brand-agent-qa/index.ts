@@ -120,9 +120,11 @@ serve(async (req) => {
       ? (queueRow.spelling_errors as Array<{ word?: string; suggestion?: string; context?: string }>)
       : [];
     for (const err of spellingErrors) {
+      // Skip empty/garbage entries — they used to render as "Possible typo: ''".
+      if (!err.word || !err.word.trim()) continue;
       flags.push({
         type: 'spelling', severity: 'warning', category: 'spelling',
-        message: `Possible typo: "${err.word ?? ''}"${err.suggestion ? ` → "${err.suggestion}"` : ''}${err.context ? ` (${err.context})` : ''}`,
+        message: `Possible typo: "${err.word}"${err.suggestion ? ` → "${err.suggestion}"` : ''}${err.context ? ` (${err.context})` : ''}`,
       });
     }
 

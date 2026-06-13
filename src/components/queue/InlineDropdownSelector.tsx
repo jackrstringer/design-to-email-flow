@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { CopyIssue } from '@/hooks/useSpellcheck';
-import { CopyQaIndicator } from './CopyQaIndicator';
+import { HighlightedCopy } from './HighlightedCopy';
 
 // ClickUp brand icon as inline SVG
 const ClickUpIcon = ({ className }: { className?: string }) => (
@@ -207,8 +207,7 @@ export function InlineDropdownSelector({
           className={cn(
             "group flex items-center gap-0.5 rounded-sm transition-shadow cursor-pointer w-full",
             isEditing && "ring-1 ring-foreground/30 ring-inset bg-card",
-            open && "ring-1 ring-foreground/30 ring-inset bg-card",
-            hasQaIssues && "ring-1 ring-destructive ring-inset bg-destructive/[0.03]"
+            open && "ring-1 ring-foreground/30 ring-inset bg-card"
           )}
           onClick={handleCellClick}
           onDoubleClick={handleDoubleClick}
@@ -237,7 +236,18 @@ export function InlineDropdownSelector({
               )}
               title={displayValue || placeholder}
             >
-              <span className="truncate">{displayValue || placeholder}</span>
+              {hasQaIssues && displayValue ? (
+                <HighlightedCopy
+                  text={displayValue}
+                  issues={activeIssues}
+                  onReplace={(t) => onSelect(t)}
+                  onAddToDictionary={onAddToDictionary}
+                  truncate
+                  className="flex-1 text-foreground"
+                />
+              ) : (
+                <span className="truncate">{displayValue || placeholder}</span>
+              )}
               {isClickUpSource && displayValue && (
                 <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
@@ -263,10 +273,6 @@ export function InlineDropdownSelector({
                 </Tooltip>
               )}
             </span>
-          )}
-
-          {!isEditing && hasQaIssues && (
-            <CopyQaIndicator issues={activeIssues} onAddToDictionary={onAddToDictionary} />
           )}
 
           {isSaving && (

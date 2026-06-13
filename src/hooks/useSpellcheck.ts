@@ -21,12 +21,15 @@ export interface CopyIssue {
   index: number;
   /** Human-readable explanation (grammar issues; spelling gets a default). */
   message?: string;
+  /** One-click replacement candidates (spelling only; best first). */
+  suggestions?: string[];
 }
 
 // ── Local speller (nspell), lazy singleton ──────────────────────────────────
 
 interface Speller {
   correct: (word: string) => boolean;
+  suggest: (word: string) => string[];
 }
 
 let spellerPromise: Promise<Speller> | null = null;
@@ -77,6 +80,36 @@ export function brandWordSet(brandName?: string | null, brandDomain?: string | n
   if (brandName) add(brandName);
   if (brandDomain) add(brandDomain);
   return words;
+}
+
+/** Match a suggestion's casing to the original token (Title / UPPER / lower). */
+function matchCase(original: string, suggestion: string): string {
+  if (original === original.toUpperCase() && original.length > 1) return suggestion.toUpperCase();
+  if (original[0] === original[0]?.toUpperCase()) {
+    return suggestion.charAt(0).toUpperCase() + suggestion.slice(1);
+  }
+  return suggestion;
+}
+
+/** Top spelling suggestions for a misspelled token, casing-matched, deduped. */
+function suggestFor(speller: Speller, token: string): string[] {
+  let raw: string[] = [];
+  try {
+    raw = speller.suggest(token) || [];
+  } catch {
+    raw = [];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const s of raw) {
+    const cased = matchCase(token, s);
+    const key = cased.toLowerCase();
+    if (seen.has(key) || cased.toLowerCase() === token.toLowerCase()) continue;
+    seen.add(key);
+    out.push(cased);
+    if (out.length >= 4) break;
+  }
+  return out;
 }
 
 function isCustomWord(token: string, custom: Set<string>): boolean {
@@ -133,7 +166,13 @@ export function checkText(text: string | null | undefined, customWords: Iterable
       return speller.correct(part) || speller.correct(part.toLowerCase());
     });
     if (!ok) {
-      issues.push({ kind: 'spelling', word: raw, index, message: `"${raw}" looks misspelled` });
+      issues.push({
+        kind: 'spelling',
+        word: raw,
+        index,
+        message: `"${raw}" looks misspelled`,
+        suggestions: suggestFor(speller, base),
+      });
     }
   }
   return issues;

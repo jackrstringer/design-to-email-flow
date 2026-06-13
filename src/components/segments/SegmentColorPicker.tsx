@@ -3,20 +3,26 @@
 // (desaturated, mid-lightness) so dots read as quiet markers, not alerts.
 
 import { useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 export const SEGMENT_COLORS: Array<{ name: string; value: string }> = [
-  { name: 'Slate', value: '#7C8794' },
-  { name: 'Sage', value: '#8AA188' },
-  { name: 'Moss', value: '#9AA37C' },
-  { name: 'Amber', value: '#C2A36B' },
+  { name: 'Slate',      value: '#7C8794' },
+  { name: 'Sage',       value: '#8AA188' },
+  { name: 'Moss',       value: '#9AA37C' },
+  { name: 'Amber',      value: '#C2A36B' },
   { name: 'Terracotta', value: '#C08D6E' },
-  { name: 'Rose', value: '#C58E9B' },
-  { name: 'Mauve', value: '#A78EA9' },
-  { name: 'Indigo', value: '#8B93C0' },
-  { name: 'Teal', value: '#7FA6A3' },
+  { name: 'Rose',       value: '#C58E9B' },
+  { name: 'Mauve',      value: '#A78EA9' },
+  { name: 'Indigo',     value: '#8B93C0' },
+  { name: 'Teal',       value: '#7FA6A3' },
+  { name: 'Stone',      value: '#A09A90' },
+  { name: 'Dusk',       value: '#9396AA' },
+  { name: 'Clay',       value: '#B89B87' },
+  { name: 'Olive',      value: '#8E9A6E' },
+  { name: 'Blush',      value: '#C2939B' },
+  { name: 'Steel',      value: '#829BB0' },
 ];
 
 interface SegmentColorPickerProps {
@@ -46,38 +52,52 @@ export function SegmentColorPicker({ color, onChange }: SegmentColorPickerProps)
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-44 p-1 bg-card"
+        className="w-auto p-2 bg-card shadow-floating"
         align="start"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-muted-foreground">
-          Color
-        </p>
-        <div className="max-h-[240px]">
+        <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+          {/* "No color" clear swatch — always first */}
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
+            title="No color"
+            aria-label="Remove color"
+            className={cn(
+              'relative flex h-[22px] w-[22px] items-center justify-center rounded-full',
+              'border border-border bg-muted transition-transform duration-100',
+              'hover:scale-110 active:scale-95',
+              !color && 'ring-2 ring-offset-1 ring-foreground/40',
+            )}
             onClick={() => { onChange(null); setOpen(false); }}
           >
-            <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/25 ring-1 ring-black/10" />
-            <span className="flex-1 text-muted-foreground">None</span>
-            {!color && <Check className="h-3 w-3 text-muted-foreground" />}
+            <X className="h-3 w-3 text-muted-foreground" strokeWidth={2.5} />
           </button>
-          {SEGMENT_COLORS.map((c) => (
-            <button
-              key={c.value}
-              type="button"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
-              onClick={() => { onChange(c.value); setOpen(false); }}
-            >
-              <span
-                className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10"
+
+          {SEGMENT_COLORS.map((c) => {
+            const selected = color === c.value;
+            return (
+              <button
+                key={c.value}
+                type="button"
+                title={c.name}
+                aria-label={c.name}
+                className={cn(
+                  'relative flex h-[22px] w-[22px] items-center justify-center rounded-full',
+                  'transition-transform duration-100 hover:scale-110 active:scale-95',
+                  selected && 'ring-2 ring-offset-1 ring-foreground/40',
+                )}
                 style={{ backgroundColor: c.value }}
-              />
-              <span className="flex-1">{c.name}</span>
-              {color === c.value && <Check className="h-3 w-3 text-muted-foreground" />}
-            </button>
-          ))}
+                onClick={() => { onChange(c.value); setOpen(false); }}
+              >
+                {selected && (
+                  <Check
+                    className="h-3 w-3 text-white drop-shadow-sm"
+                    strokeWidth={3}
+                  />
+                )}
+              </button>
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>
