@@ -13,7 +13,29 @@ serve(async (req) => {
   }
 
   try {
-    const { sessionKey, imageUrl, imageBase64 } = await req.json();
+    const { sessionKey, imageUrl, imageBase64, campaignQueueId } = await req.json();
+
+    // Map the early-check shape {text, correction, location} to the
+    // campaign_queue.spelling_errors shape {word, suggestion, context} and
+    // tag them as design-image HARD errors (clear typos baked into the art).
+    const writeDesignErrorsToRow = async (errors: any[]) => {
+      if (!campaignQueueId) return;
+      const normalized = (errors || [])
+        .filter((e) => (e?.text || e?.word) && String(e.text || e.word).trim())
+        .map((e) => ({
+          word: String(e.text || e.word).trim(),
+          suggestion: e.correction || e.suggestion || '',
+          context: e.location || e.context || '',
+          source: 'design',
+          severity: 'error',
+        }));
+      const { error } = await supabase
+        .from('campaign_queue')
+        .update({ spelling_errors: normalized })
+        .eq('id', campaignQueueId);
+      if (error) console.error('[QA-Early] Failed to write design errors to row:', error.message);
+      else console.log('[QA-Early] Wrote', normalized.length, 'design errors to campaign', campaignQueueId);
+    };
     
     if (!sessionKey || (!imageUrl && !imageBase64)) {
       return new Response(
@@ -136,7 +158,7 @@ Or if no errors:
           spelling_errors: [],
           has_errors: false
         }, { onConflict: 'session_key' });
-      
+      await writeDesignErrorsToRow([]);
       return new Response(
         JSON.stringify({ success: true, sessionKey, error: 'API error' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -174,6 +196,7 @@ Or if no errors:
     } else {
       console.log('[QA-Early] Results stored for session:', sessionKey);
     }
+    await writeDesignErrorsToRow(result.errors || []);
 
     return new Response(
       JSON.stringify({ success: true, sessionKey }),

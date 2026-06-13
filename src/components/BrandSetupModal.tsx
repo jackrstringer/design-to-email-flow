@@ -169,7 +169,8 @@ export const BrandSetupModal = ({
           primary_color: primaryColor,
           secondary_color: secondaryColor,
           social_links: socialLinks as any,
-          all_links: allLinks as any,
+          // Drop in-page anchor links (#main, #offcanvas-menu) — never real destinations.
+          all_links: allLinks.filter((l) => !String(l).includes('#')) as any,
           footer_configured: false,
         })
         .select()

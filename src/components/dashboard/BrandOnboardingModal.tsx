@@ -363,7 +363,8 @@ export function BrandOnboardingModal({
           text_primary_color: textPrimaryColor || null,
           link_color: linkColor || null,
           social_links: socialLinks as unknown as Json,
-          all_links: allLinks as unknown as Json,
+          // Drop in-page anchor links (#main, #offcanvas-menu) — never real destinations.
+          all_links: (Array.isArray(allLinks) ? allLinks.filter((l) => !String(l).includes('#')) : allLinks) as unknown as Json,
           typography: typography as unknown as Json,
           dark_logo_url: logoData?.darkLogoUrl || null,
           dark_logo_public_id: logoData?.darkLogoPublicId || null,

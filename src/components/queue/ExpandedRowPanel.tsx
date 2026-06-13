@@ -131,7 +131,8 @@ export function ExpandedRowPanel({
 
   // Display mode for slice info: 'all' | 'links' | 'none'
   type DisplayMode = 'all' | 'links' | 'none';
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
+  // Links-only is the default view (Jack): links get the room to show in full.
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('links');
   const [hoveredSliceIndex, setHoveredSliceIndex] = useState<number | null>(null);
 
   // "Flag a mistake" dialog state (feeds the brand knowledge layer)
@@ -173,10 +174,14 @@ export function ExpandedRowPanel({
     ...(copyQa.issuesByField.subject ?? []),
     ...(copyQa.issuesByField.preview ?? []),
   ];
-  // The backend design-image spelling also blocks until re-QA clears it.
+  // Only HARD errors block the build. Suggestions (preferential tweaks like
+  // "ebook") stay visible but never halt the launch. Design-image typos and
+  // LLM-confirmed copy mistakes are errors; local-only flags are suggestions.
+  const copyErrors = copyIssues.filter((i) => i.severity === 'error');
+  const copySuggestions = copyIssues.filter((i) => i.severity !== 'error');
   const buildBlockers = [
-    ...copyIssues.map((i) => `${i.kind === 'spelling' ? 'Spelling' : 'Grammar'}: “${i.word}”${i.message ? ` — ${i.message}` : ''}`),
-    ...designSpelling.map((e) => `Design spelling: “${e.word}”${e.suggestion ? ` → “${e.suggestion}”` : ''}`),
+    ...copyErrors.map((i) => `${i.kind === 'spelling' ? 'Spelling' : 'Grammar'}: “${i.word}”${i.message ? ` — ${i.message}` : ''}`),
+    ...designSpelling.map((e) => `Design typo: “${e.word}”${e.suggestion ? ` → “${e.suggestion}”` : ''}`),
   ];
   const isBlockedByCopyQa = buildBlockers.length > 0;
 
@@ -1064,34 +1069,62 @@ export function ExpandedRowPanel({
             {/* Spelling / grammar QA — live on the selected subject & preview,
                 plus any spelling caught in the design image itself. */}
             <div className="bg-card rounded-lg border px-3 py-2.5 space-y-2">
-              <div className="flex items-center gap-2">
-                {copyIssues.length + designSpelling.length > 0 ? (
-                  <>
-                    <AlertTriangle className="h-4 w-4 text-warning" />
-                    <span className="text-sm font-medium text-foreground">
-                      {copyIssues.length + designSpelling.length} issue
-                      {copyIssues.length + designSpelling.length > 1 ? 's' : ''} — fix before building
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4 text-success" />
-                    <span className="text-sm font-medium text-foreground">No spelling or grammar issues</span>
-                  </>
-                )}
-              </div>
+              {(() => {
+                const errorCount = copyErrors.length + designSpelling.length;
+                return (
+                  <div className="flex items-center gap-2">
+                    {errorCount > 0 ? (
+                      <>
+                        <AlertTriangle className="h-4 w-4 text-orange-500" />
+                        <span className="text-sm font-medium text-foreground">
+                          {errorCount} {errorCount > 1 ? 'errors' : 'error'} — must fix before building
+                        </span>
+                      </>
+                    ) : copySuggestions.length > 0 ? (
+                      <>
+                        <Check className="h-4 w-4 text-success" />
+                        <span className="text-sm font-medium text-foreground">
+                          No errors · {copySuggestions.length} optional suggestion
+                          {copySuggestions.length > 1 ? 's' : ''}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 text-success" />
+                        <span className="text-sm font-medium text-foreground">No spelling or grammar issues</span>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {(copyIssues.length > 0 || designSpelling.length > 0) && (
                 <div className="space-y-1.5 pt-2 border-t">
+                  {designSpelling.slice(0, 8).map((e, i) => (
+                    <div key={`d${i}`} className="flex items-center gap-2 text-[11.5px]">
+                      <span className="inline-flex h-[16px] shrink-0 items-center rounded-full bg-orange-500/15 px-1.5 text-[9.5px] font-semibold leading-none text-orange-600">
+                        In design
+                      </span>
+                      <span className="font-medium text-foreground">{e.word}</span>
+                      {e.suggestion && (
+                        <>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="text-foreground">{e.suggestion}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
                   {copyIssues.map((issue, i) => (
                     <div key={`c${i}`} className="flex items-center gap-2 text-[11.5px]">
                       <span
                         className={cn(
                           'inline-flex h-[16px] shrink-0 items-center rounded-full px-1.5 text-[9.5px] font-medium leading-none',
-                          issue.kind === 'spelling' ? 'bg-destructive/[0.08] text-destructive' : 'bg-amber-500/10 text-amber-700',
+                          issue.severity === 'suggestion'
+                            ? 'bg-amber-500/10 text-amber-700'
+                            : 'bg-destructive/[0.08] text-destructive',
                         )}
                       >
-                        {issue.kind === 'spelling' ? 'Spelling' : 'Grammar'}
+                        {issue.severity === 'suggestion' ? 'Suggestion' : issue.kind === 'spelling' ? 'Spelling' : 'Grammar'}
                       </span>
                       <span className="font-medium text-foreground">{issue.word}</span>
                       {issue.suggestions && issue.suggestions.length > 0 && (
@@ -1102,22 +1135,8 @@ export function ExpandedRowPanel({
                       )}
                     </div>
                   ))}
-                  {designSpelling.slice(0, 5).map((e, i) => (
-                    <div key={`d${i}`} className="flex items-center gap-2 text-[11.5px]">
-                      <span className="inline-flex h-[16px] shrink-0 items-center rounded-full bg-muted px-1.5 text-[9.5px] font-medium leading-none text-foreground/65">
-                        In design
-                      </span>
-                      <span className="font-medium text-destructive">{e.word}</span>
-                      {e.suggestion && (
-                        <>
-                          <span className="text-muted-foreground">→</span>
-                          <span className="text-foreground">{e.suggestion}</span>
-                        </>
-                      )}
-                    </div>
-                  ))}
                   <p className="pt-0.5 text-[10.5px] text-muted-foreground">
-                    Hover the underlined word in the subject or preview above to replace it in one click.
+                    Design typos must be fixed in Figma and re-uploaded. Hover an underlined subject/preview word to fix it here.
                   </p>
                 </div>
               )}

@@ -454,12 +454,18 @@ serve(async (req) => {
 
     console.log(`[clickup] Final result - SL: ${subjectLine ? `"${subjectLine}"` : 'none'}, PT: ${previewText ? `"${previewText}"` : 'none'}`);
 
+    // Return the full collected task text as the campaign BRIEF so the pipeline
+    // can feed it into link assignment + QA (capped to keep prompts lean).
+    const brief = allTextContent.length > 6000 ? allTextContent.slice(0, 6000) : allTextContent;
+
     return jsonResponse(req, {
       found: true,
       taskId: matchedTask.id,
       taskUrl: matchedTask.url,
+      taskName: matchedTask.name || null,
       subjectLine,
       previewText,
+      brief,
     });
 
   } catch (error) {

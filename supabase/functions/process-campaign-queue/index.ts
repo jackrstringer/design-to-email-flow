@@ -814,13 +814,15 @@ serve(async (req) => {
 
     // User-provided campaign context from the Figma plugin (copy notes, links,
     // landing page, offer details) — piped into slicing, copy gen, and QA.
-    const userContext: string | null =
+    let userContext: string | null =
       typeof item.user_context === 'string' && item.user_context.trim()
         ? item.user_context.trim()
         : null;
     if (userContext) {
       console.log('[process] User-provided campaign context present (', userContext.length, 'chars)');
     }
+    // Resolved once (used to merge the ClickUp brief, then reused at copy-merge).
+    let clickupResolved: ClickUpCopyResult | null = null;
 
     // === STEP 1.5: Start early SL/PT generation immediately (matches manual flow) ===
     let brandId = item.brand_id;
@@ -924,7 +926,8 @@ serve(async (req) => {
       body: JSON.stringify({
         sessionKey: spellingSessionKey,
         imageUrl: imageResult.imageUrl, // Keep URL as fallback
-        imageBase64: imageResult.imageBase64  // NEW: Pass base64 directly - saves 20s!
+        imageBase64: imageResult.imageBase64,  // NEW: Pass base64 directly - saves 20s!
+        campaignQueueId  // surface design-image typos onto the row as hard errors
       })
     }).catch(err => console.log('[process] Early spelling check triggered:', err?.message || 'ok'));
     
@@ -933,7 +936,7 @@ serve(async (req) => {
     // === STEP 1.5b: Fire ClickUp search ASYNC (non-blocking, parallel with auto-slice) ===
     // OPTIMIZATION: Previously this was awaited synchronously, blocking the pipeline for 20-40s
     // Now we fire immediately and await results at the end when merging copy sources
-    type ClickUpCopyResult = { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null; found: boolean };
+    type ClickUpCopyResult = { subjectLine: string | null; previewText: string | null; taskId: string | null; taskUrl: string | null; found: boolean; brief?: string | null; taskName?: string | null };
     let clickupPromise: Promise<ClickUpCopyResult> | null = null;
 
     const hasClickupLocation = clickupListIds.length > 0 || !!clickupFolderId || !!clickupListId;
@@ -968,7 +971,9 @@ serve(async (req) => {
               previewText: result.previewText || null,
               taskId: result.taskId || null,
               taskUrl: result.taskUrl || null,
-              found: result.found || false
+              found: result.found || false,
+              brief: result.brief || null,
+              taskName: result.taskName || null
             };
           } else {
             console.error('[process] ClickUp search failed:', await clickupResponse.text());
@@ -976,7 +981,7 @@ serve(async (req) => {
         } catch (err) {
           console.error('[process] ClickUp search error (non-fatal):', err);
         }
-        return { subjectLine: null, previewText: null, taskId: null, taskUrl: null, found: false };
+        return { subjectLine: null, previewText: null, taskId: null, taskUrl: null, found: false, brief: null, taskName: null };
       })();
     }
 
@@ -1120,6 +1125,26 @@ serve(async (req) => {
       slices: uploadedSlices,
       processing_percent: 45
     });
+
+    // === STEP 3.9: Fold the ClickUp brief into context BEFORE link resolution + QA ===
+    // The ClickUp search was fired in parallel with auto-slice, so by now it has
+    // usually resolved — awaiting here adds little/no latency but lets the task
+    // brief (offer details, intended landing pages, notes) inform link
+    // resolution, copy generation, and the QA agent.
+    if (clickupPromise) {
+      try {
+        clickupResolved = await clickupPromise;
+        if (clickupResolved?.brief && clickupResolved.brief.trim()) {
+          const briefBlock = `Campaign brief from the linked ClickUp task${clickupResolved.taskName ? ` ("${clickupResolved.taskName}")` : ''}:\n${clickupResolved.brief.trim()}`;
+          userContext = userContext ? `${userContext}\n\n${briefBlock}` : briefBlock;
+          // Persist so brand-agent-qa (which reads user_context off the row) sees it.
+          await updateQueueItem(supabase, campaignQueueId, { user_context: userContext });
+          console.log('[process] Folded ClickUp brief into context (', clickupResolved.brief.length, 'chars)');
+        }
+      } catch (err) {
+        console.error('[process] ClickUp brief await error (non-fatal):', err);
+      }
+    }
 
     // === STEP 4: Validate and resolve links (deterministic guardrails) ===
     let currentSlices = uploadedSlices;
@@ -1525,8 +1550,8 @@ serve(async (req) => {
     };
     
     if (clickupPromise) {
-      console.log('[process] Awaiting ClickUp search result...');
-      const clickupResult = await clickupPromise;
+      // Reuse the result already resolved at Step 3.9 (avoids a second await).
+      const clickupResult = clickupResolved ?? (await clickupPromise);
       if (clickupResult.found) {
         clickupCopy = {
           subjectLine: clickupResult.subjectLine,

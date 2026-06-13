@@ -31,6 +31,7 @@ interface SliceCanvasProps {
 const PILL_H = 24;
 const PILL_GAP = 4;
 const GUTTER_PAD = 12;
+const ALT_MIN_H = 24; // minimum height before measurement
 
 /* Full-length URL, just without protocol/www noise. The gutter has room —
    never collapse the path (Jack needs to read the whole destination). */
@@ -73,8 +74,10 @@ export function SliceCanvas({
   const canvasRef = useRef<HTMLDivElement>(null);
   const sliceRefs = useRef<(HTMLDivElement | null)[]>([]);
   const pillRefs = useRef<(HTMLElement | null)[]>([]);
+  const altRefs = useRef<(HTMLElement | null)[]>([]);
   const [anchors, setAnchors] = useState<number[]>([]);
   const [pillHeights, setPillHeights] = useState<number[]>([]);
+  const [altHeights, setAltHeights] = useState<number[]>([]);
 
   const measure = useCallback(() => {
     const canvas = canvasRef.current;
@@ -93,6 +96,10 @@ export function SliceCanvas({
     setPillHeights((prev) =>
       prev.length === nextH.length && prev.every((v, i) => Math.abs(v - nextH[i]) < 0.5) ? prev : nextH,
     );
+    const nextAltH = slices.map((_, i) => altRefs.current[i]?.offsetHeight || ALT_MIN_H);
+    setAltHeights((prev) =>
+      prev.length === nextAltH.length && prev.every((v, i) => Math.abs(v - nextAltH[i]) < 0.5) ? prev : nextAltH,
+    );
   }, [slices]);
 
   useLayoutEffect(() => {
@@ -103,6 +110,7 @@ export function SliceCanvas({
     ro.observe(canvas);
     sliceRefs.current.forEach((el) => el && ro.observe(el));
     pillRefs.current.forEach((el) => el && ro.observe(el));
+    altRefs.current.forEach((el) => el && ro.observe(el));
     return () => ro.disconnect();
   }, [measure, scaledWidth, displayMode]);
 
@@ -110,18 +118,37 @@ export function SliceCanvas({
     () => resolvePositions(anchors, pillHeights, PILL_GAP),
     [anchors, pillHeights],
   );
-  // Alt blocks run ~2 lines (~38px) — collision-resolve with their real height
-  // so neighboring alt texts never overlap or squash each other.
-  const ALT_H = 38;
-  const altTops = useMemo(() => resolvePositions(anchors, ALT_H, 6), [anchors]);
+  // Alt blocks: use MEASURED heights (via altRefs + ResizeObserver) so
+  // multi-line alt text never overlaps its neighbors.
+  const altTops = useMemo(() => resolvePositions(anchors, altHeights, 6), [anchors, altHeights]);
 
   const setHover = (i: number | null) => {
     setHovered(i);
     onHoverSlice?.(i);
   };
 
-  const filteredLinks = brandLinks.filter((l) =>
-    l.toLowerCase().includes(linkSearchValue.toLowerCase()),
+  // Exclude anchor/fragment-only links (e.g. https://eskiin.com/#main or bare #foo).
+  // A link is "junk" if stripping protocol+host leaves nothing real — only an empty
+  // string, a lone "/", or a bare "#fragment" with no actual path/query.
+  const isFragmentOnlyUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      // pathname will be "/" for root, search and hash may exist
+      const hasRealPath = parsed.pathname !== '/' && parsed.pathname !== '';
+      const hasQuery = parsed.search !== '';
+      // If there's no real path and no query, it's only a root+anchor → junk
+      if (!hasRealPath && !hasQuery) return true;
+    } catch {
+      // Not a full URL — check if it's a bare fragment
+      if (/^#/.test(url.trim())) return true;
+    }
+    return false;
+  };
+
+  const filteredLinks = brandLinks.filter(
+    (l) =>
+      !isFragmentOnlyUrl(l) &&
+      l.toLowerCase().includes(linkSearchValue.toLowerCase()),
   );
 
   const linkEditor = (index: number, current: string | null | undefined) => (
@@ -200,13 +227,19 @@ export function SliceCanvas({
   const showAlt = displayMode === 'all';
 
   return (
-    <div className="relative flex justify-center">
+    <div className={cn('relative flex', showAlt ? 'justify-center' : 'justify-end pr-3')}>
       {/* LEFT GUTTER — link pills, absolutely positioned, collision-resolved.
-          They live OUTSIDE the email's layout and can never reflow it. */}
+          They live OUTSIDE the email's layout and can never reflow it. In
+          links-only mode the email sits to the right so the gutter spans almost
+          the full width — long URLs show in full without wrapping. */}
       {showLinks && (
         <div
           className="pointer-events-none absolute inset-y-0 left-0 z-10"
-          style={{ width: `calc(50% - ${scaledWidth / 2 + GUTTER_PAD}px)` }}
+          style={{
+            width: showAlt
+              ? `calc(50% - ${scaledWidth / 2 + GUTTER_PAD}px)`
+              : `calc(100% - ${scaledWidth + GUTTER_PAD * 2}px)`,
+          }}
         >
           {slices.map((slice, i) => {
             if (anchors.length !== slices.length) return null;
@@ -277,8 +310,9 @@ export function SliceCanvas({
             return (
               <div
                 key={i}
-                className="absolute left-0 w-full max-w-[220px]"
-                style={{ top: altTops[i], minHeight: PILL_H }}
+                ref={(el) => (altRefs.current[i] = el)}
+                className="absolute left-0 w-full"
+                style={{ top: altTops[i], minHeight: ALT_MIN_H }}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
               >
@@ -288,14 +322,14 @@ export function SliceCanvas({
                     onChange={(e) => onUpdateSlice(i, { altText: e.target.value })}
                     onBlur={() => setEditingAltIndex(null)}
                     autoFocus
-                    rows={2}
+                    rows={3}
                     className="pointer-events-auto w-full resize-none rounded-md border border-input bg-card px-2 py-1 text-[11px] leading-snug text-foreground outline-none focus:border-foreground/30"
                   />
                 ) : (
                   <p
                     onClick={() => setEditingAltIndex(i)}
                     className={cn(
-                      'pointer-events-auto line-clamp-2 cursor-text rounded-md px-1.5 py-1 text-[11px] leading-snug transition-colors duration-150',
+                      'pointer-events-auto cursor-text rounded-md px-1.5 py-1 text-[11px] leading-snug transition-colors duration-150 break-words',
                       hovered === i ? 'bg-accent text-foreground' : 'text-muted-foreground/80',
                     )}
                   >
@@ -345,14 +379,21 @@ export function SliceCanvas({
                       onUploaded={(newUrl) => onUpdateSlice(originalIndex, { imageUrl: newUrl })}
                     />
                   )}
-                  {/* Hover highlight — pure overlay, no layout impact. */}
+                  {/* Hover highlight — double outline (white inner + dark outer) so it
+                      reads on ANY email background, light or dark. Pure overlay, no layout impact. */}
                   <div
                     className={cn(
                       'pointer-events-none absolute inset-0 transition-opacity duration-150',
-                      hovered === originalIndex
-                        ? 'opacity-100 ring-1 ring-inset ring-foreground/30'
-                        : 'opacity-0',
+                      hovered === originalIndex ? 'opacity-100' : 'opacity-0',
                     )}
+                    style={
+                      hovered === originalIndex
+                        ? {
+                            boxShadow:
+                              'inset 0 0 0 2px rgba(255,255,255,0.85), inset 0 0 0 4px rgba(0,0,0,0.55)',
+                          }
+                        : undefined
+                    }
                   />
                   {/* Missing-link wash — quiet amber tint so gaps are scannable. */}
                   {showLinks && !isRealLink(slice.link) && (

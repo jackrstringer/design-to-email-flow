@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, RotateCw, ChevronDown, Archive } from 'lucide-react';
+import { Loader2, RotateCw, ChevronDown, Archive, AlertTriangle, Check } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -30,9 +30,11 @@ interface StatusSelectorProps {
   liveSegmentsLoaded?: boolean;
   /** Flagged SL/PT words from live QA — blocks the build until cleared. */
   copyIssueWords?: string[];
+  /** True when there are launch-blocking spelling/grammar/design errors. */
+  hasErrors?: boolean;
 }
 
-export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSegmentsLoaded, copyIssueWords }: StatusSelectorProps) {
+export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSegmentsLoaded, copyIssueWords, hasErrors }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -294,10 +296,6 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
     onUpdate();
   };
 
-  // Check if there are QA issues (typos)
-  const qaFlags = item.qa_flags as Array<{ type: string }> | null;
-  const hasIssues = qaFlags && qaFlags.length > 0;
-
   // Base pill shell — geometry only, no color here.
   const pillBase =
     'inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[11px] font-medium whitespace-nowrap';
@@ -407,22 +405,36 @@ export function StatusSelector({ item, onUpdate, presets, liveSegmentIds, liveSe
     );
   }
 
-  // Ready or Approved - clickable dropdown
+  // Ready or Approved - clickable dropdown.
   const isReady = item.status === 'ready_for_review';
   const isApproved = item.status === 'approved';
-  const activePillStyles = isReady ? statusStyles.ready_for_review : statusStyles.approved;
+
+  // Dynamic review state (Jack): in review WITH hard errors → orange + hazard;
+  // in review with NO errors → yellow + check. Approved → blue.
+  const reviewPill = hasErrors
+    ? 'bg-orange-500/[0.13] text-orange-600'
+    : 'bg-status-warning text-warning';
+  const activePill = isApproved ? statusStyles.approved.pill : reviewPill;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           onClick={(e) => e.stopPropagation()}
-          className={cn(pillBase, activePillStyles.pill, 'group/st transition-colors hover:brightness-95')}
+          className={cn(pillBase, activePill, 'group/st transition-colors hover:brightness-95')}
         >
-          <span className={cn(dot, activePillStyles.dot)} />
+          {isReady ? (
+            hasErrors ? (
+              <AlertTriangle className="h-3 w-3 flex-shrink-0" strokeWidth={2.5} />
+            ) : (
+              <Check className="h-3 w-3 flex-shrink-0" strokeWidth={2.5} />
+            )
+          ) : (
+            <span className={cn(dot, statusStyles.approved.dot)} />
+          )}
           {isReady
-            ? hasIssues
-              ? `Needs review · ${qaFlags?.length}`
+            ? hasErrors
+              ? 'Needs review · fix'
               : 'Needs review'
             : 'Approved'}
           <ChevronDown className="h-3 w-3 opacity-0 transition-opacity group-hover/st:opacity-60" />

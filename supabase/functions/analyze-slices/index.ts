@@ -93,15 +93,17 @@ serve(async (req) => {
     // Check if brand has indexed links
     let hasLinkIndex = false;
     let linkPreferences: { default_destination_url?: string; product_churn?: string; rules?: Array<{ name: string; destination_url: string }> } | null = null;
-    
+    let brandName: string | null = null;
+
     if (brandId) {
       const { data: brand } = await supabase
         .from('brands')
-        .select('link_preferences')
+        .select('link_preferences, name')
         .eq('id', brandId)
         .single();
-      
+
       linkPreferences = brand?.link_preferences || null;
+      brandName = brand?.name || null;
       
       const { count } = await supabase
         .from('brand_link_index')
@@ -164,6 +166,25 @@ serve(async (req) => {
         altText: slice.altText?.substring(0, 50)
       });
     });
+
+    // LOGO ALT TEXT: Override alt text for brand logo slices.
+    // A slice is the logo when its description mentions "logo" (case-insensitive)
+    // AND it is either the very first slice or one of the first two slices in a
+    // multi-column header row. This covers "header logo", "brand logo", etc.
+    if (brandName) {
+      const logoAlt = `${brandName} home`;
+      for (const slice of sliceDescriptions) {
+        const desc = (slice.description || '').toLowerCase();
+        const alt = (slice.altText || '').toLowerCase();
+        const isLogoSlice =
+          (desc.includes('logo') || alt.includes('logo')) &&
+          slice.index <= 1; // first slice or first column of a multi-col header
+        if (isLogoSlice) {
+          console.log(`[analyze-slices] Setting logo alt for slice ${slice.index}: "${logoAlt}"`);
+          slice.altText = logoAlt;
+        }
+      }
+    }
 
     // PHASE 3: Match slices to links
     console.log('Phase 3: Matching slices to links...');

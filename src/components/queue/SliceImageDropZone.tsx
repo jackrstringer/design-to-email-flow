@@ -148,16 +148,6 @@ export function SliceImageDropZone({
         )
       )}
 
-      {/* Hover affordance — a quiet corner chip, never a wash over the design */}
-      {!isUploading && !isDragging && (
-        <div className="pointer-events-none absolute bottom-1.5 right-1.5 opacity-0 transition-opacity duration-200 group-hover/swap:opacity-100">
-          <div className="flex items-center gap-1 rounded-full bg-black/55 px-2 py-[3px] backdrop-blur-sm">
-            <Upload className="h-2.5 w-2.5 text-white/90" />
-            <span className="text-[10px] font-medium text-white/90">Swap</span>
-          </div>
-        </div>
-      )}
-
       {/* Drag-over overlay */}
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-foreground/[0.06]">

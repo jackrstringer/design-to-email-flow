@@ -116,13 +116,23 @@ export function QueueRow({
     getDraftIssues: copyQa.checkDraft,
   });
 
-  // Live spelling/grammar issues on the selected SL/PT drive the row chip and
-  // block the build — replacing the old (mis-shaped) backend spelling_errors.
+  // Live spelling/grammar issues on the selected SL/PT.
   const copyIssues = [
     ...(copyQa.issuesByField.subject ?? []),
     ...(copyQa.issuesByField.preview ?? []),
   ];
-  const spellingCount = copyIssues.length;
+  // Hard typos baked into the design image (qa-spelling-check-early) — always
+  // launch-blocking. Shape: { word, suggestion, context }.
+  const designErrors = ((item.spelling_errors as Array<{ word?: string; suggestion?: string }>) || [])
+    .filter((e) => e?.word && e.word.trim());
+
+  const errorWords = [
+    ...copyIssues.filter((i) => i.severity === 'error').map((i) => i.word),
+    ...designErrors.map((e) => e.word as string),
+  ];
+  const hasErrors = errorWords.length > 0;
+  const suggestionCount = copyIssues.filter((i) => i.severity !== 'error').length;
+  const errorCount = errorWords.length;
 
   const handleNameSave = async (newName: string) => {
     const { error } = await supabase.from('campaign_queue').update({ name: newName }).eq('id', item.id);
@@ -258,7 +268,8 @@ export function QueueRow({
         presets={presets}
         liveSegmentIds={liveSegmentIds}
         liveSegmentsLoaded={liveSegmentsLoaded}
-        copyIssueWords={copyIssues.map((i) => i.word)}
+        copyIssueWords={errorWords}
+        hasErrors={hasErrors}
       />
     </div>
   );
@@ -282,23 +293,25 @@ export function QueueRow({
   const spellingCell = (
     <QaChip
       dense={compact}
-      ok={spellingCount === 0}
+      ok={!hasErrors}
       label={
-        spellingCount === 0
+        hasErrors
           ? compact
+            ? String(errorCount)
+            : `${errorCount} to fix`
+          : compact
             ? 'Aa'
             : '0 errors'
-          : compact
-            ? String(spellingCount)
-            : `${spellingCount} issue${spellingCount === 1 ? '' : 's'}`
       }
       title={
-        spellingCount === 0
-          ? 'Spelling & grammar QA passed — no issues'
-          : `${copyIssues
+        hasErrors
+          ? `Must fix before building: ${errorWords
               .slice(0, 5)
-              .map((e) => `“${e.word}”`)
-              .join(', ')}${spellingCount > 5 ? ` +${spellingCount - 5} more` : ''} — hover the underlined word to fix`
+              .map((w) => `“${w}”`)
+              .join(', ')}${errorCount > 5 ? ` +${errorCount - 5} more` : ''}`
+          : suggestionCount > 0
+            ? `No blocking errors · ${suggestionCount} optional suggestion${suggestionCount === 1 ? '' : 's'} — hover the amber word`
+            : 'Spelling & grammar QA passed — no issues'
       }
     />
   );

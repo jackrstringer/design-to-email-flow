@@ -100,8 +100,10 @@ export function HighlightedCopy({
               <span
                 onClick={(e) => e.stopPropagation()}
                 className={cn(
-                  'cursor-pointer underline decoration-wavy decoration-[1.5px] underline-offset-[3px]',
-                  issue.kind === 'spelling' ? 'decoration-destructive' : 'decoration-amber-500',
+                  'cursor-pointer underline underline-offset-[3px]',
+                  issue.severity === 'suggestion'
+                    ? 'decoration-dotted decoration-[1.5px] decoration-amber-500/80'
+                    : 'decoration-wavy decoration-[1.5px] decoration-destructive',
                 )}
               >
                 {seg.text}
@@ -118,10 +120,16 @@ export function HighlightedCopy({
                 <span
                   className={cn(
                     'inline-flex h-[18px] items-center rounded-full px-1.5 text-[10px] font-medium leading-none',
-                    issue.kind === 'spelling' ? 'bg-destructive/[0.08] text-destructive' : 'bg-amber-500/10 text-amber-700',
+                    issue.severity === 'suggestion'
+                      ? 'bg-amber-500/10 text-amber-700'
+                      : 'bg-destructive/[0.08] text-destructive',
                   )}
                 >
-                  {issue.kind === 'spelling' ? 'Spelling' : 'Grammar'}
+                  {issue.severity === 'suggestion'
+                    ? 'Suggestion'
+                    : issue.kind === 'spelling'
+                      ? 'Spelling'
+                      : 'Grammar'}
                 </span>
                 <span className="truncate text-[12px] font-semibold text-foreground">{issue.word}</span>
               </div>

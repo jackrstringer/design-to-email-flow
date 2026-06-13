@@ -23,6 +23,13 @@ export interface CopyIssue {
   message?: string;
   /** One-click replacement candidates (spelling only; best first). */
   suggestions?: string[];
+  /**
+   * 'error' = a definite mistake that HALTS the launch (clear typo / broken
+   * grammar / design-image typo). 'suggestion' = a preferential or unconfirmed
+   * flag that does NOT block. Local nspell hits start as 'suggestion'; the LLM
+   * (and design-image check) promote real mistakes to 'error'.
+   */
+  severity?: 'error' | 'suggestion';
 }
 
 // ── Local speller (nspell), lazy singleton ──────────────────────────────────
@@ -170,8 +177,11 @@ export function checkText(text: string | null | undefined, customWords: Iterable
         kind: 'spelling',
         word: raw,
         index,
-        message: `"${raw}" looks misspelled`,
+        message: `"${raw}" isn't in the dictionary`,
         suggestions: suggestFor(speller, base),
+        // Local dictionary can't tell a real typo from a brand/neologism, so it
+        // only ever suggests — the LLM promotes genuine mistakes to 'error'.
+        severity: 'suggestion',
       });
     }
   }
@@ -199,6 +209,8 @@ interface GrammarIssue {
   kind: 'spelling' | 'grammar';
   token: string;
   message: string;
+  severity?: 'error' | 'suggestion';
+  suggestion?: string;
 }
 
 // Module-level cache: identical text + dictionary never hits the LLM twice.
@@ -261,6 +273,8 @@ export interface CopyQaResult {
   /** Merged spelling+grammar issues per field key. */
   issuesByField: Record<string, CopyIssue[]>;
   hasIssues: boolean;
+  /** True when any issue is severity 'error' (blocks the build). */
+  hasErrors: boolean;
   /** All custom words considered valid (stored + brand-derived), lowercase. */
   effectiveWords: string[];
   /** Sync local-only check for live (mid-edit) feedback. */
@@ -345,7 +359,9 @@ export function useCopyQa(
               word: iss.token,
               index: normalizeCopy(value).indexOf(iss.token),
               message: iss.message,
-            }));
+              severity: iss.severity === 'suggestion' ? 'suggestion' : 'error',
+              suggestions: iss.suggestion ? [iss.suggestion] : undefined,
+            } as CopyIssue));
         });
         return next;
       });
@@ -358,30 +374,44 @@ export function useCopyQa(
   }, [fieldsKey, wordsKey, enabled, grammarOnMount]);
 
   const issuesByField = useMemo(() => {
+    const custom = new Set(effectiveWords);
     const merged: Record<string, CopyIssue[]> = {};
     for (const k of fieldKeys) {
-      const seen = new Set<string>();
-      const all: CopyIssue[] = [];
-      for (const issue of [...(localIssues[k] ?? []), ...(grammarIssues[k] ?? [])]) {
-        const dedupeKey = `${issue.kind}:${issue.word.toLowerCase()}`;
-        if (seen.has(dedupeKey)) continue;
-        // Re-validate against the latest dictionary so "Add to dictionary"
-        // clears stale grammar/spelling entries instantly.
-        if (issue.kind === 'spelling' && isCustomWord(issue.word, new Set(effectiveWords))) continue;
-        seen.add(dedupeKey);
-        all.push(issue);
+      // Key by word; the LLM entry (authoritative on severity + correction)
+      // overrides the local nspell entry for the same word, but we keep the
+      // local index when present since it's exact.
+      const byWord = new Map<string, CopyIssue>();
+      for (const issue of localIssues[k] ?? []) {
+        if (issue.kind === 'spelling' && isCustomWord(issue.word, custom)) continue;
+        byWord.set(issue.word.toLowerCase(), issue);
       }
-      merged[k] = all;
+      for (const g of grammarIssues[k] ?? []) {
+        if (g.kind === 'spelling' && isCustomWord(g.word, custom)) continue;
+        const key = g.word.toLowerCase();
+        const local = byWord.get(key);
+        byWord.set(key, {
+          kind: g.kind,
+          word: g.word,
+          index: local && local.index >= 0 ? local.index : g.index,
+          message: g.message || local?.message,
+          severity: g.severity ?? 'error',
+          suggestions: g.suggestions && g.suggestions.length ? g.suggestions : local?.suggestions,
+        });
+      }
+      merged[k] = [...byWord.values()].sort((a, b) => a.index - b.index);
     }
     return merged;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localIssues, grammarIssues, wordsKey, fieldsKey]);
 
-  const hasIssues = Object.values(issuesByField).some((list) => list.length > 0);
+  const allIssues = Object.values(issuesByField).flat();
+  const hasIssues = allIssues.length > 0;
+  const hasErrors = allIssues.some((i) => i.severity === 'error');
 
   return {
     issuesByField,
     hasIssues,
+    hasErrors,
     effectiveWords,
     checkDraft: (text: string) => checkText(text, effectiveWords),
   };
