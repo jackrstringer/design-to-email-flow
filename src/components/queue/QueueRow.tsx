@@ -85,6 +85,7 @@ export function QueueRow({
 
   const brandName = (item as any).brands?.name;
   const brandDomain = (item as any).brands?.domain;
+  const brandAvatarColor = (item as any).brands?.avatar_color as string | null | undefined;
 
   const realLinks = slices.filter((s) => isRealLink(s.link));
   const externalCount = brandDomain
@@ -248,9 +249,11 @@ export function QueueRow({
     >
       <span
         className={cn(
-          'flex shrink-0 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground',
+          'flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
+          !brandAvatarColor && 'bg-primary text-primary-foreground',
           compact ? 'h-3.5 w-3.5 text-[7.5px]' : 'h-[17px] w-[17px] text-[8.5px]',
         )}
+        style={brandAvatarColor ? { backgroundColor: brandAvatarColor } : undefined}
       >
         {brandName.charAt(0).toUpperCase()}
       </span>
@@ -270,6 +273,7 @@ export function QueueRow({
         liveSegmentsLoaded={liveSegmentsLoaded}
         copyIssueWords={errorWords}
         hasErrors={hasErrors}
+        compact={compact}
       />
     </div>
   );
@@ -288,7 +292,7 @@ export function QueueRow({
     </div>
   );
 
-  const linksCell = <LinksSummaryPopover slices={slices} brandDomain={brandDomain} dense={compact} />;
+  const linksCell = <LinksSummaryPopover slices={slices} brandDomain={brandDomain} brandId={item.brand_id} dense={compact} />;
 
   const spellingCell = (
     <QaChip

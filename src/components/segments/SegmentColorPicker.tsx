@@ -1,6 +1,5 @@
-// Optional accent color for a segment set. Rendered ONLY as a small dot —
-// the pill/row chrome always stays neutral. Palette is deliberately muted
-// (desaturated, mid-lightness) so dots read as quiet markers, not alerts.
+// Accent color for a segment set, rendered as a small dot. Palette is bright
+// and saturated (ClickUp-style) so the labels pop and are easy to tell apart.
 
 import { useState } from 'react';
 import { Check, X } from 'lucide-react';
@@ -8,21 +7,24 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 
 export const SEGMENT_COLORS: Array<{ name: string; value: string }> = [
-  { name: 'Slate',      value: '#7C8794' },
-  { name: 'Sage',       value: '#8AA188' },
-  { name: 'Moss',       value: '#9AA37C' },
-  { name: 'Amber',      value: '#C2A36B' },
-  { name: 'Terracotta', value: '#C08D6E' },
-  { name: 'Rose',       value: '#C58E9B' },
-  { name: 'Mauve',      value: '#A78EA9' },
-  { name: 'Indigo',     value: '#8B93C0' },
-  { name: 'Teal',       value: '#7FA6A3' },
-  { name: 'Stone',      value: '#A09A90' },
-  { name: 'Dusk',       value: '#9396AA' },
-  { name: 'Clay',       value: '#B89B87' },
-  { name: 'Olive',      value: '#8E9A6E' },
-  { name: 'Blush',      value: '#C2939B' },
-  { name: 'Steel',      value: '#829BB0' },
+  { name: 'Red',      value: '#EF4444' },
+  { name: 'Orange',   value: '#F97316' },
+  { name: 'Amber',    value: '#F59E0B' },
+  { name: 'Yellow',   value: '#EAB308' },
+  { name: 'Lime',     value: '#84CC16' },
+  { name: 'Green',    value: '#22C55E' },
+  { name: 'Emerald',  value: '#10B981' },
+  { name: 'Teal',     value: '#14B8A6' },
+  { name: 'Cyan',     value: '#06B6D4' },
+  { name: 'Sky',      value: '#0EA5E9' },
+  { name: 'Blue',     value: '#3B82F6' },
+  { name: 'Indigo',   value: '#6366F1' },
+  { name: 'Violet',   value: '#8B5CF6' },
+  { name: 'Purple',   value: '#A855F7' },
+  { name: 'Fuchsia',  value: '#D946EF' },
+  { name: 'Pink',     value: '#EC4899' },
+  { name: 'Rose',     value: '#F43F5E' },
+  { name: 'Slate',    value: '#64748B' },
 ];
 
 interface SegmentColorPickerProps {

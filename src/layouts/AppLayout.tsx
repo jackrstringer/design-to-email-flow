@@ -23,7 +23,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, []);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <div className="flex h-screen w-full bg-background">
         <AppSidebar />
         <main className="flex min-w-0 flex-1 flex-col">

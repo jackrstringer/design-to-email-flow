@@ -1,9 +1,12 @@
 import { useState, useCallback } from 'react';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, Check } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { SEGMENT_COLORS } from '@/components/segments/SegmentColorPicker';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import type { Brand } from '@/types/brand-assets';
 
 interface BrandIdentityCompactProps {
@@ -13,6 +16,20 @@ interface BrandIdentityCompactProps {
 
 export function BrandIdentityCompact({ brand, onBrandChange }: BrandIdentityCompactProps) {
   const [uploadingLogo, setUploadingLogo] = useState<'dark' | 'light' | null>(null);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+
+  const avatarColor: string | null = (brand as any).avatarColor ?? (brand as any).avatar_color ?? null;
+  const initial = (brand.name || '?').charAt(0).toUpperCase();
+
+  const setAvatarColor = useCallback(async (value: string | null) => {
+    setAvatarOpen(false);
+    const { error } = await supabase.from('brands').update({ avatar_color: value }).eq('id', brand.id);
+    if (error) {
+      toast.error('Failed to update avatar color');
+      return;
+    }
+    onBrandChange?.();
+  }, [brand.id, onBrandChange]);
 
   const colors = [
     { label: 'Primary', value: brand.primaryColor },
@@ -91,12 +108,53 @@ export function BrandIdentityCompact({ brand, onBrandChange }: BrandIdentityComp
     <Card className="bg-muted/30">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
-          {/* Color swatches row */}
-          <div className="flex items-center gap-2">
+          {/* Color swatches row + editable brand-tag avatar color */}
+          <div className="flex items-center gap-3">
+            <Popover open={avatarOpen} onOpenChange={setAvatarOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  title="Brand tag color — click to change"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white shadow-sm ring-1 ring-black/10 transition-transform hover:scale-105 active:scale-95"
+                  style={{ backgroundColor: avatarColor || 'hsl(var(--primary))' }}
+                >
+                  {initial}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2" align="start">
+                <p className="px-1 pb-1.5 text-[11px] font-medium text-muted-foreground">Brand tag color</p>
+                <div className="grid grid-cols-6 gap-1.5">
+                  <button
+                    type="button"
+                    title="Default"
+                    onClick={() => setAvatarColor(null)}
+                    className="flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-black/10 transition-transform hover:scale-110"
+                    style={{ backgroundColor: 'hsl(var(--primary))' }}
+                  >
+                    {!avatarColor && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+                  </button>
+                  {SEGMENT_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      title={c.name}
+                      onClick={() => setAvatarColor(c.value)}
+                      className="flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-black/10 transition-transform hover:scale-110"
+                      style={{ backgroundColor: c.value }}
+                    >
+                      {avatarColor === c.value && <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <div className="h-5 w-px bg-border" />
+
             {colors.map(c => (
-              <div 
+              <div
                 key={c.label}
-                className="w-8 h-8 rounded-lg shadow-sm ring-1 ring-black/5" 
+                className="w-8 h-8 rounded-lg shadow-sm ring-1 ring-black/5"
                 style={{ backgroundColor: c.value }}
                 title={c.label}
               />

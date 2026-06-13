@@ -860,15 +860,19 @@ export function ExpandedRowPanel({
                   />
                 )}
 
-                {/* Footer Section - centered to match slices */}
+                {/* Footer — flush under the last slice; alignment mirrors
+                    SliceCanvas (centered in All mode, right-aligned in
+                    links/clean mode). Click to open the footer studio. */}
                 {footerHtml && (
-                  <div className="flex justify-center">
-                    {/* Footer iframe container - clips the scaled content */}
-                    <div 
-                      className="flex-shrink-0 overflow-hidden" 
-                      style={{ 
-                        width: scaledWidth, 
-                        height: footerPreviewHeight * (zoomLevel / 100) 
+                  <div className={cn('flex', displayMode === 'all' ? 'justify-center' : 'justify-end pr-3')}>
+                    <button
+                      type="button"
+                      onClick={() => setFooterStudioOpen(true)}
+                      title="Edit footer"
+                      className="group/footer relative block flex-shrink-0 cursor-pointer overflow-hidden text-left"
+                      style={{
+                        width: scaledWidth,
+                        height: footerPreviewHeight * (zoomLevel / 100),
                       }}
                     >
                       <iframe
@@ -876,6 +880,7 @@ export function ExpandedRowPanel({
                         srcDoc={footerSrcDoc}
                         onLoad={handleFooterIframeLoad}
                         scrolling="no"
+                        tabIndex={-1}
                         style={{
                           width: BASE_WIDTH,
                           height: footerPreviewHeight,
@@ -884,10 +889,20 @@ export function ExpandedRowPanel({
                           transform: `scale(${zoomLevel / 100})`,
                           transformOrigin: 'top left',
                           overflow: 'hidden',
+                          pointerEvents: 'none',
                         }}
                         title="Footer Preview"
                       />
-                    </div>
+                      {/* Hover affordance — the iframe ignores pointer events so
+                          the click always lands on this button. */}
+                      <span className="pointer-events-none absolute inset-0 flex items-start justify-end p-2 opacity-0 transition-opacity duration-150 group-hover/footer:opacity-100">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-foreground/85 px-2.5 py-1 text-[11px] font-medium text-background shadow-sm">
+                          <PenLine className="h-3 w-3" />
+                          Edit footer
+                        </span>
+                      </span>
+                      <span className="pointer-events-none absolute inset-0 rounded-[2px] ring-0 ring-foreground/15 transition-[box-shadow] duration-150 group-hover/footer:ring-2" />
+                    </button>
                   </div>
                 )}
               </div>

@@ -2,10 +2,11 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Link as LinkIcon, Plus, X } from 'lucide-react';
+import { Link as LinkIcon, Plus, Star, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SliceImageDropZone } from './SliceImageDropZone';
 import { isRealLink } from '@/lib/links';
+import { useBrandFavorites } from '@/hooks/useBrandFavorites';
 
 export interface CanvasSlice {
   imageUrl?: string;
@@ -69,6 +70,8 @@ export function SliceCanvas({
   const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
   const [linkSearchValue, setLinkSearchValue] = useState('');
   const [hovered, setHovered] = useState<number | null>(null);
+
+  const { isFavorite, toggle: toggleFavorite } = useBrandFavorites(brandId);
 
   // Measured geometry: per-slice center Y relative to the canvas.
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -145,11 +148,17 @@ export function SliceCanvas({
     return false;
   };
 
-  const filteredLinks = brandLinks.filter(
-    (l) =>
-      !isFragmentOnlyUrl(l) &&
-      l.toLowerCase().includes(linkSearchValue.toLowerCase()),
-  );
+  const filteredLinks = brandLinks
+    .filter(
+      (l) =>
+        !isFragmentOnlyUrl(l) &&
+        l.toLowerCase().includes(linkSearchValue.toLowerCase()),
+    )
+    .sort((a, b) => {
+      const aFav = isFavorite(a) ? 0 : 1;
+      const bFav = isFavorite(b) ? 0 : 1;
+      return aFav - bFav;
+    });
 
   const linkEditor = (index: number, current: string | null | undefined) => (
     <PopoverContent className="w-96 p-0" align="end" side="left">
@@ -176,20 +185,49 @@ export function SliceCanvas({
           </CommandEmpty>
           {filteredLinks.length > 0 && (
             <CommandGroup heading="Brand links">
-              {filteredLinks.slice(0, 10).map((link) => (
-                <CommandItem
-                  key={link}
-                  value={link}
-                  onSelect={() => {
-                    onUpdateSlice(index, { link });
-                    setEditingLinkIndex(null);
-                    setLinkSearchValue('');
-                  }}
-                  className="text-xs"
-                >
-                  <span className="break-all">{link}</span>
-                </CommandItem>
-              ))}
+              {filteredLinks.slice(0, 10).map((link) => {
+                const fav = isFavorite(link);
+                return (
+                  <CommandItem
+                    key={link}
+                    value={link}
+                    onSelect={() => {
+                      onUpdateSlice(index, { link });
+                      setEditingLinkIndex(null);
+                      setLinkSearchValue('');
+                    }}
+                    className="group/link-item text-xs"
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      {fav && (
+                        <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" aria-hidden />
+                      )}
+                      <span className="break-all">{link}</span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={fav ? 'Remove from favorites' : 'Add to favorites'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFavorite(link);
+                      }}
+                      className={cn(
+                        'ml-1.5 shrink-0 rounded p-0.5 transition-[color,opacity] duration-150',
+                        fav
+                          ? 'text-amber-400 opacity-100'
+                          : 'text-muted-foreground/50 opacity-0 group-hover/link-item:opacity-100 hover:text-amber-400',
+                      )}
+                    >
+                      <Star
+                        className={cn(
+                          'h-3 w-3',
+                          fav && 'fill-amber-400',
+                        )}
+                      />
+                    </button>
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
           )}
           {current && (

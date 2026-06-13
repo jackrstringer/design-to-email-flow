@@ -87,7 +87,7 @@ interface CampaignQueueData {
 async function fetchCampaignQueueData(): Promise<CampaignQueueData> {
   const { data, error } = await supabase
     .from('campaign_queue')
-    .select('*, brands(id, name, domain, primary_color)')
+    .select('*, brands(id, name, domain, primary_color, avatar_color)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -230,7 +230,7 @@ export function useCampaignQueue() {
             // Fetch full item with brands join
             const { data: fullItem } = await supabase
               .from('campaign_queue')
-              .select('*, brands(id, name, domain, primary_color)')
+              .select('*, brands(id, name, domain, primary_color, avatar_color)')
               .eq('id', payload.new.id)
               .single();
               
@@ -281,7 +281,7 @@ export function useCampaignQueue() {
             // Fetch full item with brands join to get complete data
             const { data: fullItem } = await supabase
               .from('campaign_queue')
-              .select('*, brands(id, name, domain, primary_color)')
+              .select('*, brands(id, name, domain, primary_color, avatar_color)')
               .eq('id', payload.new.id)
               .single();
               

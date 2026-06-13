@@ -272,7 +272,9 @@ export type Database = {
         Row: {
           accent_color: string | null
           all_links: Json
+          avatar_color: string | null
           background_color: string | null
+          favorite_links: string[]
           clickup_folder_id: string | null
           clickup_key_set: boolean
           clickup_list_id: string | null
@@ -311,6 +313,8 @@ export type Database = {
         Insert: {
           accent_color?: string | null
           all_links?: Json
+          avatar_color?: string | null
+          favorite_links?: string[]
           background_color?: string | null
           clickup_folder_id?: string | null
           clickup_key_set?: boolean
@@ -350,6 +354,8 @@ export type Database = {
         Update: {
           accent_color?: string | null
           all_links?: Json
+          avatar_color?: string | null
+          favorite_links?: string[]
           background_color?: string | null
           clickup_folder_id?: string | null
           clickup_key_set?: boolean

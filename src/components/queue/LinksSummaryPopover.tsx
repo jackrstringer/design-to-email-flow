@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isRealLink } from '@/lib/links';
+import { useBrandFavorites } from '@/hooks/useBrandFavorites';
 
 interface Slice {
   link?: string;
@@ -11,6 +12,7 @@ interface Slice {
 interface LinksSummaryPopoverProps {
   slices: Slice[];
   brandDomain?: string;
+  brandId?: string | null;
   /** compact = icon-sized trigger for the dense row mode */
   dense?: boolean;
 }
@@ -37,8 +39,9 @@ function parseUrl(raw: string): { domain: string; path: string } {
  * domain, off-brand-domain destinations flagged. One glance answers
  * "where does this email send people?"
  */
-export function LinksSummaryPopover({ slices, brandDomain, dense = false }: LinksSummaryPopoverProps) {
+export function LinksSummaryPopover({ slices, brandDomain, brandId, dense = false }: LinksSummaryPopoverProps) {
   const [copied, setCopied] = useState<string | null>(null);
+  const { isFavorite, toggle: toggleFavorite } = useBrandFavorites(brandId);
 
   const groups = useMemo<DomainGroup[]>(() => {
     const counts = new Map<string, number>();
@@ -61,12 +64,23 @@ export function LinksSummaryPopover({ slices, brandDomain, dense = false }: Link
       g.urls.push({ url, count, path });
       g.total += count;
     }
-    // brand domain first, then by volume
+    // Within each group, sort favorited URLs to the top.
+    for (const g of byDomain.values()) {
+      g.urls.sort((a, b) => {
+        const aFav = isFavorite(a.url) ? 0 : 1;
+        const bFav = isFavorite(b.url) ? 0 : 1;
+        return aFav - bFav;
+      });
+    }
+    // brand domain first, then groups with any favorite, then by volume
     return Array.from(byDomain.values()).sort((a, b) => {
       if (a.external !== b.external) return a.external ? 1 : -1;
+      const aHasFav = a.urls.some((u) => isFavorite(u.url)) ? 0 : 1;
+      const bHasFav = b.urls.some((u) => isFavorite(u.url)) ? 0 : 1;
+      if (aHasFav !== bHasFav) return aHasFav - bHasFav;
       return b.total - a.total;
     });
-  }, [slices, brandDomain]);
+  }, [slices, brandDomain, isFavorite]);
 
   const uniqueCount = useMemo(
     () => new Set(slices.filter((s) => isRealLink(s.link)).map((s) => s.link)).size,
@@ -142,30 +156,49 @@ export function LinksSummaryPopover({ slices, brandDomain, dense = false }: Link
                 </span>
               </div>
               <div className="mt-1 flex flex-col">
-                {g.urls.map(({ url, count, path }) => (
-                  <div key={url} className="group/url flex min-w-0 items-center gap-1.5 rounded-md py-[3px] pl-[11px] pr-1">
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-                      title={url}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {path}
-                    </a>
-                    {count > 1 && (
-                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">×{count}</span>
-                    )}
-                    <button
-                      onClick={(e) => handleCopy(url, e)}
-                      className="shrink-0 rounded p-0.5 text-muted-foreground/0 transition-colors hover:bg-secondary group-hover/url:text-muted-foreground"
-                      title="Copy URL"
-                    >
-                      {copied === url ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
-                    </button>
-                  </div>
-                ))}
+                {g.urls.map(({ url, count, path }) => {
+                  const fav = isFavorite(url);
+                  return (
+                    <div key={url} className="group/url flex min-w-0 items-center gap-1.5 rounded-md py-[3px] pl-[11px] pr-1">
+                      <button
+                        type="button"
+                        aria-label={fav ? 'Remove from favorites' : 'Add to favorites'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(url);
+                        }}
+                        className={cn(
+                          'shrink-0 rounded p-0.5 transition-[color,opacity] duration-150',
+                          fav
+                            ? 'text-amber-400 opacity-100'
+                            : 'text-muted-foreground/50 opacity-0 group-hover/url:opacity-100 hover:text-amber-400',
+                        )}
+                      >
+                        <Star className={cn('h-3 w-3', fav && 'fill-amber-400')} />
+                      </button>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                        title={url}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {path}
+                      </a>
+                      {count > 1 && (
+                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">×{count}</span>
+                      )}
+                      <button
+                        onClick={(e) => handleCopy(url, e)}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground/0 transition-colors hover:bg-secondary group-hover/url:text-muted-foreground"
+                        title="Copy URL"
+                      >
+                        {copied === url ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
