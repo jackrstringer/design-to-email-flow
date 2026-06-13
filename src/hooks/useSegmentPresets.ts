@@ -20,6 +20,8 @@ export interface SegmentPreset {
   included_segments: KlaviyoSegment[];
   excluded_segments: KlaviyoSegment[];
   is_default: boolean;
+  /** UUID of the user who created this preset. Null for pre-existing rows. */
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -117,6 +119,7 @@ export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolea
         included_segments: hydrateSegments(p.included_segments as unknown[], klaviyoSegments, klaviyoLoaded),
         excluded_segments: hydrateSegments(p.excluded_segments as unknown[], klaviyoSegments, klaviyoLoaded),
         is_default: p.is_default,
+        created_by: p.created_by ?? null,
         created_at: p.created_at,
         updated_at: p.updated_at,
       }));
@@ -138,6 +141,8 @@ export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolea
           .eq('brand_id', brandId);
       }
 
+      const { data: { user } } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from('segment_presets')
         .insert({
@@ -148,6 +153,7 @@ export function useSegmentPresets(brandId: string | null, klaviyoKeySet?: boolea
           included_segments: preset.included_segments as any,
           excluded_segments: preset.excluded_segments as any,
           is_default: preset.is_default,
+          created_by: user?.id ?? null,
         })
         .select()
         .single();

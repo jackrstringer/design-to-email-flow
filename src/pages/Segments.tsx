@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Building2, KeyRound } from 'lucide-react';
+import { Building2, Folders, KeyRound } from 'lucide-react';
 import { useSegmentPresets } from '@/hooks/useSegmentPresets';
 import { SegmentsTable } from '@/components/segments/SegmentsTable';
 import { useBrandsQuery } from '@/hooks/useBrandsQuery';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -14,12 +15,16 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 
+type OwnerFilter = 'all' | 'mine';
+
 const SEGMENTS_LAST_BRAND_KEY = 'segments-last-brand-id';
 
 export default function Segments() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedBrandId = searchParams.get('brand');
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
 
+  const { user } = useAuthContext();
   const { data: brands = [], isLoading: loadingBrands } = useBrandsQuery();
 
   // Restore from localStorage on mount if no brand param in URL
@@ -64,6 +69,16 @@ export default function Segments() {
     deletePreset,
   } = useSegmentPresets(selectedBrandId, selectedBrand?.klaviyoKeySet);
 
+  // Counts for the toggle badge
+  const myCount = presets.filter((p) => p.created_by === user?.id).length;
+  const allCount = presets.length;
+
+  // Filtered list passed to the table
+  const visiblePresets =
+    ownerFilter === 'mine'
+      ? presets.filter((p) => p.created_by === user?.id)
+      : presets;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -74,6 +89,25 @@ export default function Segments() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* My / All owner filter */}
+          {selectedBrandId && selectedBrand?.klaviyoKeySet && !loadingPresets && (
+            <div className="flex h-8 items-center rounded-full bg-secondary p-[3px] text-[11.5px] font-medium">
+              {(['all', 'mine'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setOwnerFilter(v)}
+                  className={
+                    ownerFilter === v
+                      ? 'flex h-[26px] items-center rounded-full bg-card px-3 font-semibold text-foreground shadow-[0_1px_2px_hsl(0_0%_0%/0.06)] transition-all duration-150'
+                      : 'flex h-[26px] items-center rounded-full px-3 text-muted-foreground transition-colors duration-150 hover:text-foreground'
+                  }
+                >
+                  {v === 'all' ? `All ${allCount}` : `Mine ${myCount}`}
+                </button>
+              ))}
+            </div>
+          )}
+
           <span className="text-xs text-muted-foreground">Brand</span>
           {loadingBrands ? (
             <Skeleton className="h-9 w-48" />
@@ -150,9 +184,23 @@ export default function Segments() {
               <Link to={`/brands/${selectedBrandId}/integrations`}>Add Klaviyo key</Link>
             </Button>
           </div>
+        ) : ownerFilter === 'mine' && !loadingPresets && myCount === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-center">
+            <Folders className="w-10 h-10 text-muted-foreground/50 mb-4" />
+            <p className="text-sm font-medium">No segment sets yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              You haven't created any segment sets for this brand yet.
+            </p>
+            <button
+              onClick={() => setOwnerFilter('all')}
+              className="mt-4 text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              View all sets
+            </button>
+          </div>
         ) : (
           <SegmentsTable
-            presets={presets}
+            presets={visiblePresets}
             loading={loadingPresets}
             klaviyoSegments={klaviyoSegments}
             loadingSegments={loadingSegments}

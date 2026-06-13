@@ -28,6 +28,7 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const Settings = lazy(() => import("./pages/Settings"));
 const FooterEditor = lazy(() => import("./pages/FooterEditor"));
 const ImageFooterStudio = lazy(() => import("./pages/ImageFooterStudio"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -60,6 +61,7 @@ const App = () => (
             <Routes>
               {/* Public routes */}
               <Route path="/auth" element={<Auth />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
               {/* Protected routes share ONE persistent shell — the sidebar
                   never unmounts between pages, so navigation is instant with

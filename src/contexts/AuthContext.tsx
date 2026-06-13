@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Session, AuthResponse, AuthTokenResponsePassword } from '@supabase/supabase-js';
+import { User, Session, AuthResponse, AuthTokenResponsePassword, UserResponse } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
@@ -9,6 +9,8 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<AuthResponse>;
   signIn: (email: string, password: string) => Promise<AuthTokenResponsePassword>;
   signOut: () => Promise<{ error: Error | null }>;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<UserResponse>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -93,8 +95,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result;
   };
 
+  const resetPassword = async (email: string) => {
+    const result = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    return result;
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const result = await supabase.auth.updateUser({ password: newPassword });
+    return result;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut, resetPassword, updatePassword }}>
       {children}
     </AuthContext.Provider>
   );

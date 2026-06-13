@@ -975,6 +975,7 @@ export type Database = {
           brand_id: string
           color: string | null
           created_at: string
+          created_by: string | null
           description: string | null
           excluded_segments: Json
           id: string
@@ -987,6 +988,7 @@ export type Database = {
           brand_id: string
           color?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           excluded_segments?: Json
           id?: string
@@ -999,6 +1001,7 @@ export type Database = {
           brand_id?: string
           color?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           excluded_segments?: Json
           id?: string

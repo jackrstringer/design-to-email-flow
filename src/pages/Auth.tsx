@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, Loader2, Send } from 'lucide-react';
+import { Mail, Lock, AlertCircle, Loader2, Send, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,12 +13,16 @@ import { z } from 'zod';
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 
+type AuthView = 'tabs' | 'forgot-password';
+
 export default function Auth() {
   const navigate = useNavigate();
-  const { user, loading, signIn, signUp } = useAuth();
-  
+  const { user, loading, signIn, signUp, resetPassword } = useAuth();
+
+  const [view, setView] = useState<AuthView>('tabs');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,6 +103,31 @@ export default function Auth() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    try {
+      emailSchema.parse(resetEmail);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        setError(err.errors[0].message);
+      }
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { error } = await resetPassword(resetEmail);
+    setIsSubmitting(false);
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setSuccess('Check your email for a reset link.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -127,11 +156,72 @@ export default function Auth() {
 
         <Card className="rounded-2xl border-border/70 shadow-floating">
           <CardContent className="p-6">
+
+          {view === 'forgot-password' ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <button
+                  type="button"
+                  onClick={() => { setView('tabs'); setError(null); setSuccess(null); setResetEmail(''); }}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back to sign in
+                </button>
+              </div>
+              <div>
+                <p className="text-sm font-medium leading-none mb-1">Reset password</p>
+                <p className="text-xs text-muted-foreground">Enter your email and we'll send a reset link.</p>
+              </div>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {success ? (
+                <Alert className="border-foreground/20 bg-secondary">
+                  <AlertDescription className="text-foreground">{success}</AlertDescription>
+                </Alert>
+              ) : (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">Email</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="reset-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Send reset link'
+                    )}
+                  </Button>
+                </form>
+              )}
+            </div>
+          ) : (
           <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="signin">Sign in</TabsTrigger>
-              <TabsTrigger value="signup">Sign up</TabsTrigger>
-            </TabsList>
+            {/* Invite-only — public sign-up is disabled. Teammates join via an
+                admin invite email; the sign-up tab is intentionally hidden. */}
+            <p className="mb-6 text-center text-[12px] text-muted-foreground">
+              Sign in to your account · access is invite-only
+            </p>
 
             {error && (
               <Alert variant="destructive" className="mb-4">
@@ -164,7 +254,16 @@ export default function Auth() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="signin-password">Password</Label>
+                    <button
+                      type="button"
+                      onClick={() => { setView('forgot-password'); setError(null); setSuccess(null); setResetEmail(email); }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -239,6 +338,7 @@ export default function Auth() {
               </form>
             </TabsContent>
           </Tabs>
+          )}
           </CardContent>
         </Card>
 

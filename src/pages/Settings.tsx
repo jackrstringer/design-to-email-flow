@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Key, Copy, Trash2, Check, Plus, Loader2 } from 'lucide-react';
+import { Key, Copy, Trash2, Check, Plus, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,8 +20,40 @@ interface PluginToken {
 }
 
 export default function Settings() {
-  const { user } = useAuth();
-  
+  const { user, updatePassword } = useAuth();
+
+  // Password change state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+
+    if (newPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.');
+      return;
+    }
+
+    setUpdatingPassword(true);
+    const { error } = await updatePassword(newPassword);
+    setUpdatingPassword(false);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Password updated.');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+  };
+
   const [tokens, setTokens] = useState<PluginToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -268,6 +301,67 @@ export default function Settings() {
                   No tokens yet. Generate one to connect your Figma plugin.
                 </p>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Password */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lock className="h-5 w-5" />
+                Password
+              </CardTitle>
+              <CardDescription>
+                Update your account password. You'll remain signed in after changing it.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-sm">
+                <div className="space-y-2">
+                  <Label htmlFor="settings-new-password">New password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="settings-new-password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => { setNewPassword(e.target.value); setPasswordError(null); }}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="settings-confirm-password">Confirm password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="settings-confirm-password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(null); }}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </div>
+                {passwordError && (
+                  <p className="text-xs text-destructive">{passwordError}</p>
+                )}
+                <Button type="submit" disabled={updatingPassword}>
+                  {updatingPassword ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update password'
+                  )}
+                </Button>
+              </form>
             </CardContent>
           </Card>
 

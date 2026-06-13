@@ -33,7 +33,10 @@ serve(async (req) => {
       return jsonResponse(req, { error: 'Only admins can invite teammates' }, 403);
     }
 
-    const { data: invited, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email);
+    const siteUrl = Deno.env.get('SITE_URL') ?? 'https://sendr-sooty.vercel.app';
+    const { data: invited, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${siteUrl}/reset-password`,
+    });
     if (inviteError) {
       return jsonResponse(req, { error: inviteError.message }, 400);
     }
